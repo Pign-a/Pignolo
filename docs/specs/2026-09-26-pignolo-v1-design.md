@@ -1,156 +1,152 @@
 # pignolo v1 — spec de diseño
 
-Fecha: 2026-09-26 · Autor: Ignacio Agustín Miste (Pigna) · Estado: borrador para revisión por IA + tarjeta de alcance
+Fecha: 2026-09-26 · Autor: Ignacio Agustín Miste (Pigna) · Repo: https://github.com/Pign-a/Pignolo (público, MIT)
+Estado: revisado por `spec-reviewer` y `refuter` (ronda 1); pendiente tarjeta de alcance.
 
 ## 0. Qué es y para qué
 
-pignolo es un plugin de Claude Code que instala una metodología de desarrollo con agentes, genérica para cualquier proyecto, a nivel de cuenta. Su objetivo es trabajar de forma **inteligentemente autónoma**: resolver solo todo lo que no es decisión del humano, verificar de verdad (no por informe) y escalar al humano solo lo que le corresponde, con la pregunta ya trabajada.
+pignolo es un plugin de Claude Code que instala una metodología de desarrollo con agentes, genérica para cualquier proyecto, a nivel de cuenta. Objetivo: trabajar de forma **inteligentemente autónoma** — resolver solo todo lo que no es decisión del humano, verificar de verdad (no por informe) y escalar al humano solo lo que le corresponde, con la pregunta ya trabajada.
 
-Origen: un fork de `obra/superpowers` (MIT), prácticas de `Gentleman-Programming/gentle-ai` (ODD/RDD, lentes 4R, ledger, refuter, Judgment Day, work-unit commits), la memoria Engram, y las lecciones de un proyecto real (§17). Diseño validado por 13 investigaciones y 4 validaciones ciegas (red team, comunidad, plataforma, modos de falla) del 2026-09-25/26.
+Origen: fork de las skills de `obra/superpowers` (MIT; se reutiliza y modifica texto conservando su aviso de copyright), prácticas de `Gentleman-Programming/gentle-ai` (ODD/RDD, lentes 4R, ledger, refuter, Judgment Day, work-unit commits; inspiración, texto propio), la memoria Engram, y las lecciones de un proyecto real (§17). No se copia texto de fuentes propietarias o sin licencia. Atribuciones en `THIRD_PARTY_NOTICES.md`.
 
-**Criterio de éxito de la v1:** en un plan real, (a) ningún test decorativo ni defensa muerta llega a la rama de integración sin ser detectado, (b) ningún comando destructivo de git se ejecuta sin respaldo, (c) el humano solo recibe preguntas de las categorías reservadas y la tarjeta de alcance, y (d) cada compuerta y cada agente atrapa su caso plantado en `tests/`.
+### Criterio de éxito de la v1
+
+Medido en **un plan real del proyecto de origen más un conjunto fijo de defectos sembrados** (test decorativo, defensa muerta, comando destructivo indirecto, dato sensible en un aprendizaje, query con dato del proyecto):
+- (a) Ningún defecto sembrado de tipo test decorativo o defensa muerta llega a `int/` sin ser detectado.
+- (b) Todo ref movido o borrado y todo trabajo sin commitear afectado por un comando durante el plan es recuperable desde un respaldo o el reflog; se verifica en `tests/guard` incluso con un comando indirecto que la guardia no detecta.
+- (c) Toda pregunta al humano lleva una categoría de la lista cerrada de §4.4; una pregunta sin categoría es una falla y se cuenta.
+- (d) Cada agente corre su suite de evals ≥ 5 veces por caso y aprueba con recall ≥ 80 % en defectos plantados y ≤ 20 % de falsos positivos en diffs limpios; las compuertas deterministas aprueban al 100 %.
 
 ## 1. Principios
 
-1. **Verificar, no creer.** Toda evidencia (rojo/verde, compuertas) se re-ejecuta; ningún informe de agente es prueba.
-2. **Lo que se ejecuta manda.** Toda regla crítica tiene un mecanismo determinista (hook, script, permiso) o se declara como "solo texto".
-3. **Fallar cerrado.** Ante error, timeout o ambigüedad, un control bloquea; "no pude verificar" nunca es "está bien".
-4. **Autonomía acotada.** Pignolo decide todo salvo las decisiones reservadas (§4); cada decisión no trivial queda registrada.
-5. **Costo proporcional al riesgo.** La profundidad de revisión la fija el riesgo calculado por script, no el modelo.
+1. **Verificar, no creer.** Toda evidencia se re-ejecuta; ningún informe de agente es prueba.
+2. **Lo que se ejecuta manda, y se declara lo que no.** Cada regla crítica tiene un mecanismo determinista (permiso, script fuera del agente, verificación posterior) o se declara "best-effort" / "solo texto".
+3. **Fallar cerrado donde se puede; declararlo donde no.** Los hooks de Claude Code **no** fallan cerrado ante timeout o si no arrancan (doc oficial). Por eso la autoridad es: permisos deny/ask (capa 1) → verificación posterior fuera del agente en las compuertas (capa 2) → hooks endurecidos (capa 3, best-effort).
+4. **Autonomía acotada.** Pignolo decide todo salvo lo reservado (§4); cada decisión no trivial queda registrada.
+5. **Costo proporcional al riesgo.** La profundidad de revisión la fija el riesgo; el script da un piso, el modelo solo puede subirlo.
 6. **Contexto acotado.** Lo inyectado depende de lo abierto hoy, nunca del tamaño de la historia.
-7. **Las reglas del usuario ganan.** `~/.claude/CLAUDE.md` > `.pignolo/project.md` > plugin, en todo conflicto.
+7. **Precedencia.** Seguridad: gana siempre el humano (`~/.claude/CLAUDE.md` > `CLAUDE.md` y `.claude/rules/` del proyecto > `.pignolo/project.md` > plugin). Proceso (cómo se resuelve una duda técnica reversible): gana pignolo. `/pignolo:setup` lista los conflictos detectados entre las reglas del usuario y pignolo, y el humano confirma cómo se resuelven. Es una convención aplicada por las skills, no un mecanismo nativo de Claude Code.
+8. **Windows nativo sin sandbox.** El sandbox de Claude Code no existe en Windows nativo; todo control sobre Bash/PowerShell es de lectura del comando y best-effort. Las garantías reales vienen de la capa 2.
 
 ## 2. Forma del plugin
 
-Repo privado `Pign-a/pignolo`, formato plugin + marketplace de Claude Code.
-
 ```
 .claude-plugin/     plugin.json, marketplace.json
-skills/             proceso (inglés): entry, daily, plan, spec, plan-writing, tdd,
-                    review, judgment, doubt-ladder, close-session, tests, branches, ...
+skills/             proceso (inglés). Los "comandos" son skills; los que tienen efectos
+                    llevan `disable-model-invocation: true` (solo el humano los invoca).
+                    entry, trivial, daily, plan, brainstorm, spec, plan-writing, tdd,
+                    review, judgment, doubt-ladder, close-session, tests, branches,
+                    setup, init, audit-plan, research, next, cleanup, off, on, status
 agents/             un .md por rol (§6)
-hooks/              hooks.json + scripts node (guard, gates, session-start, egress)
-scripts/            risk, next, sabotage, queue, state-index, derive-branches, budget
-commands/           /pignolo:setup, :init, :review, :audit-plan, :judgment, :research,
-                    :close-session, :cleanup, :next, :off, :on, :status
+hooks/              hooks.json + scripts node sin dependencias (launcher, guard,
+                    edit-guard, egress, handback-gate, session-start, subagent-start)
+scripts/            risk, gate, next, sabotage, queue, backup-ref, wip-snapshot,
+                    state-index, derive-branches, budget, yaml-lite
 templates/          project.md, scope-card, task-card, test-card, review-ledger,
                     decision, issue, learning, permissions (deny/ask)
-tests/              escenarios plantados (§15) + evals de agentes (claude plugin eval)
+tests/              escenarios plantados (§15), evals de agentes, checklist manual
+LICENSE             MIT
 CHANGELOG.md        semver; cada entrada dice qué la motivó
 THIRD_PARTY_NOTICES.md
 ```
 
-- Nombres de todos los elementos en inglés. Texto interno de skills y agentes en inglés. Lo que el humano lee (preguntas, resúmenes, commits, docs del proyecto) en el idioma configurado por proyecto (`language:` en project.md; por defecto el de `~/.claude/CLAUDE.md`).
-- Todos los comandos se invocan como `/pignolo:<nombre>` (`/review` e `/init` ya existen en Claude Code).
-- Prompts escritos de cero; la inspiración se atribuye en `THIRD_PARTY_NOTICES.md`. No se copia texto de repos propietarios ni sin licencia.
-- superpowers upstream se sigue como fuente de lecciones (sus release notes), sin merges.
+- Nombres de elementos en inglés; texto interno de skills/agentes en inglés; lo que lee el humano (preguntas, resúmenes, commits, docs) en el `language` del proyecto (por defecto el de `~/.claude/CLAUDE.md`).
+- Todo se invoca como `/pignolo:<nombre>` (`/review` e `/init` existen en Claude Code).
+- Scripts y hooks **sin dependencias**: node estándar. YAML: subconjunto propio (`clave: escalar | lista`) con parser testeado. Tokens estimados como caracteres/3,5; el tope duro es de caracteres.
+- superpowers upstream se sigue por sus release notes como fuente de lecciones; se incorporan cambios a mano, sin merges automáticos.
 
 ## 3. Configuración
 
-### 3.1 Usuario: `~/.pignolo/config.json` (escrito por `/pignolo:setup`)
-- `profile`: `max` | `balanced` | `economy` (§7).
-- `models`: sobrescrituras por rol.
-- `budgets`: tokens/tiempo por tarea y por plan (defaults por perfil).
-- `engram`: habilitado o no.
-- `language`.
+### 3.1 Usuario — `~/.pignolo/config.json` (lo escribe `/pignolo:setup`)
+`profile` (`max` | `balanced` | `economy`), `models` (sobrescrituras por rol), `budgets` (tokens/tiempo por tarea, plan y duda), `engram` (bool), `language`.
 
-### 3.2 Proyecto: `.pignolo/project.md` (creado por `/pignolo:init`, frontmatter YAML + notas)
+### 3.2 Proyecto — `.pignolo/project.md` (frontmatter YAML-lite + notas; lo crea `/pignolo:init` y el humano confirma)
 - `type`: `code-tested` | `code-untested` | `docs` | `script`.
-- `gates`: comandos por nivel `on-edit`, `on-done`, `pre-merge`, y opcional `live-check` (verificación contra el sistema real; puede requerir al humano, p. ej. credenciales).
-- `high-risk-paths`: globs de la zona de alto riesgo (p. ej. manejo de secretos, dinero, contratos).
-- `serial-paths`: archivos que nunca se trabajan en paralelo.
-- `contracts`: globs de interfaces de las que dependen otros.
-- `protected-test-config`: runner configs, scripts de test y umbrales protegidos por hash (§9.2).
-- `domain-rules`: rutas a reglas de dominio del repo (p. ej. `.claude/rules/*.md`).
-- `mutation`: habilitada o no, y herramienta.
-- `language`, `profile` (sobrescritura opcional).
+- `gates`: comandos para `on-edit`, `on-done`, `pre-merge`, y opcional `live-check`.
+- `test-paths`: globs de tests, fixtures, mocks, snapshots/goldens, helpers y setup de tests. Sin declarar: `*test*`, `*spec*`, `__snapshots__/`, `__mocks__/`, `fixtures/`, `test/`, `tests/` (con aviso).
+- `protected-test-config`: configs de runner, scripts de test, umbrales.
+- `high-risk-paths`, `contracts`, `serial-paths`, `cost-paths`, `visible-paths` (UI, rutas, strings visibles).
+- `pii-patterns`: patrones de datos personales/sensibles del dominio (usados por tripwires, egreso y learning-validator).
+- `deps-install`: comando del instalador del lockfile (única red permitida a implementer/fixer).
+- `domain-rules`: rutas a reglas del repo que pignolo **lee** (p. ej. `CLAUDE.md`, `.claude/rules/*.md`, `docs/sessions/*`).
+- `mutation`, `language`, `profile` (opcionales).
 
 Sin `project.md`: modo conservador (riesgo medio, sin paralelismo, sin `live-check`) y aviso para correr `/pignolo:init`.
 
 ### 3.3 Interruptor
-`/pignolo:off` y `/pignolo:on`, más la variable de entorno `PIGNOLO_DISABLED=1`. Todos los hooks la respetan y lo primero que hacen es chequearla. `/pignolo:status` muestra si está activo, perfil, versión y salud de hooks (canario §8.4).
+- `/pignolo:off` / `/pignolo:on` (solo humano: `disable-model-invocation: true`) escriben `~/.pignolo/disabled` (global) o `.pignolo/.disabled` (proyecto, en `.gitignore`). Apagan todos los hooks **salvo** la guardia de git y los respaldos.
+- La guardia y los respaldos solo se apagan arrancando Claude Code con `PIGNOLO_DISABLED=1` en el entorno del proceso; SessionStart y `/pignolo:status` lo muestran en rojo.
+- Los hooks bloquean que cualquier agente escriba esas rutas o invoque esas skills.
 
 ## 4. Autonomía y decisiones reservadas
 
-### 4.1 Decisiones reservadas al humano
-Pignolo nunca las toma solo:
-1. Identidad del producto (nombre, tono, a quién se dirige, qué problema resuelve).
-2. Alcance y features visibles (agregar, quitar, cambiar lo que el usuario final ve o hace).
-3. Costos: todo lo que sube o baja un costo recurrente o de infraestructura, y consumo de cómputo/tokens por encima del presupuesto.
-4. Dependencias y stack (sumar librería, servicio, proveedor; cambiar tecnología).
-5. Acciones irreversibles: borrar datos o archivos, migraciones, push, merge a `main`, publicar, desplegar.
-6. Datos personales, seguridad, legal, licencias.
-7. Cambios de contrato (interfaces de las que dependen otros).
-8. Conflicto entre reglas.
+### 4.1 Reservadas al humano
+1. Identidad del producto. 2. Alcance y features visibles. 3. Costos (recurrentes, de infraestructura, consumo por encima del presupuesto). 4. Dependencias y stack. 5. Irreversibles (borrar datos o archivos, migraciones, push, merge a `main`, publicar, desplegar). 6. Datos personales, seguridad, legal, licencias. 7. Cambios de contrato. 8. Conflicto entre reglas.
 
-### 4.2 Detección (no depende solo del juicio del modelo)
-- **Tripwires deterministas** sobre el diff (`scripts/risk`): cambios en manifiestos y lockfiles (`package.json`, `pubspec.yaml`, `*.lock`, `requirements*.txt`, `go.mod`...), IaC y CI (`*.tf`, `docker-compose*`, `Dockerfile`, `.github/workflows/*`), variables de entorno y configuración de servicios pagos, `contracts` y `high-risk-paths` del proyecto, migraciones, borrados de archivos. Un tripwire marca la decisión como reservada; el modelo solo puede sumar, nunca quitar.
-- **Ante la duda, reservada.**
+### 4.2 Detección — el script da un piso
+`scripts/risk` corre sobre lo que se va a tocar al clasificar y **de nuevo sobre el diff real en `on-done`**; manda el máximo. Tripwires de ruta: manifiestos y lockfiles, IaC y CI, `.env*`, migraciones, borrados, `contracts`, `high-risk-paths`, `cost-paths`, `visible-paths`. Tripwires de contenido en el diff: identificadores de modelos de IA, SDKs y endpoints de proveedores pagos, `setInterval`/cron/polling, reintentos y concurrencia, niveles de log, `pii-patterns`. Un tripwire marca la decisión como reservada; el modelo solo puede sumar. Sin `visible-paths`, todo cambio de UI en `daily` sube a `plan`. Ante la duda, reservada. El script es un piso, no detecta todo costo: el `spec-reviewer` pregunta siempre "¿cambia un costo recurrente?".
 
-### 4.3 Decisiones autónomas
-Todo lo demás (implementación, estructura, tests, nombres, refactors chicos, corrección de hallazgos). Cada decisión no trivial se registra en `.pignolo/state/decisions/` (qué, alternativas, evidencia, reversibilidad, `autonomous: true`). Si la evidencia queda dividida tras la escalera: la opción más reversible, marcada `needs-review`.
-- `needs-review` tiene tope (por defecto 10 abiertos por proyecto) y vencimiento (14 días); al tope o antes de un merge a `main`, se presentan en lote al humano.
+### 4.3 Autónomas
+Todo lo demás. Cada decisión no trivial → `.pignolo/state/decisions/` (qué, alternativas, evidencia, reversibilidad, `autonomous: true`). Evidencia dividida tras la escalera → opción más reversible, `needs-review`. `needs-review`: tope 10 abiertos por proyecto, vencimiento 14 días; al tope, las nuevas se vuelven preguntas sin bloquear lo que no depende de ellas; antes de un merge a `main`, se presentan en lote.
 
-### 4.4 Cómo se pregunta
-Una pregunta al humano lleva: contexto en 2 líneas, opciones completas sin resumir ni reordenar, recomendación con la evidencia de la escalera, costo y reversibilidad de cada opción. Las preguntas se agrupan por plan cuando es posible.
-- **Confirmaciones rutinarias vs. de riesgo:** push a una rama de tarea propia con compuertas en verde se agrupa y confirma en lote; push a `main`, force, borrados y migraciones se confirman uno por uno.
+### 4.4 Preguntas al humano
+Cada pregunta lleva una **categoría** de esta lista cerrada: las 8 reservadas + `scope-card`, `test-authorization`, `needs-review-batch`, `judge-conflict`, `live-check-input`, `quota`, `rule-conflict`. Contenido: contexto en 2 líneas, opciones completas sin resumir ni reordenar, recomendación con evidencia, costo y reversibilidad. Se agrupan por plan cuando es posible. Confirmaciones rutinarias (push a una rama `task/` propia con compuertas en verde) en lote; `main`, force, borrados y migraciones, una por una.
 
 ### 4.5 Tarjeta de alcance (`scope-card`)
-Único artefacto que el humano aprueba en modo `plan`. Una pantalla:
+La genera el `spec-reviewer` (sin contexto de la sesión) a partir del **pedido original literal** más el spec. Una pantalla:
 - objetivo en una línea;
-- ejemplos de aceptación literales ("dado X, pasa Y"), 3 a 7;
+- 3 a 7 ejemplos de aceptación literales ("dado X, pasa Y"), cada uno con la cita del pedido de la que sale;
+- pedido → dónde quedó en el spec;
+- pedido y no incluido o reinterpretado;
+- agregado sin pedirlo;
 - fuera de alcance;
-- **agregado sin pedirlo**: todo lo que el spec incluye que el pedido original no mencionó;
 - decisiones reservadas detectadas;
-- estimación de costo del plan (tokens/tiempo, según perfil).
-Sin tarjeta aprobada, el plan puede ejecutarse en su rama de integración pero no llega a `main`.
+- estimación de costo según perfil.
+
+**Antes de la aprobación** corre: spec, revisión, `plan-auditor`, y solo las tareas que no dependen de ningún ítem "agregado sin pedirlo" y entran en el presupuesto del perfil. El resto espera. Sin tarjeta aprobada, nada llega a `main` (hook `scope-gate`).
 
 ## 5. Modos
 
-### 5.1 Entrada (`skills/entry`)
-Clasifica cada pedido: (1) ¿autoriza un cambio? Si no, solo lectura; un hallazgo nunca amplía la autorización. (2) `scripts/risk` sobre lo que se va a tocar + `project.md` → carril.
+### 5.1 Entrada
+Clasifica: (1) ¿autoriza un cambio? Si no, solo lectura; un hallazgo nunca amplía la autorización. (2) `scripts/risk` + `project.md` → carril.
 
 ### 5.2 Carriles
-- **`trivial`**: cambio de una línea o mecánico ya entendido, sin zona de riesgo ni tripwire. Compuerta `on-done` + commit. Sin revisión.
-- **`daily`**: cambio chico y entendido. Explorar (1–3 archivos inline; 4+ → `explorer`), test primero con rojo demostrado, cambio, `on-done`, revisión según riesgo, commit por unidad de trabajo. Sin papeles salvo decisiones o bugs a registrar.
-- **`plan`**: trabajo grande. `brainstorm` → spec → **autorrevisión + `spec-reviewer`** (y `researcher` solo para puntos técnicos dudosos, `refuter` solo en riesgo alto) → scope-card → plan (decisiones y task-cards, no código final) → `plan-auditor` → ejecución (§11) → ledger → `validator` por tanda → revisión final → cierre.
-- Escalamiento solo hacia arriba (trivial → daily → plan) si aparece alcance, contrato, zona de riesgo o tripwire. Se frena, se avisa y se cambia de carril.
+- **`trivial`**: una línea o mecánico entendido, sin tripwire ni zona de riesgo. `on-done` + commit. Sin revisión.
+- **`daily`**: explorar (1–3 archivos inline; 4+ → `explorer`), `test-writer` escribe el test (rojo demostrado), `implementer` cambia, `on-done`, revisión según riesgo, commit por unidad de trabajo. Rama `task/daily/<fecha>-<slug>`; merge a la rama de origen confirmado en lote; a `main`, uno por uno.
+- **`plan`**: `brainstorm` → spec → **lista de afirmaciones clave** (todo lo que el spec supone sobre sistemas externos: plataforma, APIs, SO) → autorrevisión + `spec-reviewer` + `researcher` sobre cada afirmación clave (fuente original obligatoria) + **`refuter` siempre sobre la lista de afirmaciones clave** → scope-card → plan (decisiones y task-cards, no código final) → `plan-auditor` → ejecución (§11) → ledger → `validator` por tanda → holdout → revisión final → cierre.
+- Riesgo de un spec (todavía sin diff): alto si toca hooks, seguridad, costos, contratos, datos o `high-risk-paths`.
+- Escalamiento solo hacia arriba (trivial → daily → plan) ante alcance, contrato, zona de riesgo o tripwire: se frena, se avisa, se cambia de carril.
 
-### 5.3 Script `next`
-`scripts/next` lee el estado en disco (`.pignolo/state/`, git) y devuelve la única próxima acción válida del plan en curso (y por qué). El orquestador lo consulta al retomar, tras compactar y al terminar cada paso. Un solo dueño del estado del flujo.
+### 5.3 `next`
+`scripts/next` lee el estado (§10.1, desde el checkout principal vía `git rev-parse --git-common-dir`) y git, y devuelve la única próxima acción válida redactada como hechos ("La tarea 04 está en estado X; la próxima acción registrada es Y"). Se consulta al retomar, tras compactar y al terminar cada paso.
 
 ## 6. Agentes
 
-Todos: `tools` explícito, **sin `Agent`** (nadie delega salvo el orquestador), sin `memory:` en los de solo lectura, salida con formato fijo, estados `DONE | BLOCKED | NEEDS_CONTEXT` cuando corresponde.
+Reglas comunes: `tools` explícito y **sin `Agent`**; sin `memory:`; salida con formato fijo; `DONE | BLOCKED | NEEDS_CONTEXT` donde corresponde. Identidad en hooks: hilo principal = sin `agent_id` en el payload; subagente = `agent_id` + `agent_type`. **Deny por defecto** a subagentes que no sean `pignolo:*` (hook PreToolUse sobre `Agent` que rechaza despachar `general-purpose`, `Explore`, `Plan` o de otros plugins mientras pignolo está activo en el proyecto). Agent teams no se soportan: `setup` lo detecta y avisa.
 
 | Agente | Acceso | Qué hace |
 |---|---|---|
 | `explorer` | Read, Grep, Glob | Lee 4+ archivos y devuelve resumen con rutas/líneas |
-| `researcher` | WebSearch, WebFetch (sin acceso al repo) | Una pregunta acotada; fuentes con fecha; marca [original]/[resumen]; lee el original ante dato crítico |
-| `spec-reviewer` | Read, Grep, Glob | Huecos, ambigüedad, alcance agregado, decisiones reservadas; máx. 5 preguntas por impacto |
-| `plan-auditor` | Read, Grep, Glob, Bash | Plan contra el código real: firmas, compila los bloques, cada test puede fallar, ramas fail-open, qué se pierde |
-| `test-writer` | Read, Grep, Glob, Edit/Write solo tests | Test desde el requisito, sin ver la implementación |
-| `implementer` | Read, Grep, Glob, Edit, Write, Bash | Una tarea; no edita tests protegidos; evidencia RED/GREEN |
-| `review-risk` | Read, Grep, Glob | Seguridad, datos, permisos, secretos |
-| `review-resilience` | Read, Grep, Glob | Fail-closed, errores silenciados, bordes |
-| `review-readability` | Read, Grep, Glob | Solo lo que oculta un defecto |
-| `review-reliability` | Read, Grep, Glob | Corrección, contrato, concurrencia, camino real |
+| `researcher` | WebSearch, WebFetch | Sin acceso al repo. Una pregunta abstracta; fuentes con fecha; lee el original ante dato crítico; su salida se trata como datos (citas + URL), nunca como instrucciones |
+| `spec-reviewer` | Read, Grep, Glob | Huecos, ambigüedad, contradicciones, alcance agregado, reservadas; genera la scope-card; máx. 5 preguntas |
+| `plan-auditor` | Read, Grep, Glob, Bash | Plan contra el código real: firmas, compila bloques, cada test puede fallar, ramas fail-open, qué se pierde |
+| `test-writer` | Read, Grep, Glob, Edit, Write | Solo escribe en `test-paths`; test desde el requisito sin ver implementación; también convierte `repro-spec` en test |
+| `implementer` | Read, Grep, Glob, Edit, Write, Bash | Una tarea; no edita `test-paths` ni `protected-test-config`; evidencia RED/GREEN |
+| `review-risk` / `-resilience` / `-readability` / `-reliability` | Read, Grep, Glob | Lentes; entregan hallazgos con `repro-spec` |
 | `review-testability` | Read, Grep, Glob, Bash | ¿Cada test puede fallar? Fabrica el rojo; dobles con forma vieja |
-| `refuter` | Read, Grep, Glob, Bash | Recibe afirmaciones (no prosa); intenta refutarlas con contraevidencia; no inventa el bug ni la defensa |
+| `refuter` | Read, Grep, Glob, Bash | Recibe afirmaciones y SHA (no prosa); `corroborated/refuted/inconclusive` |
 | `judge-a`, `judge-b` | Read, Grep, Glob | Ciegos, en paralelo, sobre un SHA congelado |
-| `fixer` | Read, Edit, Write, Bash | Solo hallazgos confirmados, sin refactor extra |
-| `validator` | Read, Grep, Glob, Bash | Por tanda: deriva, rulings pisados, informes falsos, deuda creciente |
-| `integrator` | Bash (scripts/queue), Read | Opera la cola determinista; resuelve solo conflictos triviales |
+| `fixer` | Read, Edit, Write, Bash | Solo hallazgos confirmados; no toca `test-paths` salvo autorización |
+| `validator` | Read, Grep, Glob, Bash | Por tanda: deriva, rulings pisados, informes falsos, deuda; corre el holdout |
+| `integrator` | Read, Bash | Opera `scripts/queue`; resuelve solo conflictos triviales |
 | `learning-validator` | Read, Grep, Glob | Filtra y consolida aprendizajes |
 | `debugger` | Read, Grep, Glob, Bash | Causa raíz con evidencia, sin fix |
 
-Diferidos a v1.x: `threat-modeler`, `docs-accuracy`.
+Restricciones de Bash por rol (best-effort, hook por `agent_type`): `integrator` solo `node <plugin>/scripts/queue`; agentes de lectura con Bash no pueden redirigir a archivos, `tee`, `Set-Content`, `sed -i`, git mutante ni red. Respaldadas por la capa 2 (§9.2). Diferidos a v1.x: `threat-modeler`, `docs-accuracy`.
 
-Un test (`tests/agents-tools`) cruza las herramientas de cada agente con lo que su prompt le pide hacer.
+## 7. Perfiles de modelo
 
-## 7. Perfiles de modelo (`/pignolo:setup`)
-
-El orquestador pasa el modelo explícito en cada despacho (pisa el del archivo). Defaults:
+El orquestador pasa el modelo explícito en cada despacho (pisa el del archivo).
 
 | Rol | `max` | `balanced` | `economy` |
 |---|---|---|---|
@@ -164,172 +160,177 @@ El orquestador pasa el modelo explícito en cada despacho (pisa el del archivo).
 | Parámetro | `max` | `balanced` | `economy` |
 |---|---|---|---|
 | Paralelismo máx. | 3 | 2 | 1 |
-| Refuters en riesgo alto | 3 (voto 2 de 3) | 1 | 1 |
+| Refuters en riesgo alto | 3 (cae si ≥ 2 `refuted`; `inconclusive` y faltantes = queda en pie) | 1 | 1 |
 | Judgment Day | riesgo alto + cierre de plan | cierre de plan | a pedido |
 | Lentes en riesgo alto | 4 + testability | 4 + testability | risk + testability |
 
-Las compuertas deterministas (rojo demostrado, type-check, hashes, guardia de git, decisiones reservadas) son iguales en todos los perfiles; lo que varía es cuánta revisión LLM se suma. Si se agota la cuota, no se baja de modelo en silencio: se pregunta (decisión de costo). `setup` muestra una estimación de uso por perfil.
+Las compuertas deterministas son iguales en todos los perfiles. Si se agota la cuota: se pregunta (`quota`), nunca se baja de modelo en silencio. `setup` muestra una estimación de uso por perfil.
 
-## 8. Hooks y control
+## 8. Control: permisos, verificación posterior y hooks
 
-### 8.1 Implementación
-Scripts `node` invocados en forma exec (no `shell: powershell`, que requiere `pwsh`). Cada hook: chequea `PIGNOLO_DISABLED`; envuelve todo en try/catch y **ante cualquier error propio sale con 2** (bloquea) con un mensaje que dice qué falló y qué hacer; tiempo acotado (la suite completa nunca corre dentro de un PreToolUse).
+### 8.1 Capa 1 — permisos
+El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/ask para el settings del usuario o del proyecto, con diff, y la escribe solo con confirmación. Incluye: deny de comandos git destructivos; ask para push, merge a `main` y borrado de ramas/tags; deny de herramientas MCP que envían datos (send, push, create, update, navigate) para subagentes; allowlist por agente.
 
-### 8.2 Hooks
-- `SessionStart` (startup, resume, compact): canario de salud + inyección del nivel caliente (§10.3).
-- `PreToolUse` Bash|PowerShell: **guardia de git** (§11.6) y bloqueo de comandos de red para agentes que no son `researcher`.
-- `PreToolUse` Edit|Write: tests y `protected-test-config` en solo lectura para `implementer`/`fixer`; `test-writer` solo escribe tests; `INDEX.md` y `accepted/` no editables; agentes de solo lectura sin escritura.
-- `PreToolUse` WebSearch|WebFetch: filtro de egreso para `researcher` (bloquea queries con rutas, identificadores o secretos del proyecto según patrones de `project.md` y un detector genérico).
-- `SubagentStop` / `TaskCompleted`: exigen `on-done` en verde y hashes intactos antes de aceptar DONE (respetan `stop_hook_active`; tras 8 bloqueos, marcan la tarea BLOCKED en vez de dejar pasar).
-- Identidad del agente: solo desde el payload del hook (`agent_type`, con prefijo `pignolo:`), nunca desde variables de entorno ni PIDs.
+### 8.2 Capa 2 — verificación fuera del agente
+`scripts/gate` corre las compuertas **fuera de todo hook** y escribe un sello `{sha, tree-hash, comando, exit, hash del log, hora}` en `~/.pignolo/seals/<repo-id>/` (`repo-id` = hash de la ruta de `git-common-dir`). La integridad de tests se verifica con `git diff --name-only <ref>..HEAD -- <test-paths> <protected-test-config>` contra un commit de referencia (el tag del contrato o el commit del `test-writer`); si falta la referencia, falla cerrado. Un tripwire marca como sospechoso código que detecta el entorno de test (`process.env.VITEST`, `NODE_ENV === 'test'`, etc.).
+
+### 8.3 Capa 3 — hooks (best-effort, endurecidos)
+- Forma: un **launcher** node fijo que lee stdin sincrónico (`fs.readFileSync(0)`), registra `unhandledRejection`/`uncaughtException` → exit 2, carga el script del hook con `require` dentro de try/catch (un error de sintaxis sale con 2), y usa `timeout` explícito y chico con trabajo acotado. Se invoca en forma exec con `node`, no con `shell: powershell` (que requiere `pwsh`).
+- Límites declarados: un hook que supera el timeout o que no arranca **no bloquea** (doc oficial). Por eso ninguna garantía crítica depende solo de un hook.
+- Hooks:
+  - `SessionStart` (`startup|resume|clear|compact`): canario (§8.4) + nivel caliente (§10.2) + salida de `next`.
+  - `SubagentStart`: reinyecta task-card y estado (cubre la auto-compactación de subagentes).
+  - `PreToolUse` Bash|PowerShell: guardia de git (§11.6), restricciones de Bash por rol, bloqueo de red salvo `deps-install` y git contra `origin` para implementer/fixer/integrator; el hilo principal no tiene restricción de red (declarado).
+  - `PreToolUse` Edit|Write: `test-paths`/`protected-test-config` en solo lectura para `implementer`/`fixer`; `test-writer` solo en `test-paths`; `.pignolo/state/` solo lo escribe el hilo principal; `INDEX.md` y `accepted/` no editables; rutas del interruptor protegidas.
+  - `PreToolUse` WebSearch|WebFetch|`mcp__.*`: egreso — solo `researcher` usa web; ningún subagente usa MCP; filtro de queries por `pii-patterns` y rutas/identificadores del proyecto (lista, best-effort).
+  - `PreToolUse` Agent: deny de subagentes no `pignolo:*`.
+  - `PreToolUse` SubagentHandback (y `SubagentStop` como respaldo, matcher `^pignolo:(implementer|fixer|test-writer)$`): **handback-gate** — acepta DONE solo si existe un sello con exit 0 para el `tree-hash` actual y la integridad de tests pasa. Respeta `stop_hook_active`; tras 8 bloqueos marca la tarea BLOCKED. El hook nunca corre la suite. `TaskCompleted` fuera de la v1.
+  - `PreToolUse` git merge/push hacia `main`: `scope-gate` exige tarjeta aprobada.
 - Cada bloqueo nombra una alternativa que funciona.
 
-### 8.3 Permisos
-El plugin no puede traer permisos: `/pignolo:setup` propone la plantilla deny/ask para el `settings.json` del usuario o del proyecto, mostrando el diff, y la escribe solo con confirmación. Es la capa autoritativa; los hooks son la segunda.
-
 ### 8.4 Canario
-Al arrancar, `SessionStart` corre un comando plantado que la guardia debe bloquear; si no lo bloquea, avisa en rojo que la guardia está caída.
+`SessionStart` ejecuta un comando plantado contra la guardia; si no se bloquea, avisa en rojo que la guardia está caída. SessionStart no puede bloquear: el canario solo avisa.
 
 ## 9. Tests
 
 ### 9.1 Crear
-- `test-writer` escribe desde el requisito sin ver la implementación. Esperado literal del requisito; si sale de correr el código, rotulado `characterization`.
-- `test-card` previa: comportamiento, origen del esperado, qué romper para que falle, cómo se ve el rojo, qué otra cosa lo haría pasar, nivel, dobles, camino real, datos.
-- Cabecera en el test: `Protects: <id> · Breaks if: <qué>`.
-- Árbol de decisión de tipo de test; real > fake > mock (mock solo si la llamada es el comportamiento); dobles tipados contra el contrato (`satisfies`), uniones selladas; datos sintéticos; tests de arquitectura que fallan si escanean cero archivos.
-- **Holdout**: en modo `plan`, el `test-writer` produce además tests de aceptación que el `implementer` nunca ve; los corre el `validator` al cerrar la tanda.
+- `test-writer` escribe desde el requisito, sin ver la implementación; esperado literal del requisito; si sale de correr el código, rotulado `characterization`.
+- `test-card` previa (comportamiento, origen del esperado, qué romper, cómo se ve el rojo, qué otra cosa lo haría pasar, nivel, dobles, camino real, datos).
+- Cabecera `Protects: <id> · Breaks if: <qué>`.
+- Árbol de decisión de tipo de test; real > fake > mock; dobles tipados contra el contrato; uniones selladas; datos sintéticos; tests de arquitectura que fallan si escanean cero archivos.
+- **Holdout** (modo `plan`): tests de aceptación escritos por `test-writer` y guardados en `~/.pignolo/holdout/<repo-id>/<plan>/`, fuera del repo. El `validator` los copia a un worktree temporal propio, los corre al cerrar la tanda y los borra.
 
 ### 9.2 Validar
-- Rojo demostrado siempre: test-first, o `scripts/sabotage` sobre código commiteado (se niega si hay cambios sin commitear; restaura con `git restore --source=HEAD`; verifica árbol limpio; está en la allowlist de la guardia).
-- Hashes de tests y `protected-test-config` guardados fuera del worktree (`~/.pignolo/hashes/<repo>/<rama>`), verificados en `on-done` sin importar quién cambió qué. Un cambio legítimo a un test requiere su entrada en el ledger o autorización.
-- Type-check de tests (`tsconfig.test.json` o equivalente del stack) como parte de `on-done`.
-- Mutación sobre el diff en `high-risk-paths` si `mutation` está habilitada (StrykerJS / `mutation_test`); sobreviviente → test nuevo, equivalente justificado aprobado por revisor, o deuda. El umbral nunca baja. Agregar la herramienta es decisión del humano.
-- Cobertura informativa, no compuerta. Orden aleatorio con semilla en `on-done`.
-- `type: code-untested`: `on-done` exige al menos un test nuevo para lo tocado o una razón registrada; nunca verde vacío (estado `NO_TESTS`). `docs`/`script`: compuertas propias declaradas (lint, links, ejecución de ejemplo).
+- Rojo demostrado siempre: test-first, o `scripts/sabotage` sobre código commiteado (se niega con cambios sin commitear; restaura con `git restore --source=HEAD`; verifica árbol limpio; permitido por la guardia).
+- Integridad de tests por `git diff` contra referencia (§8.2).
+- Type-check de tests como parte de `on-done` (`tsconfig.test.json` o equivalente).
+- Mutación sobre el diff en `high-risk-paths` si `mutation` está habilitada; sobreviviente → test nuevo, equivalente justificado aprobado por revisor, o deuda; el umbral nunca baja; agregar la herramienta es decisión del humano.
+- Cobertura informativa. Orden aleatorio con semilla en `on-done`.
+- `code-untested`: `on-done` exige al menos un test para lo tocado o una razón registrada (estado `NO_TESTS`, nunca verde vacío). `docs`/`script`: compuertas propias declaradas.
 
 ### 9.3 Mantener
-- Sin autorización del humano ningún agente: borra/skipea/agrega retry a un test, debilita una aserción, regraba snapshot/golden, ajusta un fixture a la salida nueva. El hook vigila `skip`/`only`/`--update` en el diff.
-- Un test cambia solo si cambió el comportamiento.
-- Golden rojo = regresión candidata (diff, causa, regrabación autorizada en commit propio).
-- Flaky: causa raíz primero; cuarentena con dueño, vencimiento y tope; sigue corriendo sin bloquear; sin retry en unitarios.
-- Si un cambio de comportamiento no rompió ningún test, se busca el que debió fallar.
-- Poda propuesta por `validator` (huérfanos, redundantes); el borrado lo autoriza el humano.
+- Sin autorización (`test-authorization`) ningún agente borra, skipea o agrega retry a un test, debilita una aserción, regraba snapshot/golden o ajusta un fixture a la salida nueva; la verificación de §8.2 y el diff (`skip`/`only`/`--update`) lo detectan.
+- Un test cambia solo si cambió el comportamiento. Golden rojo = regresión candidata. Flaky: causa raíz primero; cuarentena con dueño, vencimiento y tope. Si un cambio de comportamiento no rompió ningún test, se busca el que debió fallar. Poda propuesta por `validator`; borrado autorizado por el humano.
 
-### 9.4 Niveles de compuerta
-`on-edit` (type-check + afectados; nunca cierra tarea) · `on-done` (suite del paquete + type-check código y tests + orden aleatorio + hashes; exigida por hook) · `pre-merge` (+ goldens, mutación en zona de riesgo, repetición; en `queue/`) · `live-check` (contra el sistema real, cuando el proyecto lo declara; puede pedir al humano credenciales o una acción manual; obligatoria antes de `main` si está declarada).
+### 9.4 Niveles
+`on-edit` (type-check + afectados; nunca cierra) · `on-done` (suite del paquete + type-check de código y tests + orden aleatorio + integridad; sellado por `scripts/gate`) · `pre-merge` (+ goldens, mutación en zona de riesgo, repetición; en `queue/`) · `live-check` (contra el sistema real cuando se declara; puede pedir credenciales o acción manual al humano, categoría `live-check-input`; obligatorio antes de `main` si está declarado).
 
 ## 10. Continuidad entre sesiones
 
 ### 10.1 Qué va dónde
-- **Derivado** (nunca escrito): ramas abiertas/mergeadas/abandonadas, ahead/behind, worktrees, PRs, cambios sin commitear, tags. `scripts/derive-branches` con git + `gh` (cruza `gh pr list --state merged` para squash merges; si `gh` no está, lo declara).
-- **Juicio**: `.pignolo/state/{work,decisions,issues,learnings/{proposed,accepted,rejected},sessions,archive}/`, un archivo por entrada, frontmatter YAML (`id`, `status`, `evidence`, `source`, `superseded_by`, `created`, `review_after`). IDs `YYYY-MM-DD-<slug>`. Cerrar = cambiar `status`. Archivar con `git mv`.
+- **Derivado** (nunca escrito): ramas, ahead/behind, worktrees, PRs, cambios sin commitear, tags. `scripts/derive-branches` con git + `gh` (cruza PRs mergeados para squash merges; sin `gh`, lo declara).
+- **Juicio**: `.pignolo/state/{work,decisions,issues,learnings/{proposed,accepted,rejected},sessions,metrics,archive}/`, un archivo por entrada, frontmatter (`id`, `status`, `evidence`, `source`, `superseded_by`, `created`, `review_after`), IDs `YYYY-MM-DD-<slug>`. Cerrar = cambiar `status`.
+- **Dónde vive**: solo en el checkout principal, en la rama `int/<plan>` (modo plan) o en la rama actual (daily/trivial), y solo lo escribe el hilo principal. Los worktrees de tarea no escriben `.pignolo/state/` (hook + la cola rechaza cambios ahí). `next` y `state-index` leen siempre del checkout principal.
+- `INDEX.md` generado por `scripts/state-index`; no editable a mano. `.gitattributes` con `eol=lf` para `.pignolo/`.
 - **Recuerdo**: Engram (§10.5).
-- `INDEX.md` generado por `scripts/state-index`; no editable a mano (hook). `.gitattributes` con `eol=lf` para `.pignolo/`.
+- **Convivencia**: si el proyecto ya tiene su propio sistema de sesiones o reglas (p. ej. `docs/sessions/`, `.claude/rules/`), pignolo lo **lee** vía `domain-rules` y no lo modifica ni borra.
 
 ### 10.2 Presupuesto de contexto
-- Caliente (inyectado siempre): rama actual, trabajo en curso, abiertos de prioridad alta, contadores de pendientes. Tope ~2.000 tokens y < 8.000 caracteres (límite duro de `additionalContext`: 10.000).
-- Tibio (a demanda): resto de lo aceptado, otras ramas, sesiones recientes; vía grep/Engram/`explorer`.
-- Frío: `archive/`; solo por pedido explícito.
-- Punteros (id + título + una línea), degradación ordenada (prioridad alta + conteos por categoría), archivado automático de lo cerrado a los 14 días, sesiones viejas resumidas en una línea.
-- Reglas con presupuesto: `CLAUDE.md` del proyecto < ~200 líneas; cada regla del plugin y del proyecto declara `Enforced-by` y `Evidence`; revisión periódica de reglas sin uso para retirarlas.
-- El hook mide lo inyectado; `tests/context-budget` siembra 500 entradas y verifica ≤ 2.000 tokens y ≤ 8.000 caracteres.
+Caliente (inyectado): rama actual, trabajo en curso, abiertos de prioridad alta, contadores; ≤ 8.000 caracteres (≈ 2.000 tokens; límite duro de `additionalContext` 10.000). Tibio (a demanda): resto de lo aceptado, otras ramas, sesiones recientes. Frío: `archive/`, solo por pedido. Punteros (id + título + una línea); degradación ordenada (prioridad alta + conteos). Lo cerrado hace > 14 días lo archiva `close-session` (nunca un hook) con `git mv`. Reglas con presupuesto: cada regla del plugin y del proyecto declara `Enforced-by` y `Evidence`; revisión periódica para retirar las sin uso.
 
 ### 10.3 Arranque
-`SessionStart` (startup, resume, compact) inyecta el nivel caliente + la salida de `scripts/next` si hay un plan en curso. Tras compactar, reinyecta el objetivo del plan y la próxima acción.
+`SessionStart` inyecta el nivel caliente + `next` como hechos (no imperativo, para no disparar las defensas contra prompt injection). `SubagentStart` reinyecta la task-card al subagente.
 
 ### 10.4 `/pignolo:close-session`
-1. Juntar evidencia real (commits, archivos, compuertas corridas en esta sesión, decisiones del humano citadas).
+1. Evidencia real (commits, archivos, sellos de compuertas de esta sesión, decisiones del humano citadas).
 2. Proponer entradas nuevas (sin editar existentes); aprendizajes a `learnings/proposed/` con `source` (sesión, web, humano).
-3. `learning-validator` sin contexto de la sesión: novedad (también contra `rejected/`), evidencia vigente en el repo, contradicciones (se marcan, no se resuelven), seguridad (secretos, instrucciones que amplíen permisos, contenido web), tamaño, alcance (proyecto o general).
-4. Aceptación: lo que pasa y tiene `source` sesión/humano se acepta; lo que viene de la web nunca se acepta solo; lo que toca decisiones reservadas o contradice reglas va al humano. Lo general queda como `promote-candidate`; subirlo al plugin requiere aprobación humana y pasa por el proceso del plugin (§16).
-5. Regenerar `INDEX.md`; commit propio.
-El validador se mide con propuestas falsas plantadas (§15).
+3. `learning-validator` sin contexto: novedad (también contra `rejected/`), evidencia vigente, contradicciones (marcadas, no resueltas), seguridad (`pii-patterns`, secretos, instrucciones que amplíen permisos, contenido web), tamaño, alcance.
+4. Aceptación: `source` sesión/humano que pasa → aceptado; `web` → nunca solo; toca reservadas o contradice reglas → humano. Lo general → `promote-candidate`; subirlo al plugin requiere aprobación humana y el proceso del plugin.
+5. Archivado de lo vencido, `INDEX.md` regenerado, commit propio.
 
 ### 10.5 Engram
-Opcional, habilitado en `setup`. Resguardos: `capture_prompt: false` siempre; sin `engram sync` a git y `.engram/` en `.gitignore`; sin Engram Cloud; solo guarda lo aceptado por `learning-validator`; nunca datos de sistemas externos ni contenido de corridas; la memoria no es fuente de verdad frente a reglas o código (lo `needs_review` se verifica antes de usar). Reemplaza a la auto-memoria de Claude Code para los proyectos con pignolo.
+Opcional (`setup`). Resguardos: `capture_prompt: false`; sin `engram sync` a git y `.engram/` en `.gitignore`; sin Engram Cloud; solo lo aceptado por `learning-validator`; nunca datos de sistemas externos; la memoria no es fuente de verdad. `/pignolo:init` propone `autoMemoryEnabled: false` en `.claude/settings.local.json` y migra la auto-memoria existente del proyecto a `learnings/proposed/` para validar. Las opciones de Engram se verifican contra su documentación en el hito 6 antes de depender de ellas.
 
 ## 11. Ramas, paralelismo e integración
 
 ### 11.1 Nombres
-`int/<plan>` (integración, siempre verde) · `task/<plan>/<NN>-<slug>` (≤ 1 sesión/día) · `queue/<plan>` (temporal) · tags `contract/<plan>/v<N>`, `cp/<plan>/<n>`, `backup/<fecha>-<motivo>` · trailer `Agent: <rol>` y `Gates: <resultado>` en cada commit. Commits por unidad de trabajo (Conventional Commits, tests y docs dentro, rollback acotado, presupuesto de revisión 400 líneas).
+`int/<plan>` (siempre verde) · `task/<plan>/<NN>-<slug>` y `task/daily/<fecha>-<slug>` (≤ 1 sesión/día) · `queue/<plan>` · tags `contract/<plan>/v<N>`, `cp/<plan>/<n>`, `backup/<fecha>-<motivo>` · trailers `Agent:` y `Gates:` en commits. Commits por unidad de trabajo (Conventional Commits, tests y docs dentro, presupuesto de revisión 400 líneas).
 
 ### 11.2 Crear
-- `daily`/`trivial`: rama `task/` desde la actual.
-- `plan`: ola 0 serial con todo lo que produce contrato → merge → tag `contract/<plan>/v1`. Las tareas siguientes se despachan con `worktree.baseRef: "head"` estando parado en ese tag; cada tarea verifica al arrancar con `git merge-base --is-ancestor contract/<plan>/v<N> HEAD`. Cada worktree instala sus dependencias; no se comparten puertos, contenedores ni datos.
+Modo `plan`: ola 0 serial con lo que produce contrato → merge → tag `contract/<plan>/v1`. El orquestador crea cada `task/...` con `git worktree add -b task/<plan>/<NN>-<slug> <ruta> contract/<plan>/v<N>` y despacha al `implementer` con esa ruta como directorio de trabajo, **sin `isolation`** (los worktrees nativos no aceptan una base arbitraria ni el nombre de rama). Cada tarea verifica al arrancar `git merge-base --is-ancestor contract/<plan>/v<N> HEAD`. Cada worktree instala dependencias con `deps-install`; no se comparten puertos, contenedores ni datos.
 
 ### 11.3 Cola (`scripts/queue`, operada por `integrator`)
-`git merge-tree --write-tree` (anticipa conflicto) → merge en `queue/<plan>` → `pre-merge` → solo si verde: `int/<plan>` avanza `--ff-only` + tag `cp/`. Conflicto trivial (imports, líneas vecinas): lo resuelve el integrator; de lógica: vuelve a la tarea (rebase en su rama) y se registra como falla del plan. Regresión detectada tarde en `int/`: revert primero, diagnóstico después.
+`git merge-tree --write-tree` → merge en `queue/<plan>` → `pre-merge` sellado → solo si verde: `int/<plan>` `--ff-only` + tag `cp/`. Conflicto trivial: integrator; de lógica: vuelve a la tarea (rebase en su rama) y se registra como falla del plan. Cambios en `.pignolo/state/` desde una tarea: rechazados. Regresión tardía en `int/`: revert primero.
 
 ### 11.4 Olas
-Una ola = tareas sin dependencias entre sí, con archivos disjuntos (verificado por script sobre las task-cards), sin contrato. Tope por perfil (3/2/1). No se paraleliza si: toca contrato o `serial-paths`, hay solape, hay menos de ~4 tareas independientes, se trabaja contra un sistema externo real, o la ola anterior tuvo más retrabajo que el modo serial. Antes de cada ola se chequea el presupuesto y la cuota restante.
+Tareas sin dependencias, con archivos disjuntos (verificado por script sobre task-cards), sin contrato. Tope por perfil (3/2/1). No se paraleliza con contrato o `serial-paths`, solape, < ~4 tareas independientes, sistema externo real, o retrabajo previo mayor que serial. Antes de cada ola: presupuesto y cuota.
 
 ### 11.5 Mantener
-Sin stash (commits WIP; si no queda otra, stash etiquetado aplicado por SHA). `git show ref:path` en vez de `git checkout ref -- path`. Limpieza: `status --porcelain` → backup (`git bundle` o tag `backup/`) → `worktree remove` sin `--force` → `branch -d`. Al arrancar se marcan ramas sin actividad > 7 días y worktrees con cambios sin commitear. `/pignolo:cleanup` propone; el humano borra.
+Sin stash salvo etiquetado y aplicado por SHA; commits WIP. `git show ref:path`, nunca `git checkout ref -- path`. Limpieza: `status --porcelain` → backup → `worktree remove` sin `--force` → `branch -d`. Al arrancar se marcan ramas > 7 días sin actividad y worktrees sucios. `/pignolo:cleanup` propone; el humano borra.
 
-### 11.6 Guardia de git
-- Bloquea: `stash`/`pop`/`drop` sin etiqueta, `checkout`/`restore` con ruta (salvo `scripts/sabotage`), `reset --hard`, `clean -f`, `branch -D`, `worktree remove --force`, `--no-verify`, `gc --prune`, `reflog expire`, `push --force`/`--force-with-lease` sobre ramas compartidas; y formas indirectas conocidas (`git -C`, `node -e`/`python -c` que invoquen git, `Invoke-Expression`, `cmd /c`, `bash -c`).
-- Pide confirmación (§4.4): push, merge a `main`, borrado de ramas/tags.
-- Rechaza lo que no puede parsear.
-- Capa que no se esquiva: antes de cualquier operación que la guardia permite y que mueve refs, `scripts/backup-ref` guarda un tag `backup/` automático.
-- Cada regla tiene su comando plantado en `tests/guard`.
+### 11.6 Guardia de git y respaldos
+- **Respaldo independiente de la guardia** (capa 2): `scripts/backup-ref` guarda una instantánea de todas las refs al empezar cada sesión y antes de cada despacho; `scripts/wip-snapshot` guarda el árbol sucio (`git stash create` + `git update-ref refs/pignolo/wip/<ts>`, sin tocar el árbol) antes de cada comando que la guardia permite y que toca el árbol, y antes de cada despacho. `/pignolo:init` fija `gc.reflogExpire=never` y `gc.reflogExpireUnreachable=never` en el `.git/config` local.
+- **Guardia** (capa 3, best-effort): bloquea `stash`/`pop`/`drop` sin etiqueta, `checkout`/`restore` con ruta (salvo `scripts/sabotage`), `reset --hard`, `clean -f`, `branch -D`, `worktree remove --force`, `--no-verify`, `gc --prune`, `reflog expire`, `push --force` sobre ramas compartidas, `git config alias.*`, y formas indirectas conocidas (`git -C`, `node -e`/`python -c` que invoquen git, `Invoke-Expression`, `& $var`, `Start-Process git`, `cmd /c`, `bash -c`, ejecución de scripts recién escritos por un agente). En PowerShell solo se permite una allowlist de formas simples de git. Pide confirmación para push, merge a `main` y borrado de ramas/tags. Rechaza lo que no puede parsear.
+- Borrados que no pasan por git (`rm`, `Remove-Item`, `Write` sobre un archivo con cambios) solo quedan cubiertos por los WIP snapshots y commits frecuentes: declarado.
 
 ## 12. Revisión
 
-- **Riesgo** calculado por `scripts/risk` (rutas tocadas vs. `high-risk-paths`/`contracts`, tripwires, tamaño); el modelo solo puede subirlo.
-- **Profundidad por riesgo**: bajo → lectura estructural del orquestador; medio → un revisor (`review-reliability` + `review-testability` en un solo despacho si el perfil lo permite); alto → lentes completos según perfil + `refuter`(s) + Judgment Day según perfil.
-- **Candidato congelado**: se revisa un SHA; todo cambio posterior invalida la revisión.
-- **Ledger** (`review-ledger`): `id`, `lens`, `location`, `severity` (BLOCKER/CRITICAL/WARNING/SUGGESTION según rúbrica escrita), `status`, `evidence`, `repro` (test que reproduce, obligatorio en BLOCKER/CRITICAL). Se persiste aunque quede vacío.
-- **Precision gate**: solo defectos defendibles con evidencia.
-- **Refutación**: el `refuter` recibe las afirmaciones y el SHA, no la prosa del revisor; veredicto `corroborated | refuted | inconclusive`; faltante o malformado = queda en pie. El orquestador no puede calificar ni descartar hallazgos por su cuenta; los refutados se listan en el resumen.
-- **Tests decorativos** detectados por `review-testability` son BLOCKER por definición.
-- **Fix**: `fixer` solo sobre confirmados; máx. 2 rondas; la re-revisión ve solo ledger + delta y puede registrar defectos causados por el arreglo; lo abierto tras la ronda 2 se escala.
-- **Judgment Day**: dos jueces ciegos en paralelo sobre el mismo SHA; se corrige solo lo que confirman ambos; lo de uno queda `suspect`; contradicciones al humano; resultado `APPROVED | ESCALATED`.
-- **Aprobar no autoriza entregar**: commit, push y merge son decisiones aparte.
+- Riesgo: `scripts/risk` (piso) + el modelo puede subir.
+- Profundidad: bajo → lectura estructural; medio → un revisor (`review-reliability` + `review-testability`); alto → lentes según perfil + `refuter`(s) + Judgment Day según perfil.
+- Candidato congelado: se revisa un SHA; cambios posteriores invalidan la revisión.
+- Ledger: `id`, `lens`, `location`, `severity` (BLOCKER/CRITICAL/WARNING/SUGGESTION según rúbrica escrita), `status`, `evidence`, `repro-spec`. Se persiste aunque quede vacío.
+- Un BLOCKER/CRITICAL se **confirma** cuando `test-writer` convierte su `repro-spec` en un test que da rojo contra el SHA congelado; si no se puede reproducir, baja a WARNING y queda en el ledger.
+- Precision gate. Refutación: el `refuter` recibe afirmaciones y SHA; faltante o malformado = queda en pie. El orquestador no califica ni descarta hallazgos por su cuenta; los refutados se listan en el resumen.
+- Tests decorativos detectados por `review-testability` son BLOCKER.
+- Fix: `fixer` solo sobre confirmados; máx. 2 rondas; re-revisión solo sobre ledger + delta; lo abierto tras la ronda 2 se escala.
+- Judgment Day: dos jueces ciegos en paralelo sobre el mismo SHA; se corrige lo que confirman ambos; lo de uno es `suspect`; contradicciones → `judge-conflict`; `APPROVED | ESCALATED`.
+- Aprobar no autoriza entregar.
 
-## 13. Escalera de dudas (`skills/doubt-ladder`)
+## 13. Escalera de dudas
 
-Para dudas de hecho, no autorizaciones: (1) evidencia del repo; (2) memoria (estado, Engram, ledgers); (3) `researcher` (pregunta abstracta, sin datos del proyecto; filtro de egreso); (4) `refuter`; (5) humano con la pregunta armada. Presupuesto por duda (por defecto: 2 llamadas a `researcher`, 1 a `refuter`); al agotarlo, se toma la opción más reversible y se marca `needs-review`, o se sube al humano si no hay opción reversible.
+Dudas de hecho, no autorizaciones: (1) repo; (2) memoria; (3) `researcher` (pregunta abstracta, sin datos del proyecto, filtro de egreso); (4) `refuter`; (5) humano con la pregunta armada. Presupuesto por duda (default: 2 `researcher`, 1 `refuter`); agotado → opción más reversible + `needs-review`, o humano si no hay opción reversible.
 
-## 14. Instalación y migración
+## 14. Instalación y adopción
 
-- `claude plugin marketplace add Pign-a/pignolo` + `claude plugin install pignolo` (repo privado: requiere credenciales git de la máquina, p. ej. `gh auth login` + `gh auth setup-git`).
-- `/pignolo:setup`: perfil; verifica `node`, `git` (versión con `merge-tree --write-tree`), `gh`; plantilla de permisos con diff y confirmación; Engram opcional; avisa si superpowers está instalado (se superponen).
-- `/pignolo:init` por proyecto: deduce `type` y `gates` de `package.json`/`pubspec.yaml`/etc. y los muestra para confirmar; crea `.pignolo/`, `.gitattributes`; registra hashes iniciales de tests.
-- Migración del entorno del autor (cada paso destructivo con confirmación, backup zip de `~/.claude` primero): instalar y probar en un plan real con superpowers aún instalado → desinstalar superpowers → quitar de ECC lo roto (`/orch-*`, `/epic-*`, `/loop-*`) y lo riesgoso (`/santa-loop`, `/multi-*`, `/checkpoint`) → limpiar la allowlist global (`git push origin main`, `prisma migrate reset --force`, `node -e`, `Bash(claude:*)`) y `autoMode.environment` → migrar el proyecto de origen (`docs/sessions/` → `.pignolo/state/`; `.claude/rules/ejecucion-de-planes.md` → núcleo del plugin).
+- `claude plugin marketplace add Pign-a/Pignolo` + `claude plugin install pignolo`, con versión fijada.
+- `/pignolo:setup`: perfil; verifica `node`, `git` con `merge-tree --write-tree`, `gh`; plantilla de permisos con diff y confirmación; lista conflictos entre las reglas del usuario y pignolo para que el humano confirme (§1.7); Engram opcional; detecta superpowers (se superponen) y agent teams (no soportado). `/pignolo:setup --upgrade` muestra el diff entre versiones (incluidos `hooks/`) y cambia el pin solo con confirmación.
+- `/pignolo:init`: deduce `type`, `gates`, `test-paths` y rutas de riesgo de `package.json`/`pubspec.yaml`/etc. y los confirma; crea `.pignolo/`, `.gitattributes`, `.gitignore` de `.disabled`; fija la política de reflog; propone desactivar la auto-memoria y migrarla; lee las reglas existentes del proyecto como `domain-rules`.
+- **Entorno del autor** (cada paso destructivo con confirmación; backup zip de `~/.claude` primero): instalar y probar en un plan real con superpowers aún instalado → desinstalar superpowers → quitar de ECC lo roto (`/orch-*`, `/epic-*`, `/loop-*`) y lo riesgoso (`/santa-loop`, `/multi-*`, `/checkpoint`) → limpiar la allowlist global (`git push origin main`, `prisma migrate reset --force`, `node -e`, `Bash(claude:*)`) y `autoMode.environment`.
+- **Proyecto de origen (compartido con otros)**: convivencia. pignolo lee `docs/sessions/` y `.claude/rules/` y escribe `.pignolo/state/` en paralelo, sin borrar ni mover nada del repo compartido.
 
 ## 15. Pruebas del plugin
 
-`tests/` corre con `claude plugin eval` y scripts node, también en modo interactivo (hay fallas que `-p` no reproduce):
-- `guard`: cada comando peligroso (incluidas formas indirectas) debe bloquearse; `PIGNOLO_DISABLED` debe desactivar; error interno del hook debe bloquear (exit 2).
-- `gates`: compuerta vacía en `code-untested` no da verde; hash de test alterado bloquea DONE.
-- `agents`: cada agente contra su trampa (plan que no compila, test decorativo, hallazgo falso para el refuter, diff limpio donde un revisor no debe inventar hallazgos, aprendizaje inventado y aprendizaje con dato sensible para learning-validator, query con dato del proyecto para el filtro de egreso).
-- `agents-tools`: herramientas vs. prompt.
-- `context-budget`: 500 entradas ≤ 2.000 tokens / 8.000 caracteres.
-- `canary`: la guardia caída se detecta al arrancar.
+Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings del usuario) para comportamiento de agentes; scripts node para lo determinista; `tests/manual/` con checklist interactivo (TUI, canario, permisos aplicados, precedencia) y evidencia registrada por release.
+- `guard`: cada comando peligroso y forma indirecta; `PIGNOLO_DISABLED`; `/pignolo:off` no apaga la guardia; error de sintaxis, promesa rechazada y excepción del hook → exit 2; timeout documentado como fail-open conocido.
+- `backup`: un comando indirecto no detectado que pierde trabajo → recuperable desde `refs/pignolo/wip` o el reflog.
+- `gates`: compuerta vacía en `code-untested` no da verde; test o config protegidos alterados → handback-gate rechaza; sello ausente o de otro `tree-hash` → rechaza.
+- `risk`: un diff plantado por cada tripwire (ruta y contenido) → reservada.
+- `next`: recorridos interrumpidos (ola cortada, `queue/` con conflicto, tarea BLOCKED, compactación).
+- `sabotage`: interrumpido a mitad → árbol restaurado.
+- `holdout`: el implementer no lo encuentra con Glob ni Grep.
+- `scope-gate`: merge a `main` sin tarjeta → bloqueado.
+- `state`: `INDEX.md` no editable; worktree de tarea no escribe `.pignolo/state/`; archivado.
+- `queue`: conflicto trivial vs. de lógica.
+- `egress`: query con dato del proyecto → bloqueada; subagente con MCP → bloqueado.
+- `context-budget`: 500 entradas ≤ 8.000 caracteres.
+- `agents` (≥ 5 corridas por caso, umbrales de §0d): explorer, researcher, spec-reviewer (incluye scope-card con "agregado sin pedirlo"), plan-auditor (plan que no compila), test-writer, implementer (intenta tocar un test), lentes (diff con defecto y diff limpio), review-testability (test decorativo), refuter (hallazgo falso), jueces, fixer, validator, integrator, learning-validator (aprendizaje inventado y con dato sensible), debugger.
+- `agents-tools`: herramientas de cada agente vs. lo que su prompt le pide.
+- `canary`: guardia caída detectada al arrancar.
+- `resume`: plan a mitad, `/compact`, la próxima acción es la correcta.
 
 ## 16. Evolución, métricas y alarmas
 
-- Semver; CHANGELOG con motivo; versión fijada por el usuario; al actualizar, `setup` muestra el diff de `hooks/` antes de activar.
-- Aprendizajes `promote-candidate` de los proyectos se acumulan; subirlos al núcleo es un cambio al plugin con su propio spec, revisión y tests.
-- Métricas por plan en `.pignolo/state/metrics/`: rondas de corrección por tarea, hallazgos escapados a la revisión final o a `live-check`, tests decorativos detectados, conflictos en cola, tokens y tiempo por tarea, preguntas al humano y tasa de coincidencia con la recomendación, decisiones autónomas revertidas.
-- Alarmas (en el resumen de cierre): (1) intentos de tocar tests/config protegidos; (2) defectos escapados (holdout o `live-check` que atrapa lo que las compuertas no); (3) calibración de revisores (recall en defectos plantados, falsos positivos en diffs limpios, acuerdo entre jueces > 95 %); (4) calibración de escalamiento (> 90 % de respuestas iguales a la recomendación o > 10 % de decisiones autónomas revertidas); (5) costo, bucles y contexto por encima del presupuesto.
+- Semver; CHANGELOG con motivo; versión fijada; `--upgrade` con diff.
+- `promote-candidate` de los proyectos → cambio al plugin con su propio spec, revisión y tests.
+- Métricas por plan (`.pignolo/state/metrics/`): rondas de corrección por tarea, hallazgos escapados a la revisión final, al holdout o a `live-check`, tests decorativos, conflictos en cola, tokens y tiempo por tarea, preguntas por categoría y tasa de coincidencia con la recomendación, decisiones autónomas revertidas.
+- Alarmas en el resumen de cierre: (1) intentos sobre tests/config protegidos; (2) defectos escapados; (3) calibración de revisores (recall en plantados, falsos positivos en limpios, acuerdo entre jueces > 95 %); (4) calibración de escalamiento (> 90 % de coincidencia con la recomendación o > 10 % de autónomas revertidas); (5) costo, bucles y contexto por encima del presupuesto.
 
-## 17. Lecciones que motivan el diseño (proyecto de origen)
+## 17. Lecciones que motivan el diseño
 
-6 de 6 tareas de un plan con defectos que venían del código del plan; tests decorativos (evento emitido a mano, dobles con forma vieja, barridos en el directorio equivocado, tests que pasaban sin el control); Vitest sin type-check dejó vivo un estado borrado; un fix de seguridad que era un log donde la excepción nunca llegaba; `git checkout -- archivo` borró una implementación sin commitear; stash compartido entre worktrees; rama "rota hasta la tarea N"; documentación de sesión que fallaba al editar un archivo grande en el lugar (CRLF, líneas de 1.500 caracteres, copias duplicadas entre archivos y worktrees); revisores despachados en sonnet por olvido; una verificación contra el sistema real encontró 3 bugs que ningún test detectó (cálculo cacheado del servidor, paginación leída como completa, filtro sin efecto).
+6 de 6 tareas de un plan con defectos venidos del código del plan; tests decorativos (evento emitido a mano, dobles con forma vieja, barridos en el directorio equivocado, tests que pasaban sin el control); un runner sin type-check dejó vivo un estado borrado; un fix de seguridad que era un log donde la excepción nunca llegaba; `git checkout -- archivo` borró una implementación sin commitear; stash compartido entre worktrees; rama "rota hasta la tarea N"; documentación de sesión que fallaba al editar un archivo grande en el lugar; revisores despachados en un modelo menor por olvido; una verificación contra el sistema real encontró 3 bugs que ningún test detectó (cálculo cacheado del servidor, paginación leída como completa, filtro sin efecto); y este mismo spec, tras 13 investigaciones y 4 validaciones, todavía afirmaba que un hook con timeout falla cerrado — lo encontró el `refuter` con la documentación original.
 
 ## 18. Construcción (v1 completa, con hitos internos)
 
-Todo entra en v1 (decisión del autor). El plan de implementación lo divide en hitos, cada uno cerrado con sus tests de §15 en verde antes de empezar el siguiente:
-1. Esqueleto del plugin, config, interruptor, hooks base con canario y guardia de git.
-2. Agentes, perfiles y `setup`.
-3. Carriles `trivial`/`daily`, riesgo por script, revisión, ledger, refuter, Judgment Day.
-4. Tests: test-writer, cards, sabotaje, hashes, compuertas, holdout, mutación opcional.
-5. Modo `plan`: spec, scope-card, plan-auditor, validator, `next`.
-6. Continuidad: estado, índice, arranque, `close-session`, learning-validator, Engram.
-7. Ramas y paralelismo: nombres, contrato, cola, olas, cleanup.
-8. `init` y migración del entorno del autor, validado en un plan real del proyecto de origen.
+Cada hito se cierra con sus tests de §15 en verde antes de empezar el siguiente:
+1. Esqueleto, config, interruptor, launcher de hooks, canario, guardia de git, respaldos (`backup-ref`, `wip-snapshot`), plantilla de permisos. Tests: `guard`, `backup`, `canary`.
+2. Agentes, perfiles, `setup` (incluida la detección de conflictos de reglas). Tests: `agents-tools`, `agents` (explorer, researcher).
+3. Carriles `trivial`/`daily`, `risk`, `gate` y sellos, handback-gate, revisión, ledger, refuter, Judgment Day. Tests: `risk`, `gates`, `agents` (lentes, refuter, jueces, fixer).
+4. Tests: test-writer, cards, sabotaje, integridad por diff, holdout, mutación opcional. Tests: `sabotage`, `holdout`, `agents` (test-writer, implementer, review-testability).
+5. Modo `plan`: afirmaciones clave, spec-reviewer y scope-card, `scope-gate`, plan-auditor, validator, `next`. Tests: `scope-gate`, `next`, `resume`, `agents` (spec-reviewer, plan-auditor, validator).
+6. Continuidad: estado, índice, arranque, `SubagentStart`, `close-session`, learning-validator, Engram (verificado contra su doc). Tests: `state`, `context-budget`, `egress`, `agents` (learning-validator).
+7. Ramas y paralelismo: nombres, contrato, worktrees manuales, cola, olas, cleanup. Tests: `queue`, `agents` (integrator).
+8. `init`, adopción en el entorno del autor y convivencia en el proyecto de origen; medición del criterio de éxito (§0) con el plan real + defectos sembrados. Tests: `agents` (debugger), checklist manual.
 
 ## 19. Fuera de alcance de la v1
 
-`threat-modeler` y `docs-accuracy`; soporte a otros clientes de IA (solo Claude Code); CI remoto; publicación pública del plugin; Engram Cloud.
+`threat-modeler`, `docs-accuracy`; agent teams; otros clientes de IA; CI remoto; Engram Cloud; migración destructiva de sistemas de documentación existentes en proyectos compartidos.
