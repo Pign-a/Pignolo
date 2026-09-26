@@ -105,6 +105,21 @@ La genera el `spec-reviewer` (sin contexto de la sesión) a partir del **pedido 
 
 **Antes de la aprobación** corre: spec, revisión, `plan-auditor`, y solo las tareas que no dependen de ningún ítem "agregado sin pedirlo" y entran en el presupuesto del perfil. El resto espera. Sin tarjeta aprobada, nada llega a `main` (hook `scope-gate`).
 
+### 4.6 Presentación visual (tarjetas, decisiones y resúmenes)
+
+Todo lo que pignolo le presenta al humano para decidir (scope-card, preguntas de §4.4, `needs-review-batch`, resumen de cierre) puede mostrarse como **texto** o como **artifact** (página publicada con la herramienta Artifact de Claude Code). Gasta más tokens que el texto, pero se usa cuando hace la decisión más clara.
+
+- **Elección del humano en cada situación**: antes de armar la presentación, pignolo ofrece `1) artifact` / `2) texto`, con una línea sobre qué mostraría el artifact y su costo relativo. Preferencia por defecto en `~/.pignolo/config.json` → `presentation: ask | artifact | text` (default `ask` en `max` y `balanced`, `text` en `economy`), sobrescribible por proyecto. Nunca se elige artifact sin que el humano lo haya habilitado.
+- **La forma sigue al contenido** (`skills/present`):
+  - **simple** (tarjeta, lista de decisiones, resumen): una tarjeta visual liviana;
+  - **UI** (el plan o la decisión cambia pantallas): mockups de las pantallas afectadas, antes/después cuando aplica;
+  - **infraestructura o arquitectura**: diagrama de componentes y flujos, marcando lo que cambia;
+  - **punto de decisión**: los caminos en paralelo, desde dónde se separan, qué implica cada uno (costo, reversibilidad, riesgo) y la recomendación marcada.
+- **Contenido idéntico al texto**: el artifact no agrega ni quita opciones respecto de la versión en texto (misma lista cerrada, completa, sin resumir). La respuesta del humano se da en la conversación, no en la página.
+- **Datos**: antes de publicar se aplica el filtro de `pii-patterns` y de secretos; un artifact nunca lleva datos personales, credenciales ni datos de sistemas externos. Se publica privado; compartirlo es decisión del humano.
+- **Disponibilidad**: si la herramienta Artifact no está disponible en la sesión, se usa texto y se avisa en una línea.
+- Tests (§15 `present`): con `presentation: text` nunca se publica; el artifact de una decisión contiene exactamente las mismas opciones que su versión en texto; el filtro bloquea un artifact con un dato de `pii-patterns`.
+
 ## 5. Modos
 
 ### 5.1 Entrada
@@ -310,6 +325,7 @@ Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings
 - `queue`: conflicto trivial vs. de lógica.
 - `egress`: query con dato del proyecto → bloqueada; subagente con MCP → bloqueado.
 - `context-budget`: 500 entradas ≤ 8.000 caracteres.
+- `present`: con `presentation: text` nunca se publica un artifact; el artifact de una decisión tiene exactamente las mismas opciones que su texto; un dato de `pii-patterns` bloquea la publicación.
 - `agents` (≥ 5 corridas por caso, umbrales de §0d): explorer, researcher, spec-reviewer (incluye scope-card con "agregado sin pedirlo"), plan-auditor (plan que no compila), test-writer, implementer (intenta tocar un test), lentes (diff con defecto y diff limpio), review-testability (test decorativo), refuter (hallazgo falso), jueces, fixer, validator, integrator, learning-validator (aprendizaje inventado y con dato sensible), debugger.
 - `agents-tools`: herramientas de cada agente vs. lo que su prompt le pide.
 - `canary`: guardia caída detectada al arrancar.
@@ -333,7 +349,7 @@ Cada hito se cierra con sus tests de §15 en verde antes de empezar el siguiente
 2. Agentes, perfiles, `setup` (incluida la detección de conflictos de reglas). Tests: `agents-tools`, `agents` (explorer, researcher).
 3. Carriles `trivial`/`daily`, `risk`, `gate` y sellos, handback-gate, revisión, ledger, refuter, Judgment Day. Tests: `risk`, `gates`, `agents` (lentes, refuter, jueces, fixer).
 4. Tests: test-writer, cards, sabotaje, integridad por diff, holdout, mutación opcional. Tests: `sabotage`, `holdout`, `agents` (test-writer, implementer, review-testability).
-5. Modo `plan`: afirmaciones clave, spec-reviewer y scope-card, `scope-gate`, plan-auditor, validator, `next`. Tests: `scope-gate`, `next`, `resume`, `agents` (spec-reviewer, plan-auditor, validator).
+5. Modo `plan`: afirmaciones clave, spec-reviewer y scope-card, `scope-gate`, plan-auditor, validator, `next`, presentación visual (§4.6). Tests: `scope-gate`, `next`, `resume`, `present`, `agents` (spec-reviewer, plan-auditor, validator).
 6. Continuidad: estado, índice, arranque, `SubagentStart`, `close-session`, learning-validator, Engram (verificado contra su doc). Tests: `state`, `context-budget`, `egress`, `agents` (learning-validator).
 7. Ramas y paralelismo: nombres, contrato, worktrees (mecanismo A verificado o B), cola, olas, cleanup. Tests: `queue`, `worktree`, `state-queue`, `agents` (integrator).
 

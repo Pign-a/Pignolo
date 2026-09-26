@@ -1,6 +1,6 @@
 # Tarjeta de alcance — pignolo v1
 
-Generada por `spec-reviewer` (ronda 2) a partir del pedido literal del autor. Estado: pendiente de aprobación.
+Generada por `spec-reviewer` (ronda 2) a partir del pedido literal del autor. Estado: **aprobada el 2026-09-26**, con un agregado pedido por el autor al aprobar: presentación visual opcional (§4.6).
 
 **Objetivo.** Un plugin de Claude Code que instalás una vez en tu cuenta y sirve en cualquier proyecto. Reparte el trabajo entre varios agentes especializados, comprueba él mismo que lo hecho funciona y solo te consulta lo que es decisión tuya.
 
@@ -13,6 +13,8 @@ Generada por `spec-reviewer` (ronda 2) a partir del pedido literal del autor. Es
 5. Cerrás la sesión. Queda registrado qué se hizo, en qué ramas hay trabajo, los bugs y las decisiones. Los aprendizajes pasan por un agente filtro, y lo dudoso te llega a vos. *("aprendizajes automaticos al cerrar cada sesion siempre con validacion de un agente")*
 6. Un proyecto acumula 500 entradas de historia. Lo que se carga al arrancar sigue sin pasar de unas 2.000 palabras. *("evitar que a largo plazo se limite todo por el contexto")*
 7. Un agente escribe un test que pasaría aunque se borre lo que dice proteger. La revisión lo frena antes de integrarlo. *("algo mas solido y re validable")*
+
+8. Hay que decidir entre dos caminos. Pignolo te ofrece `1) artifact` o `2) texto`; si elegís artifact, ves los caminos lado a lado, desde dónde se separan y qué cuesta cada uno (en UI, las pantallas; en infraestructura, un diagrama). *("que cuando sea un punto de decision que muestre visualmente los dos caminos… opcion 1 con artifact, 2 texto")*
 
 ## Tu pedido → dónde quedó
 
