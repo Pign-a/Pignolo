@@ -13,7 +13,7 @@ Origen: fork de las skills de `obra/superpowers` (MIT; se reutiliza y modifica t
 
 Medido en **un plan real del proyecto de origen más un conjunto fijo de defectos sembrados** (test decorativo, defensa muerta, comando destructivo indirecto, dato sensible en un aprendizaje, query con dato del proyecto):
 - (a) Ningún defecto sembrado de tipo test decorativo o defensa muerta llega a `int/` sin ser detectado.
-- (b) Todo ref movido o borrado y todo trabajo sin commitear afectado por un comando durante el plan es recuperable desde un respaldo o el reflog; se verifica en `tests/guard` incluso con un comando indirecto que la guardia no detecta.
+- (b) Todo commit y ref movido o borrado durante el plan es recuperable desde el reflog (que no expira) o un respaldo; el trabajo sin commitear afectado por cualquier comando de shell es recuperable desde la instantánea `refs/pignolo/wip/*` tomada antes de ese comando (capa 3: best-effort, porque la dispara un hook). Se verifica en `tests/backup` incluso con un comando indirecto que la guardia no detecta.
 - (c) Toda pregunta al humano lleva una categoría de la lista cerrada de §4.4; una pregunta sin categoría es una falla y se cuenta.
 - (d) Cada agente corre su suite de evals ≥ 5 veces por caso y aprueba con recall ≥ 80 % en defectos plantados y ≤ 20 % de falsos positivos en diffs limpios; las compuertas deterministas aprueban al 100 %.
 
@@ -74,7 +74,7 @@ THIRD_PARTY_NOTICES.md
 Sin `project.md`: modo conservador (riesgo medio, sin paralelismo, sin `live-check`) y aviso para correr `/pignolo:init`.
 
 ### 3.3 Interruptor
-- `/pignolo:off` / `/pignolo:on` (solo humano: `disable-model-invocation: true`) escriben `~/.pignolo/disabled` (global) o `.pignolo/.disabled` (proyecto, en `.gitignore`). Apagan todos los hooks **salvo** la guardia de git y los respaldos.
+- `/pignolo:off` / `/pignolo:on` (solo humano: `disable-model-invocation: true`). El flag lo escribe un hook `UserPromptExpansion`, que solo se dispara cuando el humano escribe el comando (el modelo no lo alcanza), en `~/.pignolo/disabled` (global) o `.pignolo/.disabled` (proyecto, en `.gitignore`). Los hooks de Edit/Write/Bash bloquean esas rutas para **todos**, incluido el hilo principal. Apagan todos los hooks **salvo** la guardia de git y los respaldos.
 - La guardia y los respaldos solo se apagan arrancando Claude Code con `PIGNOLO_DISABLED=1` en el entorno del proceso; SessionStart y `/pignolo:status` lo muestran en rojo.
 - Los hooks bloquean que cualquier agente escriba esas rutas o invoque esas skills.
 
@@ -169,7 +169,7 @@ Las compuertas deterministas son iguales en todos los perfiles. Si se agota la c
 ## 8. Control: permisos, verificación posterior y hooks
 
 ### 8.1 Capa 1 — permisos
-El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/ask para el settings del usuario o del proyecto, con diff, y la escribe solo con confirmación. Incluye: deny de comandos git destructivos; ask para push, merge a `main` y borrado de ramas/tags; deny de herramientas MCP que envían datos (send, push, create, update, navigate) para subagentes; allowlist por agente.
+El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/ask para el settings del usuario o del proyecto, con diff, y la escribe solo con confirmación. Incluye: deny de comandos git destructivos; ask para push, merge a `main` y borrado de ramas/tags; ask para herramientas MCP que envían datos (send, push, create, update, navigate). Los permisos aplican a toda la sesión, no por subagente: la restricción por agente se logra con `tools` explícito en cada agente (que excluye MCP) más el hook de egreso.
 
 ### 8.2 Capa 2 — verificación fuera del agente
 `scripts/gate` corre las compuertas **fuera de todo hook** y escribe un sello `{sha, tree-hash, comando, exit, hash del log, hora}` en `~/.pignolo/seals/<repo-id>/` (`repo-id` = hash de la ruta de `git-common-dir`). La integridad de tests se verifica con `git diff --name-only <ref>..HEAD -- <test-paths> <protected-test-config>` contra un commit de referencia (el tag del contrato o el commit del `test-writer`); si falta la referencia, falla cerrado. Un tripwire marca como sospechoso código que detecta el entorno de test (`process.env.VITEST`, `NODE_ENV === 'test'`, etc.).
@@ -184,7 +184,8 @@ El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/as
   - `PreToolUse` Edit|Write: `test-paths`/`protected-test-config` en solo lectura para `implementer`/`fixer`; `test-writer` solo en `test-paths`; `.pignolo/state/` solo lo escribe el hilo principal; `INDEX.md` y `accepted/` no editables; rutas del interruptor protegidas.
   - `PreToolUse` WebSearch|WebFetch|`mcp__.*`: egreso — solo `researcher` usa web; ningún subagente usa MCP; filtro de queries por `pii-patterns` y rutas/identificadores del proyecto (lista, best-effort).
   - `PreToolUse` Agent: deny de subagentes no `pignolo:*`.
-  - `PreToolUse` SubagentHandback (y `SubagentStop` como respaldo, matcher `^pignolo:(implementer|fixer|test-writer)$`): **handback-gate** — acepta DONE solo si existe un sello con exit 0 para el `tree-hash` actual y la integridad de tests pasa. Respeta `stop_hook_active`; tras 8 bloqueos marca la tarea BLOCKED. El hook nunca corre la suite. `TaskCompleted` fuera de la v1.
+  - **handback-gate**: `SubagentStop` (camino principal, matcher `^pignolo:(implementer|fixer|test-writer)$`) y además `PreToolUse` sobre `SubagentHandback` (solo existe en auto mode). Acepta DONE solo si existe un sello con exit 0 para el `tree-hash` del **worktree de la tarea** (ruta registrada en la task-card) y la integridad de tests pasa. En `SubagentStop` respeta `stop_hook_active` y el tope nativo de 8; en `PreToolUse` lleva su propio contador en `~/.pignolo/` y tras 8 bloqueos marca la tarea BLOCKED. El hook nunca corre la suite. `TaskCompleted` fuera de la v1. Se prueba en los dos modos (auto y normal).
+  - `PreToolUse` Read|Grep|Glob|Bash: deny de `~/.pignolo/holdout/` y `~/.pignolo/seals/` salvo al `validator` y a los scripts de pignolo.
   - `PreToolUse` git merge/push hacia `main`: `scope-gate` exige tarjeta aprobada.
 - Cada bloqueo nombra una alternativa que funciona.
 
@@ -220,7 +221,7 @@ El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/as
 ### 10.1 Qué va dónde
 - **Derivado** (nunca escrito): ramas, ahead/behind, worktrees, PRs, cambios sin commitear, tags. `scripts/derive-branches` con git + `gh` (cruza PRs mergeados para squash merges; sin `gh`, lo declara).
 - **Juicio**: `.pignolo/state/{work,decisions,issues,learnings/{proposed,accepted,rejected},sessions,metrics,archive}/`, un archivo por entrada, frontmatter (`id`, `status`, `evidence`, `source`, `superseded_by`, `created`, `review_after`), IDs `YYYY-MM-DD-<slug>`. Cerrar = cambiar `status`.
-- **Dónde vive**: solo en el checkout principal, en la rama `int/<plan>` (modo plan) o en la rama actual (daily/trivial), y solo lo escribe el hilo principal. Los worktrees de tarea no escriben `.pignolo/state/` (hook + la cola rechaza cambios ahí). `next` y `state-index` leen siempre del checkout principal.
+- **Dónde vive**: solo en el checkout principal, en la rama `int/<plan>` (modo plan) o en la rama actual (daily/trivial), y solo lo escribe el hilo principal. Los worktrees de tarea no escriben `.pignolo/state/` (hook + la cola rechaza cambios ahí). `next` y `state-index` leen siempre del checkout principal. En modo `plan`, el estado se commitea en `int/<plan>` **solo entre olas o entre merges de la cola**, nunca con un merge en curso; `scripts/queue` rebasea `queue/<plan>` sobre la punta actual de `int/<plan>` inmediatamente antes del `--ff-only`, así un commit de estado intermedio no rompe el avance.
 - `INDEX.md` generado por `scripts/state-index`; no editable a mano. `.gitattributes` con `eol=lf` para `.pignolo/`.
 - **Recuerdo**: Engram (§10.5).
 - **Convivencia**: si el proyecto ya tiene su propio sistema de sesiones o reglas (p. ej. `docs/sessions/`, `.claude/rules/`), pignolo lo **lee** vía `domain-rules` y no lo modifica ni borra.
@@ -247,7 +248,11 @@ Opcional (`setup`). Resguardos: `capture_prompt: false`; sin `engram sync` a git
 `int/<plan>` (siempre verde) · `task/<plan>/<NN>-<slug>` y `task/daily/<fecha>-<slug>` (≤ 1 sesión/día) · `queue/<plan>` · tags `contract/<plan>/v<N>`, `cp/<plan>/<n>`, `backup/<fecha>-<motivo>` · trailers `Agent:` y `Gates:` en commits. Commits por unidad de trabajo (Conventional Commits, tests y docs dentro, presupuesto de revisión 400 líneas).
 
 ### 11.2 Crear
-Modo `plan`: ola 0 serial con lo que produce contrato → merge → tag `contract/<plan>/v1`. El orquestador crea cada `task/...` con `git worktree add -b task/<plan>/<NN>-<slug> <ruta> contract/<plan>/v<N>` y despacha al `implementer` con esa ruta como directorio de trabajo, **sin `isolation`** (los worktrees nativos no aceptan una base arbitraria ni el nombre de rama). Cada tarea verifica al arrancar `git merge-base --is-ancestor contract/<plan>/v<N> HEAD`. Cada worktree instala dependencias con `deps-install`; no se comparten puertos, contenedores ni datos.
+Modo `plan`: ola 0 serial con lo que produce contrato → merge → tag `contract/<plan>/v1`. Un subagente arranca en el directorio de la conversación principal y la herramienta `Agent` no acepta un directorio de trabajo; por eso:
+- **Mecanismo A (principal):** el orquestador despacha al `implementer` con `isolation: "worktree"` y un hook `WorktreeCreate` de pignolo reemplaza la creación nativa: ejecuta `git worktree add -b task/<plan>/<NN>-<slug> <ruta> contract/<plan>/v<N>` y devuelve esa ruta, que Claude Code usa como directorio del subagente. Fuera de un proyecto con pignolo (o sin plan activo), el hook reproduce el comportamiento nativo. El hook identifica la tarea a partir del `name` recibido o, si no alcanza, de un registro `~/.pignolo/pending-worktree/<repo-id>` que el orquestador escribe justo antes del despacho.
+- **Mecanismo B (respaldo):** si A no se puede verificar, el orquestador crea el worktree con `git worktree add` y el `implementer` opera con la convención `cd <ruta> && <comando>` en cada llamada de shell (permitida por la guardia), y los hooks resuelven el worktree por la ruta de los archivos editados.
+- **Afirmación clave a verificar en el hito 7** (refuter + prueba real): cómo recibe `WorktreeCreate` el nombre de la tarea y que la ruta devuelta se usa como directorio del subagente. El sello, el `tree-hash` y los globs de `test-paths` se calculan siempre sobre la ruta del worktree registrada en la task-card, no sobre el `cwd` de la sesión.
+Cada tarea verifica al arrancar `git merge-base --is-ancestor contract/<plan>/v<N> HEAD`. Cada worktree instala dependencias con `deps-install`; no se comparten puertos, contenedores ni datos.
 
 ### 11.3 Cola (`scripts/queue`, operada por `integrator`)
 `git merge-tree --write-tree` → merge en `queue/<plan>` → `pre-merge` sellado → solo si verde: `int/<plan>` `--ff-only` + tag `cp/`. Conflicto trivial: integrator; de lógica: vuelve a la tarea (rebase en su rama) y se registra como falla del plan. Cambios en `.pignolo/state/` desde una tarea: rechazados. Regresión tardía en `int/`: revert primero.
@@ -259,7 +264,7 @@ Tareas sin dependencias, con archivos disjuntos (verificado por script sobre tas
 Sin stash salvo etiquetado y aplicado por SHA; commits WIP. `git show ref:path`, nunca `git checkout ref -- path`. Limpieza: `status --porcelain` → backup → `worktree remove` sin `--force` → `branch -d`. Al arrancar se marcan ramas > 7 días sin actividad y worktrees sucios. `/pignolo:cleanup` propone; el humano borra.
 
 ### 11.6 Guardia de git y respaldos
-- **Respaldo independiente de la guardia** (capa 2): `scripts/backup-ref` guarda una instantánea de todas las refs al empezar cada sesión y antes de cada despacho; `scripts/wip-snapshot` guarda el árbol sucio (`git stash create` + `git update-ref refs/pignolo/wip/<ts>`, sin tocar el árbol) antes de cada comando que la guardia permite y que toca el árbol, y antes de cada despacho. `/pignolo:init` fija `gc.reflogExpire=never` y `gc.reflogExpireUnreachable=never` en el `.git/config` local.
+- **Respaldos**: `scripts/backup-ref` guarda una instantánea de todas las refs al empezar cada sesión y antes de cada despacho; `scripts/wip-snapshot` guarda el árbol sucio (`git stash create` + `git update-ref refs/pignolo/wip/<ts>`, sin tocar el árbol) **antes de todo comando de Bash/PowerShell, sin clasificarlo**, y antes de cada despacho. Ambos los disparan hooks: son capa 3 (best-effort; no corren si el hook vence o no arranca). Lo único independiente de los hooks es la política de reflog: `/pignolo:init` fija `gc.reflogExpire=never` y `gc.reflogExpireUnreachable=never` en el `.git/config` local, que protege todo lo commiteado. Las instantáneas `refs/pignolo/wip/*` se podan a los 14 días en `close-session`.
 - **Guardia** (capa 3, best-effort): bloquea `stash`/`pop`/`drop` sin etiqueta, `checkout`/`restore` con ruta (salvo `scripts/sabotage`), `reset --hard`, `clean -f`, `branch -D`, `worktree remove --force`, `--no-verify`, `gc --prune`, `reflog expire`, `push --force` sobre ramas compartidas, `git config alias.*`, y formas indirectas conocidas (`git -C`, `node -e`/`python -c` que invoquen git, `Invoke-Expression`, `& $var`, `Start-Process git`, `cmd /c`, `bash -c`, ejecución de scripts recién escritos por un agente). En PowerShell solo se permite una allowlist de formas simples de git. Pide confirmación para push, merge a `main` y borrado de ramas/tags. Rechaza lo que no puede parsear.
 - Borrados que no pasan por git (`rm`, `Remove-Item`, `Write` sobre un archivo con cambios) solo quedan cubiertos por los WIP snapshots y commits frecuentes: declarado.
 
@@ -290,14 +295,16 @@ Dudas de hecho, no autorizaciones: (1) repo; (2) memoria; (3) `researcher` (preg
 
 ## 15. Pruebas del plugin
 
-Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings del usuario) para comportamiento de agentes; scripts node para lo determinista; `tests/manual/` con checklist interactivo (TUI, canario, permisos aplicados, precedencia) y evidencia registrada por release.
+Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings del usuario) para comportamiento de agentes. Las suites de agentes con Bash/PowerShell requieren **WSL2** (Windows nativo no tiene backend de evals) y corren en sandbox, que no es su comportamiento real en Windows nativo: esa diferencia se cubre con el checklist manual; scripts node para lo determinista; `tests/manual/` con checklist interactivo (TUI, canario, permisos aplicados, precedencia) y evidencia registrada por release.
 - `guard`: cada comando peligroso y forma indirecta; `PIGNOLO_DISABLED`; `/pignolo:off` no apaga la guardia; error de sintaxis, promesa rechazada y excepción del hook → exit 2; timeout documentado como fail-open conocido.
 - `backup`: un comando indirecto no detectado que pierde trabajo → recuperable desde `refs/pignolo/wip` o el reflog.
 - `gates`: compuerta vacía en `code-untested` no da verde; test o config protegidos alterados → handback-gate rechaza; sello ausente o de otro `tree-hash` → rechaza.
 - `risk`: un diff plantado por cada tripwire (ruta y contenido) → reservada.
 - `next`: recorridos interrumpidos (ola cortada, `queue/` con conflicto, tarea BLOCKED, compactación).
 - `sabotage`: interrumpido a mitad → árbol restaurado.
-- `holdout`: el implementer no lo encuentra con Glob ni Grep.
+- `holdout`: el implementer no lo encuentra ni lo lee con Glob, Grep, Read ni Bash.
+- `worktree`: el implementer de una ola edita y corre compuertas en el worktree de su tarea (y no en el checkout principal); el sello corresponde a ese árbol.
+- `state-queue`: un commit de estado en `int/<plan>` entre merges no rompe el `--ff-only` de la cola.
 - `scope-gate`: merge a `main` sin tarjeta → bloqueado.
 - `state`: `INDEX.md` no editable; worktree de tarea no escribe `.pignolo/state/`; archivado.
 - `queue`: conflicto trivial vs. de lógica.
@@ -328,7 +335,9 @@ Cada hito se cierra con sus tests de §15 en verde antes de empezar el siguiente
 4. Tests: test-writer, cards, sabotaje, integridad por diff, holdout, mutación opcional. Tests: `sabotage`, `holdout`, `agents` (test-writer, implementer, review-testability).
 5. Modo `plan`: afirmaciones clave, spec-reviewer y scope-card, `scope-gate`, plan-auditor, validator, `next`. Tests: `scope-gate`, `next`, `resume`, `agents` (spec-reviewer, plan-auditor, validator).
 6. Continuidad: estado, índice, arranque, `SubagentStart`, `close-session`, learning-validator, Engram (verificado contra su doc). Tests: `state`, `context-budget`, `egress`, `agents` (learning-validator).
-7. Ramas y paralelismo: nombres, contrato, worktrees manuales, cola, olas, cleanup. Tests: `queue`, `agents` (integrator).
+7. Ramas y paralelismo: nombres, contrato, worktrees (mecanismo A verificado o B), cola, olas, cleanup. Tests: `queue`, `worktree`, `state-queue`, `agents` (integrator).
+
+Requisito de entorno para los hitos con evals de agentes con shell: WSL2 disponible en la máquina del autor.
 8. `init`, adopción en el entorno del autor y convivencia en el proyecto de origen; medición del criterio de éxito (§0) con el plan real + defectos sembrados. Tests: `agents` (debugger), checklist manual.
 
 ## 19. Fuera de alcance de la v1
