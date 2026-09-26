@@ -118,6 +118,7 @@ Todo lo que pignolo le presenta al humano para decidir (scope-card, preguntas de
 - **Contenido idéntico al texto**: el artifact no agrega ni quita opciones respecto de la versión en texto (misma lista cerrada, completa, sin resumir). La respuesta del humano se da en la conversación, no en la página.
 - **Datos**: antes de publicar se aplica el filtro de `pii-patterns` y de secretos; un artifact nunca lleva datos personales, credenciales ni datos de sistemas externos. Se publica privado; compartirlo es decisión del humano.
 - **Disponibilidad**: si la herramienta Artifact no está disponible en la sesión, se usa texto y se avisa en una línea.
+- **Formatos aprobados por el autor**: cada uno de los cuatro formatos (simple, UI, infraestructura, decisión) es una plantilla en `templates/present/` que el autor revisa y aprueba, publicada con datos de ejemplo, antes de que pignolo la use. Una plantilla sin aprobación registrada (`templates/present/APPROVALS.md`, con fecha y versión) no se usa: ese tipo de contenido cae a texto. Cambiar una plantilla aprobada requiere volver a aprobarla.
 - Tests (§15 `present`): con `presentation: text` nunca se publica; el artifact de una decisión contiene exactamente las mismas opciones que su versión en texto; el filtro bloquea un artifact con un dato de `pii-patterns`.
 
 ## 5. Modos
