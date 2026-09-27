@@ -179,7 +179,7 @@ Tres capas de texto, de lo que todos leen a lo que lee cada rol. Surgen de valid
 
 **Mecanismos, no texto.** El gate rechaza un diff con archivos fuera de la task-card o que vacíe un archivo; un tripwire de contratos marca cambios de firma exportada. El porqué (caso real) y quién hace cumplir cada regla (`Enforced-by`) viven en `rules/REGISTRY.md`, que **no se inyecta**: sirve para revisar y podar, no para leerlo en cada tarea. Una regla nueva entra con su caso real; una que en tres planes seguidos no evitó nada se propone para quitar (§17).
 
-**Pendiente para el plan del hito 1:** tarea que crea `rules/core.md` con un test de tamaño (≤ 1.600 caracteres, exactamente 6 reglas). Todavía no está en `docs/plans/2026-09-26-hito-1-esqueleto-y-guardia.md`.
+**En el plan del hito 1:** la Task 9 crea `rules/core.md` con un test de tamaño y de forma (≤ 1.600 caracteres, exactamente 6 reglas numeradas, solo LF). La inyección por `SubagentStart` queda para el hito 6.
 
 ## 7. Perfiles de modelo
 
