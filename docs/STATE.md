@@ -41,12 +41,18 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 6. WSL2 con sandbox (o devcontainer) para `auto`/`bypass` adversariales: **se documenta como recomendación**, no se exige por código.
 7. Push: **todavía no**; los commits locales quedan sin subir hasta que el autor diga.
 
+8. Retención del repo sombra: **14 días ajustada** (spec §11.6).
+9. Umbral de falsos positivos: **síntesis** (núcleo en 0, deny ≤ 2 comandos distintos, ask ≤ 1 % interactivo, deny+ask ≤ 1 % en modos autónomos; spec §15).
+10. Método: toda pregunta de decisión pasa antes por un debate con un agente opus por opción; 8 y 9 se decidieron así.
+
 ## Decisiones pendientes del autor
 
-1. Umbral aceptable de falsos positivos (nadie publica tasas; medir con transcripciones propias).
-2. Disco y retención del repo sombra.
-3. Pushear los commits locales a `Pign-a/Pignolo` (repo público).
-4. Cómo ejecutar el hito 1: subagentes (recomendado) o ejecución directa.
+1. Pushear los commits locales a `Pign-a/Pignolo` (repo público).
+2. Cómo ejecutar el hito 1: subagentes (recomendado) o ejecución directa.
+
+## En curso
+
+- Un agente opus corrige la guardia (F1–F12) en una copia de trabajo en el scratchpad de la sesión; informe en `local/guard-fix-2026-09-27/INFORME.md`. Con eso se reescriben las Tasks 2, 3a, 3b, 4, 5 y 7 del plan.
 
 **Fuera de alcance a declarar** (según la investigación con contexto): prompt injection, contenido de scripts invocados, aliases y funciones de `~/.bashrc`, expansión exacta de globs, strings reconstruidos dentro de intérpretes, hooks que vencen, archivos ignorados y submódulos en las instantáneas, rutas 8.3 y enlaces simbólicos, falsificación del interruptor.
 
