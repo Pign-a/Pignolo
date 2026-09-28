@@ -50,6 +50,7 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 ## Decisiones técnicas del agente
 
 - Ejecución del hito 1: **con subagentes**, un implementador por tarea y un revisor opus por tarea. Motivo: cada tarea es larga y autocontenida, y el revisor independiente es parte del método. Queda en una sola rama local, sin push.
+- Simplificaciones decididas el 2026-09-28 (pasada sobre §11.6): (1) el `git bundle --all` se reemplaza por traer todas las refs al repo sombra: un solo almacén externo en vez de dos; (2) los aliases de git no se leen en SessionStart: un subcomando de git desconocido se trata como no verificable (ask/deny según el modo). Los agentes proponen más recortes con evidencia del corpus; nunca se afloja el conjunto catastrófico ni el fail-closed estructural.
 - Antes de reescribir el plan, una **pasada de simplificación** sobre §11.6 con lo que mida el agente de la guardia: se recorta lo que agrega complejidad sin frenar nada en el corpus.
 
 ## Decisiones pendientes del autor
@@ -58,7 +59,14 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 
 ## En curso
 
-- Un agente opus corrige la guardia (F1–F12) en una copia de trabajo en el scratchpad de la sesión; informe en `local/guard-fix-2026-09-27/INFORME.md`. Con eso se reescriben las Tasks 2, 3a, 3b, 4, 5 y 7 del plan.
+- 2026-09-28: el agente de la guardia de la sesión anterior no dejó informe (la sesión se cortó). Se relanzó partido en dos agentes opus en paralelo, cada uno en su copia con git propio dentro de `local/guard-fix-2026-09-28/` (fuera del scratchpad, para que sobreviva):
+  - `guard/`: conjunto catastrófico, guardia bash estructural, PowerShell por AST, reglas de git, F1–F12, corpus y medición de falsos positivos con las transcripciones. Informe en `INFORME-guard.md`.
+  - `backup/`: repo sombra, fallback en el repo, respaldo de refs, retención, plazo interno del launcher. Informe en `INFORME-backup.md`.
+  - Cada informe se actualiza paso a paso; si la sesión se corta, se retoma desde ahí.
+  - `backup/` **terminado** (359/359 verificado, 6 commits). Recortes: gc con heurística y rehacer el índice al cerrar sesión, al hito 6; respaldo de refs antes de cada despacho, al hito 2; el fallback en el repo se mantiene (la primera siembra tarda ~3 s).
+  - Decisiones técnicas tomadas al cerrar `backup/`: `refs/pignolo/backup/*` sigue la misma regla de 14 días (se implementa al unir); git ≥ 2.31 como requisito declarado; el spec (§2, §11.6) se actualiza al unir para reflejar la sombra en lugar del bundle y el gc diferido.
+- Después: unir las dos copias, pasar el código a las Tasks 2, 3a, 3b, 4, 5 y 7 del plan y pedir la tercera auditoría.
+- Pedido nuevo del autor (2026-09-28): módulo de UI opcional (design.md, 3 opciones por decisión con artifacts y un subagente por opción, auditor de jerarquía y buenas prácticas contra Apple HIG, mejora de una pantalla puntual, normas de diseño base). En definición (brainstorming): aprobado plugin hermano independiente `pignolo-ui`, web agnóstico de framework, 3 subagentes por decisión ajustable a 1, formato DESIGN.md de Google Labs con extensión `pignolo:`, partes 1 y 2 del diseño aprobadas. Investigación técnica de normas UI en `local/research-ui-2026-09-28/INFORME.md` (sin revisar para publicar).
 
 **Fuera de alcance a declarar** (según la investigación con contexto): prompt injection, contenido de scripts invocados, aliases y funciones de `~/.bashrc`, expansión exacta de globs, strings reconstruidos dentro de intérpretes, hooks que vencen, archivos ignorados y submódulos en las instantáneas, rutas 8.3 y enlaces simbólicos, falsificación del interruptor.
 
