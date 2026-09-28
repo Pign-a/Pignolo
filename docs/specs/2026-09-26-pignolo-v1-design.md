@@ -1,7 +1,7 @@
 # pignolo v1 — spec de diseño
 
 Fecha: 2026-09-26 · Autor: Ignacio Agustín Miste (Pigna) · Repo: https://github.com/Pign-a/Pignolo (público, MIT)
-Estado: revisado por `spec-reviewer` y `refuter` (ronda 1); pendiente tarjeta de alcance.
+Estado: revisado por `spec-reviewer` y `refuter` (ronda 1); tarjeta de alcance aprobada. Revisión 2026-09-27: guardia, instantáneas e interruptor rehechos según la auditoría ronda 2 del plan del hito 1 y las dos investigaciones de `docs/research/2026-09-27-*` (decisiones del autor en `docs/STATE.md`).
 
 ## 0. Qué es y para qué
 
@@ -13,7 +13,7 @@ Origen: fork de las skills de `obra/superpowers` (MIT; se reutiliza y modifica t
 
 Medido en **un plan real del proyecto de origen más un conjunto fijo de defectos sembrados** (test decorativo, defensa muerta, comando destructivo indirecto, dato sensible en un aprendizaje, query con dato del proyecto):
 - (a) Ningún defecto sembrado de tipo test decorativo o defensa muerta llega a `int/` sin ser detectado.
-- (b) Todo commit y ref movido o borrado durante el plan es recuperable desde el reflog (que no expira) o un respaldo; el trabajo sin commitear afectado por cualquier comando de shell es recuperable desde la instantánea `refs/pignolo/wip/*` tomada antes de ese comando (capa 3: best-effort, porque la dispara un hook). Se verifica en `tests/backup` incluso con un comando indirecto que la guardia no detecta.
+- (b) Todo commit y ref movido o borrado durante el plan es recuperable desde el reflog (que no expira) o un respaldo; el trabajo sin commitear **no ignorado** afectado por cualquier comando de shell es recuperable desde la instantánea tomada antes de ese comando en el repo sombra `~/.pignolo/shadow/<repo-id>.git` (o en `refs/pignolo/wip/*` mientras la sombra no está sembrada), aun si el comando borró `.git` (capa 3: best-effort, porque la dispara un hook). Se verifica en `tests/backup` incluso con un comando indirecto que la guardia no detecta y con `.git` borrado.
 - (c) Toda pregunta al humano lleva una categoría de la lista cerrada de §4.4; una pregunta sin categoría es una falla y se cuenta.
 - (d) Cada agente corre su suite de evals ≥ 5 veces por caso y aprueba con recall ≥ 80 % en defectos plantados y ≤ 20 % de falsos positivos en diffs limpios; las compuertas deterministas aprueban al 100 %.
 
@@ -26,7 +26,8 @@ Medido en **un plan real del proyecto de origen más un conjunto fijo de defecto
 5. **Costo proporcional al riesgo.** La profundidad de revisión la fija el riesgo; el script da un piso, el modelo solo puede subirlo.
 6. **Contexto acotado.** Lo inyectado depende de lo abierto hoy, nunca del tamaño de la historia.
 7. **Precedencia.** Seguridad: gana siempre el humano (`~/.claude/CLAUDE.md` > `CLAUDE.md` y `.claude/rules/` del proyecto > `.pignolo/project.md` > plugin). Proceso (cómo se resuelve una duda técnica reversible): gana pignolo. `/pignolo:setup` lista los conflictos detectados entre las reglas del usuario y pignolo, y el humano confirma cómo se resuelven. Es una convención aplicada por las skills, no un mecanismo nativo de Claude Code.
-8. **Windows nativo sin sandbox.** El sandbox de Claude Code no existe en Windows nativo; todo control sobre Bash/PowerShell es de lectura del comando y best-effort. Las garantías reales vienen de la capa 2.
+8. **Windows nativo sin sandbox.** El sandbox de Claude Code no existe en Windows nativo; todo control sobre Bash/PowerShell es de lectura del comando y best-effort. Las garantías reales vienen de la capa 2 y de la recuperación fuera del repo (§11.6).
+9. **Modelo de amenaza: agente útil pero falible, no atacante.** La guardia frena errores honestos y formas indirectas comunes; no es una frontera de seguridad (lo mismo declaran la doc de Claude Code, dcg y cc-safety-net). Prompt injection y agentes adversariales quedan fuera de los hooks: para correr en `auto`/`bypassPermissions` con esa amenaza se **recomienda** (no se exige por código) WSL2 con `/sandbox` o un devcontainer. `/pignolo:setup` y el README lo dicen.
 
 ## 2. Forma del plugin
 
@@ -75,8 +76,9 @@ Sin `project.md`: modo conservador (riesgo medio, sin paralelismo, sin `live-che
 
 ### 3.3 Interruptor
 - `/pignolo:off` / `/pignolo:on` (solo humano: `disable-model-invocation: true`). El flag lo escribe un hook `UserPromptExpansion`, que solo se dispara cuando el humano escribe el comando (el modelo no lo alcanza), en `~/.pignolo/disabled` (global) o `.pignolo/.disabled` (proyecto, en `.gitignore`). Los hooks de Edit/Write/Bash bloquean esas rutas para **todos**, incluido el hilo principal. Apagan todos los hooks **salvo** la guardia de git y los respaldos.
-- La guardia y los respaldos solo se apagan arrancando Claude Code con `PIGNOLO_DISABLED=1` en el entorno del proceso; SessionStart y `/pignolo:status` lo muestran en rojo.
-- Los hooks bloquean que cualquier agente escriba esas rutas o invoque esas skills.
+- La guardia y los respaldos solo se apagan arrancando Claude Code con `PIGNOLO_DISABLED=1` en el entorno del proceso; SessionStart y `/pignolo:status` lo muestran en rojo. El **conjunto catastrófico** (§11.6) no se apaga nunca, ni con `PIGNOLO_DISABLED`.
+- Los hooks bloquean que cualquier agente escriba esas rutas o invoque esas skills, resolviendo rutas relativas contra el `cwd` del payload (el `cd` persiste entre comandos) y negando redirecciones con destino dinámico.
+- **El interruptor no es un límite de seguridad:** un agente puede falsificar el stdin del launcher. Por eso nada crítico depende de él: apagarlo no apaga la guardia, los respaldos ni el conjunto catastrófico.
 
 ## 4. Autonomía y decisiones reservadas
 
@@ -212,13 +214,14 @@ El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/as
 `scripts/gate` corre las compuertas **fuera de todo hook** y escribe un sello `{sha, tree-hash, comando, exit, hash del log, hora}` en `~/.pignolo/seals/<repo-id>/` (`repo-id` = hash de la ruta de `git-common-dir`). La integridad de tests se verifica con `git diff --name-only <ref>..HEAD -- <test-paths> <protected-test-config>` contra un commit de referencia (el tag del contrato o el commit del `test-writer`); si falta la referencia, falla cerrado. Un tripwire marca como sospechoso código que detecta el entorno de test (`process.env.VITEST`, `NODE_ENV === 'test'`, etc.).
 
 ### 8.3 Capa 3 — hooks (best-effort, endurecidos)
-- Forma: un **launcher** node fijo que lee stdin sincrónico (`fs.readFileSync(0)`), registra `unhandledRejection`/`uncaughtException` → exit 2, carga el script del hook con `require` dentro de try/catch (un error de sintaxis sale con 2), y usa `timeout` explícito y chico con trabajo acotado. Se invoca en forma exec con `node`, no con `shell: powershell` (que requiere `pwsh`).
-- Límites declarados: un hook que supera el timeout o que no arranca **no bloquea** (doc oficial). Por eso ninguna garantía crítica depende solo de un hook.
+- Forma: un **launcher** node fijo que lee stdin sincrónico (`fs.readFileSync(0)`), registra `unhandledRejection`/`uncaughtException` → exit 2, carga el script del hook con `require` dentro de try/catch (un error de sintaxis sale con 2), y tiene un **plazo interno (~3 s) que, al vencer, niega** (exit 2). El `timeout` del hook en `hooks.json` es holgado (30–60 s): un timeout del host no bloquea, así que el que decide al vencer es el plazo interno, no el host (patrón de dcg). Se invoca en forma exec con `node`, no con `shell: powershell` (que requiere `pwsh`).
+- Límites declarados: un hook que supera el timeout del host o que no arranca **no bloquea** (doc oficial). Por eso ninguna garantía crítica depende solo de un hook.
+- Modo: la guardia lee `permission_mode` del payload. Lo que no puede verificar (§11.6) sale como `deny` en `auto`, `bypassPermissions` y `dontAsk`, y como `ask` en los demás. Lo que la guardia sabe destructivo y no recuperable sale `deny` en todos los modos.
 - Hooks:
   - `SessionStart` (`startup|resume|clear|compact|fork`): canario (§8.4) + nivel caliente (§10.2) + salida de `next`.
   - `SubagentStart`: reinyecta task-card y estado (cubre la auto-compactación de subagentes).
   - `PreToolUse` Bash|PowerShell: guardia de git (§11.6), restricciones de Bash por rol, bloqueo de red salvo `deps-install` y git contra `origin` para implementer/fixer/integrator; el hilo principal no tiene restricción de red (declarado).
-  - `PreToolUse` Edit|Write: `test-paths`/`protected-test-config` en solo lectura para `implementer`/`fixer`; `test-writer` solo en `test-paths`; `.pignolo/state/` solo lo escribe el hilo principal; `INDEX.md` y `accepted/` no editables; rutas del interruptor protegidas.
+  - `PreToolUse` Edit|Write: `test-paths`/`protected-test-config` en solo lectura para `implementer`/`fixer`; `test-writer` solo en `test-paths`; `.pignolo/state/` solo lo escribe el hilo principal; `INDEX.md` y `accepted/` no editables; rutas del interruptor protegidas; **nadie** escribe `.git/**`, `.claude/**` (salvo `.claude/worktrees/`), `.gitconfig` ni `~/.pignolo/**` (cubre `bypassPermissions`, donde la protección nativa de rutas no rige).
   - `PreToolUse` WebSearch|WebFetch|`mcp__.*`: egreso — solo `researcher` usa web; ningún subagente usa MCP; filtro de queries por `pii-patterns` y rutas/identificadores del proyecto (lista, best-effort).
   - `PreToolUse` Agent: deny de subagentes no `pignolo:*`.
   - **handback-gate**: `SubagentStop` (camino principal, matcher `^pignolo:(implementer|fixer|test-writer)$`) y además `PreToolUse` sobre `SubagentHandback` (solo existe en auto mode). Acepta DONE solo si existe un sello con exit 0 para el `tree-hash` del **worktree de la tarea** (ruta registrada en la task-card) y la integridad de tests pasa. En `SubagentStop` respeta `stop_hook_active` y el tope nativo de 8; en `PreToolUse` lleva su propio contador en `~/.pignolo/` y tras 8 bloqueos marca la tarea BLOCKED. El hook nunca corre la suite. `TaskCompleted` fuera de la v1. Se prueba en los dos modos (auto y normal).
@@ -227,7 +230,7 @@ El plugin no puede traer permisos. `/pignolo:setup` propone la plantilla deny/as
 - Cada bloqueo nombra una alternativa que funciona.
 
 ### 8.4 Canario
-`SessionStart` ejecuta un comando plantado contra la guardia; si no se bloquea, avisa en rojo que la guardia está caída. SessionStart no puede bloquear: el canario solo avisa.
+`SessionStart` ejecuta, a través del launcher real, **un comando plantado por familia** de la guardia (catastrófico, git destructivo, ejecución no literal, PowerShell por AST, Edit/Write protegido); si alguno no se bloquea, avisa en rojo qué familia está caída. También verifica que el repo sombra exista o se esté sembrando. SessionStart no puede bloquear: el canario solo avisa.
 
 ## 9. Tests
 
@@ -301,9 +304,32 @@ Tareas sin dependencias, con archivos disjuntos (verificado por script sobre tas
 Sin stash salvo etiquetado y aplicado por SHA; commits WIP. `git show ref:path`, nunca `git checkout ref -- path`. Limpieza: `status --porcelain` → backup → `worktree remove` sin `--force` → `branch -d`. Al arrancar se marcan ramas > 7 días sin actividad y worktrees sucios. `/pignolo:cleanup` propone; el humano borra.
 
 ### 11.6 Guardia de git y respaldos
-- **Respaldos**: `scripts/backup-ref` guarda una instantánea de todas las refs al empezar cada sesión y antes de cada despacho; `scripts/wip-snapshot` guarda el árbol sucio (commit huérfano armado con un índice temporal —`GIT_INDEX_FILE` + `git add -A` + `write-tree` + `commit-tree`— y `git update-ref refs/pignolo/wip/<ts>`, sin tocar el árbol ni el índice; captura modificados, borrados y nuevos **no ignorados**, a diferencia de `git stash create`, que deja afuera los archivos sin seguimiento) **antes de todo comando de Bash/PowerShell, sin clasificarlo**, y antes de cada despacho. Ambos los disparan hooks: son capa 3 (best-effort; no corren si el hook vence o no arranca). Lo único independiente de los hooks es la política de reflog: `/pignolo:init` fija `gc.reflogExpire=never` y `gc.reflogExpireUnreachable=never` en el `.git/config` local, que protege todo lo commiteado. Las instantáneas `refs/pignolo/wip/*` se podan a los 14 días en `close-session`.
-- **Guardia** (capa 3, best-effort): bloquea `stash`/`pop`/`drop` sin etiqueta, `checkout`/`restore` con ruta (salvo `scripts/sabotage`), `reset --hard`, `clean -f`, `branch -D`, `worktree remove --force`, `--no-verify`, `gc --prune`, `reflog expire`, `push --force` sobre ramas compartidas, `git config alias.*`, y formas indirectas conocidas (`git -C`, `node -e`/`python -c` que invoquen git, `Invoke-Expression`, `& $var`, `Start-Process git`, `cmd /c`, `bash -c`, ejecución de scripts recién escritos por un agente). En PowerShell solo se permite una allowlist de formas simples de git. Pide confirmación para push, merge a `main` y borrado de ramas/tags. Rechaza lo que no puede parsear.
-- Borrados que no pasan por git (`rm`, `Remove-Item`, `Write` sobre un archivo con cambios) solo quedan cubiertos por los WIP snapshots y commits frecuentes: declarado.
+La red real es la **recuperación fuera del repo**; la guardia es una capa contra errores honestos (§1.9). Un respaldo dentro de `.git` muere con `.git`.
+
+**Respaldos**
+- **Repo sombra** `~/.pignolo/shadow/<repo-id>.git` (`repo-id` de §8.2): almacén de objetos propio (sin `alternates`, que se corrompe si el repo pierde objetos), invocado siempre con `--git-dir` y `--work-tree` explícitos, sin `core.worktree` persistido y sin tocar nunca el `.git` del usuario ni `.git` anidados (lección del issue #9590 de Cline). `core.autocrlf=false` para guardar byte a byte; copia `.git/info/exclude` del repo. Se **siembra** en `SessionStart` en segundo plano (`fetch` de `HEAD` desde el repo + `read-tree`; medido: ~2 s en un repo de 20.000 archivos; sin sembrar, la primera instantánea tarda ~60 s). Índice persistente **por sesión** (evita peleas por `index.lock` entre sesiones y reusa el stat cache).
+- `scripts/wip-snapshot` toma la instantánea **antes de todo comando de Bash/PowerShell, sin clasificarlo**, y antes de cada despacho: `add -A` sobre el índice de la sombra + `write-tree` + `commit-tree` + ref en la sombra (medido: ~0,2 s incremental). Captura modificados, borrados y nuevos **no ignorados**; los ignorados (`.env`, `node_modules`) no se capturan, por volumen y para no copiar secretos (decisión del autor). Submódulos y repos anidados quedan como gitlink, sin contenido.
+- Mientras la sombra no está sembrada, `wip-snapshot` cae al modo anterior dentro del repo: commit huérfano con índice temporal (`GIT_INDEX_FILE` + `add -A` + `write-tree` + `commit-tree`) y `update-ref refs/pignolo/wip/<ts>`, sin tocar árbol ni índice (~0,3 s). Esa copia no sobrevive a borrar `.git` y se declara así.
+- `scripts/backup-ref`: instantánea de todas las refs al empezar cada sesión y antes de cada despacho, más un `git bundle --all` a `~/.pignolo/bundles/<repo-id>/` al arrancar la sesión (protege lo commiteado aun sin `.git`). `git bundle` **no** sirve como almacén de WIP: uno incremental depende de objetos del `.git` que se quiere proteger.
+- Todo lo anterior lo disparan hooks: capa 3 (best-effort; no corre si el hook no arranca). Lo único independiente de los hooks es la política de reflog: `/pignolo:init` fija `gc.reflogExpire=never` y `gc.reflogExpireUnreachable=never` en el `.git/config` local.
+- Retención: las refs `refs/pignolo/wip/*` se podan a los 14 días en `close-session`. **Disco y retención del repo sombra y de los bundles: pendiente del autor** (hasta decidir, la implementación no poda la sombra).
+
+**Conjunto catastrófico** (siempre activo, incluso con `PIGNOLO_DISABLED` y con `/pignolo:off`; `deny` en todos los modos)
+- Cualquier `rm`, `rmdir`, `Remove-Item`, `rd`, `del`, `find -delete`, `mv`, `Move-Item` o `robocopy /MIR` cuyo operando sea `.git`, `~/.pignolo`, `~` o la raíz del repo, **o** cuyo operando tenga glob, variable o sustitución y esté en la raíz del repo o en `.git`/`~/.pignolo`. No se intenta expandir el glob: se niega por forma.
+- Escrituras con Edit/Write en `.git/**`, `.claude/**` (salvo `.claude/worktrees/`), `.gitconfig` y `~/.pignolo/**` (§8.3).
+
+**Guardia de shell** (capa 3, best-effort)
+- *Principio:* primero se reconoce lo seguro, después se busca lo destructivo (patrón de dcg). El disparador no es "el texto menciona git" (demasiado amplio para `grep "git reset" tests/`, demasiado estrecho para `… | base64 -d | sh`), sino **"hay ejecución que no se ve como argv literal"**.
+- *Fail-closed estructural* (lo no verificable: `deny`/`ask` según el modo, §8.3): parseo fallido, JSON del payload inválido o tope de recursión alcanzado, sin mirar el texto; nombre de comando dinámico (`$x`, `$(…)`, `"$(…)"`); sumideros de ejecución (`eval`, `source`/`.` de algo no literal, sustitución de procesos como programa, shell o intérprete que lee stdin, `-c`/`-e`/`-E`/`-r` con código, `awk system`, `sed e` y `s///e`, `perl`/`ruby`/`python`/`node`/`php` con código, `find -exec` con un primitivo de ejecución); un comando **desconocido** con un token `git` en argv; subcomandos de git que lanzan shell (`rebase -x/--exec`, `submodule foreach`, `bisect run`, `difftool -x/--extcmd`, `mergetool`, `filter-branch`, `-c core.editor|sequence.editor|core.pager|core.fsmonitor|core.hooksPath|alias.*=…`).
+- *Wrappers conocidos* se quitan y se reevalúa lo envuelto: `timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, `noglob`, `xargs`, `env`, `watch`, `setsid`, `ionice`, `flock`, `winpty`, `script -c`, `strace`, `sudo`, `chronic`, `unbuffer`.
+- *Reglas de git.* `deny` (no recuperable localmente o anula verificaciones): `send-pack`, `push --mirror`, `push --force`/`+ref` sobre ramas compartidas, `fetch +src:dst` sobre la rama activa, `--no-verify`/`-n` en `commit`/`merge`/`rebase`/`am`/`push`, `gc --prune`, `reflog expire`, toda escritura de `git config` salvo una allowlist de claves. `deny` (pierde trabajo sin commitear): `stash`/`pop`/`drop` sin etiqueta, `checkout`/`restore` con ruta (salvo `scripts/sabotage`), `reset --hard`, `clean -f`, `worktree remove --force`. `ask` (recuperable por reflog y respaldo de refs): `branch -D`, `update-ref`/`symbolic-ref` fuera de `refs/pignolo/`, `checkout -B`/`switch -C` sobre rama existente, push, merge a `main`, borrado de ramas y tags. `-C`/`--git-dir`/`--work-tree` se permiten con subcomandos de solo lectura y se niegan con destructivos.
+- *Aliases de git:* `SessionStart` lee `git config --get-regexp '^alias\.'`; `git <alias>` se evalúa como su expansión, y un alias que empieza con `!` se niega.
+- *PowerShell:* se parsea con el **AST nativo** (`powershell.exe -NoProfile`, `System.Management.Automation.Language.Parser`; medido: ~0,2 s por comando, costo aceptado por el autor). Se niega todo `CommandAst` con nombre no literal, `InvokeMemberExpressionAst` sobre `[scriptblock]`, `[Diagnostics.Process]`, `$ExecutionContext` o `.InvokeScript`, `Set-Alias`/`New-Alias` hacia `iex`/`git`/`Invoke-*`, `-EncodedCommand`, `Invoke-Expression`, `Start-Job`/`Invoke-Command -ScriptBlock`. Una asignación con un `CommandAst` literal (`$b = git rev-parse HEAD`) se permite. Si `powershell.exe` no arranca o no parsea: fail-closed.
+- *Diagnóstico:* `node plugins/pignolo/lib/git-guard.js --explain "<cmd>"` imprime la traza de la decisión, para revisores y para el corpus.
+
+**Fuera de alcance, declarado** (registro de riesgo residual en `tests/guard/residual-risk.md`): prompt injection y agentes adversariales (§1.9); el contenido de scripts invocados (`node x.js`, `bash x.sh`); aliases y funciones de `~/.bashrc`, mutación de `PATH` o `IFS`; expansión exacta de globs, llaves e `IFS` (la sustituye la regla conservadora del conjunto catastrófico); strings reconstruidos dentro de intérpretes; hooks que vencen o no arrancan; archivos ignorados y contenido de submódulos en las instantáneas; rutas 8.3 y enlaces simbólicos; falsificación del interruptor; borrados de `~/.pignolo` por procesos que no pasan por Bash/PowerShell. Borrados que no pasan por git (`rm`, `Remove-Item`, `Write` sobre un archivo con cambios) quedan cubiertos solo por las instantáneas y los commits frecuentes.
+
+**Registro de riesgo residual:** cada escape nuevo se clasifica una sola vez, en orden fijo (patrón de cc-safety-net): fuera de alcance → debe arreglarse (catastrófico o forma realista) → familia existente → construido sin procedencia realista. Una familia nueva exige un clasificador independiente (`refuter`). Tope: una pasada de arreglos y una revisión de confirmación por ronda de auditoría; después se clasifica, para cortar la carrera de parches al parser.
 
 ## 12. Revisión
 
@@ -333,8 +359,8 @@ Dudas de hecho, no autorizaciones: (1) repo; (2) memoria; (3) `researcher` (preg
 ## 15. Pruebas del plugin
 
 Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings del usuario) para comportamiento de agentes. Las suites de agentes con Bash/PowerShell requieren **WSL2** (Windows nativo no tiene backend de evals) y corren en sandbox, que no es su comportamiento real en Windows nativo: esa diferencia se cubre con el checklist manual; scripts node para lo determinista; `tests/manual/` con checklist interactivo (TUI, canario, permisos aplicados, precedencia) y evidencia registrada por release.
-- `guard`: cada comando peligroso y forma indirecta; `PIGNOLO_DISABLED`; `/pignolo:off` no apaga la guardia; error de sintaxis, promesa rechazada y excepción del hook → exit 2; timeout documentado como fail-open conocido.
-- `backup`: un comando indirecto no detectado que pierde trabajo → recuperable desde `refs/pignolo/wip` o el reflog.
+- `guard`: corpus `must-block` (incluidos los 119 comandos de la auditoría ronda 2, clasificados contra el registro de riesgo residual) y corpus `must-allow` (comandos reales de las transcripciones del autor, sin datos del proyecto, para medir falsos positivos); `deny` vs. `ask` según `permission_mode`; conjunto catastrófico activo con `PIGNOLO_DISABLED` y con `/pignolo:off`; `/pignolo:off` no apaga la guardia; error de sintaxis, promesa rechazada, excepción del hook y plazo interno vencido → exit 2; timeout del host documentado como fail-open conocido; PowerShell sin `powershell.exe` → fail-closed.
+- `backup`: un comando indirecto no detectado que pierde trabajo → recuperable desde el repo sombra; lo mismo **después de borrar `.git`**; sin sombra sembrada → recuperable desde `refs/pignolo/wip` o el reflog; un archivo ignorado no se captura (declarado).
 - `gates`: compuerta vacía en `code-untested` no da verde; test o config protegidos alterados → handback-gate rechaza; sello ausente o de otro `tree-hash` → rechaza.
 - `risk`: un diff plantado por cada tripwire (ruta y contenido) → reservada.
 - `next`: recorridos interrumpidos (ola cortada, `queue/` con conflicto, tarea BLOCKED, compactación).
@@ -350,7 +376,7 @@ Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings
 - `present`: con `presentation: text` nunca se publica un artifact; el artifact de una decisión tiene exactamente las mismas opciones que su texto; un dato de `pii-patterns` bloquea la publicación.
 - `agents` (≥ 5 corridas por caso, umbrales de §0d): explorer, researcher, spec-reviewer (incluye scope-card con "agregado sin pedirlo"), plan-auditor (plan que no compila), test-writer, implementer (intenta tocar un test), lentes (diff con defecto y diff limpio), review-testability (test decorativo), refuter (hallazgo falso), jueces, fixer, validator, integrator, learning-validator (aprendizaje inventado y con dato sensible), debugger.
 - `agents-tools`: herramientas de cada agente vs. lo que su prompt le pide.
-- `canary`: guardia caída detectada al arrancar.
+- `canary`: cada familia de la guardia caída se detecta al arrancar, por separado; sombra ausente se avisa.
 - `resume`: plan a mitad, `/compact`, la próxima acción es la correcta.
 
 ## 16. Evolución, métricas y alarmas
@@ -367,7 +393,7 @@ Evals con `claude plugin eval` (no interactivos, no cargan CLAUDE.md ni settings
 ## 18. Construcción (v1 completa, con hitos internos)
 
 Cada hito se cierra con sus tests de §15 en verde antes de empezar el siguiente:
-1. Esqueleto, config, interruptor, launcher de hooks, canario, guardia de git, respaldos (`backup-ref`, `wip-snapshot`), plantilla de permisos. Tests: `guard`, `backup`, `canary`.
+1. Esqueleto, config, interruptor, launcher de hooks, canario, conjunto catastrófico, guardia de shell (bash estructural y PowerShell por AST), hook de Edit/Write sobre rutas protegidas, respaldos (repo sombra, `backup-ref`, `wip-snapshot`), plantilla de permisos. Tests: `guard`, `backup`, `canary`.
 2. Agentes, perfiles, `setup` (incluida la detección de conflictos de reglas). Tests: `agents-tools`, `agents` (explorer, researcher).
 3. Carriles `trivial`/`daily`, `risk`, `gate` y sellos, handback-gate, revisión, ledger, refuter, Judgment Day. Tests: `risk`, `gates`, `agents` (lentes, refuter, jueces, fixer).
 4. Tests: test-writer, cards, sabotaje, integridad por diff, holdout, mutación opcional. Tests: `sabotage`, `holdout`, `agents` (test-writer, implementer, review-testability).
