@@ -11,7 +11,7 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 
 ## Investigaciones terminadas (2026-09-27)
 
-- **Ciega** (sin contexto del proyecto): cómo resuelven otras herramientas la protección contra comandos destructivos, la recuperación y la revisión entre agentes. Informe en `C:\Users\pigna\AppData\Local\Temp\pignolo-research\blind.md`: el agente no tuvo permiso para escribir en este repo; **pendiente moverlo a `docs/research/2026-09-27-seguridad-agentes-ciego.md` con el ok del autor** (si se perdió, relanzarla).
+- **Ciega** (sin contexto del proyecto): cómo resuelven otras herramientas la protección contra comandos destructivos, la recuperación y la revisión entre agentes. Informe en `docs/research/2026-09-27-seguridad-agentes-ciego.md` (movido con el ok del autor tras revisar que no tiene datos privados).
 - **Con contexto**: `docs/research/2026-09-27-seguridad-agentes-contexto.md` (tabla F1–F12 → arreglo, mediciones propias en un repo sintético de 20.000 archivos).
 
 **En qué coinciden las dos:**
@@ -19,7 +19,7 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 - La red real es la recuperación **fuera del repo**; un respaldo dentro de `.git` muere con `.git`. Codex es el único que deja `.git` en solo lectura por defecto, y el único con sandbox nativo en Windows. El sandbox de Claude Code no existe en Windows nativo y sus checkpoints no cubren lo que hace Bash.
 - Ante lo que no se puede analizar: bloquear (fail-closed).
 
-**Propuesta que sale de cruzarlas** (a confirmar por el autor):
+**Propuesta que sale de cruzarlas** (**aprobada por el autor el 2026-09-27**, tal cual):
 1. **Modelo de amenaza escrito:** agente útil pero falible, no atacante. Lo adversarial (prompt injection, modos `auto`/`bypass`) se deriva a WSL2 con sandbox o a un devcontainer.
 2. **Instantáneas en un repo sombra** `~/.pignolo/shadow/<repo-id>.git`, sembrado en SessionStart, índice persistente (medido: 0,22 s por instantánea incremental; 2,1 s sembrado con `fetch`; 60 s sin sembrar). No `git bundle` (el incremental depende de objetos del `.git` que se quiere proteger) ni alternates. Las refs WIP dentro del repo quedan como segunda copia mientras la sombra no esté sembrada.
 3. **Conjunto catastrófico siempre activo:** `rm`/`Remove-Item`/`find -delete`/`mv` sobre `.git` o `~/.pignolo`, o con glob/variable en la raíz del repo → bloqueo.
@@ -31,17 +31,22 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 9. **Interruptor declarado como falsificable** (no es un límite de seguridad; ya no apaga la guardia).
 10. **Corpus de tests:** lo que debe bloquearse y lo que debe pasar (sacado de transcripciones reales), registro de riesgo residual y un canario por familia.
 
+## Decisiones del autor (2026-09-27)
+
+1. Propuesta de 10 puntos: **aprobada tal cual**.
+2. Ante lo no verificable: **según el modo**, `deny` en `auto`/`bypass`/`dontAsk`, `ask` en interactivo.
+3. El conjunto catastrófico **no** se apaga con `PIGNOLO_DISABLED`.
+4. Se pagan **~0,2 s por comando PowerShell** por el AST nativo.
+5. El repo sombra **no** captura archivos ignorados.
+6. WSL2 con sandbox (o devcontainer) para `auto`/`bypass` adversariales: **se documenta como recomendación**, no se exige por código.
+7. Push: **todavía no**; los commits locales quedan sin subir hasta que el autor diga.
+
 ## Decisiones pendientes del autor
 
-1. Aprobar la propuesta de arriba (o ajustarla).
-2. `deny` o `ask` ante lo no verificable, según `permission_mode` (recomendación: `deny` en `auto`/`bypass`/`dontAsk`, `ask` en interactivo).
-3. Umbral aceptable de falsos positivos (nadie publica tasas; medir con transcripciones propias).
-4. Disco y retención del repo sombra; si captura archivos ignorados (recomendación: no).
-5. Si el conjunto catastrófico se apaga con `PIGNOLO_DISABLED` (recomendación: no).
-6. Si se pagan ~0,2 s por comando PowerShell por el AST nativo.
-7. Si se exige WSL2 con sandbox para los modos `auto`/`bypass`.
-8. Pushear `f5648ed` y `918ced3` a `Pign-a/Pignolo` (repo público).
-9. Cómo ejecutar el hito 1: subagentes (recomendado) o ejecución directa.
+1. Umbral aceptable de falsos positivos (nadie publica tasas; medir con transcripciones propias).
+2. Disco y retención del repo sombra.
+3. Pushear los commits locales a `Pign-a/Pignolo` (repo público).
+4. Cómo ejecutar el hito 1: subagentes (recomendado) o ejecución directa.
 
 **Fuera de alcance a declarar** (según la investigación con contexto): prompt injection, contenido de scripts invocados, aliases y funciones de `~/.bashrc`, expansión exacta de globs, strings reconstruidos dentro de intérpretes, hooks que vencen, archivos ignorados y submódulos en las instantáneas, rutas 8.3 y enlaces simbólicos, falsificación del interruptor.
 
