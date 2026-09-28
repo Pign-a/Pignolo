@@ -45,10 +45,16 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 9. Umbral de falsos positivos: **síntesis** (núcleo en 0, deny ≤ 2 comandos distintos, ask ≤ 1 % interactivo, deny+ask ≤ 1 % en modos autónomos; spec §15).
 10. Método: toda pregunta de decisión pasa antes por un debate con un agente opus por opción; 8 y 9 se decidieron así.
 
+11. El autor pide que pignolo sea **simple** de entender y de usar, y delega lo técnico ("fijate vos"). Solo se le pregunta lo reservado en `CLAUDE.md`.
+
+## Decisiones técnicas del agente
+
+- Ejecución del hito 1: **con subagentes**, un implementador por tarea y un revisor opus por tarea. Motivo: cada tarea es larga y autocontenida, y el revisor independiente es parte del método. Queda en una sola rama local, sin push.
+- Antes de reescribir el plan, una **pasada de simplificación** sobre §11.6 con lo que mida el agente de la guardia: se recorta lo que agrega complejidad sin frenar nada en el corpus.
+
 ## Decisiones pendientes del autor
 
 1. Pushear los commits locales a `Pign-a/Pignolo` (repo público).
-2. Cómo ejecutar el hito 1: subagentes (recomendado) o ejecución directa.
 
 ## En curso
 
