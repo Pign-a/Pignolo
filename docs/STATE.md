@@ -52,7 +52,7 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 
 ## Siguiente paso después de decidir
 
-1. Rehacer el diseño de la guardia y las instantáneas en el spec (§8, §11.6) según lo aprobado, y reescribir las tareas afectadas del plan. Un agente opus corrige F1–F12 en una copia de trabajo (partiendo de la réplica de `local/audits/2026-09-27-auditoria-2/repo/`), con rojo y verde demostrados, y recién ahí pasa el código al plan.
+1. ~~Rehacer el diseño de la guardia y las instantáneas en el spec~~ (hecho el 2026-09-27, `19bc9f3`: §0b, §1.9, §3.3, §8.3, §8.4, §11.6, §15, §18). Falta reescribir las tareas afectadas del plan (3a, 3b, 4, 5, 7 y probablemente 2 por el plazo interno del launcher). Un agente opus corrige F1–F12 en una copia de trabajo (partiendo de la réplica de `local/audits/2026-09-27-auditoria-2/repo/`), con rojo y verde demostrados, y recién ahí pasa el código al plan.
 2. Tercera auditoría independiente del plan corregido.
 3. Ejecutar el hito 1 y correr el checklist manual `tests/manual/hito-1.md` en una sesión real.
 
