@@ -12,9 +12,12 @@ class YamlLiteError extends Error {
 
 const KEY_RE = /^([A-Za-z0-9_][A-Za-z0-9_.-]*):(?:\s+(.*))?$/;
 
-function scalar(raw) {
+// Una lista o un mapa en línea (`[a, b]`, `{k: v}`) no es parte del subconjunto: tomarlo como
+// texto apagaría en silencio lo que declara (p. ej. test-paths).
+function scalar(raw, n) {
   const s = raw.trim();
   if (s.length >= 2 && (s[0] === '"' || s[0] === "'") && s[s.length - 1] === s[0]) return s.slice(1, -1);
+  if (s[0] === '[' || s[0] === '{') throw new YamlLiteError(n, `"${s}" es una lista o un mapa en línea; usá la lista en bloque ("  - item") o el mapa en bloque ("  clave: valor"), o ponelo entre comillas si es texto`);
   if (s === 'true') return true;
   if (s === 'false') return false;
   return s;
@@ -53,7 +56,7 @@ function parseFrontmatter(text) {
         data[key] = null;
         current = { key, kind: null, indent: null };
       } else {
-        data[key] = scalar(m[2]);
+        data[key] = scalar(m[2], n);
         current = null;
       }
       return;
@@ -65,7 +68,7 @@ function parseFrontmatter(text) {
     if (content === '-' || content.startsWith('- ')) {
       if (current.kind === 'map') throw new YamlLiteError(n, 'mezcla de lista y mapa bajo la misma clave');
       if (current.kind === null) { current.kind = 'list'; data[current.key] = []; }
-      data[current.key].push(scalar(content.slice(1)));
+      data[current.key].push(scalar(content.slice(1), n));
       return;
     }
     const m = KEY_RE.exec(content);
@@ -74,7 +77,7 @@ function parseFrontmatter(text) {
     if (current.kind === null) { current.kind = 'map'; data[current.key] = {}; }
     if (m[2] === undefined || m[2].trim() === '') throw new YamlLiteError(n, 'más de un nivel de anidación');
     if (Object.prototype.hasOwnProperty.call(data[current.key], m[1])) throw new YamlLiteError(n, `clave repetida "${m[1]}"`);
-    data[current.key][m[1]] = scalar(m[2]);
+    data[current.key][m[1]] = scalar(m[2], n);
   });
   return { data, body: parts.body };
 }

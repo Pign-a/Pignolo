@@ -29,6 +29,9 @@ test('errores con número de línea', async (t) => {
     ['mezcla lista y mapa', fm('x:\n  - a\n  k: v'), 4],
     ['línea sin clave', fm('type: docs\nsolo texto'), 3],
     ['sin cierre', '---\ntype: docs\n', null],
+    ['I3: lista en línea', fm('test-paths: [tests/**]'), 2],
+    ['I3: mapa en línea', fm('gates: { on-done: npm test }'), 2],
+    ['I3: ítem de lista en línea', fm('x:\n  - [a, b]'), 3],
   ];
   for (const [name, text, line] of cases) {
     await t.test(name, () => {
