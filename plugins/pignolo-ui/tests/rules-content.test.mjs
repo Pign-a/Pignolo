@@ -2,12 +2,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { runCheck } from '../lib/ui-check.mjs';
+import { makeTempDir } from './helpers.mjs';
 
 async function run(file, text) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-content-'));
+  const dir = makeTempDir('ui-content-');
   try {
     fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     fs.writeFileSync(path.join(dir, file), text);
