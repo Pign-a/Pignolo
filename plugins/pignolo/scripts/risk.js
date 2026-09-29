@@ -7,6 +7,21 @@ const { assessRisk } = require('../lib/risk');
 const { readProjectConfig } = require('../lib/project-config');
 const { workingTree, changedFiles, addedLines } = require('../lib/changes');
 
+const { gitRun, isGitFailure } = require('../lib/git');
+
+const CLI_TIMEOUT_MS = 10000; // la CLI no corre bajo el plazo de 3 s de un hook
+
+// HEAD existe (el repo tiene commits). Solo un fallo de git dice que no; un plazo vencido se propaga.
+function hasHead(cwd) {
+  try {
+    gitRun(['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], cwd, { timeout: CLI_TIMEOUT_MS });
+    return true;
+  } catch (e) {
+    if (isGitFailure(e)) return false;
+    throw e;
+  }
+}
+
 const USAGE = 'uso: node risk.js (--files-from <archivo> [--deleted <ruta>]... | --diff <base>) [--cwd <dir>] [--ref <sha>]\n';
 
 function parseArgs(argv) {
@@ -31,11 +46,11 @@ function main() {
     return 2;
   }
   const cwd = path.resolve(o.cwd || process.cwd());
+  // project.md desde el commit (HEAD o --ref); la copia de trabajo solo en un repo sin commits.
   let config;
-  if (o.ref) config = readProjectConfig({ root: cwd, ref: o.ref });
-  else {
-    try { config = readProjectConfig({ root: cwd, ref: 'HEAD' }); } catch (_) { config = readProjectConfig({ root: cwd }); }
-  }
+  if (o.ref) config = readProjectConfig({ root: cwd, ref: o.ref, timeoutMs: CLI_TIMEOUT_MS });
+  else if (hasHead(cwd)) config = readProjectConfig({ root: cwd, ref: 'HEAD', timeoutMs: CLI_TIMEOUT_MS });
+  else config = readProjectConfig({ root: cwd });
   let files;
   let lines = [];
   if (o.filesFrom !== undefined) {

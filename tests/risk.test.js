@@ -117,6 +117,19 @@ test('exported-signature: formas de CommonJS y de Python', () => {
   assert.deepEqual(indent.hits, []);
 });
 
+test('I5: module.exports = {…} dispara solo si falta un nombre; un comentario no dispara', async (t) => {
+  const sig = (lines) => assessRisk({ files: [f('src/a.js')], lines, config: CFG }).hits.some((h) => h.tripwire === 'exported-signature');
+  await t.test('{ a } -> { a, b }: no', () => {
+    assert.equal(sig([del('src/a.js', 'module.exports = { a };'), add('src/a.js', 'module.exports = { a, b };')]), false);
+  });
+  await t.test('{ a, b } -> { a }: sí', () => {
+    assert.equal(sig([del('src/a.js', 'module.exports = { a, b };'), add('src/a.js', 'module.exports = { a };')]), true);
+  });
+  await t.test('comentario que menciona module.exports: no', () => {
+    assert.equal(sig([del('src/a.js', '// antes se usaba module.exports = x')]), false);
+  });
+});
+
 test('nivel y piso sin tripwires', () => {
   const chico = assessRisk({ files: [f('src/util.js')], lines: [add('src/util.js', 'a();', 1), add('src/util.js', 'b();', 2), del('src/util.js', 'c();', 3)], config: CFG });
   assert.equal(chico.level, 'low');
@@ -195,4 +208,27 @@ test('CLI sin argumentos: exit 2 con el uso', () => {
   const r = cli([], makeTempDir());
   assert.equal(r.status, 2);
   assert.match(r.stderr, /--files-from|--diff/);
+});
+
+test('M5: CLI cae a la copia de trabajo de project.md solo sin commits; un project.md inválido en HEAD es error', () => {
+  const pm = (dir, type) => {
+    fs.mkdirSync(path.join(dir, '.pignolo'), { recursive: true });
+    fs.writeFileSync(path.join(dir, '.pignolo', 'project.md'), `---\ntype: ${type}\n---\n`);
+  };
+  const list = path.join(makeTempDir(), 'files.txt');
+  fs.writeFileSync(list, 'src/a.js\n');
+  const empty = makeTempDir();
+  git(['init', '-q'], empty);
+  pm(empty, 'docs');
+  const r0 = cli(['--files-from', list, '--cwd', empty], empty);
+  assert.equal(r0.status, 0, r0.stderr);
+  assert.equal(JSON.parse(r0.stdout).config.found, true);
+  const repo = makeRepo();
+  pm(repo, 'nope');
+  git(['add', '-f', '.pignolo/project.md'], repo);
+  git(['commit', '-q', '-m', 'pm'], repo);
+  pm(repo, 'docs');
+  const r = cli(['--files-from', list, '--cwd', repo], repo);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /project\.md/);
 });

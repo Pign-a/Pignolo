@@ -59,11 +59,25 @@ const CONTENT = {
   'log-level': [/\bLOG_LEVEL\b/, /\blogLevel\b/, /\.setLevel\s*\(/, /\blevel\s*:\s*['"](debug|trace)['"]/, /\bconsole\.debug\s*\(/],
 };
 
-// Nombre exportado de una línea con forma de firma, o null.
+// `module.exports = { a, b: c, ...d };` en una línea: los nombres exportados, o null.
+const CJS_OBJECT = /^\s*module\.exports\s*=\s*\{(.*)\}\s*;?\s*$/;
+function cjsNames(text) {
+  const m = CJS_OBJECT.exec(text);
+  if (!m) return null;
+  const names = new Set();
+  for (const part of m[1].split(',')) {
+    const n = /^\s*(?:\.\.\.\s*)?['"]?([A-Za-z_$][\w$]*)/.exec(part);
+    if (n) names.add(n[1]);
+  }
+  return names;
+}
+
+// Nombre exportado de una línea con forma de firma, o null. Solo al comienzo de la línea
+// (un comentario que menciona module.exports no es una firma).
 function exportName(text, file) {
   let m = /^\s*export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|class|const|let|interface|type|enum)\s+(\w+)/.exec(text);
   if (m) return m[1];
-  if (/module\.exports/.test(text)) return 'module.exports';
+  if (/^\s*module\.exports\b/.test(text)) return 'module.exports';
   m = /^\s*exports\.(\w+)\s*=/.exec(text);
   if (m) return m[1];
   if (/\.pyi?$/.test(file)) {
@@ -121,8 +135,14 @@ function assessRisk({ files = [], lines = [], config } = {}) {
 
   const isTest = (p) => matchAny(cfg.testPaths, p);
   const removed = new Map(); // ruta -> nombres de firmas quitadas
+  const cjsAdded = new Map(); // ruta -> nombres de `module.exports = {…}` agregados
   for (const l of lines) {
-    if (l.sign !== '-' || isTest(l.path)) continue;
+    if (l.sign !== '+' || isTest(l.path)) continue;
+    const names = cjsNames(l.text);
+    if (names) cjsAdded.set(l.path, new Set([...(cjsAdded.get(l.path) || []), ...names]));
+  }
+  for (const l of lines) {
+    if (l.sign !== '-' || isTest(l.path) || cjsNames(l.text)) continue;
     const n = exportName(l.text, l.path);
     if (n) {
       if (!removed.has(l.path)) removed.set(l.path, new Set());
@@ -136,14 +156,20 @@ function assessRisk({ files = [], lines = [], config } = {}) {
     }
     if (isTest(l.path)) continue;
     if (l.sign === '-') {
-      if (exportName(l.text, l.path)) hit('exported-signature', l.path, 'firma exportada quitada o cambiada', l.line);
+      const names = cjsNames(l.text);
+      if (names) {
+        // module.exports = {…}: dispara solo si falta alguno de los nombres quitados.
+        const added = cjsAdded.get(l.path) || new Set();
+        const gone = [...names].filter((n) => !added.has(n));
+        if (gone.length) hit('exported-signature', l.path, `export quitado: ${gone.join(', ')}`, l.line);
+      } else if (exportName(l.text, l.path)) hit('exported-signature', l.path, 'firma exportada quitada o cambiada', l.line);
       continue;
     }
     if (l.sign !== '+') continue;
     for (const [id, res] of Object.entries(CONTENT)) {
       if (res.some((r) => r.test(l.text))) hit(id, l.path, l.text.trim().slice(0, 120), l.line);
     }
-    const n = exportName(l.text, l.path);
+    const n = cjsNames(l.text) ? null : exportName(l.text, l.path);
     if (n && removed.get(l.path)?.has(n)) hit('exported-signature', l.path, `firma de ${n} cambiada`, l.line);
   }
 
