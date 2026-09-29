@@ -126,6 +126,17 @@ test('a cd that may fail or not run leaves the directory unknown: a glob or .g* 
   assert.strictEqual(evaluate(`cd ..; rm -rf ${path.basename(repo)}`, { cwd: repo }).rule, 'catastrophic-delete');
 });
 
+// Protects: cd negado (M7, revisión final) · Breaks if: tras `! cd x`, la guardia da por
+// hecho que el directorio cambió, aunque con `&&` lo que sigue corre justo cuando el cd falló.
+test('after a negated cd the directory is unknown: a glob or .g* after it is catastrophic (M7)', () => {
+  const repo = makeRepo();
+  for (const cmd of ['! cd /nope && rm -rf .g*', '! cd /tmp; rm -rf *', '! pushd /tmp && rm -rf .gi?']) {
+    assert.strictEqual(evaluate(cmd, { cwd: repo }).rule, 'catastrophic-delete', cmd);
+    assert.strictEqual(evaluate(cmd, { cwd: repo, onlyCatastrophic: true }).decision, 'block', cmd);
+  }
+  assert.strictEqual(evaluate('! cd /tmp && rm -rf dist', { cwd: repo, mode: 'bypassPermissions' }).decision, 'allow');
+});
+
 test('shell writes into protected paths are catastrophic (F11)', () => {
   for (const cmd of ['echo x > .git/HEAD', 'cp a ~/.gitconfig', 'touch ~/.pignolo/disabled', 'G=.git; echo x > $G/HEAD']) {
     const v = evaluate(cmd, { onlyCatastrophic: true });

@@ -203,7 +203,7 @@ const WRAPPERS = {
   script: { val: ['-t', '-T', '-I', '-O', '-B', '-E', '-m'], code: /^(-[a-zA-Z]*c|--command)$/, needsCode: true },
   watch: { val: ['-n', '--interval'], joined: true },
   xargs: { val: ['-I', '-n', '-P', '-L', '-l', '-s', '-d', '-E', '-e', '-a', '--arg-file', '--delimiter', '--max-args', '--max-procs'], appendDyn: true, empty: 'echo' },
-  env: { val: ['-u', '--unset', '-C', '--chdir'], code: /^(-S|--split-string|-[a-zA-Z]*S)$/, joinedCode: /^(?:-S|--split-string=)(.+)$/s, assign: true },
+  env: { val: ['-u', '--unset', '-C', '--chdir'], code: /^(-S|--split-string|-[a-zA-Z]*S)$/, joinedCode: /^(?:-[iv0]*S|--split-string=)(.+)$/s, assign: true },
   npx: { val: ['-p', '--package'], code: /^(-c|--call)$/, pkg: true }, bunx: { val: ['-p', '--package'], pkg: true }, shx: {},
   wsl: { val: ['-d', '--distribution', '-u', '--user', '--cd', '--shell-type'], joined: true },
 };
@@ -487,7 +487,7 @@ function stripPrefix(words, cmd, out, onExec) {
       words.shift();
       continue;
     }
-    if (!w.quoted && BASH_KEYWORDS.has(w.value)) { words.shift(); continue; }
+    if (!w.quoted && BASH_KEYWORDS.has(w.value)) { if (w.value === '!') cmd.negated = true; words.shift(); continue; }
     break;
   }
   return words;
@@ -592,7 +592,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   const ps = shell === 'powershell';
   const name = progName(words[0].value);
   const args = words.slice(1);
-  if (CD_CMDS.has(name)) { if (inShell) changeDir(name, args, st, ctx); return; }
+  if (CD_CMDS.has(name)) { if (inShell) changeDir(name, args, st, ctx, Boolean(cmd.negated)); return; }
 
   if (DELETE_CMDS.has(name)) checkDeleteOperands(ps && cmd.pipedIn && !psPaths(args).length ? operands(args).concat(pipedPaths(cmd)) : operands(args), st, ctx, out);
   if (ps && cmd.pipedIn && (name === 'clear-content' || name === 'clc') && !psPaths(args).length) {
@@ -817,7 +817,7 @@ function checkLauncher(name, words, st, ctx, out) {
   }
 }
 
-function changeDir(name, args, st, ctx) {
+function changeDir(name, args, st, ctx, negated) {
   const t = args.find((w) => w.kind !== 'param' && !(w.value.startsWith('-') && w.value.length > 1));
   const before = possible(st);
   let next;
@@ -832,7 +832,8 @@ function changeDir(name, args, st, ctx) {
   }
   // Hasta el próximo `;`, el directorio de antes sigue siendo posible (el cd pudo fallar).
   st.pending = { list: st.pending ? merge(st.pending.list, before) : before };
-  setPossible(st, next);
+  // `! cd x`: con `&&`, lo que sigue corre justo cuando el cd falló (M7). Queda desconocido.
+  setPossible(st, negated ? merge(before, next) : next);
 }
 
 // ------------------------------------------------------------ git

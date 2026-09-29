@@ -119,6 +119,17 @@ test('wrappers and runners that execute their argv or a text (G8)', () => {
   }
 });
 
+// Protects: env -S pegado detrás de otras opciones cortas (M2, revisión final) · Breaks if:
+// `env -vS'…'` o `env -iS'…'` dejan pasar el comando que ejecutan.
+test('env -S joined after other short options is evaluated (M2)', () => {
+  for (const cmd of ["env -vS'git reset --hard'", "env -iS'git reset --hard'", "env -i0vS'git reset --hard'"]) {
+    assert.strictEqual(evaluate(cmd).rule, 'reset-hard', cmd);
+  }
+  // -u y -C toman un valor: `-uSHELL` desactiva SHELL, no es -S.
+  for (const ok of ['env -uSHELL git status', 'env -CSRC git status']) assert.strictEqual(evaluate(ok, { mode: 'auto' }).decision, 'allow', ok);
+  assert.strictEqual(evaluate('env -uSHELL git reset --hard').rule, 'reset-hard');
+});
+
 test('an unknown program with a git token in argv is unverifiable (F4)', () => {
   unverifiable('runner git reset --hard', 'unknown-with-git');
   unverifiable('"C:/tools/run.exe" --x git reset', 'unknown-with-git');
