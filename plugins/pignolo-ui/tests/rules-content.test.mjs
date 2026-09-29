@@ -38,6 +38,38 @@ test('rule ICON-01 ignores spaces and variation selectors before the emoji', asy
   assert.equal(fails(e, 'ICON-01').length, 1);
 });
 
+test('rule COPY-01 matches whole words only (Unicode boundaries after folding)', async () => {
+  const cases = [
+    ['<p>Desbloquear cuenta</p>', 0],
+    ['<p>Desbloquea tu potencial</p>', 1],
+    ['<p>¡DESBLOQUEÁ… no: desbloquea!</p>', 1],
+    ['<p>Rediseñamos: revolucionario</p>', 0],
+    ['<p>Una experiencia seamless.</p>', 1],
+    ['<p>seamlessly done</p>', 0],
+    ['<p>añoseamless</p>', 0],
+  ];
+  for (const [html, n] of cases) {
+    const e = await run('a.html', html);
+    assert.equal(fails(e, 'COPY-01').length, n, html);
+  }
+});
+
+test('rule ICON-01 needs emoji presentation (or U+FE0F), not ©, ® or ™', async () => {
+  const cases = [
+    ['<li>© 2026 Empresa</li>', 0],
+    ['<li>® Marca</li>', 0],
+    ['<h2>™ Producto</h2>', 0],
+    ['<li>❤ texto</li>', 0],
+    ['<li>❤' + String.fromCharCode(0xfe0f) + ' texto</li>', 1],
+    ['<button>✅ Listo</button>', 1],
+    ['<button>\u{1F680} Go</button>', 1],
+  ];
+  for (const [html, n] of cases) {
+    const e = await run('a.html', html);
+    assert.equal(fails(e, 'ICON-01').length, n, html);
+  }
+});
+
 test('rule ICON-01 anchor outside nav is not checked', async () => {
   const e = await run('a.html', '<a href="/">\u{1F3E0} Inicio</a>');
   assert.equal(fails(e, 'ICON-01').length, 0);

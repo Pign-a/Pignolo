@@ -76,7 +76,9 @@ function copy01(ctx) {
     else if (lang.startsWith('es')) lists = [COPY_ES];
     else return [unverified(`unsupported lang ${lang}`)];
   }
-  const phrases = lists.flat().map((p) => [p, fold(p)]);
+  // whole words only: JS \b is not Unicode-aware, so letters/digits are checked with lookarounds
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const phrases = lists.flat().map((p) => [p, new RegExp(`(?<![\\p{L}\\p{N}])${escape(fold(p))}(?![\\p{L}\\p{N}])`, 'u')]);
   const out = [];
   for (const el of ctx.markup.elements) {
     if (SKIP_TAGS.has(el.tag)) continue;
@@ -84,7 +86,7 @@ function copy01(ctx) {
     if (!text) continue;
     const folded = fold(text);
     for (const [phrase, needle] of phrases) {
-      if (folded.includes(needle)) {
+      if (needle.test(folded)) {
         out.push(fail(`${phrase}|${elementKey(el, text)}`, { line: el.line, selector: el.tag, reason: `marketing filler: "${phrase}"` }));
       }
     }
@@ -93,9 +95,12 @@ function copy01(ctx) {
 }
 
 const HEADINGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
-const EMOJI_START = /^\p{Extended_Pictographic}/u;
+// Emoji shown as emoji: default emoji presentation, or a pictograph followed by U+FE0F.
+// Text-presentation symbols (©, ®, ™, ❤ without FE0F) are not emoji here.
+const VS16 = String.fromCharCode(0xfe0f);
+const EMOJI_START = new RegExp('^(?:' + '\\p{Emoji_Presentation}|' + '\\p{Extended_Pictographic}' + VS16 + ')', 'u');
 // spaces and variation selector-16 before the emoji are ignored
-const LEADING = new RegExp('^[\\s' + String.fromCharCode(0xfe0f) + ']+');
+const LEADING = new RegExp('^[\\s' + VS16 + ']+');
 
 function icon01(ctx) {
   if (!ctx.markup) return [];
