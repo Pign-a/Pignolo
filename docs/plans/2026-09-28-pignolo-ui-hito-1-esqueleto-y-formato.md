@@ -2,22 +2,25 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Dejar instalable el plugin opcional `pignolo-ui` en el marketplace del repo, con su linter de empaquetado, el parser YAML propio, colores, fuentes de tokens, `design-md` (`validate`, `extract`, `patch`), los aprobados versionados (`approve`) y la plantilla `DESIGN.md` que pasa el linter oficial 0.4.0 con 0 errores y 0 warnings.
+**Goal:** Dejar instalable el plugin opcional `pignolo-ui` en el marketplace del repo, con su linter de empaquetado, el parser YAML propio, colores, fuentes de tokens, `design-md` (`validate` con alias semánticos, `extract`, `patch`), el chequeo de fuga, los aprobados versionados (`approve`) y la plantilla `DESIGN.md` que pasa el linter oficial 0.4.0 con 0 errores y 0 warnings.
 
 **Architecture:** El plugin vive en `plugins/pignolo-ui/` del mismo repo y se registra en el `marketplace.json` de la raíz. Toda la lógica está en módulos ESM puros de `plugins/pignolo-ui/lib/` (testeables sin Claude Code); `scripts/design-md.mjs` y `scripts/approve.mjs` son CLIs finas que reciben todas las rutas como argumentos, imprimen un solo objeto JSON en stdout y salen con 0/1/2. `DESIGN.md` se lee con un parser YAML propio (`yaml-subset`) que declara lo que no soporta en lugar de leerlo mal, se valida contra el esquema `pignolo:` cerrado y se edita solo por líneas (`patch`), nunca re-serializando. Los tests (`node:test`) viven en `plugins/pignolo-ui/tests/` y corren dentro de `npm test` junto con los del núcleo.
 
-**Tech Stack:** Node.js ≥ 20 (probado con 24.13.1), `node:test` + `node:assert/strict`, ESM `.mjs`, sin dependencias npm. Solo en desarrollo, y fuera de `package.json`: `@google/design.md@0.4.0` instalado a mano para el test de desarrollo contra el linter oficial.
+**Tech Stack:** Node.js ≥ 22 (A-12; probado con 24.13.1, Node 22 sin probar), `node:test` + `node:assert/strict`, ESM `.mjs`, sin dependencias npm. Solo en desarrollo, y fuera de `package.json`: `@google/design.md@0.4.0` instalado a mano para el test de desarrollo contra el linter oficial.
 
-**Spec:** `docs/specs/2026-09-28-pignolo-ui-v1-design.md` (§0–§4; §5.1 y §5.4 para el catálogo semilla; §16.1; §17 hito 1).
+**Spec:** `docs/specs/2026-09-28-pignolo-ui-v1-design.md`, versión de `bb97471` (§0–§4; §3.2 carpeta del run; §5.1 y §5.4 para el catálogo semilla; §7.4 chequeo de fuga; §16.1; §17 hito 1).
 
 **Prerrequisito:** la Task 1 del plan del núcleo (`docs/plans/2026-09-26-hito-1-esqueleto-y-guardia.md`) está aplicada: existen `package.json` y `.claude-plugin/marketplace.json` en la raíz. La Task 1 de este plan los reemplaza por la versión que agrega pignolo-ui.
 
-**Estado de verificación:** todo el código de este plan se transcribió desde una copia de trabajo donde se ejecutó completo, tarea por tarea (un commit por tarea): `npm run test:ui` → 108 tests, 106 en verde y 2 skip visibles sin linter oficial (108/108 con `PIGNOLO_UI_DESIGNMD`); `npm test` → los 561 del núcleo de la copia más los 108; `claude plugin validate plugins/pignolo-ui` y `claude plugin validate .` → `Validation passed`. Un replay mecánico aplicó los bloques de código y las ediciones de este plan en orden sobre la base, comprobó cada conteo de rojo y de verde que declara cada paso y que al cerrar cada tarea los archivos son idénticos byte a byte a los de la copia. Cada rotura de "Demostrar el rojo" se ejecutó y falló exactamente con los tests que se nombran.
+**Estado de verificación:** todo el código de este plan se transcribió desde una copia de trabajo donde se ejecutó completo, tarea por tarea (un commit por tarea): `npm run test:ui` → 122 tests, 120 en verde y 2 skip visibles sin linter oficial (122/122 con `PIGNOLO_UI_DESIGNMD`); `npm test` → los 561 del núcleo de la copia más los 122 (683); `claude plugin validate plugins/pignolo-ui` y `claude plugin validate .` → `Validation passed`. Un replay mecánico aplicó los bloques de código y las ediciones de este plan en orden sobre la base, comprobó cada conteo de rojo y de verde que declara cada paso y que al cerrar cada tarea los archivos son idénticos byte a byte a los de la copia. Cada rotura de "Demostrar el rojo" se ejecutó y falló exactamente con los tests que se nombran.
 
 ## Global Constraints
 
 - **Sin dependencias npm, sin hooks, sin binarios y sin nada remoto en tiempo de ejecución** (spec §0). El linter del plugin (Task 2) lo hace cumplir: imports solo `node:` o relativos con extensión.
-- **Requisitos:** Node ≥ 22 (A-12) y Claude Code ≥ 2.1.271, porque `options` de `userConfig` existe desde esa versión (spec §0).
+- **Requisitos:** Node ≥ 22 para pignolo-ui (A-12: Node 20 sin soporte, y `node --test` con globs lo exige) y Claude Code ≥ 2.1.271, porque `options` de `userConfig` existe desde esa versión (spec §0). Node 22 queda declarado y sin probar (el spike solo tuvo Node 24): va al checklist manual (§16.4).
+- **Nombres semánticos** (spec §4.2): lo que **genera** pignolo-ui usa el vocabulario MD3 (`primary`, `on-surface`…); al **leer** un `DESIGN.md` se aceptan alias (`accent` → `primary`, `label`/`text` → `on-surface`…) de `pignolo.aliases` o del mapa por defecto documentado en el README, y el hallazgo dice qué alias tomó.
+- **Carpeta del run** (spec §3.2): `<repo>/.pignolo-ui/runs/<run-id>/`, con `.pignolo-ui/.gitignore` = `*` creado antes de la primera escritura; nunca se toca un archivo versionado ni `.git/info/exclude`.
+- **Chequeo de fuga** (spec §7.4): antes de guardar una opción como aprobado, ningún archivo lleva el email del usuario, el nombre o el email de git, el usuario o el home del SO (valores que la skill pasa por argumento) ni una ruta absoluta local.
 - **`userConfig`** (spec §3.1), verbatim: `optionsPerDecision` `string` con `options` `"1"`, `"3"`, por defecto `"3"`; `presentation` `string` con `options` `"auto"`, `"local"`, por defecto `"auto"`; `language` `string`, por defecto vacío.
 - **Formato `DESIGN.md`:** Google Labs **fijado a 0.4.0**. Claves oficiales: `version`, `name`, `description`, `omitted`, `colors`, `typography`, `rounded`, `spacing`, `components`. Las extensiones van solo bajo `pignolo:`, nunca dentro de `typography` ni de `components` (spec §4.2).
 - **En `pignolo:`, los valores hoja no llevan hex ni dimensiones con unidad**: números con el sufijo en el nombre (`widthPx`, `durationMs`), colores en OKLCH o `rgb()`, o referencias `{colors.x}` (spec §4.2). El validador los rechaza con las mismas expresiones que `token-like-ignored` de 0.4.0.
@@ -61,8 +64,11 @@ plugins/pignolo-ui/lib/design-doc.mjs            frontmatter y validador de DESI
 plugins/pignolo-ui/lib/design-patch.mjs          edición por líneas con diff (§4.4 "Escritura")
 plugins/pignolo-ui/lib/official-lint.mjs         linter oficial solo si ya está instalado (A-09)
 plugins/pignolo-ui/lib/design-extract.mjs        arranque de DESIGN.md desde el código (§4.5, A-18)
+plugins/pignolo-ui/lib/run-folder.mjs            raíz de la carpeta del run y su .gitignore (§3.2)
+plugins/pignolo-ui/lib/leak-check.mjs            datos del usuario o de la máquina en una salida (§7.4)
 plugins/pignolo-ui/lib/approved.mjs              aprobados: guardar, registrar, verificar (§3.3)
 plugins/pignolo-ui/scripts/design-md.mjs         CLI validate | patch | extract
+plugins/pignolo-ui/scripts/leak-check.mjs        CLI del chequeo de fuga
 plugins/pignolo-ui/scripts/approve.mjs           CLI save | record | verify
 plugins/pignolo-ui/catalog/rules.json            catálogo semilla: 25 reglas de §5.4 + THEME-03
 plugins/pignolo-ui/templates/DESIGN.md           plantilla 0/0 con el linter 0.4.0
@@ -74,9 +80,10 @@ plugins/pignolo-ui/tests/fixtures/extract/<caso>/…
 ```
 
 Notas sobre el spec:
-- §2 lista `lib/yaml-subset.mjs lib/color.mjs lib/token-sources.mjs …`; este plan agrega `lib/design-doc.mjs`, `lib/design-patch.mjs`, `lib/design-extract.mjs`, `lib/official-lint.mjs` y `lib/approved.mjs` para que `scripts/design-md.mjs` y `scripts/approve.mjs` queden como CLIs finas y la lógica se pruebe sin subprocesos. Decisión técnica.
+- §2 lista `lib/yaml-subset.mjs lib/color.mjs lib/token-sources.mjs …`; este plan agrega `lib/design-doc.mjs`, `lib/design-patch.mjs`, `lib/design-extract.mjs`, `lib/official-lint.mjs`, `lib/run-folder.mjs`, `lib/leak-check.mjs` y `lib/approved.mjs` para que `scripts/design-md.mjs` y `scripts/approve.mjs` queden como CLIs finas y la lógica se pruebe sin subprocesos. Decisión técnica.
 - `catalog/rules.json` es del hito 2 según §17, pero el validador de este hito necesita saber qué reglas aceptan `intentional`: acá se crea la semilla con las 25 reglas de §5.4 y THEME-03, con los campos de §5.1; el hito 2 la completa.
 - Los tests van en `plugins/pignolo-ui/tests/`, como dice §2 (el núcleo los tiene en `tests/` de la raíz); `npm test` corre los dos.
+- `scripts/leak-check.mjs` (§2, §7.4) no figura en §17; entra en este hito porque §7.4 lo exige antes de guardar como aprobado, y `approve` es de este hito. Antes de publicar en el lienzo lo usa el hito 4.
 
 ## Decisiones técnicas tomadas al construir
 
@@ -95,6 +102,10 @@ Puntos que el spec deja abiertos o ambiguos, resueltos por el agente y probados:
 11. **Nombres en `extract` por frecuencia**: `primary` = el color cromático más frecuente (C OKLCH ≥ 0,05), `surface`/`on-surface` = el neutro más claro y el más oscuro; todo queda en `pignolo.extracted`. Son propuestas que el usuario confirma en el diff.
 12. **`approve`** se parte en `save` (carpeta + manifest), `record` (entrada de `## Decisions` como diff; escribe solo con `--write`) y `verify`. `save` exige pantallas estáticas autocontenidas: `<meta charset="utf-8">`, sin `<script>` (§7.4), sin recursos remotos (etiquetas que cargan algo o `url()`/`@import` remotos; un `<a href>` externo es un link, no un recurso), links internos relativos que resuelven, nombres en minúsculas y sin subcarpetas.
 13. **Colores fuera de gamut** se recortan a sRGB (no el mapeo de gamut de CSS) y se marcan `clipped: true`.
+14. **Alias semánticos** (§4.2, §4.3): el mapa por defecto (`DEFAULT_ALIASES`, listado en el README y con un test que los compara) lleva los nombres comunes de shadcn y de apps reales (`accent`, `brand`, `text`, `label`, `foreground`, `bg`, `card`, `border`, `destructive`…). Un alias se toma solo si su nombre MD3 no está definido también y ningún nombre anterior lo tomó. Cada alias tomado es un hallazgo `DESIGN-ALIAS` de severidad `detalle` ("`colors.accent read as primary (default alias)`"); los hallazgos `detalle` no vuelven inválido el archivo ni cambian el código de salida. `pignolo.aliases` acepta como clave cualquier nombre que no sea ya MD3 y como valor solo un nombre semántico MD3.
+15. **`extract` genera nombres MD3**: un color que entra por un alias del mapa por defecto se renombra (conserva su lugar, su valor oscuro y en `cssVars` la variable original del proyecto), y la salida lo lista en `renamed`.
+16. **Carpeta del run en este hito:** lo único que puede escribir ahí es `extract --out`; si la ruta cae dentro de `<repo>/.pignolo-ui/`, crea antes `.pignolo-ui/.gitignore` = `*` (sin pisar uno existente) y la carpeta. `lib/run-folder.mjs` (`ensureRunRoot`, `isInsideRunRoot`) queda para `run.mjs` del hito 4. `approve` no escribe en la carpeta del run: lee las pantallas de `--from` y escribe en `design/approved/`.
+17. **Chequeo de fuga:** los valores se comparan sin distinguir mayúsculas; los de menos de 3 caracteres se ignoran (un usuario de dos letras marcaría cualquier palabra); una ruta absoluta es una unidad de Windows (`C:\`, `D:/`) o `/Users/`, `/home/` que no siguen a una letra, un punto o `~` (así no marcan una URL ni una ruta relativa). La salida nunca repite un valor: da su índice en la lista. `approve save --values-file` lo corre antes de escribir; sin valores, igual busca rutas absolutas.
 
 ## Diferido y declarado
 
@@ -106,7 +117,9 @@ Lo que §17 asigna al hito 1 y este plan no entrega completo, con el motivo:
 - **Linter del plugin (R9):** no chequea de forma estática la salida UTF-8, los bucles de `dirname` que terminan en la raíz de Windows ni la expansión de `${CLAUDE_PLUGIN_ROOT}`; eso queda para la instalación real del checklist manual (hito 5).
 - **`norms.md`** (§3.2, con la clave `symptoms`) y la comprobación de `claude --version` (§0): hito 4, junto con las skills.
 - **`extract`**: de tipografía solo lee la familia (`fontFamily`); tamaños, pesos e interlineados quedan para completarse como diff. De Tailwind v3 lee `colors`, `borderRadius`, `fontFamily` y `spacing`. La frecuencia cuenta solo archivos `.css` (no `.scss`/`.less` ni `<style>` de HTML).
-- **`npm test` en Node 20, sin verificar:** el script usa patrones glob en `node --test` (igual que el núcleo), y según la documentación de Node esa forma llegó en la v21. Todo se probó con Node 24.13.1. Si en Node 20 no encuentra los archivos, es la misma pregunta del piso de Node que ya está pendiente para el núcleo (decisión del autor, A-12).
+- **Node 22 sin probar:** todo se probó con Node 24.13.1; `npm test` en Node 22 real entra al checklist manual (§16.4).
+- **Catálogo semilla:** los criterios de A11Y-04, A11Y-16, COLOR-02, DEPTH-01 y LAYOUT-04 ya tienen el texto nuevo del spec (roles sin nombre por contenido, placeholder solo, familia de tokens), pero sus checkers son del hito 2, igual que las clases utilitarias de Tailwind y B1–B3.
+- **README:** la recomendación de `acceptEdits` por las escrituras de los subagentes (§3.2) y el aviso legal (A-08) van con las skills, en el hito 4. El chequeo de fuga antes de publicar en el lienzo, también (hito 4).
 - **Contrato 0/0 de `extract` fuera de los fixtures:** un proyecto real sin ninguna variable de fuente (por ejemplo, shadcn con la fuente puesta por `next/font`) da una propuesta sin `typography`, y el linter oficial avisa `missing-typography` hasta que el flujo complete la tipografía (el validador propio la marca `alto`). El criterio 2 de §0.1 se mide, como dice el spec, sobre la plantilla y los fixtures.
 - **Deriva prosa ↔ YAML** (lección de la issue #16 del formato): el validador no compara números de la prosa con los tokens; la plantilla cita tokens y su test lo verifica.
 
@@ -2784,10 +2797,11 @@ git commit -F <archivo-del-mensaje>
 
 ---
 
-### Task 7: Catálogo semilla y validador de `DESIGN.md` (`design-md validate`)
+### Task 7: Catálogo semilla y validador de `DESIGN.md` con alias semánticos (`design-md validate`)
 
 **Files:**
 - Create: `plugins/pignolo-ui/catalog/rules.json`, `plugins/pignolo-ui/lib/design-doc.mjs`, `plugins/pignolo-ui/scripts/design-md.mjs`
+- Modify: `plugins/pignolo-ui/README.md` (mapa de alias por defecto)
 - Test: `plugins/pignolo-ui/tests/catalog.test.mjs`, `plugins/pignolo-ui/tests/design-validate.test.mjs`, `plugins/pignolo-ui/tests/fixtures/design/valid.md`
 
 **Interfaces:**
@@ -2795,10 +2809,11 @@ git commit -F <archivo-del-mensaje>
 - Produces:
   - `catalog/rules.json`: `{ catalogVersion, note, rules: [{ id, criterion, class, level, platform, severity, floor, acceptsIntentional, source }] }`.
   - `splitFrontmatter(text) -> { ok: true, yaml, yamlLine, body, bodyLine, eol } | { ok: false, reason }` (tolera BOM y CRLF).
-  - `validateDesign(text, { catalog, darkInCss = false }) -> { status: 'valid' | 'invalid' | 'unverified', reason, reject, findings, data }`; hallazgo `{ id, severity, path, line, message, rejects }` con `id` ∈ `DESIGN-FRONTMATTER`, `DESIGN-YAML`, `DESIGN-FORMAT`, `DESIGN-REF`, `DESIGN-SCHEMA`, `DESIGN-INTENTIONAL`, `DESIGN-TOKEN-LIKE`, `DESIGN-CONTENT`, `THEME-03`; `line` es la línea del archivo.
-  - `colorFamily(name)`, `isSemanticColor(name)`, `MD3_FAMILIES`, `PIGNOLO_SCHEMA`.
+  - `validateDesign(text, { catalog, darkInCss = false }) -> { status: 'valid' | 'invalid' | 'unverified', reason, reject, findings, data }`; hallazgo `{ id, severity, path, line, message, rejects }` con `id` ∈ `DESIGN-FRONTMATTER`, `DESIGN-YAML`, `DESIGN-FORMAT`, `DESIGN-REF`, `DESIGN-SCHEMA`, `DESIGN-INTENTIONAL`, `DESIGN-TOKEN-LIKE`, `DESIGN-ALIAS`, `DESIGN-CONTENT`, `THEME-03`; `line` es la línea del archivo. `status` es `valid` si todos los hallazgos son `detalle`.
+  - `colorFamily(name)`, `isSemanticColor(name)`, `MD3_FAMILIES`, `PIGNOLO_SCHEMA` (incluye `aliases`).
+  - `DEFAULT_ALIASES` (mapa nombre del proyecto → nombre MD3, congelado) y `resolveAliases(colors, custom) -> Map<nombre, { as, source: 'default alias' | 'pignolo.aliases' }>`.
   - CLI: `node scripts/design-md.mjs validate --file <DESIGN.md> [--project <raíz>] [--catalog <rules.json>]` → JSON `{ status, reason, reject, findings, darkInCss }`; sale 0 válido, 1 con hallazgos, 2 no verificado (YAML no soportado) o error propio (stderr en español).
-- Qué rechaza la escritura (`rejects: true`): sin frontmatter, error de YAML en una clave, esquema `pignolo:` cerrado, `intentional` sobre una regla sin `acceptsIntentional`, valores que dispararían `token-like-ignored`. Qué es `alto` sin rechazar: contenido obligatorio que falta (§4.2), referencias rotas, colores vacíos o que no son string, THEME-03.
+- Qué rechaza la escritura (`rejects: true`): sin frontmatter, error de YAML en una clave, esquema `pignolo:` cerrado, `intentional` sobre una regla sin `acceptsIntentional`, valores que dispararían `token-like-ignored`. Qué es `alto` sin rechazar: contenido obligatorio que falta (§4.2), referencias rotas, colores vacíos o que no son string, THEME-03. Qué es `detalle`: cada alias tomado (`DESIGN-ALIAS`). Los nombres leídos por alias cuentan como semánticos para el contenido obligatorio y para THEME-03.
 
 - [ ] **Step 1: Escribir los tests que fallan (y el fixture)**
 
@@ -2925,7 +2940,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FIXTURES, PLUGIN_ROOT, makeTempDir, writeTree, runScript } from './helpers.mjs';
-import { validateDesign, splitFrontmatter } from '../lib/design-doc.mjs';
+import { validateDesign, splitFrontmatter, DEFAULT_ALIASES } from '../lib/design-doc.mjs';
 
 const catalog = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'catalog', 'rules.json'), 'utf8'));
 const VALID = fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8');
@@ -3078,6 +3093,37 @@ test('missing mandatory content is alto and proposes completing, without rejecti
   assert.deepEqual(check(omitted).findings, []);
 });
 
+test('semantic aliases: accent and text are read as primary and on-surface, and the finding names the alias', () => {
+  const aliased = edit('  primary: "{colors.blue-600}"\n', '  accent: "{colors.blue-600}"\n')
+    .replace('  on-surface: "#1A1A1A"\n', '  text: "#1A1A1A"\n')
+    .replace(/\{colors\.primary\}/g, '{colors.accent}');
+  const r = check(aliased);
+  assert.deepEqual(r.findings.map((f) => [f.id, f.path, f.severity, f.rejects]), [
+    ['DESIGN-ALIAS', 'colors.accent', 'detalle', false],
+    ['DESIGN-ALIAS', 'colors.text', 'detalle', false],
+  ]);
+  assert.equal(r.findings[0].message, 'colors.accent read as primary (default alias)');
+  assert.equal(r.status, 'valid');
+  const dark = check(aliased.replace('  schema: 1\n', '  schema: 1\n  themes:\n    dark:\n      text: "oklch(0.95 0 0)"\n      on-primary: "oklch(0.2 0 0)"\n      surface: "oklch(0.2 0 0)"\n      outline: "oklch(0.6 0 0)"\n'));
+  assert.deepEqual(ids(dark), ['DESIGN-ALIAS colors.accent', 'DESIGN-ALIAS colors.text', 'THEME-03 pignolo.themes.dark.accent']);
+  const both = check(edit('  on-surface: "#1A1A1A"\n', '  on-surface: "#1A1A1A"\n  text: "#333333"\n'));
+  assert.deepEqual(both.findings, [], 'an MD3 name that exists wins: text stays a primitive');
+});
+
+test('pignolo.aliases completes the default map and is part of the closed schema', () => {
+  const custom = edit('  on-surface: "#1A1A1A"\n', '  brand-ink: "#1A1A1A"\n');
+  assert.deepEqual(ids(check(custom)), ['DESIGN-CONTENT colors.on-surface']);
+  const r = check(custom.replace('  schema: 1\n', '  schema: 1\n  aliases:\n    brand-ink: on-surface\n'));
+  assert.deepEqual(r.findings.map((f) => f.message), ['colors.brand-ink read as on-surface (pignolo.aliases)']);
+  assert.deepEqual(ids(check(edit('  schema: 1\n', '  schema: 1\n  aliases:\n    ink: blue-600\n'))), ['DESIGN-SCHEMA pignolo.aliases.ink']);
+  assert.deepEqual(ids(check(edit('  schema: 1\n', '  schema: 1\n  aliases:\n    primary: surface\n'))), ['DESIGN-SCHEMA pignolo.aliases.primary']);
+});
+
+test('the README documents every default alias', () => {
+  const readme = fs.readFileSync(path.join(PLUGIN_ROOT, 'README.md'), 'utf8');
+  for (const [from, to] of Object.entries(DEFAULT_ALIASES)) assert.ok(readme.includes(`\`${from}\` → \`${to}\``), `${from} → ${to}`);
+});
+
 test('an unquoted hex is empty for YAML and is reported on its line (Review Focus 3)', () => {
   const r = check(edit('  on-primary: "#FFFFFF"\n', '  on-primary: #FFFFFF\n'));
   assert.deepEqual(r.findings.map((f) => [f.id, f.path, f.line, f.severity]), [['DESIGN-FORMAT', 'colors.on-primary', 8, 'alto']]);
@@ -3120,9 +3166,11 @@ test('CLI: exit 0 valid, 1 with findings, 2 unverified; --project detects dark C
 - [ ] **Step 2: Correr y verificar que falla**
 
 Run: `npm run test:ui`
-Expected: FAIL — `catalog.test.mjs` no carga (`ENOENT … catalog/rules.json`) y `design-validate.test.mjs` tampoco (`ENOENT … rules.json` al cargar el catálogo) (`tests 57`, `pass 55`, `fail 2`).
+Expected: FAIL — `catalog.test.mjs` no carga (`ENOENT … catalog/rules.json`) y `design-validate.test.mjs` tampoco (`Cannot find module …/lib/design-doc.mjs`) (`tests 57`, `pass 55`, `fail 2`).
 
 - [ ] **Step 3: Implementación mínima**
+
+Los criterios de A11Y-04, A11Y-16, COLOR-02, DEPTH-01 y LAYOUT-04 siguen el texto de §5.4 del spec vigente; sus checkers son del hito 2.
 
 `plugins/pignolo-ui/catalog/rules.json`:
 ```json
@@ -3132,9 +3180,9 @@ Expected: FAIL — `catalog.test.mjs` no carga (`ENOENT … catalog/rules.json`)
   "rules": [
     { "id": "A11Y-01", "criterion": "<html lang> present and a valid BCP 47 tag", "class": "script", "level": "document", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 3.1.1 (A)" },
     { "id": "A11Y-02", "criterion": "<title> present and not empty", "class": "script", "level": "document", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 2.4.2 (A)" },
-    { "id": "A11Y-04", "criterion": "Static accessible name for button, a, input and [role=button]; icon-only buttons have a name", "class": "script", "level": "element", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 4.1.2 (A)" },
+    { "id": "A11Y-04", "criterion": "Static accessible name for button, a, input and [role=button]; icon-only buttons have a name. Roles that do not take their name from content (combobox, listbox, textbox, searchbox, slider, spinbutton...) need aria-label, aria-labelledby or an associated label", "class": "script", "level": "element", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 4.1.2 (A)" },
     { "id": "A11Y-05", "criterion": "Exactly one main landmark", "class": "script", "level": "document", "platform": "D+M", "severity": "alto", "floor": false, "acceptsIntentional": false, "source": "WAI-ARIA landmarks (good practice, not WCAG)" },
-    { "id": "A11Y-16", "criterion": "input, select and textarea have a label", "class": "script", "level": "element", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 1.3.1 / 4.1.2 (A)" },
+    { "id": "A11Y-16", "criterion": "input, select and textarea have a label (aria-hidden ones are skipped); a placeholder alone is a failure, stricter than axe and declared", "class": "script", "level": "element", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 1.3.1 / 4.1.2 (A)" },
     { "id": "A11Y-26", "criterion": "img has an alt attribute; svg[role=img] has a name (presence only)", "class": "script", "level": "element", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 1.1.1 (A)" },
     { "id": "A11Y-28", "criterion": "Viewport without user-scalable=no or maximum-scale below 2", "class": "script", "level": "document", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 1.4.4 (AA)" },
     { "id": "A11Y-39", "criterion": "No focusable element inside aria-hidden=\"true\"; never on body", "class": "script", "level": "element", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 4.1.2 (A)" },
@@ -3143,9 +3191,9 @@ Expected: FAIL — `catalog.test.mjs` no carga (`ENOENT … catalog/rules.json`)
     { "id": "STATE-04", "criterion": "outline: none/0 without a :focus-visible that draws an indicator", "class": "script", "level": "style", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 2.4.7 (AA)" },
     { "id": "MOTION-03", "criterion": "Animation or transform transition without @media (prefers-reduced-motion: reduce)", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": false, "source": "WCAG 2.2 SC 2.3.3 (AAA); Apple HIG Motion; MDN prefers-reduced-motion" },
     { "id": "MOTION-04", "criterion": "transition: all", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "pignolo-ui research (performance and intent)" },
-    { "id": "COLOR-02", "criterion": "Color literals outside the token source", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "Apple HIG Color (avoid hard-coded values)" },
-    { "id": "DEPTH-01", "criterion": "Literal box-shadow outside tokens", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "Fluent 2 elevation" },
-    { "id": "LAYOUT-04", "criterion": "Literal border-radius outside tokens", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "Material 3 shape scale" },
+    { "id": "COLOR-02", "criterion": "Color literals outside the token source, or a token of another family in a color property", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "Apple HIG Color (avoid hard-coded values)" },
+    { "id": "DEPTH-01", "criterion": "Literal box-shadow outside tokens, or a token that is not an elevation token", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "Fluent 2 elevation" },
+    { "id": "LAYOUT-04", "criterion": "Literal border-radius outside tokens, or a token that is not a radius token (for example var(--space-2))", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "Material 3 shape scale" },
     { "id": "DRIFT-01", "criterion": "DESIGN.md and CSS differ (through cssVars)", "class": "script", "level": "style", "platform": "D+M", "severity": "alto", "floor": false, "acceptsIntentional": false, "source": "pignolo-ui spec §4.5" },
     { "id": "THEME-01", "criterion": "Primary, surface, radius or font are framework defaults and not declared", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "pignolo-ui research (default-kit look)" },
     { "id": "THEME-02", "criterion": "shadcn: at least 80% of color variables match a published baseColor", "class": "script", "level": "style", "platform": "D+M", "severity": "medio", "floor": false, "acceptsIntentional": true, "source": "shadcn/ui themes" },
@@ -3170,6 +3218,8 @@ Expected: FAIL — `catalog.test.mjs` no carga (`ENOENT … catalog/rules.json`)
 //   { status: 'valid'|'invalid'|'unverified', reason, reject, findings, data }
 // Finding: { id, severity, path, line, message, rejects }. `rejects: true` means the file
 // must not be written as is (closed schema, intentional on the floor, token-like values).
+// DESIGN-ALIAS findings are `detalle`: they say which alias was read and never make the
+// status invalid.
 import { parseYaml, locate } from './yaml-subset.mjs';
 import { parseColor } from './color.mjs';
 
@@ -3193,6 +3243,48 @@ export function colorFamily(name) {
 }
 
 export const isSemanticColor = (name) => MD3_FAMILIES.has(colorFamily(name));
+
+// Reading a user's DESIGN.md does not demand literal MD3 names (spec §4.2): these aliases,
+// completed or overridden by pignolo.aliases, map common project names to MD3. What
+// pignolo-ui generates keeps MD3 names. The README documents this map (a test checks it).
+export const DEFAULT_ALIASES = Object.freeze({
+  accent: 'primary',
+  brand: 'primary',
+  'on-accent': 'on-primary',
+  'accent-foreground': 'on-primary',
+  'primary-foreground': 'on-primary',
+  text: 'on-surface',
+  label: 'on-surface',
+  foreground: 'on-surface',
+  fg: 'on-surface',
+  bg: 'background',
+  card: 'surface',
+  'card-foreground': 'on-surface',
+  'muted-foreground': 'on-surface-variant',
+  'text-muted': 'on-surface-variant',
+  border: 'outline-variant',
+  danger: 'error',
+  destructive: 'error',
+  'on-danger': 'on-error',
+  'destructive-foreground': 'on-error',
+});
+
+// name -> { as, source } for the colors read through an alias. An alias is taken only when
+// its MD3 target is not defined itself and no earlier name took it.
+export function resolveAliases(colors, custom) {
+  const map = { ...DEFAULT_ALIASES, ...(custom !== null && typeof custom === 'object' && !Array.isArray(custom) ? custom : {}) };
+  const out = new Map();
+  const taken = new Set();
+  for (const name of Object.keys(colors)) {
+    if (isSemanticColor(name) || !Object.prototype.hasOwnProperty.call(map, name)) continue;
+    const target = map[name];
+    if (typeof target !== 'string' || !isSemanticColor(target) || Object.prototype.hasOwnProperty.call(colors, target) || taken.has(target)) continue;
+    taken.add(target);
+    const source = custom && Object.prototype.hasOwnProperty.call(custom, name) ? 'pignolo.aliases' : 'default alias';
+    out.set(name, { as: target, source });
+  }
+  return out;
+}
 
 export function splitFrontmatter(text) {
   const src = String(text).replace(/^\uFEFF/, '');
@@ -3259,6 +3351,8 @@ export const PIGNOLO_SCHEMA = M({
   }),
   borders: M({ subtle: V(colorRef), strong: V(colorRef), widthPx: V(num(0)) }),
   targets: M({ minPx: V(num(0)), recommendedPx: V(num(0)) }),
+  aliases: FREE((k) => (isSemanticColor(k) ? 'is already an MD3 semantic name' : null),
+    V((v) => (typeof v === 'string' && isSemanticColor(v) ? null : 'must be an MD3 semantic color name (primary, on-surface...)'))),
   cssVars: FREE((k, ctx) => (ctx.hasToken(k) ? null : 'must name an existing token (colors.x, rounded.x...)'), V(cssVarName)),
   extracted: L(V(tokenPath)),
   intentional: L(M({ id: V(str), why: V(str) }, ['id', 'why'])),
@@ -3401,13 +3495,19 @@ export function validateDesign(text, { catalog, darkInCss = false } = {}) {
     walkTokenLike(pig, ['pignolo'], ctx);
   }
 
+  // semantic aliases (spec §4.2): informative, the finding names the alias it took
+  const colors = isMap(data.colors) ? data.colors : {};
+  const aliases = resolveAliases(colors, isMap(pig) ? pig.aliases : undefined);
+  for (const [name, a] of aliases) ctx.add('DESIGN-ALIAS', ['colors', name], `colors.${name} read as ${a.as} (${a.source})`, { severity: 'detalle' });
+  const semanticOf = (name) => (isSemanticColor(name) ? name : aliases.has(name) ? aliases.get(name).as : null);
+
   // mandatory content (spec §4.2): alto, proposed as a diff, never rejected
   const content = (p, message) => ctx.add('DESIGN-CONTENT', p, message);
   const omitted = omittedSections(data);
-  const colors = isMap(data.colors) ? data.colors : {};
   if (!omitted.has('colors')) {
-    for (const name of REQUIRED_SEMANTIC) if (!has(colors, name)) content(['colors', name], `semantic color ${name} is missing`);
-    if (!Object.keys(colors).some((n) => !isSemanticColor(n))) content(['colors'], 'no primitive color tokens (for example blue-600) under the semantic ones');
+    const present = new Set(Object.keys(colors).map(semanticOf));
+    for (const name of REQUIRED_SEMANTIC) if (!present.has(name)) content(['colors', name], `semantic color ${name} is missing`);
+    if (!Object.keys(colors).some((n) => semanticOf(n) === null)) content(['colors'], 'no primitive color tokens (for example blue-600) under the semantic ones');
   }
   for (const section of ['typography', 'rounded', 'spacing']) {
     if (!omitted.has(section) && !(isMap(data[section]) && Object.keys(data[section]).length)) content([section], `${section} scale is missing`);
@@ -3434,14 +3534,16 @@ export function validateDesign(text, { catalog, darkInCss = false } = {}) {
   const dark = isMap(pig) && isMap(pig.themes) ? pig.themes.dark : undefined;
   if (isMap(dark)) {
     for (const name of Object.keys(colors)) {
-      if (isSemanticColor(name) && !has(dark, name)) ctx.add('THEME-03', ['pignolo', 'themes', 'dark', name], `dark theme does not define ${name}`);
+      if (semanticOf(name) !== null && !has(dark, name)) ctx.add('THEME-03', ['pignolo', 'themes', 'dark', name], `dark theme does not define ${name}`);
     }
   } else if (darkInCss) {
     ctx.add('THEME-03', ['pignolo', 'themes', 'dark'], 'the CSS has a dark theme but DESIGN.md does not declare pignolo.themes.dark');
   }
 
   const reject = findings.some((f) => f.rejects);
-  return { status: findings.length ? 'invalid' : 'valid', reason: null, reject, findings, data };
+  // `detalle` findings (aliases) inform and never make the file invalid
+  const status = findings.some((f) => f.severity !== 'detalle') ? 'invalid' : 'valid';
+  return { status, reason: null, reject, findings, data };
 }
 ```
 
@@ -3518,12 +3620,32 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 }
 ```
 
+En `plugins/pignolo-ui/README.md`, justo después de:
+```markdown
+- Claude Code ≥ 2.1.271 (`userConfig` con `options`).
+```
+agregar:
+```markdown
+
+## Alias de nombres semánticos
+
+Lo que genera pignolo-ui usa los nombres semánticos de Material 3 (`primary`, `on-surface`…). Al **leer** un `DESIGN.md` existente, estos nombres cuentan como su equivalente MD3, siempre que el nombre MD3 no esté definido también; `pignolo.aliases` completa o pisa este mapa. Cada alias usado sale como hallazgo `DESIGN-ALIAS` (`detalle`).
+
+- `accent` → `primary`, `brand` → `primary`
+- `on-accent` → `on-primary`, `accent-foreground` → `on-primary`, `primary-foreground` → `on-primary`
+- `text` → `on-surface`, `label` → `on-surface`, `foreground` → `on-surface`, `fg` → `on-surface`, `card-foreground` → `on-surface`
+- `bg` → `background`, `card` → `surface`
+- `muted-foreground` → `on-surface-variant`, `text-muted` → `on-surface-variant`
+- `border` → `outline-variant`
+- `danger` → `error`, `destructive` → `error`, `on-danger` → `on-error`, `destructive-foreground` → `on-error`
+```
+
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `npm run test:ui`
-Expected: PASS (`tests 74`, `pass 74`, `fail 0`).
+Expected: PASS (`tests 77`, `pass 77`, `fail 0`).
 Run: `npm test`
-Expected: PASS (núcleo + 74).
+Expected: PASS (núcleo + 77).
 
 - [ ] **Step 5: Demostrar el rojo**
 
@@ -3536,13 +3658,18 @@ Expected: PASS (núcleo + 74).
 | En `splitFrontmatter`, no quitar el BOM (`const src = String(text);`) | `a BOM and CRLF line endings validate the same (Review Focus 2)` |
 | Borrar la línea que reporta `colors.<nombre> is empty: an unquoted # starts a YAML comment…` | `an unquoted hex is empty for YAML and is reported on its line (Review Focus 3)` |
 | En `rules.json`, poner `"acceptsIntentional": true` en A11Y-01 | `no floor rule accepts intentional, and THEME-03 does not either` y `intentional only accepts rules with acceptsIntentional: floor and THEME-03 reject` |
+| Fijar `const aliases = new Map();` en lugar de `resolveAliases(…)` | `semantic aliases: accent and text are read as primary and on-surface, and the finding names the alias` y `pignolo.aliases completes the default map and is part of the closed schema` |
+| En `resolveAliases`, quitar `Object.prototype.hasOwnProperty.call(colors, target) \|\| ` (el alias gana aunque exista el nombre MD3) | `semantic aliases: accent and text are read as primary and on-surface, and the finding names the alias` |
+| Volver a `const status = findings.length ? 'invalid' : 'valid';` | `semantic aliases: accent and text are read as primary and on-surface, and the finding names the alias` |
+| En el esquema de `aliases`, aceptar cualquier valor (`V(() => null)`) | `pignolo.aliases completes the default map and is part of the closed schema` |
+| En el README, borrar `` , `fg` → `on-surface` `` | `the README documents every default alias` |
 
 Comprobación opcional de desarrollo: el linter oficial 0.4.0 sobre `valid.md` da 0 errores y 0 warnings (hecho en la copia).
 
 - [ ] **Step 6: Commit**
 
 ```text
-feat(ui): catálogo semilla y validador propio de DESIGN.md con esquema pignolo cerrado
+feat(ui): catálogo semilla y validador propio de DESIGN.md con esquema pignolo cerrado y alias semánticos
 ```
 ```bash
 git add plugins/pignolo-ui
@@ -3736,7 +3863,7 @@ test('CLI: a rejecting finding the file already had does not block an unrelated 
 - [ ] **Step 2: Correr y verificar que falla**
 
 Run: `npm run test:ui`
-Expected: FAIL — `design-patch.test.mjs` no carga (`Cannot find module …/lib/design-patch.mjs`) (`tests 75`, `pass 74`, `fail 1`).
+Expected: FAIL — `design-patch.test.mjs` no carga (`Cannot find module …/lib/design-patch.mjs`) (`tests 78`, `pass 77`, `fail 1`).
 
 - [ ] **Step 3: Implementación mínima**
 
@@ -4067,9 +4194,9 @@ const COMMANDS = { validate: cmdValidate, patch: cmdPatch };
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `npm run test:ui`
-Expected: PASS (`tests 84`, `pass 84`, `fail 0`).
+Expected: PASS (`tests 87`, `pass 87`, `fail 0`).
 Run: `npm test`
-Expected: PASS (núcleo + 84).
+Expected: PASS (núcleo + 87).
 
 - [ ] **Step 5: Demostrar el rojo**
 
@@ -4197,7 +4324,7 @@ test(`the template passes the official linter ${PINNED_VERSION} with 0 errors an
 - [ ] **Step 2: Correr y verificar que falla**
 
 Run: `npm run test:ui`
-Expected: FAIL — `template.test.mjs` (`ENOENT … templates/DESIGN.md`) y `official-lint.test.mjs` (`Cannot find module …/lib/official-lint.mjs`) no cargan (`tests 86`, `pass 84`, `fail 2`).
+Expected: FAIL — `template.test.mjs` (`ENOENT … templates/DESIGN.md`) y `official-lint.test.mjs` (`Cannot find module …/lib/official-lint.mjs`) no cargan (`tests 89`, `pass 87`, `fail 2`).
 
 - [ ] **Step 3: Implementación mínima**
 
@@ -4493,9 +4620,9 @@ agregar:
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `npm run test:ui`
-Expected: PASS con un skip visible (`﹣ the template passes the official linter 0.4.0 … # sin linter oficial: …`) (`tests 91`, `pass 90`, `fail 0`, `skipped 1`).
+Expected: PASS con un skip visible (`﹣ the template passes the official linter 0.4.0 … # sin linter oficial: …`) (`tests 94`, `pass 93`, `fail 0`, `skipped 1`).
 Run: `npm test`
-Expected: PASS (núcleo + 91, `skipped 1`).
+Expected: PASS (núcleo + 94, `skipped 1`).
 
 Test de desarrollo (criterio 2 de §0.1), con el linter instalado a mano fuera del repo:
 ```bash
@@ -4503,7 +4630,7 @@ npm install --prefix <carpeta-fuera-del-repo> --no-audit --no-fund @google/desig
 PIGNOLO_UI_DESIGNMD=<carpeta-fuera-del-repo>/node_modules/@google/design.md npm run test:ui
 ```
 (En PowerShell: `$env:PIGNOLO_UI_DESIGNMD = '<…>\node_modules\@google\design.md'; npm run test:ui`.)
-Expected: `tests 91`, `pass 91`, `skipped 0`.
+Expected: `tests 94`, `pass 94`, `skipped 0`.
 
 - [ ] **Step 5: Demostrar el rojo**
 
@@ -4528,18 +4655,19 @@ git commit -F <archivo-del-mensaje>
 
 ---
 
-### Task 10: `design-md extract`: arranque desde la configuración, frecuencia como último recurso
+### Task 10: `design-md extract`: arranque desde la configuración, frecuencia como último recurso, nombres MD3 y carpeta del run
 
 **Files:**
-- Create: `plugins/pignolo-ui/lib/design-extract.mjs`
+- Create: `plugins/pignolo-ui/lib/design-extract.mjs`, `plugins/pignolo-ui/lib/run-folder.mjs`
 - Modify: `plugins/pignolo-ui/lib/token-sources.mjs` (exporta `blankComments` y `listCss`), `plugins/pignolo-ui/lib/design-patch.mjs` (exporta `yamlKey`), `plugins/pignolo-ui/scripts/design-md.mjs`
-- Test: `plugins/pignolo-ui/tests/design-extract.test.mjs`, `plugins/pignolo-ui/tests/official-lint.test.mjs` (modificado), fixtures en `plugins/pignolo-ui/tests/fixtures/extract/{tailwind-v4,tailwind-v3,css-root,shadcn,frequency}/`
+- Test: `plugins/pignolo-ui/tests/design-extract.test.mjs`, `plugins/pignolo-ui/tests/run-folder.test.mjs`, `plugins/pignolo-ui/tests/official-lint.test.mjs` (modificado), fixtures en `plugins/pignolo-ui/tests/fixtures/extract/{tailwind-v4,tailwind-v3,css-root,shadcn,frequency}/`
 
 **Interfaces:**
-- Consumes: `readTokenSources`, `listCss`, `blankComments` (Tasks 5–6); `parseColor`, `formatColor`, `detectFormat`, `toOklch` (Task 4); `yamlScalar`, `yamlKey`, `formatDiff` (Task 8); `validateDesign` (Task 7); `runOfficialLint` (Task 9).
+- Consumes: `readTokenSources`, `listCss`, `blankComments` (Tasks 5–6); `parseColor`, `formatColor`, `detectFormat`, `toOklch` (Task 4); `yamlScalar`, `yamlKey`, `formatDiff` (Task 8); `validateDesign`, `resolveAliases` (Task 7); `runOfficialLint` (Task 9).
 - Produces:
-  - `extractDesign(root, { date }) -> { mode: 'config' | 'frequency' | 'unverified' | 'none', text, from, extracted, darkDetected, unsupported, unverified }`; `text` es la propuesta completa de `DESIGN.md` o `null`.
-  - CLI: `node scripts/design-md.mjs extract --project <raíz> --out <archivo> [--date YYYY-MM-DD]` → escribe solo la propuesta en `--out` (nunca sobre un archivo que existe) y devuelve `{ mode, out, from, extracted, darkDetected, unsupported, unverified, validation, diff }`; sale 0 con propuesta, 1 si no hay nada que proponer (`mode: 'exists'` cuando el proyecto ya tiene `DESIGN.md`, en cualquier combinación de mayúsculas), 2 error propio.
+  - `extractDesign(root, { date }) -> { mode: 'config' | 'frequency' | 'unverified' | 'none', text, from, extracted, renamed, darkDetected, unsupported, unverified }`; `text` es la propuesta completa de `DESIGN.md` o `null`; `renamed` = `[{ from, to }]` de los colores renombrados a MD3 por el mapa de alias.
+  - `lib/run-folder.mjs`: `RUN_ROOT = '.pignolo-ui'`, `ensureRunRoot(projectRoot) -> dir` (crea `.pignolo-ui/.gitignore` = `*` si no existe, sin pisar uno existente), `isInsideRunRoot(projectRoot, file) -> boolean` (resuelve `..`).
+  - CLI: `node scripts/design-md.mjs extract --project <raíz> --out <archivo> [--date YYYY-MM-DD]` → escribe solo la propuesta en `--out` (nunca sobre un archivo que existe; si `--out` cae en `<raíz>/.pignolo-ui/`, crea antes el `.gitignore` y la carpeta) y devuelve `{ mode, out, from, extracted, renamed, darkDetected, unsupported, unverified, validation, diff }`; sale 0 con propuesta, 1 si no hay nada que proponer (`mode: 'exists'` cuando el proyecto ya tiene `DESIGN.md`, en cualquier combinación de mayúsculas), 2 error propio.
 
 - [ ] **Step 1: Escribir los tests que fallan (y los fixtures)**
 
@@ -4667,6 +4795,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { FIXTURES, PLUGIN_ROOT, makeTempDir, writeTree, runScript } from './helpers.mjs';
 import { extractDesign } from '../lib/design-extract.mjs';
 import { validateDesign, splitFrontmatter } from '../lib/design-doc.mjs';
@@ -4767,6 +4896,30 @@ test('an unreadable config or tokens in JavaScript: no proposal, never a frequen
   assert.deepEqual([empty.mode, empty.text], ['none', null]);
 });
 
+test('what extract generates uses MD3 names: known aliases are renamed, cssVars keeps the project variable', () => {
+  const root = writeTree(makeTempDir(), {
+    'styles.css': ':root {\n  --accent: #0b6bcb;\n  --text: #1a1a1a;\n  --bg: #ffffff;\n  --card: #fafafa;\n  --font-body: Inter, sans-serif;\n}\n',
+  });
+  const r = extractDesign(root, { date: DATE });
+  const data = parseYaml(splitFrontmatter(r.text).yaml).value;
+  assert.deepEqual(data.colors, { primary: '#0b6bcb', 'on-surface': '#1a1a1a', background: '#ffffff', surface: '#fafafa' });
+  assert.deepEqual(data.pignolo.cssVars, { 'colors.primary': '--accent', 'colors.on-surface': '--text', 'colors.background': '--bg', 'colors.surface': '--card' });
+  assert.deepEqual(r.renamed, [{ from: 'accent', to: 'primary' }, { from: 'text', to: 'on-surface' }, { from: 'bg', to: 'background' }, { from: 'card', to: 'surface' }]);
+  const both = extractDesign(writeTree(makeTempDir(), { 'a.css': ':root { --primary: #000; --accent: #111; --font-body: Inter; }' }), { date: DATE });
+  assert.deepEqual(Object.keys(parseYaml(splitFrontmatter(both.text).yaml).value.colors), ['primary', 'accent']);
+});
+
+test('CLI extract into the run folder creates .pignolo-ui/.gitignore first and leaves git status clean', () => {
+  const repo = writeTree(makeTempDir(), { 'a.css': ':root { --primary: #0b6bcb; --on-primary: #fff; --font-body: Inter; }' });
+  execFileSync('git', ['init', '-q'], { cwd: repo });
+  const out = path.join(repo, '.pignolo-ui', 'runs', '20260928-2100-new-home', 'DESIGN.proposal.md');
+  const res = runScript('design-md.mjs', ['extract', '--project', repo, '--out', out, '--date', DATE]);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(fs.readFileSync(path.join(repo, '.pignolo-ui', '.gitignore'), 'utf8'), '*\n');
+  assert.ok(fs.existsSync(out));
+  assert.equal(execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: repo, encoding: 'utf8' }), '?? a.css\n');
+});
+
 test('CLI extract: writes only the proposal, never over a file, never when DESIGN.md exists', () => {
   const dir = makeTempDir();
   const out = path.join(dir, 'proposal.md');
@@ -4786,6 +4939,38 @@ test('CLI extract: writes only the proposal, never over a file, never when DESIG
   res = runScript('design-md.mjs', ['extract', '--project', makeTempDir(), '--out', path.join(dir, 'p3.md')]);
   assert.equal(res.status, 1);
   assert.equal(res.json.mode, 'none');
+});
+```
+
+`plugins/pignolo-ui/tests/run-folder.test.mjs`:
+```js
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { makeTempDir, writeTree } from './helpers.mjs';
+import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+
+test('ensureRunRoot creates .pignolo-ui/.gitignore with * and is idempotent', () => {
+  const root = makeTempDir();
+  const dir = ensureRunRoot(root);
+  assert.equal(dir, path.join(root, RUN_ROOT));
+  assert.equal(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), '*\n');
+  assert.equal(ensureRunRoot(root), dir);
+});
+
+test('ensureRunRoot never rewrites an existing .gitignore', () => {
+  const root = writeTree(makeTempDir(), { '.pignolo-ui/.gitignore': '*\n# kept\n' });
+  ensureRunRoot(root);
+  assert.equal(fs.readFileSync(path.join(root, '.pignolo-ui', '.gitignore'), 'utf8'), '*\n# kept\n');
+});
+
+test('isInsideRunRoot resolves .. before deciding', () => {
+  const root = makeTempDir();
+  assert.equal(isInsideRunRoot(root, path.join(root, '.pignolo-ui', 'runs', 'x', 'a.md')), true);
+  assert.equal(isInsideRunRoot(root, path.join(root, '.pignolo-ui', '..', 'src', 'a.md')), false);
+  assert.equal(isInsideRunRoot(root, path.join(root, '.pignolo-ui-other', 'a.md')), false);
+  assert.equal(isInsideRunRoot(root, path.join(makeTempDir(), 'a.md')), false);
 });
 ```
 
@@ -4835,7 +5020,7 @@ test(`extract outputs of the fixtures pass the official linter ${PINNED_VERSION}
 - [ ] **Step 2: Correr y verificar que falla**
 
 Run: `npm run test:ui`
-Expected: FAIL — `design-extract.test.mjs` y `official-lint.test.mjs` no cargan (`Cannot find module …/lib/design-extract.mjs`) (`tests 89`, `pass 87`, `fail 2`).
+Expected: FAIL — `design-extract.test.mjs` y `official-lint.test.mjs` (`Cannot find module …/lib/design-extract.mjs`) y `run-folder.test.mjs` (`Cannot find module …/lib/run-folder.mjs`) no cargan (`tests 93`, `pass 90`, `fail 3`).
 
 - [ ] **Step 3: Implementación mínima**
 
@@ -4866,6 +5051,30 @@ por:
 export function yamlKey(k) {
 ```
 
+`plugins/pignolo-ui/lib/run-folder.mjs`:
+```js
+// Run folder root (spec §3.2): <repo>/.pignolo-ui/, with .pignolo-ui/.gitignore = "*"
+// created before the first write, so the folder ignores itself without touching any
+// versioned file or .git/info/exclude. Runs live in .pignolo-ui/runs/<run-id>/.
+import fs from 'node:fs';
+import path from 'node:path';
+
+export const RUN_ROOT = '.pignolo-ui';
+
+export function ensureRunRoot(projectRoot) {
+  const dir = path.join(projectRoot, RUN_ROOT);
+  fs.mkdirSync(dir, { recursive: true });
+  const ignore = path.join(dir, '.gitignore');
+  if (!fs.existsSync(ignore)) fs.writeFileSync(ignore, '*\n', { flag: 'wx' });
+  return dir;
+}
+
+export function isInsideRunRoot(projectRoot, file) {
+  const rel = path.relative(path.resolve(projectRoot, RUN_ROOT), path.resolve(file));
+  return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+```
+
 `plugins/pignolo-ui/lib/design-extract.mjs`:
 ```js
 // Bootstrap of DESIGN.md from code (spec §4.5 "arranque", A-18). First the configuration that
@@ -4882,6 +5091,7 @@ import path from 'node:path';
 import { readTokenSources, listCss, blankComments } from './token-sources.mjs';
 import { parseColor, formatColor, detectFormat, toOklch } from './color.mjs';
 import { yamlScalar, yamlKey } from './design-patch.mjs';
+import { resolveAliases } from './design-doc.mjs';
 
 const OFFICIAL_COLOR_FORMATS = new Set(['hex', 'rgb', 'hsl', 'hwb', 'oklch', 'oklab', 'lab', 'lch']);
 const TAILWIND_NAMESPACES = /^(text|leading|tracking|shadow|inset-shadow|drop-shadow|ease|animate|breakpoint|container|blur|perspective|aspect|font-weight|default)-/;
@@ -5014,6 +5224,22 @@ function fromTailwindV3(source, t) {
   }
 }
 
+// What pignolo-ui generates uses MD3 names (spec §4.2): a color read through a default alias
+// (accent, text, bg...) is renamed to its MD3 name, keeping its place, its dark value and its
+// cssVars link to the project variable.
+function toMd3Names(t) {
+  const aliases = resolveAliases(t.colors);
+  if (!aliases.size) return [];
+  const rename = (map, prefix = '') => Object.fromEntries(Object.entries(map).map(([k, v]) => {
+    const name = prefix ? k.slice(prefix.length) : k;
+    return [prefix && !k.startsWith(prefix) ? k : `${prefix}${aliases.has(name) ? aliases.get(name).as : name}`, v];
+  }));
+  t.colors = rename(t.colors);
+  t.dark = rename(t.dark);
+  t.cssVars = rename(t.cssVars, 'colors.');
+  return [...aliases].map(([from, a]) => ({ from, to: a.as }));
+}
+
 function bump(map, key, order, file, t) {
   const cur = map.get(key);
   if (cur) cur.count++;
@@ -5112,6 +5338,7 @@ export function extractDesign(root, { date = today() } = {}) {
   const t = newTokens();
   fromCssSources(found.sources.filter((s) => s.kind !== 'tailwind-v3'), t);
   for (const s of found.sources.filter((x) => x.kind === 'tailwind-v3')) fromTailwindV3(s, t);
+  const renamed = toMd3Names(t);
   let mode = 'config';
   let extracted = [];
   if (!Object.keys(t.colors).length) {
@@ -5127,7 +5354,7 @@ export function extractDesign(root, { date = today() } = {}) {
     ];
   }
   const text = render(t, { name: projectName(root), date, extracted });
-  return { ...base, mode, text, from: t.from, extracted };
+  return { ...base, mode, text, from: t.from, extracted, renamed };
 }
 ```
 
@@ -5150,6 +5377,15 @@ import { patchDesign, formatDiff } from '../lib/design-patch.mjs';
 import { extractDesign } from '../lib/design-extract.mjs';
 ```
 
+En `plugins/pignolo-ui/scripts/design-md.mjs`, justo después de:
+```js
+import { extractDesign } from '../lib/design-extract.mjs';
+```
+agregar:
+```js
+import { ensureRunRoot, isInsideRunRoot } from '../lib/run-folder.mjs';
+```
+
 En `plugins/pignolo-ui/scripts/design-md.mjs`, reemplazar:
 ```js
 const COMMANDS = { validate: cmdValidate, patch: cmdPatch };
@@ -5165,12 +5401,16 @@ function cmdExtract(opts) {
   if (existing) return { out: { mode: 'exists', file: existing }, code: 1 };
   const r = extractDesign(opts.project, opts.date ? { date: opts.date } : {});
   if (!r.text) return { out: { mode: r.mode, unsupported: r.unsupported, unverified: r.unverified }, code: 1 };
+  if (isInsideRunRoot(opts.project, opts.out)) {
+    ensureRunRoot(opts.project); // .gitignore before the first write (spec §3.2)
+    fs.mkdirSync(path.dirname(opts.out), { recursive: true });
+  }
   fs.writeFileSync(opts.out, r.text, { flag: 'wx' });
   const v = validateDesign(r.text, { catalog: loadCatalog(opts), darkInCss: r.darkDetected });
   const diff = formatDiff([{ line: 1, removed: [], added: r.text.replace(/\n$/, '').split('\n') }]);
   return {
     out: {
-      mode: r.mode, out: opts.out, from: r.from, extracted: r.extracted, darkDetected: r.darkDetected,
+      mode: r.mode, out: opts.out, from: r.from, extracted: r.extracted, renamed: r.renamed, darkDetected: r.darkDetected,
       unsupported: r.unsupported, unverified: r.unverified, validation: { status: v.status, findings: v.findings }, diff,
     },
     code: 0,
@@ -5183,10 +5423,10 @@ const COMMANDS = { validate: cmdValidate, patch: cmdPatch, extract: cmdExtract }
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `npm run test:ui`
-Expected: PASS con dos skips visibles del linter oficial (`tests 99`, `pass 97`, `fail 0`, `skipped 2`).
+Expected: PASS con dos skips visibles del linter oficial (`tests 107`, `pass 105`, `fail 0`, `skipped 2`).
 Run: `npm test`
-Expected: PASS (núcleo + 99, `skipped 2`).
-Con `PIGNOLO_UI_DESIGNMD` (ver Task 9): `tests 99`, `pass 99`: las cinco salidas de `extract` pasan el linter oficial con 0/0.
+Expected: PASS (núcleo + 107, `skipped 2`).
+Con `PIGNOLO_UI_DESIGNMD` (ver Task 9): `tests 107`, `pass 107`: las cinco salidas de `extract` pasan el linter oficial con 0/0.
 
 - [ ] **Step 5: Demostrar el rojo**
 
@@ -5198,11 +5438,16 @@ Con `PIGNOLO_UI_DESIGNMD` (ver Task 9): `tests 99`, `pass 99`: las cinco salidas
 | En `fromCssSources`, escribir el tema oscuro en hex (`formatColor(parsed.rgba, 'hex')`) | `:root and .dark: …` y `shadcn: bare HSL becomes hex, foreground becomes on-background` |
 | En `extractDesign`, vaciar `extracted = [];` justo antes de `render(…)` | `without any config: most frequent colors, font and radii, all marked extracted` |
 | En `cmdExtract`, borrar la línea `if (fs.existsSync(opts.out)) throw new UsageError(…nunca sobrescribe…);` | `CLI extract: writes only the proposal, never over a file, never when DESIGN.md exists` |
+| En `extractDesign`, fijar `const renamed = [];` en lugar de `toMd3Names(t)` | `what extract generates uses MD3 names: known aliases are renamed, cssVars keeps the project variable` |
+| En `toMd3Names`, borrar la línea `t.cssVars = rename(t.cssVars, 'colors.');` | `what extract generates uses MD3 names: known aliases are renamed, cssVars keeps the project variable` |
+| En `cmdExtract`, borrar la línea `ensureRunRoot(opts.project);` | `CLI extract into the run folder creates .pignolo-ui/.gitignore first and leaves git status clean` |
+| En `ensureRunRoot`, escribir siempre (`fs.writeFileSync(ignore, '*\n');`) | `ensureRunRoot never rewrites an existing .gitignore` |
+| En `isInsideRunRoot`, comparar el texto de la ruta sin resolver (`String(file).startsWith(path.join(projectRoot, RUN_ROOT))`) | `isInsideRunRoot resolves .. before deciding` |
 
 - [ ] **Step 6: Commit**
 
 ```text
-feat(ui): design-md extract desde la configuración existente y por frecuencia como último recurso
+feat(ui): design-md extract desde la configuración existente, nombres MD3 y carpeta del run ignorada
 ```
 ```bash
 git add plugins/pignolo-ui
@@ -5212,17 +5457,221 @@ git commit -F <archivo-del-mensaje>
 
 ---
 
-### Task 11: Aprobados versionados (`approve save | record | verify`)
+### Task 11: Chequeo de fuga (`leak-check`)
+
+**Files:**
+- Create: `plugins/pignolo-ui/lib/leak-check.mjs`, `plugins/pignolo-ui/scripts/leak-check.mjs`
+- Test: `plugins/pignolo-ui/tests/leak-check.test.mjs`
+
+**Interfaces:**
+- Consumes: `tests/helpers.mjs` (`makeTempDir`, `writeTree`, `runScript`).
+- Produces:
+  - `findLeaks(text, values = []) -> [{ kind: 'value', index, line } | { kind: 'path', match, line }]`: valores sin distinguir mayúsculas (se ignoran los de menos de `MIN_VALUE_LENGTH = 3` caracteres) y rutas absolutas locales (`C:\`, `D:/`, `/Users/`, `/home/`). Nunca repite un valor: da su índice.
+  - `checkLeaks(dir, values = []) -> { files, leaks: [{ file, ...leak }] }` (recorre toda la carpeta).
+  - `readValuesFile(file) -> string[]` (lista JSON de strings; si no, error).
+  - CLI: `node scripts/leak-check.mjs --dir <carpeta> [--values-file <lista JSON>]` → `{ ok, leaks }`; sale 0 limpio, 1 con alguna fuga, 2 error propio.
+
+- [ ] **Step 1: Escribir el test que falla**
+
+`plugins/pignolo-ui/tests/leak-check.test.mjs`:
+```js
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { findLeaks, checkLeaks } from '../lib/leak-check.mjs';
+
+// Synthetic identities only: nothing here belongs to a real person or machine.
+const VALUES = ['ana.perez@example.com', 'Ana Pérez', 'aperez'];
+
+test('user values are found without case, with their line', () => {
+  const text = '<p>Hola</p>\n<p>Contacto: ANA.PEREZ@example.com</p>\n<footer>hecho por ana pérez</footer>\n';
+  assert.deepEqual(findLeaks(text, VALUES), [
+    { kind: 'value', index: 0, line: 2 },
+    { kind: 'value', index: 1, line: 3 },
+  ]);
+  assert.deepEqual(findLeaks('<p>‹Nombre›</p>\n', VALUES), []);
+});
+
+test('absolute local paths of Windows, macOS and Linux are found; relative ones and URLs are not', () => {
+  const leaks = (s) => findLeaks(s, []).map((l) => l.match);
+  assert.deepEqual(leaks('<img src="C:\\Users\\x\\a.png">'), ['C:\\']);
+  assert.deepEqual(leaks('ver D:/proyectos/app'), ['D:/']);
+  assert.deepEqual(leaks('/Users/aperez/app/page.tsx'), ['/Users/']);
+  assert.deepEqual(leaks('cd /home/aperez/app'), ['/home/']);
+  assert.deepEqual(leaks('<a href="https://example.com/home/x">x</a> src/home/a.png ../Users/b mailto:x@example.com'), []);
+});
+
+test('short values are ignored so a two-letter user does not flag every word', () => {
+  assert.deepEqual(findLeaks('mi casa', ['mi', '']), []);
+});
+
+test('checkLeaks scans every file and never echoes the values back', () => {
+  const dir = writeTree(makeTempDir(), {
+    'home.html': '<p>ok</p>\n',
+    'detail.html': '<p>aperez</p>\n<p>/home/someone/x</p>\n',
+  });
+  const r = checkLeaks(dir, VALUES);
+  assert.deepEqual(r.leaks, [
+    { file: 'detail.html', kind: 'value', index: 2, line: 1 },
+    { file: 'detail.html', kind: 'path', match: '/home/', line: 2 },
+  ]);
+  assert.ok(!JSON.stringify(r).includes('aperez'));
+  assert.deepEqual(checkLeaks(writeTree(makeTempDir(), { 'a.html': '<p>‹Dato›</p>' }), VALUES).leaks, []);
+});
+
+test('CLI: exit 0 clean, 1 with a leak, 2 on a bad values file', () => {
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, JSON.stringify(VALUES));
+  const clean = writeTree(makeTempDir(), { 'a.html': '<p>ok</p>' });
+  let out = runScript('leak-check.mjs', ['--dir', clean, '--values-file', values]);
+  assert.equal(out.status, 0, out.stderr);
+  assert.deepEqual(out.json, { ok: true, leaks: [] });
+  out = runScript('leak-check.mjs', ['--dir', writeTree(makeTempDir(), { 'a.html': 'Ana Pérez' }), '--values-file', values]);
+  assert.equal(out.status, 1);
+  assert.equal(out.json.ok, false);
+  fs.writeFileSync(values, '{"not":"a list"}');
+  out = runScript('leak-check.mjs', ['--dir', clean, '--values-file', values]);
+  assert.equal(out.status, 2);
+});
+```
+
+- [ ] **Step 2: Correr y verificar que falla**
+
+Run: `npm run test:ui`
+Expected: FAIL — `leak-check.test.mjs` no carga (`Cannot find module …/lib/leak-check.mjs`) (`tests 108`, `pass 105`, `fail 1`, `skipped 2`).
+
+- [ ] **Step 3: Implementación mínima**
+
+`plugins/pignolo-ui/lib/leak-check.mjs`:
+```js
+// Leak check (spec §7.4): before an option is published or saved as approved, its files must
+// not carry data of the user or the machine: the values the skill passes (session email, git
+// user.name / user.email, OS user, home) and any absolute local path (Windows drive,
+// /Users/, /home/). Deterministic; the output never echoes a value back (index only).
+//
+// findLeaks(text, values) -> [{ kind: 'value', index, line } | { kind: 'path', match, line }]
+// checkLeaks(dir, values) -> { files, leaks: [{ file, ...leak }] }
+import fs from 'node:fs';
+import path from 'node:path';
+
+export const MIN_VALUE_LENGTH = 3;
+const ABSOLUTE_PATH = /(?<![\w.~-])(?:[A-Za-z]:[\\/]|\/(?:Users|home)\/)/g;
+
+export function findLeaks(text, values = []) {
+  const wanted = values
+    .map((v, index) => ({ v: String(v ?? '').trim().toLocaleLowerCase(), index }))
+    .filter((x) => x.v.length >= MIN_VALUE_LENGTH);
+  const leaks = [];
+  String(text).split('\n').forEach((raw, i) => {
+    const line = raw.toLocaleLowerCase();
+    for (const w of wanted) if (line.includes(w.v)) leaks.push({ kind: 'value', index: w.index, line: i + 1 });
+    for (const m of raw.matchAll(ABSOLUTE_PATH)) leaks.push({ kind: 'path', match: m[0], line: i + 1 });
+  });
+  return leaks;
+}
+
+export function checkLeaks(dir, values = []) {
+  const files = [];
+  const walk = (d) => {
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) walk(full);
+      else files.push(path.relative(dir, full).split(path.sep).join('/'));
+    }
+  };
+  walk(dir);
+  files.sort();
+  const leaks = [];
+  for (const f of files) {
+    for (const l of findLeaks(fs.readFileSync(path.join(dir, f), 'utf8'), values)) leaks.push({ file: f, ...l });
+  }
+  return { files, leaks };
+}
+
+// Reads the JSON list of values the skill passes; throws on anything else.
+export function readValuesFile(file) {
+  const values = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!Array.isArray(values) || !values.every((v) => typeof v === 'string')) throw new Error('the values file must be a JSON list of strings');
+  return values;
+}
+```
+
+`plugins/pignolo-ui/scripts/leak-check.mjs`:
+```js
+// leak-check.mjs --dir <folder> [--values-file <json list>] (spec §7.4)
+// Prints { ok, leaks } on stdout. Exit 0 clean, 1 at least one leak, 2 own error.
+// The values (email, git name and email, OS user, home) come as a file argument: they
+// never reach this script through the environment.
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { checkLeaks, readValuesFile } from '../lib/leak-check.mjs';
+
+export function main(argv) {
+  try {
+    const opts = {};
+    for (let i = 0; i < argv.length; i += 2) {
+      if (!argv[i].startsWith('--') || argv[i + 1] === undefined) throw new Error(`argumento inesperado: ${argv[i]}`);
+      opts[argv[i].slice(2)] = argv[i + 1];
+    }
+    if (!opts.dir) throw new Error('falta --dir <carpeta>');
+    const values = opts['values-file'] ? readValuesFile(opts['values-file']) : [];
+    const { leaks } = checkLeaks(opts.dir, values);
+    process.stdout.write(`${JSON.stringify({ ok: leaks.length === 0, leaks }, null, 2)}\n`);
+    return leaks.length ? 1 : 0;
+  } catch (e) {
+    process.stderr.write(`leak-check: ${e.message}\n`);
+    return 2;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main(process.argv.slice(2));
+}
+```
+
+- [ ] **Step 4: Correr y verificar que pasa**
+
+Run: `npm run test:ui`
+Expected: PASS (`tests 112`, `pass 110`, `fail 0`, `skipped 2`).
+Run: `npm test`
+Expected: PASS (núcleo + 112, `skipped 2`).
+
+- [ ] **Step 5: Demostrar el rojo**
+
+| Rotura | Tiene que fallar |
+|---|---|
+| En `findLeaks`, comparar sin pasar la línea a minúsculas (`const line = raw;`) | `user values are found without case, with their line` y `CLI: exit 0 clean, 1 with a leak, 2 on a bad values file` |
+| En `ABSOLUTE_PATH`, quitar el `(?<![\w.~-])` inicial | `absolute local paths of Windows, macOS and Linux are found; relative ones and URLs are not` |
+| Filtrar con `x.v.length > 0` en lugar de `>= MIN_VALUE_LENGTH` | `short values are ignored so a two-letter user does not flag every word` |
+| Agregar `value: w.v` al hallazgo de valor | `user values are found without case, with their line` y `checkLeaks scans every file and never echoes the values back` |
+| En el CLI, devolver siempre `0` | `CLI: exit 0 clean, 1 with a leak, 2 on a bad values file` |
+
+- [ ] **Step 6: Commit**
+
+```text
+feat(ui): chequeo de fuga de datos del usuario y de la máquina en las salidas
+```
+```bash
+git add plugins/pignolo-ui
+git commit -F <archivo-del-mensaje>
+```
+
+
+---
+
+### Task 12: Aprobados versionados (`approve save | record | verify`)
 
 **Files:**
 - Create: `plugins/pignolo-ui/lib/approved.mjs`, `plugins/pignolo-ui/scripts/approve.mjs`
 - Test: `plugins/pignolo-ui/tests/approve.test.mjs`
 
 **Interfaces:**
-- Consumes: `patchDesign` (Task 8); fixture `valid.md` (Task 7).
+- Consumes: `patchDesign` (Task 8); `checkLeaks`, `readValuesFile` (Task 11); fixture `valid.md` (Task 7).
 - Produces:
   - `checkScreens(dir) -> { files, problems: [{ file, problem, href? }] }` con `problem` ∈ `subfolder`, `not-html`, `bad-name`, `empty`, `no-charset`, `script`, `remote-resource`, `broken-link`.
-  - `saveApproved({ projectRoot, flow, from, date }) -> { ok: true, path, version, manifestSha256 } | { ok: false, problems }`. `path` = `design/approved/<flujo>` o `<flujo>-vN`; nunca escribe sobre una carpeta existente.
+  - `saveApproved({ projectRoot, flow, from, date, leakValues = [] }) -> { ok: true, path, version, manifestSha256 } | { ok: false, problems }`. Antes de escribir corre el chequeo de fuga (§7.4) y suma cada fuga como `{ file, problem: 'leak', kind, index | match, line }`, sin repetir el valor. `path` = `design/approved/<flujo>` o `<flujo>-vN`; nunca escribe sobre una carpeta existente.
   - `decisionEntry({ path, manifestSha256, date, quote }) -> string` = `` - <fecha> — approved `<path>/` (manifest sha256 `<hex>`): "<cita>" ``.
   - `verifyApproved({ projectRoot, approvedPath }) -> { status: 'ok' | 'BLOCKED', problems }` con `problem` ∈ `bad-path`, `no-design-md`, `no-entry`, `manifest-unreadable`, `manifest-sha-mismatch`, `missing-file`, `file-changed`, `extra-file`; vale la última entrada de esa ruta en `DESIGN.md`.
   - `APPROVED_PATH`, `findDesignFile(projectRoot)`, `manifestSha(projectRoot, approvedPath)`.
@@ -5308,6 +5757,26 @@ test('screens that are not self-contained static HTML are refused and nothing is
   assert.ok(checkScreens(sub).problems.some((p) => p.problem === 'subfolder'));
   assert.deepEqual(checkScreens(makeTempDir()).problems, [{ file: '', problem: 'empty' }]);
   assert.equal(saveApproved({ projectRoot: project(), flow: 'Check Out', from: screens(), date: '2026-09-28' }).ok, false);
+});
+
+test('save refuses screens that leak user or machine data (spec 7.4); nothing is written', () => {
+  const cases = [
+    [{ 'home.html': page('x', '<a href="detail.html">d</a><p>/Users/someone/app</p>') }, []],
+    [{ 'detail.html': page('Detalle', '<a href="home.html">v</a><p>Hecho por Ana Pérez</p>') }, ['Ana Pérez']],
+  ];
+  for (const [tree, leakValues] of cases) {
+    const root = project();
+    const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(tree), date: '2026-09-28', leakValues });
+    assert.equal(r.ok, false);
+    assert.ok(r.problems.some((p) => p.problem === 'leak'), JSON.stringify(r.problems));
+    assert.ok(!JSON.stringify(r.problems).includes('Ana'));
+    assert.equal(fs.existsSync(path.join(root, 'design', 'approved', 'checkout')), false);
+  }
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, JSON.stringify(['Ana Pérez']));
+  const out = runScript('approve.mjs', ['save', '--project', project(), '--flow', 'checkout', '--from', screens(cases[1][0]), '--values-file', values]);
+  assert.equal(out.status, 1);
+  assert.equal(out.json.problems[0].problem, 'leak');
 });
 
 test('decisionEntry cites the path, the manifest sha256, the date and the literal choice', () => {
@@ -5400,7 +5869,7 @@ test('CLI: save, record (diff first, then --write) and verify', () => {
 - [ ] **Step 2: Correr y verificar que falla**
 
 Run: `npm run test:ui`
-Expected: FAIL — `approve.test.mjs` no carga (`Cannot find module …/lib/approved.mjs`) (`tests 100`, `pass 97`, `fail 1`, `skipped 2`).
+Expected: FAIL — `approve.test.mjs` no carga (`Cannot find module …/lib/approved.mjs`) (`tests 113`, `pass 110`, `fail 1`, `skipped 2`).
 
 - [ ] **Step 3: Implementación mínima**
 
@@ -5411,11 +5880,12 @@ Expected: FAIL — `approve.test.mjs` no carga (`Cannot find module …/lib/appr
 // a change creates <flow>-v2 (-v3...). DESIGN.md "## Decisions" registers the path and the
 // sha256 of the manifest; verify checks both before anything is implemented.
 //
-// checkScreens(dir) -> { files, problems }      saveApproved({ projectRoot, flow, from, date })
+// checkScreens(dir) -> { files, problems }      saveApproved({ projectRoot, flow, from, date, leakValues })
 // decisionEntry({ path, manifestSha256, date, quote })   verifyApproved({ projectRoot, approvedPath })
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { checkLeaks } from './leak-check.mjs';
 
 const FLOW = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREEN = /^[a-z0-9][a-z0-9-]*\.html$/;
@@ -5452,9 +5922,14 @@ export function checkScreens(dir) {
   return { files, problems };
 }
 
-export function saveApproved({ projectRoot, flow, from, date }) {
+export function saveApproved({ projectRoot, flow, from, date, leakValues = [] }) {
   if (!FLOW.test(flow || '')) return { ok: false, problems: [{ file: '', problem: 'bad-flow-name' }] };
   const { files, problems } = checkScreens(from);
+  // leak check before saving as approved (spec §7.4); values are never echoed back
+  for (const l of checkLeaks(from, leakValues).leaks) {
+    const { file, kind, line } = l;
+    problems.push(kind === 'path' ? { file, problem: 'leak', kind, match: l.match, line } : { file, problem: 'leak', kind, index: l.index, line });
+  }
   if (problems.length) return { ok: false, problems };
   const base = path.join(projectRoot, 'design', 'approved');
   fs.mkdirSync(base, { recursive: true });
@@ -5539,7 +6014,8 @@ export function verifyApproved({ projectRoot, approvedPath }) {
 ```js
 // approve.mjs: save | record | verify of approved visual decisions (spec §3.3).
 //   save   --project <repo> --flow <slug> --from <folder with the chosen HTML> [--date YYYY-MM-DD]
-//          0 saved, 1 refused (screens not self-contained), 2 own error
+//          [--values-file <JSON list of user and machine values for the leak check>]
+//          0 saved, 1 refused (screens not self-contained or leaking data), 2 own error
 //   record --project <repo> --path design/approved/<flow> --quote-file <file> [--date] [--write]
 //          prints the diff of the "## Decisions" entry; writes DESIGN.md only with --write
 //          0 ok, 1 not applicable, 2 own error
@@ -5551,6 +6027,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { saveApproved, verifyApproved, decisionEntry, findDesignFile, manifestSha, APPROVED_PATH } from '../lib/approved.mjs';
 import { patchDesign } from '../lib/design-patch.mjs';
+import { readValuesFile } from '../lib/leak-check.mjs';
 
 class UsageError extends Error {}
 
@@ -5589,7 +6066,8 @@ function cmdSave(opts) {
   need(opts, 'project', 'flow', 'from');
   if (!isDir(opts.project)) throw new UsageError(`no existe el proyecto ${opts.project}`);
   if (!isDir(opts.from)) throw new UsageError(`no existe la carpeta de pantallas ${opts.from}`);
-  const r = saveApproved({ projectRoot: opts.project, flow: opts.flow, from: opts.from, date: opts.date || today() });
+  const leakValues = opts['values-file'] ? readValuesFile(opts['values-file']) : [];
+  const r = saveApproved({ projectRoot: opts.project, flow: opts.flow, from: opts.from, date: opts.date || today(), leakValues });
   return { out: r, code: r.ok ? 0 : 1 };
 }
 
@@ -5646,9 +6124,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 - [ ] **Step 4: Correr y verificar que pasa**
 
 Run: `npm run test:ui`
-Expected: PASS (`tests 108`, `pass 106`, `fail 0`, `skipped 2`).
+Expected: PASS (`tests 122`, `pass 120`, `fail 0`, `skipped 2`).
 Run: `npm test`
-Expected: PASS (núcleo + 108, `skipped 2`; en la copia de trabajo: `tests 669`, `pass 667`, `skipped 2`).
+Expected: PASS (núcleo + 122, `skipped 2`; en la copia de trabajo: `tests 683`, `pass 681`, `skipped 2`).
+Con `PIGNOLO_UI_DESIGNMD`: `tests 122`, `pass 122`.
 Run: `claude plugin validate plugins/pignolo-ui` y `claude plugin validate .`
 Expected: `✔ Validation passed` en los dos.
 
@@ -5664,11 +6143,13 @@ Expected: `✔ Validation passed` en los dos.
 | En `verifyApproved`, usar la primera entrada (`entries[0][1]`) | `verify uses the latest entry for the path` |
 | En `verifyApproved`, cambiar `if (!APPROVED_PATH.test(approvedPath \|\| '')) {` por `if (!approvedPath) {` | `verify and record only accept design/approved/<flow> paths` |
 | En `cmdRecord`, cambiar `if (opts.write) {` por `if (true) {` | `CLI: save, record (diff first, then --write) and verify` |
+| En `saveApproved`, recorrer `[]` en lugar de `checkLeaks(from, leakValues).leaks` | `save refuses screens that leak user or machine data (spec 7.4); nothing is written` |
+| En `cmdSave`, fijar `const leakValues = [];` | `save refuses screens that leak user or machine data (spec 7.4); nothing is written` |
 
 - [ ] **Step 6: Commit**
 
 ```text
-feat(ui): aprobados versionados con manifest, registro en DESIGN.md y verificación
+feat(ui): aprobados versionados con manifest, chequeo de fuga, registro en DESIGN.md y verificación
 ```
 ```bash
 git add plugins/pignolo-ui
@@ -5707,16 +6188,23 @@ git commit -F <archivo-del-mensaje>
 | §4.2 contrato con el linter oficial: lo generado 0/0; el oficial solo si ya está instalado; si no corre, "no verificado" | 9, 10 |
 | §0.1 criterio 2: la plantilla y los fixtures de salida de `extract` pasan 0.4.0 con 0/0 (test de desarrollo) | 9, 10 |
 | §4.5 / A-18 `extract`: primero la configuración; frecuencia solo como último recurso, en `pignolo.extracted`, como diff | 10 |
-| §3.3 / A-19 / A-20 aprobados: carpeta con un HTML por pantalla + `manifest.json`, registro en `## Decisions` como diff, inmutable (`-v2`), `verify` → `BLOCKED` | 11 |
+| §3.3 / A-19 / A-20 aprobados: carpeta con un HTML por pantalla + `manifest.json`, registro en `## Decisions` como diff, inmutable (`-v2`), `verify` → `BLOCKED` | 12 |
+| §4.2 / §4.3 alias semánticos al leer (`pignolo.aliases` y mapa por defecto del README), hallazgo que nombra el alias; lo generado usa MD3 | 7, 10 |
+| §3.2 carpeta del run `<repo>/.pignolo-ui/runs/<run-id>/` con `.pignolo-ui/.gitignore` = `*` antes de la primera escritura (lo que escribe este hito: `extract --out`) | 10 |
+| §7.4 chequeo de fuga antes de guardar como aprobado (valores del usuario y rutas absolutas locales) | 11, 12 |
+| §0 / A-12 Node ≥ 22 declarado (README y restricciones); sin probar en 22 | 1 |
 | §16.1 Parser: lo no soportado → "no validado"; escritura por inserción conserva comentarios byte a byte | 3, 8 |
 | §16.1 Validador: esquema cerrado; `intentional` sobre piso o THEME-03 → rechaza; hex en `pignolo:` → rechaza; oscuro detectado sin `themes.dark` → `alto` | 7 |
-| §16.1 Aprobados: no sobrescribe (crea `-v2`); archivo editado, agregado o quitado → `BLOCKED` | 11 |
+| §16.1 Aprobados: no sobrescribe (crea `-v2`); archivo editado, agregado o quitado → `BLOCKED` | 12 |
+| §16.1 Alias: un `DESIGN.md` con `accent` y `text` se lee como `primary` y `on-surface`, y el hallazgo nombra el alias | 7 |
+| §16.1 Chequeo de fuga: email, nombre de git, usuario del SO y rutas absolutas de Windows, macOS y Linux → falla; un fixture limpio pasa | 11, 12 |
+| §16.1 Carpeta del run: `.pignolo-ui/.gitignore` antes de la primera escritura y `git status` limpio | 10 |
 | §16.1 `extract`: con configuración (v4, v3 literal, `:root`, shadcn) no cuenta frecuencias; sin configuración cuenta y completa `extracted` | 10 |
 | §16.1 Linter del plugin (R9) | 2 |
 | §16.1 toda la suite sin red; el test del linter oficial sin linter sale como skip visible | 9, 10 |
 
-Fuera del hito 1 aunque §16.1 los nombre: `ui-check` sobre `design/approved/**` (hito 2), catálogo completo (hito 2), JSX no resoluble, comentarios por sintaxis y extensión no soportada (hito 2), framing del pipe (hito 3), presentación y lienzo (hito 4).
+Fuera del hito 1 aunque §16.1 los nombre: `ui-check` sobre `design/approved/**` (hito 2), catálogo completo (hito 2), JSX no resoluble, comentarios por sintaxis y extensión no soportada (hito 2), clases de Tailwind, familia de tokens y reglas afinadas (hito 2), framing del pipe y tema explícito (hito 3), poda de la carpeta del run y "una auditoría deja `git status` limpio" (hito 4, con `run.mjs`), presentación y lienzo (hito 4).
 
-**Búsqueda de placeholders:** ningún paso dice "similar a la Task N", "TBD" ni "agregar manejo de errores"; todo bloque de código es el archivo completo o una edición exacta con su contexto, y el replay los aplicó sin intervención. Los únicos marcadores `‹…›` están dentro de los HTML de prueba de la Task 11, a propósito (son los marcadores de §7.1).
+**Búsqueda de placeholders:** ningún paso dice "similar a la Task N", "TBD" ni "agregar manejo de errores"; todo bloque de código es el archivo completo o una edición exacta con su contexto, y el replay los aplicó sin intervención. Los únicos marcadores `‹…›` están dentro de los HTML de prueba de las Tasks 11 y 12, a propósito (son los marcadores de §7.1).
 
-**Consistencia de tipos:** los nombres que una tarea consume coinciden con los que otra produce (`parseYaml`/`locate`/`stripComment` → Tasks 7, 8; `parseColor`/`formatColor`/`detectFormat`/`toOklch` → Tasks 6, 7, 10; `readTokenSources`/`listCss`/`blankComments` → Tasks 7, 10; `validateDesign`/`splitFrontmatter` → Tasks 8, 9, 10; `patchDesign`/`yamlScalar`/`yamlKey`/`formatDiff` → Tasks 10, 11; `runOfficialLint` → Tasks 9, 10). Las formas de hallazgo (`{ id, severity, path, line, message, rejects }`), de salida de los CLIs (un JSON por invocación) y los códigos 0/1/2 son los mismos en `design-md.mjs` y `approve.mjs`. Las severidades usan solo la escala de §5.3.
+**Consistencia de tipos:** los nombres que una tarea consume coinciden con los que otra produce (`parseYaml`/`locate`/`stripComment` → Tasks 7, 8; `parseColor`/`formatColor`/`detectFormat`/`toOklch` → Tasks 6, 7, 10; `readTokenSources`/`listCss`/`blankComments` → Tasks 7, 10; `validateDesign`/`splitFrontmatter` → Tasks 8, 9, 10; `patchDesign`/`yamlScalar`/`yamlKey`/`formatDiff` → Tasks 10, 12; `resolveAliases` → Task 10; `checkLeaks`/`readValuesFile` → Task 12; `runOfficialLint` → Tasks 9, 10). Las formas de hallazgo (`{ id, severity, path, line, message, rejects }`), de salida de los CLIs (un JSON por invocación) y los códigos 0/1/2 son los mismos en `design-md.mjs`, `leak-check.mjs` y `approve.mjs`. Las severidades usan solo la escala de §5.3.
