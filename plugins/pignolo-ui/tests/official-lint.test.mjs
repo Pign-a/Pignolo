@@ -5,8 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PLUGIN_ROOT, makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { PLUGIN_ROOT, FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
 import { findOfficialLinter, runOfficialLint, PINNED_VERSION } from '../lib/official-lint.mjs';
+import { extractDesign } from '../lib/design-extract.mjs';
 
 const TEMPLATE = path.join(PLUGIN_ROOT, 'templates', 'DESIGN.md');
 const NO_LINTER = 'sin linter oficial: instalar @google/design.md@0.4.0 a mano fuera del repo y fijar PIGNOLO_UI_DESIGNMD';
@@ -43,4 +44,20 @@ test(`the template passes the official linter ${PINNED_VERSION} with 0 errors an
   assert.equal(r.status, 'ran');
   assert.deepEqual([r.errors, r.warnings], [0, 0], JSON.stringify(r.findings));
   assert.ok(fs.existsSync(found.entry));
+});
+
+test(`extract outputs of the fixtures pass the official linter ${PINNED_VERSION} with 0/0 (development)`, (t) => {
+  const found = findOfficialLinter({ env: process.env });
+  if (!found) {
+    t.skip(NO_LINTER);
+    return;
+  }
+  for (const name of ['tailwind-v4', 'tailwind-v3', 'css-root', 'shadcn', 'frequency']) {
+    const r = extractDesign(path.join(FIXTURES, 'extract', name), { date: '2026-09-28' });
+    const file = path.join(makeTempDir(), 'DESIGN.md');
+    fs.writeFileSync(file, r.text);
+    const lint = runOfficialLint(file, { env: process.env });
+    assert.equal(lint.status, 'ran', name);
+    assert.deepEqual([lint.errors, lint.warnings], [0, 0], `${name}: ${JSON.stringify(lint.findings)}`);
+  }
 });

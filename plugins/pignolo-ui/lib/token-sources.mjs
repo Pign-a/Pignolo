@@ -45,7 +45,7 @@ function lineIndex(text) {
 }
 
 // Same length as the input: comments become spaces (newlines kept), strings untouched.
-function blankComments(text, { js = false } = {}) {
+export function blankComments(text, { js = false } = {}) {
   const out = text.split('');
   let quote = null;
   for (let i = 0; i < text.length; i++) {
@@ -309,7 +309,7 @@ export function parseTailwindConfig(text) {
 
 // ---- project scan -----------------------------------------------------------------------
 
-function listCss(root, max) {
+export function listCss(root, max) {
   const out = [];
   let truncated = false;
   const walk = (dir) => {

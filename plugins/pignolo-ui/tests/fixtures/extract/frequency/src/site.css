@@ -1,0 +1,9 @@
+body { font-family: "Merriweather", Georgia, serif; color: #1a1a1a; background: #ffffff; }
+h1, h2 { font-family: "Merriweather", serif; color: #1a1a1a; }
+.card { background: #ffffff; border-radius: 12px; color: #1a1a1a; }
+.button { background: #0b6bcb; color: #ffffff; border-radius: 6px; }
+.button:hover { background: #0B6BCB; }
+.link { color: rgb(11 107 203); }
+.badge { background: #0b6bcb; border-radius: 6px; font-family: system-ui, sans-serif; }
+.tag { border: 1px solid #e5e5e5; border-radius: 6px; }
+.chip { background-color: #ffffff; outline: 2px solid #0b6bcb; }

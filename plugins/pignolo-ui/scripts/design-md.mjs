@@ -3,11 +3,14 @@
 // Prints one JSON object on stdout. Exit codes:
 //   validate: 0 valid, 1 findings, 2 not verified (unsupported YAML) or own error
 //   patch:    0 diff computed (written with --write), 1 refused or not applicable, 2 own error
+//   extract:  0 proposal written to --out, 1 nothing to propose (DESIGN.md exists, unreadable or no tokens), 2 own error
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDesign } from '../lib/design-doc.mjs';
-import { patchDesign } from '../lib/design-patch.mjs';
+import { patchDesign, formatDiff } from '../lib/design-patch.mjs';
+import { extractDesign } from '../lib/design-extract.mjs';
+import { ensureRunRoot, isInsideRunRoot } from '../lib/run-folder.mjs';
 import { runOfficialLint } from '../lib/official-lint.mjs';
 import { readTokenSources } from '../lib/token-sources.mjs';
 
@@ -83,7 +86,32 @@ function cmdPatch(opts) {
   return { out: { written: Boolean(opts.write), diff: r.diff, hunks: r.hunks, validation }, code: 0 };
 }
 
-const COMMANDS = { validate: cmdValidate, patch: cmdPatch };
+// Writes a proposal (never DESIGN.md itself, never over an existing file); the diff is shown
+// and the user confirms it before the flow copies it to DESIGN.md.
+function cmdExtract(opts) {
+  if (!opts.project || !opts.out) throw new UsageError('faltan --project <raíz del repo> y --out <archivo de propuesta>');
+  if (fs.existsSync(opts.out)) throw new UsageError(`${opts.out} ya existe: extract nunca sobrescribe`);
+  const existing = fs.readdirSync(opts.project).find((n) => n.toLowerCase() === 'design.md');
+  if (existing) return { out: { mode: 'exists', file: existing }, code: 1 };
+  const r = extractDesign(opts.project, opts.date ? { date: opts.date } : {});
+  if (!r.text) return { out: { mode: r.mode, unsupported: r.unsupported, unverified: r.unverified }, code: 1 };
+  if (isInsideRunRoot(opts.project, opts.out)) {
+    ensureRunRoot(opts.project); // .gitignore before the first write (spec §3.2)
+    fs.mkdirSync(path.dirname(opts.out), { recursive: true });
+  }
+  fs.writeFileSync(opts.out, r.text, { flag: 'wx' });
+  const v = validateDesign(r.text, { catalog: loadCatalog(opts), darkInCss: r.darkDetected });
+  const diff = formatDiff([{ line: 1, removed: [], added: r.text.replace(/\n$/, '').split('\n') }]);
+  return {
+    out: {
+      mode: r.mode, out: opts.out, from: r.from, extracted: r.extracted, renamed: r.renamed, darkDetected: r.darkDetected,
+      unsupported: r.unsupported, unverified: r.unverified, validation: { status: v.status, findings: v.findings }, diff,
+    },
+    code: 0,
+  };
+}
+
+const COMMANDS = { validate: cmdValidate, patch: cmdPatch, extract: cmdExtract };
 
 export function main(argv) {
   try {

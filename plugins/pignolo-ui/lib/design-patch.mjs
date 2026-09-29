@@ -27,7 +27,7 @@ export function yamlScalar(v) {
   return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function yamlKey(k) {
+export function yamlKey(k) {
   const s = String(k);
   return /^[A-Za-z_][A-Za-z0-9_.-]*$/.test(s) ? s : yamlScalar(s);
 }
