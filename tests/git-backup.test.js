@@ -168,6 +168,44 @@ test('backupRefs treats an already existing ref with the same sha as success', (
   const sha = git(['rev-parse', 'HEAD'], repo);
   const { stamp } = require('../plugins/pignolo/lib/shadow');
   git(['update-ref', `refs/pignolo/backup/${stamp(now)}/heads/main`, sha], repo);
-  // el juego ya existe con el mismo contenido en el mismo instante: no lanza
-  assert.doesNotThrow(() => backupRefs({ cwd: repo, now, outside: false }));
+  // Un juego posterior con otro contenido: el último no coincide, así que no se
+  // deduplica y el create choca de verdad con la ref que ya existe (camino del catch).
+  git(['update-ref', `refs/pignolo/backup/${stamp(new Date(now.getTime() + 1000))}/heads/otra`, sha], repo);
+  const r = backupRefs({ cwd: repo, now, outside: false });
+  assert.deepStrictEqual({ base: r.base, count: r.count }, { base: `refs/pignolo/backup/${stamp(now)}`, count: 1 });
+});
+
+// Hallazgo I1: con muchos juegos, listar todos para hallar el último pasaba el buffer
+// de 1 MB (ENOBUFS) y desde ahí ningún despacho se respaldaba.
+test('backupRefs keeps working with many previous sets', () => {
+  const repo = makeRepo();
+  const sha = git(['rev-parse', 'HEAD'], repo);
+  const { stamp } = require('../plugins/pignolo/lib/shadow');
+  const lines = ['# pack-refs with: peeled fully-peeled'];
+  for (let s = 0; s < 100; s += 1) {
+    const base = `refs/pignolo/backup/${stamp(new Date(Date.UTC(2026, 8, 1, 0, 0, s)))}`;
+    for (let b = 0; b < 250; b += 1) lines.push(`${sha} ${base}/heads/rama-con-nombre-largo-${String(b).padStart(4, '0')}`);
+  }
+  fs.writeFileSync(path.join(repo, '.git', 'packed-refs'), lines.join('\n') + '\n');
+  const r = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:00Z'), outside: false });
+  assert.strictEqual(r.count, 1);
+  const again = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:05Z'), outside: false });
+  assert.strictEqual(again.reused, r.base);
+});
+
+// Hallazgo C1: el plazo cubre también las llamadas dentro del repo, y tags: false
+// respalda solo las ramas (el hook de Agent; los tags quedan para SessionStart).
+test('backupRefs honors its deadline in the repo and tags: false backs up only branches', () => {
+  const repo = makeRepo();
+  git(['tag', 'v1'], repo);
+  assert.throws(() => backupRefs({ cwd: repo, timeoutMs: 0, outside: false }), /plazo/);
+  assert.deepStrictEqual(backupSets(repo), []);
+  const r = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:00Z'), timeoutMs: T, outside: false, tags: false });
+  assert.strictEqual(r.count, 1);
+  assert.deepStrictEqual(git(['for-each-ref', '--format=%(refname)', r.base], repo).split('\n'),[`${r.base}/heads/main`]);
+  // con las mismas ramas, el hook reusa el juego aunque SessionStart haya copiado tags
+  const full = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:05Z'), outside: false });
+  assert.strictEqual(full.count, 2);
+  const hook = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:10Z'), outside: false, tags: false });
+  assert.strictEqual(hook.reused, full.base);
 });

@@ -8,7 +8,7 @@
 //   si hay sombra, el mismo juego de refs fuera del repo.
 const fs = require('node:fs');
 const path = require('node:path');
-const { gitRun, isRepo, withDeadline } = require('./git');
+const { gitRun, isGitFailure, withDeadline } = require('./git');
 const shadow = require('./shadow');
 
 // Fallback dentro del repo. Si el árbol está limpio no hay nada que perder.
@@ -77,43 +77,58 @@ function shadowState({ cwd, env = process.env, timeoutMs = 3000 } = {}) {
 }
 
 // Contenido de un juego de respaldo como "sha heads/main" ordenado, para compararlo.
-function backupSet(cwd, base) {
-  const out = gitRun(['for-each-ref', '--format=%(objectname) %(refname)', `${base}/`], cwd);
+// Con tags: false solo mira las ramas del juego.
+const BIG = 64 * 1024 * 1024; // miles de tags no entran en el buffer por defecto de 1 MB
+function backupSet(run, base, tags) {
+  const out = run(['for-each-ref', '--format=%(objectname) %(refname)', tags ? `${base}/` : `${base}/heads/`], { maxBuffer: BIG });
   return out.split('\n').filter(Boolean).map((l) => l.replace(`${base}/`, '')).sort().join('\n');
 }
 
-function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 60000, outside = true } = {}) {
-  if (!cwd || !isRepo(cwd)) return null;
-  const out = gitRun(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/tags'], cwd);
+// Firma: backupRefs({ cwd, now, env, timeoutMs, outside, tags }). timeoutMs es el plazo
+// total, también para las llamadas dentro del repo (cada una, como mucho 5 s). Con
+// tags: false respalda solo refs/heads (el hook de Agent: miles de tags no entran en
+// su plazo; los copian SessionStart y scripts/backup-ref.js).
+function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 60000, outside = true, tags = true } = {}) {
+  if (!cwd || !fs.existsSync(cwd)) return null;
+  const deadline = Date.now() + timeoutMs;
+  const run = withDeadline(cwd, timeoutMs, { perCallMs: 5000 });
+  try {
+    if (run(['rev-parse', '--is-inside-work-tree']) !== 'true') return null;
+  } catch (e) {
+    if (isGitFailure(e) || e.code === 'ENOENT') return null; // no es un repo, o no hay git
+    throw e;
+  }
+  const out = run(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', ...(tags ? ['refs/tags'] : [])], { maxBuffer: BIG });
   const refs = out.split('\n').filter(Boolean).map((line) => line.split(' '));
   const rel = (ref) => ref.replace(/^refs\//, '');
   const want = refs.map(([sha, ref]) => `${sha} ${rel(ref)}`).sort().join('\n');
   const base = `refs/pignolo/backup/${shadow.stamp(now)}`;
   // Si el último juego es idéntico no se crea otro: hay cientos de despachos por sesión.
-  const existing = gitRun(['for-each-ref', '--format=%(refname)', 'refs/pignolo/backup'], cwd).split('\n').filter(Boolean);
-  const bases = [...new Set(existing.map((r) => r.split('/').slice(0, 4).join('/')))].sort();
-  const latest = bases[bases.length - 1];
+  // El último es la ref de mayor nombre (los sellos ordenan como texto): una sola línea,
+  // aunque haya cientos de juegos.
+  const last = run(['for-each-ref', '--sort=-refname', '--count=1', '--format=%(refname)', 'refs/pignolo/backup/']);
+  const latest = last ? last.split('/').slice(0, 4).join('/') : null;
   let result;
-  if (latest && refs.length && backupSet(cwd, latest) === want) {
+  if (latest && refs.length && backupSet(run, latest, tags) === want) {
     result = { base: null, count: 0, reused: latest };
   } else {
     if (refs.length) {
       const input = refs.map(([sha, ref]) => `create ${base}/${rel(ref)} ${sha}\n`).join('');
       try {
-        gitRun(['update-ref', '--stdin'], cwd, { input });
+        run(['update-ref', '--stdin'], { input });
       } catch (e) {
         // Dos despachos en el mismo milisegundo: si el juego ya quedó igual, es éxito.
-        if (backupSet(cwd, base) !== want) throw e;
+        if (backupSet(run, base, tags) !== want) throw e;
       }
     }
     result = { base, count: refs.length };
   }
   if (!outside) return result;
-  // Fuera del repo, solo si la sombra ya existe (la crea la siembra).
-  const run = withDeadline(cwd, timeoutMs);
-  const info = shadow.repoInfo(run);
+  // Fuera del repo, solo si la sombra ya existe (la crea la siembra). Comparte el plazo.
+  const mirror = withDeadline(cwd, Math.max(0, deadline - Date.now()));
+  const info = shadow.repoInfo(mirror);
   const p = info && shadow.shadowPaths(env, info);
-  if (p && fs.existsSync(path.join(p.dir, 'HEAD'))) result.shadow = shadow.mirrorRefs({ run, p, info, now });
+  if (p && fs.existsSync(path.join(p.dir, 'HEAD'))) result.shadow = shadow.mirrorRefs({ run: mirror, p, info, now });
   return result;
 }
 
