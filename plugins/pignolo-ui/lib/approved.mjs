@@ -14,11 +14,11 @@ const FLOW = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREEN = /^[a-z0-9][a-z0-9-]*\.html$/;
 const RESOURCE_TAG = /<(img|script|link|iframe|video|audio|source|embed|object|image|use|track|input)\b[^>]*>/gi;
 const REMOTE_ATTR = /\b(?:src|href|srcset|poster|data|xlink:href)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
-const EVENT_HANDLER = /<[a-z][^>]*\son[a-z]+\s*=/i;
+const EVENT_HANDLER = /<[a-z][^>]*[\s/"']on[a-z]+\s*=/i;
 const JS_URL = /\b(?:src|href|action|formaction|xlink:href|data|poster)\s*=\s*["']?\s*javascript:/i;
 const BASE_HREF = /<base\b[^>]*\bhref\s*=/i;
 const META_REFRESH = /<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh/i;
-const SRCSET = /\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+const SRCSET = /\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
 const REMOTE_URL = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
 const REMOTE_CSS = /url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?\/\/|@import\s+["']\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
 
@@ -40,7 +40,7 @@ export function checkScreens(dir) {
     if (!/<meta\s[^>]*charset\s*=\s*["']?utf-8/i.test(html)) problems.push({ file: f, problem: 'no-charset' });
     if (/<script\b/i.test(html) || EVENT_HANDLER.test(html) || JS_URL.test(html)) problems.push({ file: f, problem: 'script' });
     const remoteTag = [...html.matchAll(RESOURCE_TAG)].some((m) => REMOTE_ATTR.test(m[0]));
-    const remoteSrcset = [...html.matchAll(SRCSET)].some((m) => (m[1] ?? m[2]).split(',').some((c) => REMOTE_URL.test(c)));
+    const remoteSrcset = [...html.matchAll(SRCSET)].some((m) => (m[1] ?? m[2] ?? m[3]).split(',').some((c) => REMOTE_URL.test(c)));
     if (remoteTag || remoteSrcset || BASE_HREF.test(html) || META_REFRESH.test(html) || REMOTE_CSS.test(html)) problems.push({ file: f, problem: 'remote-resource' });
     for (const m of html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']*)["']/gi)) {
       const href = m[1].trim().replace(/^(?:\.\/)+/, '');
