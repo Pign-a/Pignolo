@@ -106,9 +106,13 @@ const selectorBase = (sel) => norm(sel.replace(/:(focus-visible|focus-within|foc
 
 const FOCUS_PART = /:focus(-visible)?(?![\w-])/;
 
+// A selector part that applies on focus: :focus or :focus-visible, not inside :not(:focus...).
+const onFocus = (part) => FOCUS_PART.test(part) && !/:not\(\s*:focus/.test(part);
+
 // Ruling (0.2.0): the indicator is restored by a drawing declaration (outline or outline-style
-// other than none, box-shadow, border) in the same rule, or in a :focus / :focus-visible rule
-// of the same base selector.
+// other than none, box-shadow, border) in the same rule when the selector part that removes the
+// outline is a :focus / :focus-visible one, or in a :focus / :focus-visible rule of the same
+// base selector.
 function stateCss(ctx) {
   const decls = ctx.css.decls;
   const draws = (d) => (d.property === 'outline' && !isNone(d.value))
@@ -119,7 +123,7 @@ function stateCss(ctx) {
   for (const d of decls) {
     if (!draws(d)) continue;
     for (const part of d.selector.split(',')) {
-      if (FOCUS_PART.test(part) && !/:not\(\s*:focus/.test(part)) drawers.add(selectorBase(part));
+      if (onFocus(part)) drawers.add(selectorBase(part));
     }
   }
   const drawingRules = new Set(ctx.css.rules.filter((r) => r.decls.some(draws)));
@@ -128,9 +132,10 @@ function stateCss(ctx) {
   for (const d of decls) {
     const removes = (d.property === 'outline' && isNone(d.value)) || (d.property === 'outline-style' && /^none$/i.test(norm(d.value)));
     if (!removes) continue;
-    if (drawingRules.has(ruleOf.get(d))) continue;
+    const sameRule = drawingRules.has(ruleOf.get(d));
     const parts = d.selector.split(',');
-    const bad = parts.find((p) => !/:not\(\s*:focus-visible/.test(p) && !drawers.has(selectorBase(p)));
+    const bad = parts.find((p) => !/:not\(\s*:focus-visible/.test(p) && !drawers.has(selectorBase(p))
+      && !(sameRule && onFocus(p)));
     if (bad === undefined) continue;
     out.push(fail(`${d.selector}|${d.property}|${norm(d.value)}`, {
       line: d.line, selector: d.selector, reason: 'outline removed without a :focus or :focus-visible indicator',
@@ -171,9 +176,10 @@ function motionCss(ctx) {
 
 // ---- Utility classes ---------------------------------------------------------------------
 
-// focus: / focus-visible: classes that draw an indicator (ruling 0.2.0); the -0/-none forms do not.
+// focus: / focus-visible: classes that draw an indicator (ruling 0.2.0); the -0/-none forms,
+// the offsets (ring-offset-*, outline-offset-*) and the transparent colors do not.
 const DRAWS_FOCUS = /^(ring|outline|border|shadow)/;
-const NO_DRAW = /^(outline-(none|hidden|0)|ring-0|border-0|shadow-none)$/;
+const NO_DRAW = /^(outline-(none|hidden|0)|ring-0|border-0|shadow-none|(ring|outline)-offset(-.*)?|.*-transparent)$/;
 
 // Calls visit(cls, list) for each class of each list; lists carry their element and dynamic flag.
 function eachClass(ctx, visit) {

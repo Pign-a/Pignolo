@@ -38,8 +38,9 @@ test('!important does not hide a color literal', async () => {
   assert.equal(only(r, 'COLOR-02', 'fail').length, 1);
 });
 
-// Ruling (0.2.0): a drawing declaration in the same rule or in :focus/:focus-visible of the
-// same base selector restores the indicator; so does a focus: or focus-visible: class that draws.
+// Ruling (0.2.0): a drawing declaration in the same rule (when the part that removes the outline
+// is a :focus/:focus-visible one) or in :focus/:focus-visible of the same base selector restores
+// the indicator; so does a focus: or focus-visible: class that draws (not offsets nor transparent).
 test('STATE-04 restoring indicators (table)', async () => {
   const cases = [
     ['a.css', '.btn:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }\n', 0],
@@ -48,12 +49,22 @@ test('STATE-04 restoring indicators (table)', async () => {
     ['a.css', '.btn:focus { outline: none; box-shadow: none; }\n', 1],
     ['a.css', '.btn { outline: none; }\n.card:focus { box-shadow: 0 0 0 3px var(--ring); }\n', 1],
     ['a.css', '.btn { outline: none; }\n.btn:hover { box-shadow: 0 0 0 3px var(--ring); }\n', 1],
+    // the same-rule restore only counts when that selector part is a :focus / :focus-visible one
+    ['a.css', '.c1 { outline: none; border: 1px solid #ccc; }\n', 1],
+    ['a.css', '.c2 { outline: none; box-shadow: 0 1px 2px rgba(0,0,0,.1); }\n', 1],
+    ['a.css', '.c3:not(:focus) { outline: none; border: 1px solid #ccc; }\n', 1],
     ['B.tsx', 'export const B = () => <button className="focus:outline-none focus:ring-2">x</button>;\n', 0],
     ['B.tsx', 'export const B = () => <button className="outline-none focus:shadow-md">x</button>;\n', 0],
     ['B.tsx', 'export const B = () => <button className="focus:outline-none focus-visible:border-2">x</button>;\n', 0],
     ['B.tsx', 'export const B = () => <button className="focus:outline-none">x</button>;\n', 1],
     ['B.tsx', 'export const B = () => <button className="focus:outline-none focus:ring-0">x</button>;\n', 1],
     ['B.tsx', 'export const B = () => <button className="focus:outline-none hover:ring-2">x</button>;\n', 1],
+    ['B.tsx', 'export const B = () => <button className="outline-none focus-visible:ring-[3px]">x</button>;\n', 0],
+    // offsets and transparent colors do not draw an indicator
+    ['B.tsx', 'export const B = () => <button className="outline-none focus:ring-offset-2">x</button>;\n', 1],
+    ['B.tsx', 'export const B = () => <button className="outline-none focus:outline-offset-2">x</button>;\n', 1],
+    ['B.tsx', 'export const B = () => <button className="outline-none border focus:border-transparent">x</button>;\n', 1],
+    ['B.tsx', 'export const B = () => <button className="outline-none focus:ring-transparent focus:shadow-transparent">x</button>;\n', 1],
   ];
   for (const [file, text, n] of cases) {
     const r = await run({ [file]: text });
