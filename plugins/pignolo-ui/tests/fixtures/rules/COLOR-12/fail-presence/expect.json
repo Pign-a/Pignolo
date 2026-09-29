@@ -1,0 +1,11 @@
+[
+  {
+    "severity": "medio"
+  },
+  {
+    "id": "COLOR-03",
+    "absent": [
+      "fail"
+    ]
+  }
+]
