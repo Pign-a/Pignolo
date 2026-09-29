@@ -3,7 +3,7 @@
 // Only what is static in the file is judged. Dynamic values, spreads and own components are
 // `unverified` (spec §5.5); the rendered DOM covers them when a browser is available.
 import { fail, unverified } from './api.mjs';
-import { ancestors, descendants, staticText } from '../markup.mjs';
+import { ancestors, ariaHiddenFlags, descendants, staticText } from '../markup.mjs';
 
 const FORM_TAGS = new Set(['input', 'select', 'textarea']);
 // Roles that do not take their name from content: they need aria-label, aria-labelledby or a label.
@@ -26,7 +26,12 @@ function keyOf(markup, el) {
 }
 
 const at = (markup, el, extra = {}) => ({ line: el.line, selector: el.tag, ...extra });
-const hiddenByAria = (markup, el) => isTrue(el, 'aria-hidden') || ancestors(markup, el).some((a) => isTrue(a, 'aria-hidden'));
+// aria-hidden flags computed once per parsed file (deep nesting stays linear).
+const HIDDEN = new WeakMap();
+function hiddenByAria(markup, el) {
+  if (!HIDDEN.has(markup)) HIDDEN.set(markup, ariaHiddenFlags(markup));
+  return HIDDEN.get(markup)[el.index];
+}
 
 // Labels of the file: { element, forId (static) | forDynamic }.
 function labelsOf(markup) {
@@ -49,9 +54,11 @@ function ariaName(el) {
 function labelName(markup, el) {
   const id = attr(el, 'id');
   let dynamic = false;
-  for (const label of labelsOf(markup)) {
+  const labels = labelsOf(markup);
+  const around = labels.length ? new Set(ancestors(markup, el)) : null; // once per field
+  for (const label of labels) {
     const f = attr(label, 'for');
-    const wraps = ancestors(markup, el).includes(label);
+    const wraps = around.has(label);
     const targets = wraps || (f && !f.dynamic && id && !id.dynamic && value(f) !== '' && value(f) === value(id));
     if (f && f.dynamic && !wraps) {
       if (id) dynamic = true;
@@ -62,7 +69,7 @@ function labelName(markup, el) {
     if (t.text) return 'named';
     if (t.dynamic) dynamic = true;
   }
-  if (id && id.dynamic && labelsOf(markup).some((l) => attr(l, 'for'))) dynamic = true;
+  if (id && id.dynamic && labels.some((l) => attr(l, 'for'))) dynamic = true;
   return dynamic ? 'dynamic' : null;
 }
 
@@ -71,9 +78,11 @@ function contentName(markup, el) {
   const t = staticText(markup, el, { skipAriaHidden: true });
   if (t.text) return 'named';
   let dynamic = t.dynamic;
-  for (const d of descendants(markup, el)) {
+  const all = descendants(markup, el); // pre-order: a parent is seen before its children
+  const hidden = new Set();
+  for (const d of all) {
     // hidden descendants (or descendants of hidden ones) never name the element
-    if (isTrue(d, 'aria-hidden') || ancestors(markup, d).some((x) => x !== el && x.index > el.index && isTrue(x, 'aria-hidden'))) continue;
+    if (isTrue(d, 'aria-hidden') || (d.parent !== el.index && hidden.has(d.parent))) { hidden.add(d.index); continue; }
     if (d.component) continue;
     const al = attr(d, 'aria-label');
     if (al && (al.dynamic || value(al))) { if (al.dynamic) dynamic = true; else return 'named'; }
@@ -85,8 +94,8 @@ function contentName(markup, el) {
     }
   }
   if (!dynamic) return null;
-  const hasComponent = descendants(markup, el).some((d) => d.component);
-  const dynamicText = [el, ...descendants(markup, el)].some((e) => e.textParts.some((p) => p.dynamic));
+  const hasComponent = all.some((d) => d.component);
+  const dynamicText = [el, ...all].some((e) => e.textParts.some((p) => p.dynamic));
   return hasComponent && !dynamicText ? 'component' : 'dynamic';
 }
 
@@ -197,9 +206,12 @@ function check26(ctx) {
   if (!markup) return [];
   const out = [];
   for (const el of markup.elements) {
+    // keyOf walks the subtree: only for the candidates, never for every element
+    const candidate = el.component ? /^(Image|Img)$/.test(el.tag) : el.tag === 'img' || el.tag === 'svg';
+    if (!candidate) continue;
     const key = keyOf(markup, el);
     if (el.component) {
-      if (/^(Image|Img)$/.test(el.tag) && !attr(el, 'alt')) {
+      if (!attr(el, 'alt')) {
         out.push(unverified(`custom component <${el.tag}>: its alt text is not resolvable statically (component)`, at(markup, el, { key: `component|${key}` })));
       }
       continue;

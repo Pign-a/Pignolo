@@ -36,3 +36,25 @@ test('the same markup in .tsx with className gives the same results', async () =
     assert.deepEqual(statuses(b), ['fail'], `${id} tsx`);
   }
 });
+
+// Deep nesting must stay linear-ish: no rule error (stack overflow) and a generous time bound.
+test('element rules handle 5000 nested levels without rule errors, quickly', async () => {
+  const N = 5000;
+  const shapes = {
+    divs: '<div>'.repeat(N) + '<img src="/a.png" alt="a">' + '</div>'.repeat(N),
+    // nested targets are inherently quadratic (each one reads its subtree text): fewer levels
+    buttons: '<button>'.repeat(2000) + 'x' + '</button>'.repeat(2000),
+    labels: '<label>L '.repeat(N) + '<input>' + '</label>'.repeat(N),
+    hidden: '<div aria-hidden="true">'.repeat(N) + '<a href="/">x</a>'.repeat(200) + '</div>'.repeat(N),
+    fields: '<div>'.repeat(N) + '<label>L</label>'.repeat(200) + '<input>'.repeat(200) + '</div>'.repeat(N),
+  };
+  for (const [name, html] of Object.entries(shapes)) {
+    const project = writeTree(makeTempDir(), { 'a.html': html });
+    const t = Date.now();
+    const { entries } = await runCheck({ project, files: ['a.html'], design: null, base: null, dom: [] });
+    const ms = Date.now() - t;
+    const errors = entries.filter((e) => /rule error/.test(e.reason || ''));
+    assert.deepEqual(errors.map((e) => `${e.id} ${e.reason}`), [], name);
+    assert.ok(ms < 5000, `${name}: ${ms} ms`);
+  }
+});

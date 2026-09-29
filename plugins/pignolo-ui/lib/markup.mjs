@@ -459,25 +459,30 @@ export function ancestors(markup, el) {
   return out;
 }
 
+// Pre-order (document order). Iterative: deep nesting must not overflow the stack.
 export function descendants(markup, el) {
   const out = [];
-  const visit = (e) => {
-    for (const idx of e.children) {
-      const child = markup.elements[idx];
-      out.push(child);
-      visit(child);
-    }
-  };
-  visit(el);
+  const stack = [...el.children].reverse();
+  while (stack.length) {
+    const child = markup.elements[stack.pop()];
+    out.push(child);
+    for (let k = child.children.length - 1; k >= 0; k--) stack.push(child.children[k]);
+  }
   return out;
 }
 
 // Normalized text of the whole subtree. dynamic is true when a text part or a child component
 // cannot be resolved. script/style content is not text. The root itself may be a component.
+// Iterative, in document order, so deep nesting does not overflow the stack.
 export function staticText(markup, el, { skipAriaHidden = false } = {}) {
   const pieces = [];
   let dynamic = false;
-  const visit = (e, isRoot) => {
+  const itemsOf = (e) => [
+    ...e.textParts.map((part) => ({ at: part.offset ?? 0, part })),
+    ...e.children.map((idx) => ({ at: markup.elements[idx].offset ?? 0, child: markup.elements[idx] })),
+  ].sort((x, y) => x.at - y.at);
+  const stack = [];
+  const open = (e, isRoot) => {
     if (!isRoot) {
       if (skipAriaHidden) {
         const a = e.attrs.get('aria-hidden');
@@ -486,16 +491,28 @@ export function staticText(markup, el, { skipAriaHidden = false } = {}) {
       if (e.component) { dynamic = true; return; }
     }
     if (e.tag === 'script' || e.tag === 'style') return;
-    const items = [
-      ...e.textParts.map((part) => ({ at: part.offset ?? 0, part })),
-      ...e.children.map((idx) => ({ at: markup.elements[idx].offset ?? 0, child: markup.elements[idx] })),
-    ].sort((x, y) => x.at - y.at);
-    for (const item of items) {
-      if (item.child) visit(item.child, false);
-      else if (item.part.dynamic) dynamic = true;
-      else pieces.push(item.part.text);
-    }
+    const items = itemsOf(e);
+    for (let k = items.length - 1; k >= 0; k--) stack.push(items[k]);
   };
-  visit(el, true);
+  open(el, true);
+  while (stack.length) {
+    const item = stack.pop();
+    if (item.child) open(item.child, false);
+    else if (item.part.dynamic) dynamic = true;
+    else pieces.push(item.part.text);
+  }
   return { text: pieces.join(' ').replace(/\s+/g, ' ').trim(), dynamic };
+}
+
+// For each element index, whether it or an ancestor has a static aria-hidden="true"
+// (case-insensitive). One pass: parents always come before their children.
+export function ariaHiddenFlags(markup) {
+  const flags = new Array(markup.elements.length).fill(false);
+  markup.elements.forEach((e, i) => {
+    const a = e.attrs.get('aria-hidden');
+    const own = Boolean(a && !a.dynamic && typeof a.value === 'string' && a.value.trim().toLowerCase() === 'true');
+    const p = e.parent;
+    flags[i] = own || (p !== null && p !== undefined && flags[p] === true);
+  });
+  return flags;
 }
