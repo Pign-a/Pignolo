@@ -51,6 +51,23 @@ function readText(file, what) {
   }
 }
 
+// --date is a real calendar day written YYYY-MM-DD.
+function isRealDate(v) {
+  if (typeof v !== 'string' || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(v)) return false;
+  const t = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(t.getTime()) && t.toISOString().startsWith(v);
+}
+
+function requireProjectDir(project) {
+  let ok = false;
+  try {
+    ok = fs.statSync(project).isDirectory();
+  } catch {
+    // reported below
+  }
+  if (!ok) throw new UsageError(`--project no es una carpeta existente: ${project}`);
+}
+
 function loadCatalog(opts) {
   const file = opts.catalog || path.join(PLUGIN_ROOT, 'catalog', 'rules.json');
   return JSON.parse(readText(file, 'el catálogo'));
@@ -59,12 +76,25 @@ function loadCatalog(opts) {
 function cmdValidate(opts) {
   if (!opts.file) throw new UsageError('falta --file <DESIGN.md>');
   const text = readText(opts.file, 'el archivo');
+  if (opts.project !== undefined) requireProjectDir(opts.project);
   const darkInCss = opts.project ? readTokenSources(opts.project).darkDetected : false;
   const r = validateDesign(text, { catalog: loadCatalog(opts), darkInCss });
   const { data, ...out } = r;
   // The official linter only informs: its warnings on a user's file never block (spec §4.2).
   if (opts.official) out.official = runOfficialLint(opts.file, { projectRoot: opts.project });
   return { out: { ...out, darkInCss }, code: r.status === 'valid' ? 0 : r.status === 'invalid' ? 1 : 2 };
+}
+
+// A malformed operation is a usage error (exit 2), not something for the patcher to trip over.
+function checkOp(op, i) {
+  const where = `operación ${i + 1} de --ops`;
+  if (op === null || typeof op !== 'object' || Array.isArray(op)) throw new UsageError(`${where} debe ser un objeto { "op": ... }`);
+  if (op.op === 'section-append') {
+    if (typeof op.heading !== 'string' || !op.heading.trim()) throw new UsageError(`${where}: section-append necesita "heading" (texto no vacío)`);
+    if (typeof op.text !== 'string') throw new UsageError(`${where}: section-append necesita "text" (texto)`);
+  } else if (['set', 'append', 'remove-item'].includes(op.op) && !(Array.isArray(op.path) && op.path.length)) {
+    throw new UsageError(`${where}: ${op.op} necesita "path" (lista no vacía)`);
+  }
 }
 
 // Shows the diff; writes only with --write (after the user confirmed it) and never when the
@@ -80,6 +110,7 @@ function cmdPatch(opts) {
     throw new UsageError(`--ops no es JSON válido (${e.message})`);
   }
   if (!Array.isArray(ops)) throw new UsageError('--ops debe ser una lista de operaciones');
+  ops.forEach((op, i) => checkOp(op, i));
   const r = patchDesign(text, ops);
   if (!r.ok) return { out: { written: false, error: r.error, op: r.op }, code: 1 };
   const catalog = loadCatalog(opts);
@@ -101,6 +132,10 @@ function cmdPatch(opts) {
 // and the user confirms it before the flow copies it to DESIGN.md.
 function cmdExtract(opts) {
   if (!opts.project || !opts.out) throw new UsageError('faltan --project <raíz del repo> y --out <archivo de propuesta>');
+  requireProjectDir(opts.project);
+  if (opts.date !== undefined && !isRealDate(opts.date)) {
+    throw new UsageError('--date debe ser una fecha real con formato YYYY-MM-DD');
+  }
   if (fs.existsSync(opts.out)) throw new UsageError(`${opts.out} ya existe: extract nunca sobrescribe`);
   const existing = fs.readdirSync(opts.project).find((n) => n.toLowerCase() === 'design.md');
   if (existing) return { out: { mode: 'exists', file: existing }, code: 1 };

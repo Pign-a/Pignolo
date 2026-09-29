@@ -244,3 +244,28 @@ test('CLI design-md: an unknown option is exit 2 with a Spanish usage message, p
     assert.match(out.stderr, /opciones válidas/);
   }
 });
+
+test('CLI design-md: a missing or nonexistent --project, a bad --date and an op without heading are clean exit 2 errors', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'DESIGN.md');
+  fs.writeFileSync(file, VALID);
+  const clean = (out, pattern) => {
+    assert.equal(out.status, 2, out.stderr);
+    assert.match(out.stderr, pattern);
+    assert.doesNotMatch(out.stderr, /error interno|\n\s+at |\.mjs:\d+/);
+  };
+  const missing = path.join(dir, 'nope');
+  const proposal = path.join(dir, '.pignolo-ui', 'p.md');
+  clean(runScript('design-md.mjs', ['validate', '--file', file, '--project', missing]), /--project/);
+  clean(runScript('design-md.mjs', ['extract', '--project', missing, '--out', proposal]), /--project/);
+  clean(runScript('design-md.mjs', ['extract', '--out', proposal]), /--project/);
+  clean(runScript('design-md.mjs', ['extract', '--project', dir, '--out', proposal, '--date', '28/09/2026']), /YYYY-MM-DD/);
+  const ops = path.join(dir, 'ops.json');
+  fs.writeFileSync(ops, JSON.stringify([{ op: 'section-append', text: 'x' }]));
+  clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /heading/);
+  fs.writeFileSync(ops, JSON.stringify([{ op: 'set', value: 1 }]));
+  clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /path/);
+  fs.writeFileSync(ops, JSON.stringify(['x']));
+  clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /operación/);
+  assert.equal(fs.readFileSync(file, 'utf8'), VALID);
+});

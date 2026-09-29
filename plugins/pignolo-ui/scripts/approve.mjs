@@ -52,6 +52,14 @@ function need(opts, ...keys) {
   if (missing.length) throw new UsageError(`faltan ${missing.map((k) => `--${k}`).join(', ')}`);
 }
 
+// --date must be a real calendar day written YYYY-MM-DD; the manifest and DESIGN.md record it.
+function checkDate(opts) {
+  if (opts.date === undefined) return;
+  const d = new Date(`${opts.date}T00:00:00Z`);
+  const ok = typeof opts.date === 'string' && /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(opts.date) && !Number.isNaN(d.getTime()) && d.toISOString().startsWith(opts.date);
+  if (!ok) throw new UsageError('--date debe ser una fecha real con formato YYYY-MM-DD');
+}
+
 function isDir(p) {
   try {
     return fs.statSync(p).isDirectory();
@@ -62,15 +70,29 @@ function isDir(p) {
 
 function cmdSave(opts) {
   need(opts, 'project', 'flow', 'from', 'values-file');
+  checkDate(opts);
   if (!isDir(opts.project)) throw new UsageError(`no existe el proyecto ${opts.project}`);
   if (!isDir(opts.from)) throw new UsageError(`no existe la carpeta de pantallas ${opts.from}`);
-  const leakValues = readValuesFile(opts['values-file']);
+  let leakValues;
+  try {
+    leakValues = readValuesFile(opts['values-file']);
+  } catch {
+    // never echo the file's content: it holds the user's own values
+    throw new UsageError('--values-file debe ser un archivo JSON con una lista de textos (usar [] si no hay valores)');
+  }
   const r = saveApproved({ projectRoot: opts.project, flow: opts.flow, from: opts.from, date: opts.date || today(), leakValues });
   return { out: r, code: r.ok ? 0 : 1 };
 }
 
 function cmdRecord(opts) {
   need(opts, 'project', 'path', 'quote-file');
+  checkDate(opts);
+  let quote;
+  try {
+    quote = fs.readFileSync(opts['quote-file'], 'utf8');
+  } catch (e) {
+    throw new UsageError(`no se pudo leer --quote-file ${opts['quote-file']} (${e.code || e.message})`);
+  }
   if (!APPROVED_PATH.test(opts.path)) return { out: { written: false, error: 'bad-path' }, code: 1 };
   const designFile = findDesignFile(opts.project);
   if (!designFile) return { out: { written: false, error: 'no-design-md' }, code: 1 };
@@ -80,7 +102,6 @@ function cmdRecord(opts) {
   } catch {
     return { out: { written: false, error: 'manifest-unreadable' }, code: 1 };
   }
-  const quote = fs.readFileSync(opts['quote-file'], 'utf8');
   const entry = decisionEntry({ path: opts.path, manifestSha256: sha, date: opts.date || today(), quote });
   const text = fs.readFileSync(designFile, 'utf8');
   const r = patchDesign(text, [{ op: 'section-append', heading: 'Decisions', text: entry }]);

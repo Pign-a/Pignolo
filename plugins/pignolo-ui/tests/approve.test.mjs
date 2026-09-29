@@ -234,3 +234,34 @@ test('CLI rejects unknown options per subcommand with exit 2 and a Spanish usage
     assert.match(out.stderr, /opciones válidas/);
   }
 });
+
+function assertCleanUsageError(out, pattern) {
+  assert.equal(out.status, 2, out.stderr);
+  assert.match(out.stderr, pattern);
+  assert.doesNotMatch(out.stderr, /error interno|\n\s+at |\.mjs:\d+/);
+}
+
+test('CLI approve: an invalid values file, a missing quote file and a bad --date are clean exit 2 errors', () => {
+  const dir = makeTempDir();
+  const root = project();
+  const bad = path.join(dir, 'bad.json');
+  for (const content of ['not json', '{"a":1}', '[1,2]']) {
+    fs.writeFileSync(bad, content);
+    const out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', bad]);
+    assertCleanUsageError(out, /--values-file/);
+  }
+  assertCleanUsageError(
+    runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', path.join(dir, 'missing.json')]),
+    /--values-file/,
+  );
+  assertCleanUsageError(
+    runScript('approve.mjs', ['record', '--project', root, '--path', 'design/approved/checkout', '--quote-file', path.join(dir, 'missing.txt')]),
+    /--quote-file/,
+  );
+  assertCleanUsageError(runScript('approve.mjs', ['record', '--project', root, '--path', 'design/approved/checkout']), /--quote-file/);
+  for (const date of ['2026-9-28', '28/09/2026', '2026-02-30', 'hoy']) {
+    assertCleanUsageError(runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', emptyValues(), '--date', date]), /YYYY-MM-DD/);
+    assertCleanUsageError(runScript('approve.mjs', ['record', '--project', root, '--path', 'design/approved/checkout', '--quote-file', emptyValues(), '--date', date]), /YYYY-MM-DD/);
+  }
+  assert.equal(fs.existsSync(path.join(root, 'design')), false);
+});
