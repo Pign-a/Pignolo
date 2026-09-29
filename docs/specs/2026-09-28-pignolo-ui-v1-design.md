@@ -180,7 +180,7 @@ La versión final aprobada de cada decisión visual es la fuente de verdad para 
 
 ### 4.2 Formato `DESIGN.md`
 
-- Google Labs **fijado a 0.4.0** (A-03, A-09). Claves oficiales: `version`, `name`, `description`, `omitted`, `colors`, `typography`, `rounded`, `spacing`, `components`. Los estados van como variantes con nombre (`button-primary-hover`). Los semánticos usan el vocabulario MD3 (`primary`, `on-surface`, `surface-container`…) — porque el linter oficial marca como huérfanos los colores que no lo usan.
+- Google Labs **fijado a 0.4.0** (A-03, A-09). Claves oficiales: `version`, `name`, `description`, `omitted`, `colors`, `typography`, `rounded`, `spacing`, `components`. Los estados van como variantes con nombre (`button-primary-hover`). Lo que genera pignolo-ui usa el vocabulario MD3 para los semánticos (`primary`, `on-surface`, `surface-container`…) — porque el linter oficial marca como huérfanos los colores que no lo usan. **Al leer** un `DESIGN.md` o CSS existente no se exigen los nombres MD3 literales. Se aceptan alias (`accent` → `primary`, `label`/`text` → `on-surface`…) declarados en `pignolo.aliases` o tomados de un mapa por defecto documentado en el README, y el hallazgo dice qué alias usó — porque en una app real los nombres de tokens rara vez son MD3.
 - **Las extensiones van solo bajo `pignolo:`**, nunca dentro de `typography` ni de `components`. Las ausencias se escriben con `omitted`, y la prosa cita tokens (`{colors.primary}`), no valores — porque 0.4.0 avisa por sub-propiedades desconocidas (R10).
 - **En `pignolo:`, los valores hoja no llevan hex ni dimensiones con unidad.** Se usan números con el sufijo en el nombre (`widthPx`, `durationMs`), colores en OKLCH o `rgb()`, o referencias `{colors.x}` — porque la regla `token-like-ignored` de 0.4.0 los marca [verificado ejecutando el linter].
 - **Contrato con el linter oficial:** lo que **genera** pignolo-ui pasa con 0 errores y 0 warnings. Un `DESIGN.md` **del usuario** puede tener warnings: se informan y no bloquean — porque exigir 0/0 a texto ajeno es un contrato frágil (R-20). El linter solo corre si ya está instalado (`npx --no-install`); si no corre, el resultado es "no verificado". En desarrollo se instala a mano, fuera de `package.json`.
@@ -213,6 +213,7 @@ Toda clave que no esté en esta lista es un error del validador. Los mapas cuyas
 | `motion.reducedMotion` | `fade-or-none \| none` |
 | `borders` | `subtle`, `strong` (referencia `{colors.x}`), `widthPx` (número) |
 | `targets` | `minPx`, `recommendedPx` (números) |
+| `aliases` | mapa: nombre del proyecto → nombre semántico MD3 (claves libres). Completa o pisa el mapa por defecto |
 | `cssVars` | mapa: nombre de token → nombre de variable CSS (`--x`) (claves libres) |
 | `extracted` | lista de nombres de tokens "extraídos, no decididos" (A-18); cada uno sale de la lista cuando el usuario lo confirma como decisión |
 | `intentional` | lista de `{ id, why }`; `id` con `acceptsIntentional: true` |
@@ -221,7 +222,7 @@ Toda clave que no esté en esta lista es un error del validador. Los mapas cuyas
 
 - El esquema `web:` se fija completo desde ya, para que el contrato no cambie (A-06).
 - No hay `a11y` — porque el objetivo (WCAG 2.2 AA) y el trato de AAA son fijos (§4.1), y en lo que produce el agente no se nombra ninguna ley (A-08).
-- **Tema oscuro** (A-16): cuenta como declarado si existe `themes.dark` **o** si el CSS tiene `.dark`, `[data-theme]` o `@media (prefers-color-scheme: dark)`. Si está declarado, cada semántico tiene que estar definido en los dos temas y se pide AA en ambos (THEME-03). Si el CSS tiene oscuro y `DESIGN.md` no, es `alto` y se propone completarlo. Si no hay oscuro, no se pide ni se captura.
+- **Tema oscuro** (A-16): cuenta como declarado si existe `themes.dark` **o** si el CSS tiene `.dark`, `[data-theme]` o `@media (prefers-color-scheme: dark)`. Si está declarado, cada semántico tiene que estar definido en los dos temas y se pide AA en ambos (THEME-03). Si el CSS tiene oscuro y `DESIGN.md` no, es `alto` y se propone completarlo. *Ejemplo real:* en una app de Next.js + Tailwind v4 + shadcn, el oscuro sin declarar tenía pares de texto de 4,25:1 y 3,36:1, que THEME-03 y COLOR-03 detectaron. Si no hay oscuro, no se pide ni se captura.
 
 ### 4.4 Parser YAML propio (`lib/yaml-subset.mjs`)
 
@@ -326,9 +327,9 @@ Leyenda de las columnas: **Nivel** = `d` document, `e` element, `s` style. **Int
 |---|---|---|---|---|---|
 | A11Y-01 | `<html lang>` presente y BCP 47 válido | d | 3.1.1 A | `bloquea` | no |
 | A11Y-02 | `<title>` presente y no vacío | d | 2.4.2 A | `bloquea` | no |
-| A11Y-04 | Nombre accesible estático de `button`, `a`, `input`, `[role=button]`; botón solo-ícono con nombre | e | 4.1.2 A | `bloquea` | no |
+| A11Y-04 | Nombre accesible estático de `button`, `a`, `input`, `[role=button]`; botón solo-ícono con nombre. Los roles que no toman el nombre de su contenido (`combobox`, `listbox`, `textbox`, `searchbox`, `slider`, `spinbutton`…) se tratan aparte: exigen `aria-label`, `aria-labelledby` o `label` asociado | e | 4.1.2 A | `bloquea` | no |
 | A11Y-05 | Exactamente un `main` | d | — | `alto`, porque es buena práctica, no WCAG | no |
-| A11Y-16 | `input`, `select` y `textarea` con etiqueta | e | 1.3.1 / 4.1.2 A | `bloquea` | no |
+| A11Y-16 | `input`, `select` y `textarea` con etiqueta; se saltean los que tienen `aria-hidden`. **Un campo con solo `placeholder` cuenta como falla:** es más estricto que axe, y queda declarado | e | 1.3.1 / 4.1.2 A | `bloquea` | no |
 | A11Y-26 | `img` con atributo `alt`; `svg[role=img]` con nombre (presencia; la calidad la juzga el agente) | e | 1.1.1 A | `bloquea` | no |
 | A11Y-28 | Viewport sin `user-scalable=no` ni `maximum-scale` < 2 | d | 1.4.4 AA | `bloquea` | no |
 | A11Y-39 | Ningún enfocable dentro de `aria-hidden="true"`; nunca en `body` | e | 4.1.2 A | `bloquea` | no |
@@ -362,9 +363,9 @@ Leyenda de las columnas: **Nivel** = `d` document, `e` element, `s` style. **Int
 
 | # | Chequeo | Regla | Severidad |
 |---|---|---|---|
-| B1 | Contraste computado del texto sobre el fondo sólido de su contenedor. Imagen o degradé: "no verificado" | COLOR-03 | `bloquea` si es nuevo |
-| B2 | Recorrido con Tab: se llega a cada enfocable (incluido el botón del menú de navegación) y, al enfocarlo, cambian sus estilos computados | STATE-04 (2.4.7), NAV-01 parte teclado (2.1.1) | `bloquea` si es nuevo |
-| B3 | Ningún texto con `scrollWidth > clientWidth + 1` sin `text-overflow`, sin scroll horizontal y con margen lateral ≥ 16 px | LAYOUT-11 a 320 px (1.4.10) → `bloquea`; a otros anchos → `alto`; LAYOUT-10 → `alto` | ver regla |
+| B1 | Contraste computado del texto sobre el fondo sólido de su contenedor; se eximen los controles deshabilitados, como lo hace WCAG. Imagen o degradé: "no verificado". Resuelve `rgb()` con alfa, `lab()` y `oklch()` computados, con fixtures de cada uno | COLOR-03 | `bloquea` si es nuevo |
+| B2 | Recorrido con Tab: se llega a cada enfocable (incluido el botón del menú de navegación) y, al enfocarlo, cambian sus estilos computados. Se eximen los controles deshabilitados | STATE-04 (2.4.7), NAV-01 parte teclado (2.1.1) | `bloquea` si es nuevo |
+| B3 | Ningún texto con `scrollWidth > clientWidth + 1` sin `text-overflow`, sin scroll horizontal y con margen lateral ≥ 16 px. Las barras de borde a borde (por ejemplo, la nav móvil) no cuentan como violación del margen | LAYOUT-11 a 320 px (1.4.10) → `bloquea`; a otros anchos → `alto`; LAYOUT-10 → `alto` | ver regla |
 | B4 | Con `prefers-reduced-motion: reduce` y sin scroll, todo el texto de los dos primeros viewports tiene opacidad > 0 | MOTION-07 | `alto` |
 
 NAV-01 bloquea solo en su parte de teclado (2.1.1) y de objetivo de 24 px (2.5.8); el resto es `medio`. En v1 solo la parte de teclado tiene checker (B2). PROC-02 (nada de teatro de diseño en el informe) lo hace cumplir `report-check` (§12).
@@ -387,11 +388,18 @@ Hay una sola tabla de ruteo (`lib/route.mjs`), compartida por el script y el aud
 
 | Extensión | Reglas |
 |---|---|
-| `.html`, `.jsx`, `.tsx` | marcado (`element`, y `document` si hay `<html>`) |
+| `.html`, `.jsx`, `.tsx` | marcado (`element`, y `document` si hay `<html>`), y `style` sobre las clases utilitarias de Tailwind |
 | `.css` y bloques `<style>` | `style` |
-| Cualquier otra (`.vue`, `.svelte`, `.astro`…) | "no verificado (extensión no soportada)" |
+| `.vue`, `.svelte` | solo `style` sobre las clases utilitarias de Tailwind; el marcado: "no verificado (extensión no soportada)" |
+| Cualquier otra (`.astro`…) | "no verificado (extensión no soportada)" |
 
 - Antes de evaluar se quitan los comentarios de cada sintaxis (CSS, JS/TS, JSX, HTML).
+- **Clases utilitarias de Tailwind:** las reglas de estilo también leen los atributos `class`/`className`, con el **mismo id** que su equivalente en CSS:
+  - valores arbitrarios: `rounded-[Npx]` → LAYOUT-04; `text-[#hex]` y `bg-[…]` → COLOR-02; `shadow-[…]` → DEPTH-01;
+  - `transition-all` → MOTION-04;
+  - `outline-none` sin reposición `focus-visible:` en el mismo elemento → STATE-04.
+
+  Se hace porque en una app real de Next.js + Tailwind v4 + shadcn había 177 `rounded-[Npx]`, 6 `transition-all` y 8 `outline-none` que un checker que lee solo CSS no veía. Si una clase se arma de forma dinámica (`cn(...)` con variables), el resultado es `unverified`.
 - Invocación:
 
   ```
@@ -759,6 +767,7 @@ Se separan por dónde corre cada una — porque las evals de agentes con shell n
   - **Aprobado ↔ implementación:** fixtures iguales y distintos en estructura; un cambio que solo toca tokens no cuenta como diferencia; la comparación nunca cambia el código de salida.
   - **Framing del pipe (sobre `Buffer`):** mensaje partido en dos lecturas, varios mensajes en una lectura, UTF-8 partido, error de CDP. El tema se fija de forma explícita aunque el SO esté en oscuro.
   - **Chequeo de fuga:** fixtures con email, nombre de git, usuario del SO y rutas absolutas de Windows, macOS y Linux → la opción falla; un fixture limpio pasa.
+  - **Clases de Tailwind:** fixtures `.tsx` y `.vue` con `rounded-[6px]`, `text-[#333]`, `transition-all` y `outline-none` con y sin `focus-visible:` → los mismos ids que en CSS. **Alias:** un `DESIGN.md` con `accent` y `text` se lee como `primary` y `on-surface`, y el hallazgo nombra el alias. **Reglas afinadas:** combobox sin nombre → A11Y-04; campo con solo placeholder → A11Y-16; control deshabilitado → exento en B1 y B2; nav de borde a borde → no viola LAYOUT-10.
   - **Familia de tokens:** `border-radius: var(--space-2)` → LAYOUT-04; un token de color en `box-shadow` sin ser de elevación → DEPTH-01.
   - **Linter del plugin (R9)** y **catálogo (R14)**.
   - **Carpeta del run:** `.pignolo-ui/.gitignore` se crea antes de la primera escritura; una auditoría deja `git status` limpio; la poda solo borra lo de más de 14 días y solo dentro de su carpeta.
@@ -780,7 +789,7 @@ Lo que se publique del spike sale sin datos de proyectos privados: solo cifras a
 | **Aislamiento de `ui-option`** con un archivo trampa | **Resultado:** 0 apariciones en 18 mockups. El residuo (git status, email, `additionalDirectories`) sí llega → chequeo de fuga (§7.4) | Bug de aislamiento: no hay release hasta corregirlo |
 | **`Write`/`Read` de subagentes fuera del proyecto** | **Resultado:** tmp se deniega en `acceptEdits` sin `additionalDirectories` → carpeta del run en el repo, ignorada (§3.2). En `default`, cada escritura pide permiso (declarado) | — |
 | **Sonnet vs opus en `ui-option`**, con `resolvedModel` | **Resultado:** 9/9 chequeos de forma en los dos, 0 pares coincidentes, en una muestra de 3 corridas → sonnet (A-15). Se completa a ≥ 5 en §16.3 | Opus solo para `ui-option` si la eval lo contradice (A-15) |
-| **axe inyectado por CDP vs reglas propias**, en apps reales (A-13) | **Parcial:** la inyección por `Runtime.evaluate` tarda < 0,1 s y funciona con CSP estricta. La conclusión sobre apps reales está pendiente | Si aporta: propuesta al autor de axe fijado en v1.1 |
+| **axe inyectado por CDP vs reglas propias**, en apps reales (A-13) | **Resultado en una app real** de Next.js + Tailwind v4 + shadcn (5 pantallas × 1440/390 × claro/oscuro): axe encontró **1** sola falla A/AA que las reglas propias no ven (combobox sin nombre, 4.1.2; ahora la cubre A11Y-04). Las reglas propias encontraron **23** fallas reales de contraste que axe dejó `incomplete` o salteó. axe tarda 79–184 ms por página y funciona con CSP estricta. **Recomendación técnica:** v1 sigue sin axe; medir al menos otra app antes de que el autor decida sobre v1.1 | Si aporta: propuesta al autor de axe fijado en v1.1 |
 | **Comparación aprobado ↔ implementación** con fixtures (A-18) | Queda en v1, informativa | Con > 30 % de diferencias falsas pasa a v1.1 |
 | **Tokens medidos por flujo** | **Resultado:** mockups y auditor sin imágenes medidos (§15). Capturas y style tile, en el hito 3 | — |
 
