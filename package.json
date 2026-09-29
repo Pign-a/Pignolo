@@ -1,0 +1,8 @@
+{
+  "name": "pignolo-repo",
+  "private": true,
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\" \"plugins/pignolo-ui/tests/**/*.test.mjs\"",
+    "test:ui": "node --test \"plugins/pignolo-ui/tests/**/*.test.mjs\""
+  }
+}

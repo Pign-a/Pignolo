@@ -1,0 +1,15 @@
+:root {
+  --primary: #0b6bcb;
+  --on-primary: #ffffff;
+  --surface: #ffffff;
+  --on-surface: #1a1a1a;
+  --radius: 8px;
+  --font-body: "Source Sans 3", sans-serif;
+}
+
+.dark {
+  --primary: #7fb2f0;
+  --on-primary: #0a1f33;
+  --surface: #121212;
+  --on-surface: #f0f0f0;
+}

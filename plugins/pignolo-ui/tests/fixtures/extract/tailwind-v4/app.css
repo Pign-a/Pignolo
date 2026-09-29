@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: oklch(0.55 0.2 260);
+  --color-primary-foreground: oklch(0.98 0 0);
+  --color-surface: oklch(1 0 0);
+  --color-surface-foreground: oklch(0.2 0 0);
+  --color-brand-500: oklch(0.62 0.18 40);
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --font-sans: "Inter", ui-sans-serif, sans-serif;
+  --spacing: 0.25rem;
+  --header-height: 64px;
+}
+
+.btn {
+  background: var(--color-primary);
+}
