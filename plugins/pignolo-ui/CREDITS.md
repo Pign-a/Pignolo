@@ -96,7 +96,7 @@ twbs/bootstrap, LICENSE (v5.3.8). Values used: primary and border radius in cata
 
 ### Vite
 
-vitejs/vite, LICENSE (v8.3.1; values from v7.0.0). Value used: the link color of the create-vite React template in catalog/framework-defaults.json.
+vitejs/vite, LICENSE. Notice text taken from the LICENSE of v8.3.1; the values come from v7.0.0. Whether the v7.0.0 LICENSE carries the same text was not verified (no network access when this was written). Value used: the link color of the create-vite React template in catalog/framework-defaults.json.
 
     MIT License
 
