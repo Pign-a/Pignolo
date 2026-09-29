@@ -128,3 +128,46 @@ test('setReflogPolicy writes never for both keys', () => {
   assert.strictEqual(git(['config', '--local', 'gc.reflogExpire'], repo), 'never');
   assert.strictEqual(git(['config', '--local', 'gc.reflogExpireUnreachable'], repo), 'never');
 });
+
+const backupSets = (repo) => {
+  const bases = git(['for-each-ref', '--format=%(refname)', 'refs/pignolo/backup'], repo).split('\n').filter(Boolean)
+    .map((r) => r.split('/').slice(0, 4).join('/'));
+  return [...new Set(bases)];
+};
+
+test('backupRefs does not create a new set when refs are unchanged', () => {
+  const repo = makeRepo();
+  const first = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:00Z'), outside: false });
+  assert.strictEqual(first.count, 1);
+  const second = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:05Z'), outside: false });
+  assert.deepStrictEqual({ base: second.base, count: second.count, reused: second.reused }, { base: null, count: 0, reused: first.base });
+  assert.strictEqual(backupSets(repo).length, 1);
+  fs.writeFileSync(path.join(repo, 'b.txt'), 'dos\n');
+  git(['add', 'b.txt'], repo);
+  git(['commit', '-q', '-m', 'segundo'], repo);
+  const third = backupRefs({ cwd: repo, now: new Date('2026-09-26T10:00:10Z'), outside: false });
+  assert.strictEqual(third.count, 1);
+  assert.strictEqual(backupSets(repo).length, 2);
+});
+
+test('backupRefs with outside still mirrors to the shadow when the repo set is reused', () => {
+  const repo = makeRepo();
+  const env = { ...process.env, PIGNOLO_HOME: makeTempDir('pignolo-home-') };
+  const { seedShadow } = require('../plugins/pignolo/lib/git-backup');
+  seedShadow({ cwd: repo, env, sessionId: 's1', timeoutMs: T });
+  const first = backupRefs({ cwd: repo, env, now: new Date('2026-09-26T10:00:00Z'), timeoutMs: T });
+  assert.ok(first.shadow);
+  const second = backupRefs({ cwd: repo, env, now: new Date('2026-09-26T10:00:05Z'), timeoutMs: T });
+  assert.strictEqual(second.reused, first.base);
+  assert.ok(second.shadow && second.shadow.count >= 1, 'mirror ran');
+});
+
+test('backupRefs treats an already existing ref with the same sha as success', () => {
+  const repo = makeRepo();
+  const now = new Date('2026-09-26T10:00:00Z');
+  const sha = git(['rev-parse', 'HEAD'], repo);
+  const { stamp } = require('../plugins/pignolo/lib/shadow');
+  git(['update-ref', `refs/pignolo/backup/${stamp(now)}/heads/main`, sha], repo);
+  // el juego ya existe con el mismo contenido en el mismo instante: no lanza
+  assert.doesNotThrow(() => backupRefs({ cwd: repo, now, outside: false }));
+});
