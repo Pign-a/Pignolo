@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateDesign } from '../lib/design-doc.mjs';
 import { patchDesign } from '../lib/design-patch.mjs';
+import { runOfficialLint } from '../lib/official-lint.mjs';
 import { readTokenSources } from '../lib/token-sources.mjs';
 
 const PLUGIN_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -47,6 +48,8 @@ function cmdValidate(opts) {
   const darkInCss = opts.project ? readTokenSources(opts.project).darkDetected : false;
   const r = validateDesign(text, { catalog: loadCatalog(opts), darkInCss });
   const { data, ...out } = r;
+  // The official linter only informs: its warnings on a user's file never block (spec §4.2).
+  if (opts.official) out.official = runOfficialLint(opts.file, { projectRoot: opts.project });
   return { out: { ...out, darkInCss }, code: r.status === 'valid' ? 0 : r.status === 'invalid' ? 1 : 2 };
 }
 
