@@ -511,7 +511,7 @@ Con el código real unido, sin inyecciones, por los scripts y el launcher (un su
 
 > **Para quien ejecute:** usar superpowers:subagent-driven-development con el método de ejecución de abajo (olas en paralelo con worktrees a mano, sin revisión por tarea, una revisión final opus). Los pasos usan casillas (`- [ ]`). Parte de `main` con la parte 3a unida (`edb7d41`, plugin 0.3.0).
 
-**Objetivo:** que un pedido en un proyecto con pignolo activo recorra un carril real: la skill `entry` decide si hay autorización y el carril con `scripts/risk.js`; `trivial` cambia, sella y commitea; `daily` registra la tarea, despacha `test-writer` e `implementer` con el handback-gate de 3a, demuestra el rojo, revisa según el riesgo y mergea con confirmación; `review` y `judgment` llevan el ledger de §12 hasta `APPROVED | ESCALATED`. Las evals `agents` de §15 para lentes, refuter, jueces y fixer quedan escritas, baratas y con veredicto sobre lo que hizo el subagente; **correrlas espera la decisión de costo del autor**.
+**Objetivo:** que un pedido en un proyecto con pignolo activo recorra un carril real: la skill `entry` decide si hay autorización y el carril con `scripts/risk.js`; `trivial` cambia, sella y commitea; `daily` registra la tarea, despacha `test-writer` e `implementer` con el handback-gate de 3a, demuestra el rojo, revisa según el riesgo y mergea con confirmación; `review` y `judgment` llevan el ledger de §12 hasta `APPROVED | ESCALATED`. Las evals `agents` de §15 para lentes, refuter, jueces y fixer quedan escritas, baratas y con veredicto sobre lo que hizo el subagente; se corren en la Task 19 según la decisión del autor D-3b (con frenos mecánicos entre etapas) y sus resultados, buenos o malos, quedan publicados en el README.
 
 **Arquitectura:** poca lógica nueva y toda determinista: verbos nuevos de `scripts/ledger.js` (`build`, `repro`, `refute --ledger`, `round`, `next`, `frozen`, `save`), dos endurecimientos de `scripts/run.js task` (rutas `--file` normalizadas y archivos validados por rol), `.pignolo/.gitignore` que se ignora a sí mismo y cubre `tmp/` y `worktrees/`, y `scripts/setup.js models`. Los revisores entregan un bloque `json` que `ledger.js build` copia tal cual. Encima, texto: cinco skills (`entry`, `trivial`, `daily`, `review`, `judgment`) y tres plantillas (`question`, `task-card`, `review-summary`). Las evals salen de una sola tabla (`tests/evals/review-cases.js`) que genera los casos de `claude plugin eval`.
 
@@ -521,7 +521,7 @@ Con el código real unido, sin inyecciones, por los scripts y el launcher (un su
 
 ## Qué se verificó al escribir este plan
 
-Todo el código determinista de este plan (Tasks 11, 12, 13, 17 y 18, y las pruebas de forma de las Tasks 14 a 16) se ejecutó en una copia del repo (`git clone` de `main` en el scratchpad, nunca en `D:\pignolo`): cada test nuevo se vio **en rojo contra el código de `main`** y en verde con el código de su tarjeta; la suite completa de la copia quedó en **1180 tests, 1178 pasan y 2 saltados** (hoy en `main`: 1109, 1107 y 2 saltados; esta parte suma 71). `claude plugin validate plugins/pignolo` pasó con las skills nuevas. Las skills (texto) se validaron solo por forma: su comportamiento con agentes lo miden el checklist manual y, para los revisores, las evals.
+Todo el código determinista de este plan (Tasks 11, 12, 13, 17 y 18, y las pruebas de forma de las Tasks 14 a 16) se ejecutó en una copia del repo (`git clone` de `main` en el scratchpad, nunca en `D:\pignolo`): cada test nuevo se vio **en rojo contra el código de `main`** y en verde con el código de su tarjeta; esta parte **suma 81 tests** a la suite, sin fallos ni saltados nuevos (medido tras la revisión opus: la copia, 1538 tests con 2 saltados, contra 1457 con 2 saltados de `main` en `fce3a80`, que ya incluye la suite de `pignolo-ui`). Los totales absolutos cambian con lo que se una a `main`: **se vuelven a medir en la rama al empezar la ola 0** y lo esperado es ese total + 81. `claude plugin validate plugins/pignolo` pasó con las skills nuevas. Las skills (texto) se validaron solo por forma: su comportamiento con agentes lo miden el checklist manual y, para los revisores, las evals.
 
 Tres hallazgos de esa ejecución que cambiaron el diseño:
 
@@ -546,33 +546,35 @@ Las de 3a (arriba) siguen todas. Además:
 
 Aprobado por el autor y repetido de 3a:
 
-- **Rama de integración** `core/hito-3b` desde `main`. **Olas** con archivos disjuntos dentro de cada ola: ola 0 (Tasks 11, 12 y 13, contratos) → unión, `npm run test:quiet` una vez, tag `contract/hito-3b/v1` → ola 1 (Tasks 14 a 18) → unión, suite una vez → ola 2 (Task 19, cierre).
+- **Rama de integración** `core/hito-3b` desde `main`; al crearla, `npm run test:quiet` una vez y anotar total, pasan y saltados: es la línea base de todo conteo esperado de 3b (nada de números fijados en el plan). **Olas** con archivos disjuntos dentro de cada ola: ola 0 (Tasks 11, 12 y 13, contratos) → unión, `npm run test:quiet` una vez, tag `contract/hito-3b/v1` → ola 1 (Tasks 14 a 18) → unión, suite una vez → ola 2 (Task 19, cierre).
 - **Worktrees a mano**, no `isolation: worktree` (motivo en 3a): `git worktree add -b task/hito-3b/<NN>-<slug> <scratchpad>/wt-<NN> <core/hito-3b | contract/hito-3b/v1>`. El implementador trabaja con rutas absolutas dentro de su worktree y corre cada comando como `cd <ruta> && <comando>`. Primer paso de cada tarea de la ola 1: `git merge-base --is-ancestor contract/hito-3b/v1 HEAD`; si falla, `BLOCKED`.
 - **Modelos:** sonnet en las Tasks 11, 12, 13, 14 y 18 (tarjetas con código completo); **opus en las Tasks 15 (`daily`), 16 (`review` y `judgment`) y 17 (evals)**, que son orquestación y graders donde un error no se ve en un test de forma. Revisión final en opus.
 - **Sin revisión por tarea.** Una revisión final opus de `main..core/hito-3b` con el Review Focus de abajo, una pasada de arreglos y una confirmación acotada; lo que quede se clasifica (tope del hito 1).
 - **Tests:** los de 3a (tests primero, de tabla, rojo una vez; solo los propios con `node --test --test-reporter=dot <archivos>`). Los tests de forma de las skills miran estructura (frontmatter, orden de pasos, que cada script, verbo y plantilla nombrados existan), nunca redacción.
-- **Sin evals en la ejecución de las tareas.** La Task 17 escribe las evals y un test determinista de sus graders (costo 0); correrlas es la Decisión pendiente del autor.
+- **Sin evals en la ejecución de las tareas.** La Task 17 escribe las evals y un test determinista de sus graders (costo 0); se corren solo en la Task 19, con la decisión del autor D-3b.
 
 ## Review Focus
 
 1. **La skill le cree al informe y no al hook.** Si `daily` o `review` toman el `DONE` del texto del escritor sin `run.js status`, el handback-gate de 3a queda decorativo en el camino real (un despacho en segundo plano ni siquiera dispara el aviso de `PostToolUse`). Dueñas: **Tasks 15 y 16** (texto) y la revisión final (leer cada paso "Accept").
 2. **El orquestador reescribe o descarta hallazgos.** Resumir el informe de una lente en vez de copiar su bloque rompe §12 ("no califica ni descarta"). `ledger.js build` copia y valida; los refutados siempre van al resumen. Dueñas: **Tasks 11, 13 y 16**.
-3. **Candidato no congelado.** Un commit de repro, un fix o un archivo sin commitear cambian el SHA revisado; `ledger.js frozen` antes de despachar y antes de aceptar, y `round` con el SHA nuevo. Dueñas: **Tasks 11 y 16**.
+3. **Candidato no congelado.** Un archivo sin commitear o un HEAD distinto invalidan lo que dijo un revisor; `ledger.js frozen` justo antes de despachar a los revisores (lentes, refuters, jueces) y antes de aceptar sus bloques. El repro y el fixer mueven HEAD a propósito y entran al ledger solo por `round --sha <SHA2>` (con `--judgment` en Judgment Day). Dueñas: **Tasks 11 y 16**.
 4. **Evals que miden la sesión principal** (defecto de las del hito 2). Cada grader de contenido exige un evento del subagente; `tests/eval-cases.test.js` prueba que la misma salida buena desde la sesión principal **no** aprueba. Dueña: **Task 17**.
 5. **Flujo que queda abierto.** Un `daily` abandonado deja `run.json` y la allowlist de `Agent` activa hasta 2 h. Las skills cierran con `run.js end` al terminar, al escalar sin continuar y al abandonar. Dueñas: **Tasks 14 y 15**.
 
 ## Rulings del plan (técnicos, registrados)
 
-- **Las skills de flujo (`entry`, `trivial`, `daily`, `review`, `judgment`) son invocables por el modelo** (sin `disable-model-invocation`). §2 pide ese flag "a los que tienen efectos", pero `entry` tiene que poder despachar a `trivial`/`daily`, y `review` a `judgment`, y un skill con el flag no lo puede invocar el modelo. Se lee "efectos" como cambios en la configuración de pignolo (`setup`, `on`, `off`, `init`): esas siguen solo para el humano. Lo irreversible de los flujos (merge a `main`, push, borrados) sigue detrás de la guardia, los permisos `ask` y la pregunta `irreversible`. Costo si está mal: pignolo arranca solo ante un pedido; se nota en el checklist manual (punto 1).
+- **Quién invoca las skills de flujo no es un ruling:** lo decidió el autor (D-3b-2, abajo, en "Decisiones del autor (parte 3b)"). Los tests de forma de las Tasks 14 a 16 fijan esa decisión y sus dos condiciones.
 - **`entry` se dispara por su `description`** ("Use first for any request in a project where pignolo is active"). No hay hook que la fuerce: sería el primer hook que inyecta texto en cada pedido, contra "callados en el éxito" (§8.3). Riesgo residual: Claude puede no invocarla; se mide en el checklist.
-- **Worktree de `daily` en `<main>/.pignolo/worktrees/<slug>`** (mecanismo B de §11.2, sin `WorktreeCreate`, que es del hito 7), y temporales en `<main>/.pignolo/tmp/`. `run.js start` agrega `.gitignore`, `run.json`, `.disabled`, `tmp/` y `worktrees/` a `.pignolo/.gitignore`: git no ve nada de eso y `.pignolo/.gitignore` sin commitear no infla el diff (hallazgo 1). `.claude/worktrees/` se descartó: aparece sin seguimiento en `git status` del checkout principal. Costo si está mal: `/pignolo:init` (hito 8) tendrá que commitear `.pignolo/.gitignore` con `git add -f`.
+- **Worktree de `daily` en `<main>/.pignolo/worktrees/<slug>`** (mecanismo B de §11.2, sin `WorktreeCreate`, que es del hito 7), y temporales en `<main>/.pignolo/tmp/`. `run.js start` agrega `.gitignore`, `run.json`, `.disabled`, `tmp/` y `worktrees/` a `.pignolo/.gitignore`: git no ve nada de eso y `.pignolo/.gitignore` sin commitear no infla el diff (hallazgo 1). `.claude/worktrees/` se descartó: aparece sin seguimiento en `git status` del checkout principal. Costo si está mal: `/pignolo:init` (hito 8) tendrá que commitear `.pignolo/.gitignore` con `git add -f`. Dos límites conocidos, sin arreglo en 3b: (a) un `.pignolo/.gitignore` **ya versionado** (commiteado a mano o por otra herramienta) sin `tmp/` ni `worktrees/` queda **modificado** cuando `run.js start` le agrega las líneas: la autoignorancia no alcanza a un archivo seguido, `risk.js --diff HEAD` lo cuenta y `trivial` sube a `daily`; lo mismo si `/pignolo:on` y `/pignolo:off` (`toggle.js` de 3a) llegan a escribir en un `.gitignore` seguido. Se mide en el checklist manual (punto 10) y, si pasa, lo resuelve `/pignolo:init` (hito 8). (b) Un runner que recorre el árbol (vitest, jest) puede levantar los tests de `.pignolo/worktrees/<slug>` al correr la compuerta en `<main>` (tests duplicados o rojos ajenos); se mide en el checklist manual (punto 11) y el arreglo (excluir `.pignolo/` en la compuerta o en la config del runner) es del hito 7.
 - **`trivial` trabaja en el checkout principal, sobre la rama actual**, sin tarea registrada (`gate.js` sin `--task`: no hay alcance ni integridad por tarjeta, solo la compuerta). Si el riesgo del diff real sube, la skill **deshace su propio cambio con Edit** (nunca `git restore`/`checkout -- <archivo>`/`stash`, que la guardia niega), cierra el flujo y pregunta si pasarlo a `daily`. Nunca commitea en ese caso.
 - **`run.js task` normaliza y valida `--file`** (`\` → `/`, sin `./`; absoluta o con `..` → exit 2) y valida los archivos por rol al registrar (exit 1 con `Alternativa:`). El pendiente de la confirmación de 3a ("`--file` no normaliza") se cierra así en vez de confiar solo en el texto de la skill.
 - **Salida de los revisores en un bloque `json`** con las claves del ledger en orden (`id, lens, location, severity, evidence, repro`; el refuter, `claim, verdict, reason`). `ledger.js build` pone `id` = `<lente>-<id>` (evita choques) y `status: open`, y valida; con `--judgment` arma el ledger de Judgment Day (`fix` → `open`, `suspect` → `suspect`, conflictos → `open` con `conflict`). El orden fijo de claves es además lo que hace posible un grader de eval sin parsear JSON.
 - **El refuter va antes que la reproducción.** Es más barato que escribir un test por hallazgo, y un hallazgo con rojo reproducido ya es evidencia que no se refuta. Reclamos para el refuter: los `open` BLOCKER, CRITICAL y WARNING. Veredicto por hallazgo con `refutation()` de 3a (`max` en riesgo alto: cae con ≥ 2 `REFUTED` de 3; faltantes y malformados quedan en pie).
 - **Riesgo bajo = lectura estructural del orquestador** (§12), sin lente en el ledger (`LENSES` no tiene una "estructural"). Si ve un defecto real, **sube el nivel a `medium`** y corre las lentes; si no, el ledger se guarda vacío.
 - **Al fixer solo van BLOCKER/CRITICAL confirmados con rojo** (`nextStep` de 3a). Los WARNING, los no reproducidos y los sospechosos quedan en el ledger y en el resumen. Un hallazgo dentro de un test pide `test-authorization` antes de tocarlo (§9.3).
-- **Re-revisión "ledger + delta"** (§12): solo las lentes que dieron confirmados, con los hallazgos previos y el diff `<SHA>..<SHA2>`; `ledger.js round` sube `round`, marca `fixed` los confirmados cuyo test pasó a verde y suma lo nuevo con prefijo `r<n>-`. Tercera ronda → el script la niega (exit 1) y se escala.
+- **Re-revisión "ledger + delta"** (§12): solo las lentes que dieron confirmados, con los hallazgos previos y el diff `<SHA>..<SHA2>`; `ledger.js round` sube `round`, marca `fixed` los confirmados cuyo test pasó a verde y suma lo nuevo con prefijo `r<n>-`. Tercera ronda → el script la niega (exit 1) y se escala. **En Judgment Day, la ronda vuelve a emparejar:** los dos jueces revisan el delta a ciegas, `ledger.js judgment` los compara y `round --judgment <j2.json>` suma lo nuevo como `buildLedger --judgment` (de los dos → `open`, de uno solo → `suspect`, conflictos con `conflict` prefijado). Es lo más simple que no pierde "de uno solo → sospechoso" en la segunda ronda (sin `--judgment`, todo lo nuevo entraría `open` y el fixer arreglaría lo que vio un solo juez); cuesta un parámetro más en `nextRound` y un test.
+- **`frozen` solo alrededor de los revisores.** Lentes, refuters y jueces revisan un SHA: `ledger.js frozen` justo antes de despacharlos y antes de aceptar sus bloques. El repro (test-writer, rojo contra `<SHA>`, commit `<R>`) y el fixer mueven HEAD a propósito; no pasan por `frozen` y entran al ledger solo por `round --sha <SHA2>`, con `<SHA2>` congelado antes de despachar la re-revisión. Pedir `frozen` antes de aceptar "cualquier" resultado contradecía los pasos 7 y 9 (el repro deja archivos sin commitear y `<R>` mueve HEAD).
+- **Revisión o Judgment Day a pedido del humano:** el nivel sale de `risk.js --diff <base> --cwd "<wt>"` (paso 1 de `review`, paso 0 de `judgment`), nunca del juicio del orquestador solo. En modo solo-informe, si `<main>` tiene cambios sin commitear, la skill avisa que la revisión cubre solo el último commit y para: nunca commitea, guarda ni descarta trabajo del humano.
 - **`judge-conflict`: primero la evidencia.** Un conflicto entre jueces pasa por la reproducción como cualquier BLOCKER/CRITICAL: con rojo queda confirmado; sin rojo baja a WARNING. Se pregunta al humano solo si no se puede escribir la reproducción. Principio 1 (verificar, no creer) antes que pedirle al humano que arbitre.
 - **Ledger persistido por script en `~/.pignolo/reviews/<repo-id>/<sha>-<review|judgment>.json`** (`ledger.js save`). La skill no puede escribir ahí con Write (`protect-paths` protege `~/.pignolo/**`), y `.pignolo/state/` es del hito 6. Se guarda siempre, también vacío.
 - **La plantilla `review-ledger` de §2 es `templates/review-summary.md`**: el ledger es JSON (ruling de 3a) y lo escribe `ledger.js`; lo que necesita plantilla es su resumen al humano en dos capas. `templates/question.md` fija el formato de §4.4 para todas las skills.
@@ -584,8 +586,8 @@ Aprobado por el autor y repetido de 3a:
   - 14 casos: 4 lentes (`risk`, `resilience`, `readability`, `reliability`) × {defecto plantado, diff limpio}, `judge-a` y `judge-b` × {defecto, limpio}, `refuter` con un hallazgo falso y uno cierto, y `fixer` con un hallazgo confirmado. `review-testability` es del hito 4.
   - **Recall:** el subagente reporta la ubicación plantada (±3 líneas, el mismo criterio que `judgment`) con severidad BLOCKER o CRITICAL (en `readability`, WARNING o más). **Falso positivo:** BLOCKER o CRITICAL en un diff limpio. Umbral de §0 d: ≥ 4 de 5 corridas por caso.
   - La sesión principal corre en **sonnet** (solo despacha y contesta `RELAYED`; no se evalúa) y pasa `model` explícito al revisor, como hace pignolo en uso real. La comparación de revisores en sonnet `high` (§7, §15) es la misma tabla con `--reviewer-model sonnet`.
-  - Los fixtures y los diffs salen de una sola tabla (`tests/evals/review-cases.js`) que genera `tests/evals/generated/<modelo>/` (no se versiona). El fixer tiene Bash: su caso lleva la etiqueta `wsl2` y corre solo desde WSL2 (§15).
-  - Un test determinista (`tests/eval-cases.test.js`) corre cada grader contra traces sintéticos: aprueba la salida buena del subagente, reprueba la mala y reprueba la buena **si viene de la sesión principal**.
+  - Los fixtures y los diffs salen de una sola tabla (`tests/evals/review-cases.js`) que genera `tests/evals/generated/<modelo>/` (no se versiona). El fixer y el refuter tienen Bash (`lib/roles.js`): sus dos casos llevan la etiqueta `wsl2`, Bash en `allowed_tools` y corren solo desde WSL2, juntos (§15); el test determinista exige la etiqueta para todo agente con Bash.
+  - Un test determinista (`tests/eval-cases.test.js`) corre cada grader contra traces sintéticos: aprueba la salida buena del subagente, reprueba la mala; todo grader sobre el trace empieza con `SUB`, y **cada** grader `contains` sobre el trace reprueba la misma salida buena (con las mismas herramientas y, en el fixer, los archivos corregidos) **si viene de la sesión principal**.
 - **Plan en tarjetas con código verificado**: los bloques de las Tasks 11 a 18 son los que corrieron en la copia; siguen siendo hipótesis para el implementador, que los vuelve a correr (rojo y verde) en su worktree.
 
 ---
@@ -604,13 +606,13 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
 - Consume: `validateLedger`, `applyRepro`, `refutation`, `judgment`, `nextStep`, `isFrozen` (`lib/ledger.js`, 3a); `readConfig` (`lib/profiles.js`); `headSha`, `workingTree` (`lib/changes.js`); `gitRun` (`lib/git.js`); `repoIdFor` (`lib/seals.js`); `pignoloHome` (`lib/home.js`).
 - Produce (`lib/ledger.js`):
   - `buildLedger({ sha, level, profile, round = 0, reports = [], judgment = null }) → Ledger`: cada hallazgo con `id` = `<lens>-<id>` y `status: 'open'`; con `judgment` (salida de `judgment()`), `fix` → `open`, `suspect` → `suspect`, cada par de `conflicts` → los dos `open` con `conflict` = id del otro. Id repetido → lanza.
-  - `nextRound(ledger, { sha, fixed = [], reports = [] }) → Ledger`: `sha` nuevo, `round + 1`, los `confirmed` de `fixed` → `fixed`, los nuevos con id `r<round+1>-<lens>-<id>`. Con `round >= 2` lanza.
+  - `nextRound(ledger, { sha, fixed = [], reports = [], judgment = null }) → Ledger`: `sha` nuevo, `round + 1`, los `confirmed` de `fixed` → `fixed`, los nuevos con id `r<round+1>-<lens>-<id>`; con `judgment` (Judgment Day), lo nuevo entra emparejado como en `buildLedger` (de uno solo → `suspect`) y `conflict` lleva el mismo prefijo. Con `round >= 2` lanza.
 - Produce (`scripts/ledger.js`; JSON por stdout; exit 0; 1 si el ledger no valida, si el candidato no está congelado o si ya hubo 2 rondas; 2 uso):
   - `plan --level <l> [--profile <p>]` (sin `--profile`, el de la config; antes era obligatorio).
   - `build --sha <sha> --level <l> [--profile <p>] [--round <n>] --out <archivo> [--judgment <j.json>] [<informe.json>...]` → `{ ok, file, findings }`; inválido → exit 1 sin escribir.
   - `refute --ledger <archivo> <verdicts.json>` con `{ "<id>": [veredictos] }` → marca `refuted` y devuelve `{ results }`. La forma de 3a (`--profile --level` y una lista) sigue.
   - `repro --ledger <archivo> --id <id> --red | --no-red` → `{ finding }`; id inexistente → 1; sin `--red`/`--no-red` → 2.
-  - `round --ledger <archivo> --sha <sha> [--fixed <id>]... [<informe.json>...]` → `{ ok, round }`.
+  - `round --ledger <archivo> --sha <sha> [--fixed <id>]... [--judgment <j.json>] [<informe.json>...]` → `{ ok, round }`.
   - `next --ledger <archivo>` → `{ next: 'done'|'fix'|'escalate' }`.
   - `frozen --cwd <dir> --sha <sha>` → `{ frozen, head, reason }`; exit 0 si congelado, 1 si no.
   - `save --ledger <archivo> --cwd <dir> [--kind review|judgment]` → `{ ok, file }` con `file` = `<pignoloHome>/reviews/<repoId>/<sha>-<kind>.json`.
@@ -730,6 +732,22 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
     assert.strictEqual(cli(['round', '--ledger', out, '--sha', SHA2]).status, 1);
   });
 
+  test('round --judgment: la re-revisión de Judgment Day se vuelve a emparejar (de uno solo → suspect)', () => {
+    const dir = makeTempDir();
+    const out = built(dir, [], ['--judgment', writeJson(dir, 'j0.json', { fix: [], suspect: [], conflicts: [] })]);
+    const a = [finding('1', 'judge-a', 'src/a.js:10', 'CRITICAL'), finding('2', 'judge-a', 'src/c.js:1', 'WARNING'), finding('3', 'judge-a', 'src/d.js:5', 'BLOCKER')];
+    const b = [finding('1', 'judge-b', 'src/a.js:11', 'BLOCKER'), finding('2', 'judge-b', 'src/d.js:6', 'SUGGESTION')];
+    const j = cli(['judgment', writeJson(dir, 'a.json', a), writeJson(dir, 'b.json', b)]).out;
+    const r = cli(['round', '--ledger', out, '--sha', SHA2, '--judgment', writeJson(dir, 'j.json', j)]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const byId = Object.fromEntries(read(out).findings.map((f) => [f.id, f]));
+    assert.strictEqual(byId['r1-judge-a-1'].status, 'open');
+    assert.strictEqual(byId['r1-judge-a-2'].status, 'suspect');
+    assert.strictEqual(byId['r1-judge-a-3'].conflict, 'r1-judge-b-2');
+    assert.strictEqual(byId['r1-judge-b-2'].conflict, 'r1-judge-a-3');
+    assert.strictEqual(cli(['validate', out]).status, 0);
+  });
+
   test('next: round 2 con un confirmado abierto → escalate', () => {
     const dir = makeTempDir();
     const l = { v: 1, sha: SHA, level: 'high', profile: 'max', round: 2, findings: [{ ...finding('x', 'risk', 'a.js:1', 'CRITICAL'), status: 'confirmed' }] };
@@ -772,7 +790,7 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
   });
   ````
 
-- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot tests/ledger-cli.test.js`. Esperado (medido en la copia): fallan los 11 (verbos inexistentes; `plan` sin `--profile` sale 2). Anotar el resumen.
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot tests/ledger-cli.test.js`. Esperado (medido en la copia): fallan los 12 (verbos inexistentes; `plan` sin `--profile` sale 2). Anotar el resumen.
 - [ ] **Paso 3: implementar.** En `lib/ledger.js`, antes de `module.exports`, y sumar `buildLedger, nextRound` a los exports:
 
   ````js
@@ -808,10 +826,12 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
 
   // Ronda siguiente tras el fixer (§12: re-revisión sobre ledger + delta): sha nuevo,
   // round + 1, los confirmados de `fixed` pasan a 'fixed' y se suman los hallazgos nuevos.
-  function nextRound(ledger, { sha, fixed = [], reports = [] }) {
+  // Con `judgment` (Judgment Day), lo nuevo entra emparejado como en buildLedger.
+  function nextRound(ledger, { sha, fixed = [], reports = [], judgment: j = null }) {
     if (ledger.round >= 2) throw new Error('máximo 2 rondas de fix (§12): lo abierto se escala');
-    const fresh = buildLedger({ sha, level: ledger.level, profile: ledger.profile, reports }).findings
-      .map((f) => ({ ...f, id: `r${ledger.round + 1}-${f.id}` }));
+    const r = `r${ledger.round + 1}-`;
+    const fresh = buildLedger({ sha, level: ledger.level, profile: ledger.profile, reports, judgment: j }).findings
+      .map((f) => ({ ...f, id: `${r}${f.id}`, ...(f.conflict ? { conflict: `${r}${f.conflict}` } : {}) }));
     const old = ledger.findings.map((f) => (fixed.includes(f.id) && f.status === 'confirmed' ? { ...f, status: 'fixed' } : f));
     return { ...ledger, sha, round: ledger.round + 1, findings: [...old, ...fresh] };
   }
@@ -829,7 +849,7 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
   //   refute --ledger <archivo> <verdicts.json>                 ({ "<id>": [veredictos] })
   //   build --sha <sha> --level <l> [--profile <p>] --out <archivo> [--judgment <j.json>] [<informe.json>...]
   //   repro --ledger <archivo> --id <id> --red | --no-red
-  //   round --ledger <archivo> --sha <sha> [--fixed <id>]... [<informe.json>...]
+  //   round --ledger <archivo> --sha <sha> [--fixed <id>]... [--judgment <j.json>] [<informe.json>...]
   //   next --ledger <archivo>
   //   frozen --cwd <dir> --sha <sha>
   //   save --ledger <archivo> --cwd <dir> [--kind review|judgment]
@@ -973,7 +993,9 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
       need(o, 'ledger', 'sha');
       const ledger = checked(readJson(o.ledger));
       if (ledger.round >= 2) throw new Fail('máximo 2 rondas de fix (§12): lo abierto se escala');
-      const next = checked(L.nextRound(ledger, { sha: o.sha, fixed: o.fixed, reports: o.pos.map(readJson) }));
+      const next = checked(L.nextRound(ledger, {
+        sha: o.sha, fixed: o.fixed, reports: o.pos.map(readJson), judgment: o.judgment ? readJson(o.judgment) : null,
+      }));
       writeJson(o.ledger, next);
       print({ ok: true, round: next.round });
       return 0;
@@ -1012,7 +1034,7 @@ Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`
   }
   ````
 
-- [ ] **Paso 4: verde.** `node --test --test-reporter=dot tests/ledger-cli.test.js tests/ledger.test.js` → todo verde (medido: 11 + los de 3a).
+- [ ] **Paso 4: verde.** `node --test --test-reporter=dot tests/ledger-cli.test.js tests/ledger.test.js` → todo verde (medido: 12 + los de 3a).
 - [ ] **Paso 5: commit.** `feat(ledger): verbos build, repro, refute, round, next, frozen y save para las skills de revisión`.
 
 ### Task 12: `run.js` para las skills y `setup.js models` (sonnet)
@@ -1452,7 +1474,7 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   const { readSkill, brokenReferences } = require('./skill-forms');
 
   for (const name of ['entry', 'trivial']) {
-    test(`${name}: frontmatter invocable por el modelo y referencias reales`, () => {
+    test(`${name}: frontmatter invocable por el modelo (D-3b-2) y referencias reales`, () => {
       const s = readSkill(name);
       assert.strictEqual(s.data.name, name);
       assert.ok(s.data.description.length > 40);
@@ -1468,6 +1490,17 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
     }
   });
 
+  test('entry: deriva a trivial o daily solo si el pedido autoriza un cambio; ante la duda, solo lectura y pregunta (D-3b-2)', () => {
+    const { text } = readSkill('entry');
+    assert.match(text, /When in doubt, stay read-only and ask/);
+    const auth = text.search(/Does the request authorize a change\?/);
+    assert.ok(auth >= 0 && text.search(/pignolo:trivial/) > auth && text.search(/pignolo:daily/) > auth, 'la autorización va antes del traspaso');
+  });
+
+  test('trivial: su description dice que se entra por pignolo:entry (D-3b-2)', () => {
+    assert.match(readSkill('trivial').data.description, /pignolo:entry/);
+  });
+
   test('trivial: gate on-done, riesgo sobre el diff real, commit -F y cierre del flujo', () => {
     const { text } = readSkill('trivial');
     for (const re of [/run\.js" start --flow trivial/, /gate\.js" --level on-done/, /risk\.js" --diff HEAD/, /git commit -F/, /run\.js" end/]) {
@@ -1476,7 +1509,7 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   });
   ````
 
-- [ ] **Paso 2: rojo.** Solo este archivo: falla por los `SKILL.md` ausentes.
+- [ ] **Paso 2: rojo.** Solo este archivo: falla por los `SKILL.md` ausentes. Además, con las skills escritas, los dos tests de D-3b-2 se vieron en rojo contra la versión anterior del texto (medido: sin "When in doubt, stay read-only and ask" en `entry` y sin `pignolo:entry` en la `description` de `trivial`).
 - [ ] **Paso 3: escribir las skills.** `skills/entry/SKILL.md`:
 
   ````markdown
@@ -1494,7 +1527,7 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   ## Steps
 
   1. **Is pignolo on here?** Find the project root: the nearest directory upward that holds `.pignolo/project.md` (stop at the first one that holds `.git`). If there is none, or `.pignolo/.disabled` exists there, pignolo is not active: say so in one line and handle the request normally, without pignolo's flows. Call that root `<main>` (for a git worktree, the main checkout that owns it).
-  2. **Does the request authorize a change?** A question, an explanation or an investigation authorizes none: answer read-only. Something you notice while reading never widens the authorization: report it and stop there. A request to review without changing anything goes to the `pignolo:review` skill in report-only mode.
+  2. **Does the request authorize a change?** (spec §5.1) A question, an explanation or an investigation authorizes none: answer read-only. Something you notice while reading never widens the authorization: report it and stop there. When in doubt, stay read-only and ask the human (category `scope`) whether they want a change; go on only with an explicit yes. Only a request that authorizes a change goes on to step 3 and can reach the trivial or daily lane. A request to review without changing anything goes to the `pignolo:review` skill in report-only mode.
   3. **Is another flow running?** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" status --cwd "<main>"`. If `running` is true and the flow is not the one you are already in, stop and ask the human (category `scope`) whether to close it with `run.js end` or resume it. If `malformed` is true, show the path and offer `run.js end`.
   4. **What will change?** Read what you need to know which files the change touches: up to 3 files yourself; for 4 or more dispatch `pignolo:explorer` (model from `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" models`) and treat its report as claims to check. With the Write tool, write the list to `<main>/.pignolo/tmp/entry-files.txt`: one path per line, relative to `<main>`, with forward slashes (`src/app.js`, never `src\app.js`).
   5. **Risk floor.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/risk.js" --files-from "<main>/.pignolo/tmp/entry-files.txt" --cwd "<main>"`, adding `--deleted <path>` for each file the change deletes. The JSON gives `level`, `reserved`, `laneFloor`, `hits` and `categories`. The floor is a floor: you may only raise it, never lower it (spec §4.2).
@@ -1511,7 +1544,7 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   ````markdown
   ---
   name: trivial
-  description: Use only when pignolo's entry skill picked the trivial lane. Makes a one-line or mechanical change in the main checkout, seals the on-done gate, re-checks the risk floor on the real diff and commits. No review.
+  description: Entered only through pignolo:entry, when it picked the trivial lane. Makes a one-line or mechanical change in the main checkout, seals the on-done gate, re-checks the risk floor on the real diff and commits. No review.
   ---
 
   You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill. Talk to the human as the entry skill says: two layers (`${CLAUDE_PLUGIN_ROOT}/templates/question.md`), one step per message, a category on every question, facts only from script output.
@@ -1555,10 +1588,11 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   const assert = require('node:assert');
   const { readSkill, brokenReferences } = require('./skill-forms');
 
-  test('daily: frontmatter y referencias reales', () => {
+  test('daily: frontmatter invocable por el modelo (D-3b-2), entrada por pignolo:entry y referencias reales', () => {
     const s = readSkill('daily');
     assert.strictEqual(s.data.name, 'daily');
     assert.strictEqual(s.data['disable-model-invocation'], undefined);
+    assert.match(s.data.description, /pignolo:entry/);
     assert.deepStrictEqual(brokenReferences(s.text), []);
   });
 
@@ -1592,13 +1626,13 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   });
   ````
 
-- [ ] **Paso 2: rojo.** Solo este archivo.
+- [ ] **Paso 2: rojo.** Solo este archivo (medido también contra la `description` anterior, sin `pignolo:entry`).
 - [ ] **Paso 3: escribir la skill** (`skills/daily/SKILL.md`):
 
   ````markdown
   ---
   name: daily
-  description: Use only when pignolo's entry skill picked the daily lane. Runs one task in its own branch and worktree - test-writer, red proved by you, implementer, sealed gate, review by risk - then merges into the origin branch with the human's confirmation.
+  description: Entered only through pignolo:entry, when it picked the daily lane. Runs one task in its own branch and worktree - test-writer, red proved by you, implementer, sealed gate, review by risk - then merges into the origin branch with the human's confirmation.
   ---
 
   You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill; `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human as the entry skill says: two layers (`<P>/templates/question.md`), one step per message, a category on every question, facts only from script output.
@@ -1649,7 +1683,7 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
 - Test: `tests/skill-review.test.js`
 
 **Interfaces:**
-- Consume: todos los verbos de `ledger.js` (Task 11), `run.js task|renew|status|start|end`, `setup.js models`, la salida `json` de los revisores (Task 13), `templates/review-summary.md`.
+- Consume: todos los verbos de `ledger.js` (Task 11, con `round --judgment`), `run.js task|renew|status|start|end`, `risk.js --diff` (nivel de una revisión a pedido), `setup.js models`, la salida `json` de los revisores (Task 13), `templates/review-summary.md`.
 - Produce: para `daily`, `APPROVED | ESCALATED` y la ruta del ledger; `judgment` invocable desde `review` o a pedido del humano.
 
 - [ ] **Paso 1: test primero** (`tests/skill-review.test.js`):
@@ -1661,12 +1695,25 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   const assert = require('node:assert');
   const { readSkill, brokenReferences } = require('./skill-forms');
 
+  function inOrder(text, order) {
+    let at = 0;
+    for (const re of order) {
+      const m = re.exec(text.slice(at));
+      assert.ok(m, `falta o está fuera de orden: ${re}`);
+      at += m.index + m[0].length;
+    }
+  }
+
   for (const name of ['review', 'judgment']) {
-    test(`${name}: frontmatter y referencias reales`, () => {
+    test(`${name}: frontmatter invocable por el modelo (D-3b-2) y referencias reales`, () => {
       const s = readSkill(name);
       assert.strictEqual(s.data.name, name);
       assert.strictEqual(s.data['disable-model-invocation'], undefined);
       assert.deepStrictEqual(brokenReferences(s.text), []);
+    });
+
+    test(`${name}: a pedido del humano, el nivel sale de risk.js sobre el diff`, () => {
+      assert.match(readSkill(name).text, /risk\.js" --diff <base> --cwd "<wt>"/);
     });
   }
 
@@ -1679,6 +1726,32 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
     }
   });
 
+  test('review: frozen solo alrededor de los revisores; repro y fix mueven HEAD y entran por round --sha <SHA2>', () => {
+    const { text } = readSkill('review');
+    assert.doesNotMatch(text, /before accepting any result/);
+    inOrder(text, [
+      /ledger\.js" frozen --cwd "<wt>" --sha <SHA>`/,
+      /Dispatch every lens/,
+      /Dispatch `refuters` instances/,
+      /--base <SHA>[^\n]*--agent pignolo:test-writer/,
+      /--base <SHA>[^\n]*--test-ref <R>[^\n]*--agent pignolo:fixer/,
+      /ledger\.js" frozen --cwd "<wt>" --sha <SHA2>`/,
+      /dispatch the lenses that produced the confirmed findings/,
+      /ledger\.js" round --ledger "<L>" --sha <SHA2>/,
+    ]);
+  });
+
+  test('review: solo informe con cambios sin commitear en <main> → avisa y para, nunca commitea', () => {
+    const { text } = readSkill('review');
+    assert.match(text, /Report-only mode[^\n]*uncommitted[^\n]*stop[^\n]*never commit/);
+  });
+
+  test('judgment: su description dice que se entra por pignolo:review o a pedido explícito (D-3b-2)', () => {
+    const d = readSkill('judgment').data.description;
+    assert.match(d, /pignolo:review/);
+    assert.match(d, /explicitly asks/);
+  });
+
   test('judgment: jueces ciegos en paralelo, judgment + build --judgment, judge-conflict, save --kind judgment', () => {
     const { text } = readSkill('judgment');
     for (const re of [/pignolo:judge-a/, /pignolo:judge-b/, /Never show one judge the other/, /ledger\.js" judgment/,
@@ -1686,9 +1759,19 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
       assert.match(text, re);
     }
   });
+
+  test('judgment: la ronda siguiente congela <SHA2> y vuelve a emparejar con judgment + round --judgment', () => {
+    const { text } = readSkill('judgment');
+    assert.doesNotMatch(text, /before accepting any result/);
+    inOrder(text, [
+      /ledger\.js" frozen --cwd "<wt>" --sha <SHA2>`/,
+      /ledger\.js" judgment "<a2\.json>" "<b2\.json>"/,
+      /ledger\.js" round --ledger "<J>" --sha <SHA2>[^\n]*--judgment "<j2\.json>"/,
+    ]);
+  });
   ````
 
-- [ ] **Paso 2: rojo.** Solo este archivo.
+- [ ] **Paso 2: rojo.** Solo este archivo. Medido contra la versión anterior de las dos skills: 6 de 10 en rojo (el `frozen` "before accepting any result" y el orden `frozen --sha <SHA2>` → `round --sha <SHA2>`, el `risk.js --diff` a pedido del humano en las dos, el solo-informe con cambios sin commitear, el `round --judgment` de Judgment Day y la `description` de `judgment`).
 - [ ] **Paso 3: escribir las skills.** `skills/review/SKILL.md`:
 
   ````markdown
@@ -1697,33 +1780,33 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   description: Use when pignolo's daily skill reaches its review step, or when the human asks pignolo to review a commit. Reviews a frozen SHA with the depth its risk level sets - lenses, refuters, repro tests, at most two fixer rounds - and persists the ledger even when it is empty.
   ---
 
-  You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root; `<wt>` is the worktree under review (the task worktree from daily, or `<main>` for a review the human asked for); `<base>` is the task base from daily, or the commit the human names (by default the parent of the reviewed commit); `<task>` is the daily task id, or `review-<first 7 of the SHA>`; `<L>` is `<main>/.pignolo/tmp/review-<first 7 of the SHA>/ledger.json`. Talk to the human as the entry skill says: two layers, one step per message, a category on every question, facts only from script output.
+  You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root; `<wt>` is the worktree under review (the task worktree from daily, or `<main>` for a review the human asked for); `<base>` is the task base from daily, or the commit the human names (by default the parent of the reviewed commit); `<level>` is the level from daily, or the one step 1 computes; `<task>` is the daily task id, or `review-<first 7 of the SHA>`; `<L>` is `<main>/.pignolo/tmp/review-<first 7 of the SHA>/ledger.json`. Talk to the human as the entry skill says: two layers, one step per message, a category on every question, facts only from script output.
 
   ## Rules
 
   - **You never grade findings.** You copy each agent's `json` block verbatim into a file with Write and let `ledger.js` decide. You never drop, merge, reword or re-rate a finding (spec §12). Refuted findings are always listed in the summary.
-  - **Frozen candidate.** The review is of one SHA. Before dispatching and before accepting any result, `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA>` must exit 0. If it exits 1, commit first or start over on the new SHA.
+  - **Frozen candidate for the reviewers.** Lenses, refuters and judges review one SHA. Right before dispatching them and again before accepting their blocks, `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <the SHA they review>` must exit 0; if it exits 1, do not use their blocks: start over on the new SHA. The repro tests (step 7) and the fixer (step 9) run against `<SHA>` and move HEAD on purpose: their commits enter the ledger only through `ledger.js round --sha <SHA2>`, and the next reviewers are frozen on `<SHA2>`.
   - **Writers follow the daily rules:** `run.js renew` before each dispatch, `run.js task` before each writer, `run.js status` after each writer (accepted only with `handback.accepted`), at most 2 automatic continuations, `--file` relative with `/`.
   - **Models:** `node "<P>/scripts/setup.js" models`; pass `model` on every dispatch.
-  - **Report-only mode** (the human asked only for a review): no test-writer and no fixer, so steps 7 and 9 are skipped; the result lists every finding still standing, and it is APPROVED only if no BLOCKER or CRITICAL stands.
+  - **Report-only mode** (the human asked only for a review): no test-writer and no fixer, so steps 7 and 9 are skipped; the result lists every finding still standing, and it is APPROVED only if no BLOCKER or CRITICAL stands. If `<main>` has uncommitted changes (the frozen check of step 2 says so), tell the human that the review covers only the last commit and their uncommitted work is not in it, and stop: never commit, stash or discard their work.
 
   ## Steps
 
-  1. **Flow.** Inside daily, the flow is already open. For a review the human asked for, `node "<P>/scripts/run.js" start --flow review --cwd "<main>"` (and `end` at the close).
-  2. **Freeze.** `<SHA>` = `cd "<wt>" && git rev-parse HEAD`; run the frozen check.
+  1. **Flow and level.** Inside daily, the flow is already open and `<level>` comes from daily. For a review the human asked for, `node "<P>/scripts/run.js" start --flow review --cwd "<main>"` (and `end` at the close), then `<level>` = `level` from `node "<P>/scripts/risk.js" --diff <base> --cwd "<wt>"` (you may raise it, never lower it).
+  2. **Freeze.** `<SHA>` = `cd "<wt>" && git rev-parse HEAD`; `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA>` must exit 0.
   3. **Plan.** `node "<P>/scripts/ledger.js" plan --level <level>` returns `lenses`, `refuters` and `judgmentDay` for the user's profile.
   4. **Low risk (no lenses): structural reading.** Read `cd "<wt>" && git diff <base>..<SHA>` yourself against the task-card and N1 to N4 (the control is on the real path; no fail-open code; comments and commits are true; what is lost is declared). If you see a real defect, raise the level to `medium` and go back to step 3 (you may raise, never lower). If not, write `[]` to `<main>/.pignolo/tmp/review-<sha7>/structural.json` and build the ledger with it (step 5, last command).
   5. **Lenses (medium and high).** Dispatch every lens of the plan in parallel, in one message: `pignolo:review-<lens>`, each with the SHA, `<wt>` (its files are the SHA), the diff `<base>..<SHA>` (for more than 400 lines, the file list and the diff of the risky files), the task-card and the level. Write each lens's `json` block verbatim to `<main>/.pignolo/tmp/review-<sha7>/<lens>.json`. A lens whose block is missing or not valid JSON is dispatched once more naming that; if it fails again, ask the human (category `scope`). Then:
      `node "<P>/scripts/ledger.js" build --sha <SHA> --level <level> --out "<L>" <each lens file>`
   6. **Refuters (high risk, `refuters` > 0).** Claims = every finding in `<L>` with status `open` and severity BLOCKER, CRITICAL or WARNING, numbered by their ledger `id`. Dispatch `refuters` instances of `pignolo:refuter` in parallel, each with the SHA, `<wt>` and the claims (location, evidence, repro) and nothing else. Write each refuter's `json` block verbatim; build `<main>/.pignolo/tmp/review-<sha7>/verdicts.json` as `{ "<ledger id>": [<verdict of refuter 1>, <verdict of refuter 2>, ...] }` copying each `verdict` value as written (a missing claim is simply absent from its list). Then `node "<P>/scripts/ledger.js" refute --ledger "<L>" "<verdicts file>"`. Missing or malformed verdicts leave the finding standing.
-  7. **Repro tests** for every finding still `open` with severity BLOCKER or CRITICAL (spec §12). Pick one test path per finding inside `test-paths`; register `node "<P>/scripts/run.js" task --id <task>-repro<round> --worktree "<wt>" --base <SHA> --file <test path>... --agent pignolo:test-writer --cwd "<main>"`, renew, and dispatch `pignolo:test-writer` with each finding's `repro` (header `Protects: <ledger id>`). After `run.js status` accepts it, run each test from `<wt>`: fails for the stated reason → `ledger.js repro --ledger "<L>" --id <id> --red`; passes or cannot run → `--no-red` (it drops to WARNING and stays in the ledger). Commit only the red tests (`test: repro <ids>`) and call that commit `<R>`; remove the files of the tests that did not go red.
+  7. **Repro tests** for every finding still `open` with severity BLOCKER or CRITICAL (spec §12). Pick one test path per finding inside `test-paths`; register `node "<P>/scripts/run.js" task --id <task>-repro<round> --worktree "<wt>" --base <SHA> --file <test path>... --agent pignolo:test-writer --cwd "<main>"`, renew, and dispatch `pignolo:test-writer` with each finding's `repro` (header `Protects: <ledger id>`). After `run.js status` accepts it, run each test from `<wt>` (its sources are still `<SHA>`): fails for the stated reason → `ledger.js repro --ledger "<L>" --id <id> --red`; passes or cannot run → `--no-red` (it drops to WARNING and stays in the ledger). Commit only the red tests (`test: repro <ids>`) and call that commit `<R>`; remove the files of the tests that did not go red.
      A finding located in a test file needs `test-authorization` from the human before any fix (spec §9.3): ask.
   8. **Next step.** `node "<P>/scripts/ledger.js" next --ledger "<L>"`: `done` → step 10; `escalate` → step 10 with the open findings; `fix` → step 9.
   9. **Fixer round** (at most 2 rounds; the script refuses a third).
      - `node "<P>/scripts/run.js" task --id <task>-fix<round + 1> --worktree "<wt>" --base <SHA> --test-ref <R> --file <source files of the confirmed findings> --agent pignolo:fixer --cwd "<main>"`, renew, dispatch `pignolo:fixer` (model from `models`) with the confirmed ledger entries, their confirming tests and the gate command. `run.js status` decides.
-     - Run each confirming test from `<wt>`; the ones now green are fixed. Commit the fix (`fix: <ids>`, trailers `Agent: pignolo:fixer`, `Gates: on-done PASS`); the new HEAD is `<SHA2>`.
-     - Re-review only the ledger plus the delta: dispatch the lenses that produced the confirmed findings with the previous findings and the diff `<SHA>..<SHA2>`, write their blocks verbatim, and run `node "<P>/scripts/ledger.js" round --ledger "<L>" --sha <SHA2> --fixed <each fixed id> <each new lens file>`. `<SHA>` becomes `<SHA2>`; freeze it and repeat steps 6 to 8 for the new open findings.
-  10. **Judgment Day.** If the plan says `judgmentDay` (or the human asked for it), invoke the `pignolo:judgment` skill on the final SHA and merge its result into the outcome.
+     - Run each confirming test from `<wt>`; the ones now green are fixed. Commit the fix (`fix: <ids>`, trailers `Agent: pignolo:fixer`, `Gates: on-done PASS`); the new HEAD is `<SHA2>` (it holds `<R>` and the fix).
+     - Re-review only the ledger plus the delta: `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA2>` must exit 0; dispatch the lenses that produced the confirmed findings with the previous findings and the diff `<SHA>..<SHA2>`, write their blocks verbatim, and run `node "<P>/scripts/ledger.js" round --ledger "<L>" --sha <SHA2> --fixed <each fixed id> <each new lens file>`. `<SHA>` becomes `<SHA2>`; repeat steps 6 to 8 for the new open findings.
+  10. **Judgment Day.** If the plan says `judgmentDay` (or the human asked for it), invoke the `pignolo:judgment` skill on the current HEAD of `<wt>` with `<wt>`, `<base>`, `<level>` and the task-card, and merge its result into the outcome.
   11. **Persist.** `node "<P>/scripts/ledger.js" save --ledger "<L>" --cwd "<wt>"` always, also with no findings. Keep the returned path.
   12. **Result.** APPROVED when `next` is `done` and Judgment Day (if it ran) approved; otherwise ESCALATED. Summarize with `<P>/templates/review-summary.md`. Approving does not authorize delivering.
   ````
@@ -1733,24 +1816,25 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   ````markdown
   ---
   name: judgment
-  description: Use when pignolo's review skill calls for Judgment Day (profile max on high risk) or the human asks for it. Two blind judges review the same frozen SHA in parallel; what both find is fixed, what one finds is suspect; the result is APPROVED or ESCALATED.
+  description: Entered only through pignolo:review, when it calls for Judgment Day (profile max on high risk), or when the human explicitly asks for Judgment Day. Two blind judges review the same frozen SHA in parallel; what both find is fixed, what one finds is suspect; the result is APPROVED or ESCALATED.
   ---
 
-  You are the orchestrator in the main conversation. `<P>`, `<main>` and `<wt>` mean what they mean in the review skill; `<J>` is `<main>/.pignolo/tmp/judgment-<first 7 of the SHA>/ledger.json`. Same rules as the review skill: you never grade findings (verbatim `json` blocks, `ledger.js` decides), frozen SHA checked before dispatching and before accepting, writers registered and accepted through `run.js`, two layers and a category on every question.
+  You are the orchestrator in the main conversation. `<P>`, `<main>`, `<wt>`, `<base>` and `<level>` mean what they mean in the review skill; `<SHA>` is the current HEAD of `<wt>`; `<J>` is `<main>/.pignolo/tmp/judgment-<first 7 of the SHA>/ledger.json`. Same rules as the review skill: you never grade findings (verbatim `json` blocks, `ledger.js` decides), the judges' SHA is frozen right before dispatching them and again before accepting their blocks (repro tests and the fixer move HEAD and enter only through `round --sha <SHA2>`), writers registered and accepted through `run.js`, two layers and a category on every question.
 
   ## Steps
 
+  0. **Asked by the human** (not called from review): `node "<P>/scripts/run.js" start --flow review --cwd "<main>"` (and `end` at the close), then `<level>` = `level` from `node "<P>/scripts/risk.js" --diff <base> --cwd "<wt>"`. If `<main>` has uncommitted changes, say that Judgment Day covers only the last commit and stop: never commit, stash or discard their work.
   1. **Freeze.** `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA>` must exit 0.
   2. **Judges, blind and in parallel.** In one message, dispatch `pignolo:judge-a` and `pignolo:judge-b` (models from `node "<P>/scripts/setup.js" models`), each with exactly the same brief: the SHA, `<wt>`, the task-card and the list of changed files. Never show one judge the other's report or a previous verdict.
   3. **Copy verbatim.** Write each judge's `json` block to `<main>/.pignolo/tmp/judgment-<sha7>/a.json` and `b.json`. A missing or invalid block: dispatch that judge once more; if it fails again, the result is ESCALATED.
   4. **Compare** (spec §12): `node "<P>/scripts/ledger.js" judgment "<a.json>" "<b.json>" > "<main>/.pignolo/tmp/judgment-<sha7>/j.json"`, then `node "<P>/scripts/ledger.js" build --sha <SHA> --level <level> --out "<J>" --judgment "<j.json>"`. Found by both (same file, lines at most 3 apart) → `open`; by one → `suspect`; one judge blocking and the other not on the same spot → both `open` with a `conflict` field.
   5. **Evidence settles conflicts first.** Every `open` BLOCKER or CRITICAL, conflicts included, goes through the repro step of the review skill (test-writer, red proved by you, `ledger.js repro --ledger "<J>" ...`). Ask the human with category `judge-conflict` only when a conflict cannot be reproduced either way (the test-writer ends BLOCKED or NEEDS_CONTEXT): one question per conflict, both judges' evidence quoted in the technical part.
-  6. **Fix.** `node "<P>/scripts/ledger.js" next --ledger "<J>"`; on `fix`, run the fixer round of the review skill on `<J>`, then both judges again on the new SHA with the previous findings and the delta, and `ledger.js round --ledger "<J>" ...`. At most 2 rounds.
+  6. **Fix.** `node "<P>/scripts/ledger.js" next --ledger "<J>"`; on `fix`, run the first two bullets of the review skill's fixer round on `<J>`; the new HEAD is `<SHA2>`. Then `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA2>` must exit 0; dispatch both judges again, blind and in parallel, each with its own previous findings and the diff `<SHA>..<SHA2>`; copy their blocks verbatim to `a2.json` and `b2.json` in the same folder; `node "<P>/scripts/ledger.js" judgment "<a2.json>" "<b2.json>" > "<j2.json>"`; and `node "<P>/scripts/ledger.js" round --ledger "<J>" --sha <SHA2> --fixed <each fixed id> --judgment "<j2.json>"` (what only one judge finds in the delta stays `suspect`). `<SHA>` becomes `<SHA2>`; repeat steps 5 and 6. At most 2 rounds.
   7. **Persist.** `node "<P>/scripts/ledger.js" save --ledger "<J>" --cwd "<wt>" --kind judgment`.
   8. **Result.** APPROVED when `next` is `done` and no conflict is left unanswered; otherwise ESCALATED. Summarize with `<P>/templates/review-summary.md`, listing the suspects.
   ````
 
-- [ ] **Paso 4: verde**, `claude plugin validate plugins/pignolo`, y una lectura contra el Review Focus 2 y 3 (ningún paso resume o re-califica un bloque; `frozen` antes de despachar y de aceptar; `round` con el SHA nuevo).
+- [ ] **Paso 4: verde**, `claude plugin validate plugins/pignolo`, y una lectura contra el Review Focus 2 y 3 (ningún paso resume o re-califica un bloque; `frozen` antes de despachar a los revisores y antes de aceptar sus bloques, nunca alrededor del repro ni del fixer; `round` con el SHA nuevo, y con `--judgment` en Judgment Day).
 - [ ] **Paso 5: commit.** `feat(skills): review con lentes, refuters, repro y fixer (máx. 2 rondas); Judgment Day con jueces ciegos`.
 
 ### Task 17: evals `agents` de lentes, refuter, jueces y fixer (opus)
@@ -1762,7 +1846,7 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
 **Interfaces:**
 - Consume: el contrato de salida de la Task 13 (claves en orden, verdicto final en su propia línea), `parseFrontmatter` (`lib/yaml-lite.js`) para leer los graders en el test.
 - Produce: `node tests/evals/review-cases.js --out <dir> [--reviewer-model opus|sonnet]` → un directorio por caso (`case.yaml`, `fixture.sh`, `prompt.md`, `graders/*.md`) para `claude plugin eval . --eval-dir <dir>`; `CASES`, `build`, `SUB` exportados.
-- Formato de los graders (verificado contra el esquema de `claude plugin eval` 2.1.285: tipos `regex | tool_order | tool_used | file_exists | llm | baseline`; `regex` con `target: trace | last_message | files | mock_calls | {source: file, path}`, `flags`, `match: contains | not_contains | count:N`): `tool_used` sobre `Agent` con `subagent_type` y `model`; `regex` sobre `trace` con el prefijo `SUB` (evento `assistant` con `parent_tool_use_id` no nulo); para el fixer, además `regex` sobre el archivo corregido y sobre el test (que no cambió).
+- Formato de los graders (verificado contra el esquema de `claude plugin eval` 2.1.285: tipos `regex | tool_order | tool_used | file_exists | llm | baseline`; `regex` con `target: trace | last_message | files | mock_calls | {source: file, path}`, `flags`, `match: contains | not_contains | count:N`): `tool_used` sobre `Agent` con `subagent_type` y `model`; `regex` sobre `trace` con el prefijo `SUB` (evento `assistant` con `parent_tool_use_id` no nulo; el test determinista exige el prefijo en **todo** grader sobre el trace y que **cada** grader `contains` repruebe la salida buena venida de la sesión principal); para el fixer, además `regex` sobre el archivo corregido y sobre el test (que no cambió).
 
 - [ ] **Paso 1: test primero** (`tests/eval-cases.test.js`):
 
@@ -1778,7 +1862,8 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   const path = require('node:path');
   const { makeTempDir } = require('./helpers');
   const { parseFrontmatter } = require('../plugins/pignolo/lib/yaml-lite');
-  const { CASES, build } = require('./evals/review-cases');
+  const { ROLES } = require('../plugins/pignolo/lib/roles');
+  const { CASES, build, SUB } = require('./evals/review-cases');
 
   const event = (text, parent) => JSON.stringify({
     type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] }, parent_tool_use_id: parent, session_id: 's',
@@ -1820,12 +1905,27 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
       const fixed = { 'src/pages.js': c.files['src/pages.js'] && c.files['src/pages.js'].replace('start + size - 1);', 'start + size);'), 'tests/pages.test.js': c.files['tests/pages.test.js'] };
       const good = { trace: [brief(c.brief), ...tools, event(c.samples.pass, 'toolu_p')].join('\n'), files: fixed };
       const bad = { trace: [brief(c.brief), event(c.samples.fail, 'toolu_p')].join('\n'), files: c.files };
-      const fromMain = { trace: [brief(c.brief), event(c.samples.pass, null)].join('\n'), files: c.files };
+      // La misma salida buena (herramientas incluidas) y los mismos archivos corregidos, pero
+      // desde la sesión principal: solo cambia parent_tool_use_id.
+      const mainTools = tools.map((t) => t.replace('"parent_tool_use_id":"toolu_p"', '"parent_tool_use_id":null'));
+      const fromMain = { trace: [brief(c.brief), ...mainTools, event(c.samples.pass, null)].join('\n'), files: fixed };
       for (const g of gs) assert.ok(grade(g, good), `${c.name}: el grader ${g.pattern} reprueba la salida buena`);
       assert.ok(gs.some((g) => !grade(g, bad)), `${c.name}: ningún grader reprueba la salida mala`);
-      assert.ok(gs.some((g) => !grade(g, fromMain)), `${c.name}: la salida buena desde la sesión principal aprueba`);
+      for (const g of gs.filter((x) => x.target === 'trace')) {
+        assert.ok(g.pattern.startsWith(SUB), `${c.name}: el grader ${g.pattern} sobre el trace no exige un evento del subagente`);
+        if (g.match !== 'not_contains') assert.ok(!grade(g, fromMain), `${c.name}: el grader ${g.pattern} aprueba la salida buena desde la sesión principal`);
+      }
     });
   }
+
+  test('evals: todo agente con Bash (lib/roles.js) lleva la etiqueta wsl2 y Bash en allowed_tools (§15)', () => {
+    for (const c of CASES) {
+      const bash = ROLES[c.agent].tools.includes('Bash');
+      const prompt = fs.readFileSync(path.join(out, c.name, 'prompt.md'), 'utf8');
+      assert.strictEqual(c.tags.includes('wsl2'), bash, `${c.name}: etiqueta wsl2`);
+      assert.strictEqual(/^allowed_tools: \[[^\]]*\bBash\b/m.test(prompt), bash, `${c.name}: Bash en allowed_tools`);
+    }
+  });
 
   test('evals: 14 casos (8 lentes, 4 jueces, refuter, fixer) y la rama sonnet solo cambia el modelo de los revisores', () => {
     assert.strictEqual(CASES.length, 14);
@@ -2045,8 +2145,10 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   }
 
   const claim = (id, v) => `${key('claim', id)}${SEP}${key('verdict', v)}`;
+  // El refuter también tiene Bash (lib/roles.js): su caso corre desde WSL2, junto al del fixer.
   const refuterCase = {
-    name: 'refuter-false-finding', agent: 'refuter', tags: ['agents', 'refuter'], reviewer: true,
+    name: 'refuter-false-finding', agent: 'refuter', tags: ['agents', 'refuter', 'wsl2'], reviewer: true,
+    allowedTools: ['Agent', 'Read', 'Grep', 'Glob', 'Bash'],
     files: { 'src/pages.js': PAGES, 'src/token.js': TOKEN },
     brief: [
       `SHA: ${FAKE_SHA} (the files in the current directory are that SHA; there is no git history).`,
@@ -2174,8 +2276,8 @@ Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un 
   tests/evals/**/results/
   ```
 
-- [ ] **Paso 4: verde** (29 subtests) y **rojo del test agregado sobre el grader**: con `const SUB = '';` en `review-cases.js`, el test debe fallar (medido: 13 de 29 en rojo, todos por "la salida buena desde la sesión principal aprueba"); restaurar.
-- [ ] **Paso 5: generar y mirar un caso a mano** (sin correrlo): `node tests/evals/review-cases.js --out tests/evals/generated/opus` y leer `review-reliability-defect/prompt.md` y sus graders. **No correr `claude plugin eval`**: es la decisión de costo del autor (Task 19).
+- [ ] **Paso 4: verde** (30 subtests) y **rojo del test agregado sobre los graders**, restaurando después de cada uno: (a) `verdict()` escrito como grader `regex` sobre `trace` con el mismo patrón pero sin el prefijo `SUB` → 8 de 30 en rojo (los 4 `*-clean` de lentes y los 4 casos de jueces), cada uno por "sobre el trace no exige un evento del subagente" y, sin esa aserción, igual por "aprueba la salida buena desde la sesión principal" (medido; la versión anterior del test dejaba pasar los dos `judge-*-defect`); (b) `const SUB = '';` → 14 de 30 en rojo, todos por "aprueba la salida buena desde la sesión principal" (medido); (c) quitar `'wsl2'` de las etiquetas del refuter → falla "todo agente con Bash lleva la etiqueta wsl2" (medido).
+- [ ] **Paso 5: generar y mirar un caso a mano** (sin correrlo): `node tests/evals/review-cases.js --out tests/evals/generated/opus` y leer `review-reliability-defect/prompt.md` y sus graders. **No correr `claude plugin eval`** aquí: corre solo en la Task 19, con la decisión del autor D-3b.
 - [ ] **Paso 6: commit.** `test(evals): casos de lentes, refuter, jueces y fixer con graders sobre el subagente`.
 
 ### Task 18: carriles de punta a punta por los scripts (sonnet)
@@ -2332,20 +2434,20 @@ Es un test agregado después del código de la ola 0: sigue, comando por comando
 ### Unión de la ola 1
 
 - [ ] Unir las Tasks 14 a 18 a `core/hito-3b`. Archivos disjuntos; un conflicto es un error del plan y se registra.
-- [ ] `npm run test:quiet` una vez: verde (esperado 1180 tests, 1178 pasan, 2 saltados).
+- [ ] `npm run test:quiet` una vez: verde; esperado el total medido en `core/hito-3b` al empezar la ola 0 + 81, 0 fallos y los mismos saltados que entonces.
 - [ ] `claude plugin validate plugins/pignolo` sin errores.
 
 ### Task 19: cierre de la parte 3b
 
 - [ ] **Spec** (sin cambiar contratos):
-  - §2: las skills de flujo son invocables por el modelo; `disable-model-invocation` queda para las que cambian la configuración de pignolo (ruling).
+  - §2: **decisión del autor D-3b-2 (2026-09-29)**, escrita como tal y con fecha: `entry`, `trivial`, `daily`, `review` y `judgment` son invocables por el modelo (sin `disable-model-invocation`), con dos condiciones: `entry` deriva a `trivial` o `daily` solo si el pedido autoriza un cambio (§5.1) y, ante la duda, queda en solo lectura y pregunta; la `description` de `trivial` y `daily` dice que se entra por `pignolo:entry`, y la de `judgment`, por `pignolo:review` o a pedido explícito. `disable-model-invocation` queda para `setup`, `on`, `off` e `init`.
   - §5.1–§5.2: cómo decide `entry`; `trivial` en el checkout principal y su escalamiento; `daily` con worktree en `.pignolo/worktrees/` y el orden de registro de 3a.
   - §6: `run.js task` valida y normaliza `--file`; `.pignolo/.gitignore` se ignora a sí mismo y cubre `tmp/` y `worktrees/`.
-  - §12: salida `json` de los revisores; refuter antes de la reproducción; riesgo bajo sin lente; `judge-conflict` después de la evidencia; ledger en `~/.pignolo/reviews/`.
-  - §15: diseño de las evals `agents` (graders sobre eventos del subagente, definición de recall y falso positivo, generador único, rama sonnet, fixer en WSL2) y el test determinista de los graders.
+  - §12: salida `json` de los revisores; refuter antes de la reproducción; riesgo bajo sin lente; `judge-conflict` después de la evidencia; `frozen` solo alrededor de los revisores (repro y fix entran por `round --sha <SHA2>`); la ronda de Judgment Day vuelve a emparejar (`round --judgment`); nivel por `risk.js` en una revisión a pedido; ledger en `~/.pignolo/reviews/`.
+  - §15: diseño de las evals `agents` (graders sobre eventos del subagente, definición de recall y falso positivo, generador único, rama sonnet, fixer y refuter en WSL2), el test determinista de los graders y la publicación de los resultados en el README.
 - [ ] **Versión y docs:** `plugin.json` a `0.4.0`; entrada `0.4.0` en el `CHANGELOG` con el motivo (los carriles existen y usan la capa 2 de 3a); README: qué hace cada carril en dos capas, que un flujo necesita `.pignolo/project.md` **commiteado** con `type` y `gates.on-done`, y que `.pignolo/worktrees/` y `.pignolo/tmp/` son de pignolo.
 - [ ] **Checklist manual** `tests/manual/hito-3b.md` (sesión real, Windows nativo; sin datos del proyecto del autor en el repo):
-  1. En un repo de prueba con `project.md` commiteado, un pedido de una línea: ¿Claude invoca `pignolo:entry` sin que se lo pidan, y `entry` elige `trivial`? Anotar si hubo que nombrarla.
+  1. En un repo de prueba con `project.md` commiteado, un pedido de una línea: ¿Claude invoca `pignolo:entry` sin que se lo pidan, y `entry` elige `trivial`? Anotar si hubo que nombrarla. Con un pedido ambiguo ("¿qué te parece este archivo?"): `entry` queda en solo lectura y pregunta (D-3b-2); ¿Claude invoca `trivial` o `daily` directo, sin pasar por `entry`? Anotar.
   2. `trivial` completo: commit con trailers, `run.json` borrado al final, `git status` limpio (sin `.pignolo/.gitignore` a la vista).
   3. `daily` completo: worktree en `.pignolo/worktrees/`, `test-writer` sin Bash, rojo mostrado por el orquestador, `implementer` que corre `gate.js --task`, `run.js status` después de cada escritor, merge con pregunta `irreversible`.
   4. Un `implementer` que dice `DONE` sin sello: el handback-gate lo frena, y el orquestador lo trata como `BLOCKED` por `run.js status` aunque el informe diga `DONE`.
@@ -2354,14 +2456,26 @@ Es un test agregado después del código de la ola 0: sigue, comando por comando
   7. Riesgo `high` con perfil `max`: 3 refuters, repro, un fixer y Judgment Day; resumen con los refutados listados.
   8. Cada mensaje al humano de los puntos 1 a 7 en dos capas, un paso por mensaje y con categoría. Anotar los que fallen.
   9. Abandonar un `daily` a mitad: la skill corre `run.js end` y `Explore` vuelve a pasar.
+  10. Un repo con `.pignolo/.gitignore` **ya versionado** sin `tmp/` ni `worktrees/`: tras `run.js start`, ¿`git status` lo muestra modificado y `trivial` sube a `daily`? Probar también `/pignolo:off` y `/pignolo:on` (`toggle.js`) sobre ese archivo. Anotar (ruling del worktree, límite a).
+  11. Un repo con vitest o jest (recorren el árbol) y un `daily` abierto con su worktree en `.pignolo/worktrees/`: correr la compuerta en `<main>` (un `trivial` en paralelo o `gate.js` a mano) y mirar si el runner levanta los tests de la worktree. Anotar (ruling del worktree, límite b).
+  12. Pedir una revisión con cambios sin commitear en el checkout principal: `review` avisa que cubre solo el último commit y para, sin commitear nada.
 - [ ] **Suite y revisión final:** `npm run test:quiet`; una revisión final opus de `main..core/hito-3b` con el Review Focus; una pasada de arreglos; una confirmación acotada.
-- [ ] **Evals — solo con la decisión del autor (abajo).** Con el tope que elija, en este orden y deteniéndose al primer problema:
-  1. Generar: `node tests/evals/review-cases.js --out tests/evals/generated/opus`.
-  2. **Sonda** (1 caso, 1 corrida, tope 1 USD): `claude plugin eval . --eval-dir tests/evals/generated/opus --case review-reliability-defect --runs 1 --ablation none --scaffold --trust-plugin --max-cost-usd 1 --json tests/evals/generated/probe.json`. Abrir el `trace_path` del resultado y contar las líneas con `"parent_tool_use_id":"toolu`: si son 0, el stream no trae al subagente, los graders no pueden aprobar y se frena todo (`BLOCKED`, sin más gasto). Verificar también que la sesión principal corrió en sonnet (`modelUsage`).
-  3. **Calibración** (1 corrida por caso de revisor, 13 casos, tope 6 USD, incluida la sonda): `claude plugin eval . --eval-dir tests/evals/generated/opus --tag review --tag judges --tag refuter --runs 1 --ablation none --scaffold --trust-plugin --max-cost-usd 6 -j 2` (*hipótesis:* `--tag` repetido suma casos; si los intersecta, una corrida por etiqueta con el mismo tope total). Leer cada grader que falló en el trace antes de culpar al agente (un grader mal escrito se arregla en `review-cases.js` y en su test determinista). El caso del fixer, 1 corrida desde WSL2 con `--tag fixer --allow-tools Bash Edit Write`.
-  4. **Corrida completa** (5 por caso) y **rama sonnet** (`--reviewer-model sonnet --out tests/evals/generated/sonnet`), solo si el autor las aprobó, con el tope que haya fijado y el costo por corrida medido en la calibración.
-  5. Resultados en `tests/evals/RESULTS.md` (sección nueva: comando, casos, pasan/5, costo, modelo y effort), sin versionar `results/`.
-- [ ] **Estado:** actualizar `docs/STATE.md` (qué quedó, resultado de las evals o su espera, siguiente: hito 4).
+- [ ] **Evals, con la decisión del autor D-3b (opción "todo", tope total 54 USD).** Orden fijo: sonda → calibración → completa en opus → rama sonnet. **Toda** corrida lleva su `--max-cost-usd` y su `--json`; si un tope corta una corrida, se frena ahí y se vuelve al autor con lo medido. Los 12 casos sin Bash (8 de lentes y 4 de jueces, etiquetas `review` y `judges`) corren en Windows nativo; los 2 con Bash (`refuter` y `fixer`, etiqueta `wsl2`) corren juntos desde WSL2 con `--allow-tools Bash Edit Write`. *Hipótesis:* `--tag` repetido suma casos; si los intersecta, una corrida por etiqueta repartiendo el mismo tope.
+  1. **Generar** y anotar el punto de partida: `git rev-parse HEAD` (lo usa el freno ii) y `node tests/evals/review-cases.js --out tests/evals/generated/opus`.
+  2. **Sonda** (1 caso, 1 corrida, tope 1 USD): `claude plugin eval . --eval-dir tests/evals/generated/opus --case review-reliability-defect --runs 1 --ablation none --scaffold --trust-plugin --max-cost-usd 1 --json tests/evals/generated/probe.json`. Contar en el `trace_path` del resultado **solo los eventos `assistant` con `parent_tool_use_id` no nulo**, con el mismo patrón `SUB` de los graders: `node -e "const { SUB } = require('./tests/evals/review-cases'); const t = require('fs').readFileSync(process.argv[1], 'utf8'); const n = (t.match(new RegExp(SUB, 'gm')) || []).length; console.log(JSON.stringify({ sub: n })); process.exit(n > 0 ? 0 : 1)" "<trace_path>"` (verificado contra un trace sintético: cuenta 2 de 4 líneas, ignora el `user` con parent y el `assistant` con `null`; sale 1 con 0). Anotar también el modelo de la sesión principal (`modelUsage`, debe ser sonnet).
+  3. **Calibración** (1 corrida por caso, 14 casos; tope 6 USD **incluida la sonda**): en Windows, `claude plugin eval . --eval-dir tests/evals/generated/opus --tag review --tag judges --runs 1 --ablation none --scaffold --trust-plugin --max-cost-usd 4 -j 2 --json tests/evals/generated/calib-win.json`; en WSL2, `claude plugin eval . --eval-dir tests/evals/generated/opus --tag wsl2 --runs 1 --ablation none --scaffold --trust-plugin --allow-tools Bash Edit Write --max-cost-usd 1 --json tests/evals/generated/calib-wsl2.json`. Leer en el trace cada grader que falló antes de culpar al agente.
+  4. **Frenos mecánicos** (se evalúan los cuatro al terminar la calibración, sin juicio). La corrida completa y la rama sonnet corren solas **solo si se cumplen los cuatro**:
+     - (i) la sonda da ≥ 1 evento SUB;
+     - (ii) ningún grader fue corregido en `review-cases.js` durante la calibración (`git diff --quiet <HEAD del punto 1> -- tests/evals/review-cases.js` sale 0; compara con la copia de trabajo, así que cuenta también lo no commiteado);
+     - (iii) ningún caso falla en la calibración (todos los graders de los 14 casos aprueban en su única corrida);
+     - (iv) la calibración costó ≤ 5,8 USD (suma del costo que informan `probe.json`, `calib-win.json` y `calib-wsl2.json`).
+     Si alguno falla, **se frena y se vuelve al autor** con lo medido (un grader mal escrito se arregla en `review-cases.js` y en su test determinista, pero eso ya es el freno ii: la corrida completa espera al autor).
+  5. **Completa en opus** (5 corridas por caso; tope 30 USD): Windows `--tag review --tag judges --runs 5 --max-cost-usd 26 --json tests/evals/generated/full-opus-win.json`; WSL2 `--tag wsl2 --runs 5 --allow-tools Bash Edit Write --max-cost-usd 4 --json tests/evals/generated/full-opus-wsl2.json` (el resto de las opciones, como en la calibración).
+  6. **Rama sonnet** (5 corridas por caso de revisor; tope 18 USD): `node tests/evals/review-cases.js --out tests/evals/generated/sonnet --reviewer-model sonnet`; Windows `--eval-dir tests/evals/generated/sonnet --tag review --tag judges --runs 5 --max-cost-usd 15 --json tests/evals/generated/full-sonnet-win.json`; WSL2 `--eval-dir tests/evals/generated/sonnet --tag refuter --runs 5 --allow-tools Bash Edit Write --max-cost-usd 3 --json tests/evals/generated/full-sonnet-wsl2.json` (el fixer no cambia de modelo con `--reviewer-model`: no se repite).
+  7. **Métricas públicas, sean buenas o malas** (pedido del autor), también si un freno cortó en la sonda o la calibración:
+     - `tests/evals/RESULTS-hito-3.md` (**versionado**): por etapa que corrió, el comando, la fecha, la versión de Claude Code (`claude --version`), el modelo de la sesión principal y el del revisor, y por caso: aciertos sobre corridas, qué grader falló, costo medido total y por corrida; qué freno cortó, si alguno. Sin transcripciones completas (a lo sumo la línea del grader que falló, recortada), sin datos privados ni de proyectos donde se usa pignolo (los fixtures son sintéticos). `results/` y `generated/` siguen sin versionarse.
+     - **README**, sección breve "Métricas de las evals" en español y en dos capas: primero, en palabras simples, qué se midió y qué salió; después, el detalle técnico con una tabla por agente y caso (aciertos/corridas, modelo opus o sonnet, costo medido por corrida, fecha y versión de Claude Code) y el enlace a `tests/evals/RESULTS-hito-3.md`. El umbral de §0 d (≥ 4 de 5) se muestra al lado, sin maquillar los que no llegan.
+- [ ] **Estado:** actualizar `docs/STATE.md` (qué quedó, resultado de las evals o el freno que las cortó, siguiente: hito 4).
 - [ ] **Unión y push:** unir a `main` en local; el push, como todo push del repo, solo con el OK del autor.
 
 ---
@@ -2389,14 +2503,21 @@ Es un test agregado después del código de la ola 0: sigue, comando por comando
 | Rama sonnet (§7) | 13 × 5 | 65 × 0,18 | ≈ 11,7 USD | 7 a 18 | 18 USD |
 | Todo | | 3,9 + 19,5 + 11,7 | ≈ 35 USD | 21 a 53 | 54 USD |
 
-Lo que más mueve la cifra es la salida con razonamiento del revisor en `high` (43 % del caso en opus); la calibración la mide. El caso del fixer necesita WSL2: si no está, queda fuera y se descuentan 0,25 (calibración) o 1,25 USD (completa).
+Lo que más mueve la cifra es la salida con razonamiento del revisor en `high` (43 % del caso en opus); la calibración la mide. Los casos del fixer y del refuter necesitan WSL2 (los dos tienen Bash): si no está, quedan fuera, se descuentan ≈ 0,53 (calibración) o ≈ 2,65 USD (completa) y el freno iii no se cumple (faltan casos), así que la corrida completa espera al autor.
 
-## Decisión pendiente del autor
+Topes por corrida con la decisión D-3b (suman 54): sonda 1 y calibración 5 (Windows 4, WSL2 1) = 6; completa en opus 30 (Windows 26, WSL2 4); rama sonnet 18 (Windows 15, WSL2 3).
 
-**D-3b. Costo de las evals `agents` del hito 3** (§15; el costo es reservado, §4.1.3).
+## Decisiones del autor (parte 3b)
+
+**D-3b. Costo de las evals `agents` del hito 3** (§15; el costo es reservado, §4.1.3). **Decidida por el autor el 2026-09-29: opción 3, "todo", tope total 54 USD**, en el orden sonda → calibración → completa en opus → rama sonnet, cada corrida con su `--max-cost-usd` (sonda 1 y resto de la calibración 5, completa 30, sonnet 18). La completa y la rama sonnet corren solas **solo si** se cumplen los cuatro frenos mecánicos de la calibración (Task 19, punto 4 de las evals); si falla alguno, se frena y se vuelve al autor. Además, el autor pidió que los resultados, buenos o malos, queden como **métricas públicas** en el README con el detalle en `tests/evals/RESULTS-hito-3.md` (Task 19, punto 7). Opciones que se le presentaron:
 
 1. **Solo la calibración ahora** (tope 6 USD, ~3,9 estimado): sonda + 1 corrida por caso. Valida los graders y la hipótesis del trace y da el costo real por corrida; la corrida completa y la rama sonnet se deciden después con esa cifra. Reversible: no compromete nada más.
 2. **Calibración + corrida completa en opus** (tope 36 USD, ~23 estimado): da el veredicto de §0 d (≥ 4 de 5 por caso) para lentes, refuter, jueces y fixer en este hito.
 3. **Todo, con la rama sonnet** (tope 54 USD, ~35 estimado): además decide si `economy` puede pasar los revisores a sonnet (§7).
 
-**Recomendación: 1.** La sonda frena el gasto en 1 USD si el trace no trae al subagente, y la calibración convierte esta tabla de hipótesis en una cifra medida antes de gastar el resto; lo que no aporte la corrida completa en este hito (los umbrales de §0 d se miden de nuevo en el hito 8) no se pierde por esperar.
+(La recomendación del plan era 1; el autor eligió 3 con los frenos de arriba.)
+
+**D-3b-2. Quién invoca las skills de flujo** (§2 contra §5.1: §2 pide `disable-model-invocation` "a los que tienen efectos"; §5.1 quiere que `entry` arranque sola ante cualquier pedido). **Decidida por el autor el 2026-09-29: opción A.** `entry`, `trivial`, `daily`, `review` y `judgment` son invocables por el modelo (sin `disable-model-invocation`), con dos condiciones fijadas por tests de forma: (1) `entry` deriva a `trivial` o `daily` solo si el pedido autoriza un cambio (§5.1) y, ante la duda, queda en solo lectura y pregunta (`tests/skill-lanes.test.js`); (2) la `description` de `trivial` y `daily` dice que se entra por `pignolo:entry` (`tests/skill-lanes.test.js`, `tests/skill-daily.test.js`), y la de `judgment`, por `pignolo:review` o a pedido explícito (`tests/skill-review.test.js`). El flag queda para `setup`, `on`, `off` e `init`. La Task 19 lo lleva a §2 como decisión del autor, con fecha. Opciones que se le presentaron:
+
+- **A.** Todas invocables por el modelo (lo que el plan tenía como ruling). Costo: el modelo puede entrar a `daily` o `review` sin pasar por `entry`; lo mitigan las dos condiciones y lo mide el checklist manual (punto 1).
+- **B.** Solo `entry` invocable por el modelo; las demás con `disable-model-invocation: true`, alcanzables por el humano (`/pignolo:daily`) o vía `entry`. Técnicamente posible, pero no con "invocar la skill": un skill con el flag no aparece en la herramienta Skill del modelo, así que `entry` (y `daily` → `review` → `judgment`) tendría que leer con Read `${CLAUDE_PLUGIN_ROOT}/skills/<nombre>/SKILL.md` y seguirlo en la misma conversación (la raíz ya expandida en la skill que lee). Se probó en la copia que así cambiar de opción es solo tocar el frontmatter, con un traspaso "Skill tool o, si no la ofrece, Read del SKILL.md"; al elegirse A, ese texto se quitó por simple.
