@@ -76,16 +76,38 @@ function shadowState({ cwd, env = process.env, timeoutMs = 3000 } = {}) {
   return { ...st, gitDir: p.dir };
 }
 
+// Contenido de un juego de respaldo como "sha heads/main" ordenado, para compararlo.
+function backupSet(cwd, base) {
+  const out = gitRun(['for-each-ref', '--format=%(objectname) %(refname)', `${base}/`], cwd);
+  return out.split('\n').filter(Boolean).map((l) => l.replace(`${base}/`, '')).sort().join('\n');
+}
+
 function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 60000, outside = true } = {}) {
   if (!cwd || !isRepo(cwd)) return null;
   const out = gitRun(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/tags'], cwd);
+  const refs = out.split('\n').filter(Boolean).map((line) => line.split(' '));
+  const rel = (ref) => ref.replace(/^refs\//, '');
+  const want = refs.map(([sha, ref]) => `${sha} ${rel(ref)}`).sort().join('\n');
   const base = `refs/pignolo/backup/${shadow.stamp(now)}`;
-  const lines = out.split('\n').filter(Boolean).map((line) => {
-    const [sha, ref] = line.split(' ');
-    return `create ${base}/${ref.replace(/^refs\//, '')} ${sha}\n`;
-  });
-  if (lines.length) gitRun(['update-ref', '--stdin'], cwd, { input: lines.join('') });
-  const result = { base, count: lines.length };
+  // Si el último juego es idéntico no se crea otro: hay cientos de despachos por sesión.
+  const existing = gitRun(['for-each-ref', '--format=%(refname)', 'refs/pignolo/backup'], cwd).split('\n').filter(Boolean);
+  const bases = [...new Set(existing.map((r) => r.split('/').slice(0, 4).join('/')))].sort();
+  const latest = bases[bases.length - 1];
+  let result;
+  if (latest && refs.length && backupSet(cwd, latest) === want) {
+    result = { base: null, count: 0, reused: latest };
+  } else {
+    if (refs.length) {
+      const input = refs.map(([sha, ref]) => `create ${base}/${rel(ref)} ${sha}\n`).join('');
+      try {
+        gitRun(['update-ref', '--stdin'], cwd, { input });
+      } catch (e) {
+        // Dos despachos en el mismo milisegundo: si el juego ya quedó igual, es éxito.
+        if (backupSet(cwd, base) !== want) throw e;
+      }
+    }
+    result = { base, count: refs.length };
+  }
   if (!outside) return result;
   // Fuera del repo, solo si la sombra ya existe (la crea la siembra).
   const run = withDeadline(cwd, timeoutMs);
