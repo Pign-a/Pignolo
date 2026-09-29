@@ -46,7 +46,23 @@ function parse(argv) {
   return o;
 }
 
-const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+function readJson(f) {
+  try {
+    return JSON.parse(fs.readFileSync(f, 'utf8'));
+  } catch (e) {
+    throw new Fail(`no se pudo leer ${f} como JSON: ${e.message}`);
+  }
+}
+
+// Los errores de datos de la biblioteca (hallazgo sin id, id repetido...) son un ledger que
+// no valida (exit 1), no un uso incorrecto.
+function asFail(fn) {
+  try {
+    return fn();
+  } catch (e) {
+    throw e instanceof Fail || e instanceof Usage ? e : new Fail(e.message);
+  }
+}
 const print = (x) => process.stdout.write(`${JSON.stringify(x)}\n`);
 
 function writeJson(file, obj) {
@@ -126,10 +142,11 @@ const VERBS = {
   },
   build(o) {
     need(o, 'sha', 'level', 'out');
-    const ledger = L.buildLedger({
-      sha: o.sha, level: o.level, profile: profileOf(o), round: o.round === undefined ? 0 : Number(o.round),
-      reports: o.pos.map(readJson), judgment: o.judgment ? readJson(o.judgment) : null,
-    });
+    const reports = o.pos.map(readJson);
+    const j = o.judgment ? readJson(o.judgment) : null;
+    const ledger = asFail(() => L.buildLedger({
+      sha: o.sha, level: o.level, profile: profileOf(o), round: o.round === undefined ? 0 : Number(o.round), reports, judgment: j,
+    }));
     checked(ledger);
     writeJson(o.out, ledger);
     print({ ok: true, file: path.resolve(o.out), findings: ledger.findings.length });
@@ -151,9 +168,15 @@ const VERBS = {
     need(o, 'ledger', 'sha');
     const ledger = checked(readJson(o.ledger));
     if (ledger.round >= 2) throw new Fail('máximo 2 rondas de fix (§12): lo abierto se escala');
-    const next = checked(L.nextRound(ledger, {
-      sha: o.sha, fixed: o.fixed, reports: o.pos.map(readJson), judgment: o.judgment ? readJson(o.judgment) : null,
-    }));
+    // Un --fixed que no nombra un hallazgo confirmed gastaría la ronda sin arreglar nada.
+    for (const id of o.fixed) {
+      const f = ledger.findings.find((x) => x.id === id);
+      if (!f) throw new Fail(`--fixed ${id}: no hay un hallazgo con ese id en el ledger`);
+      if (f.status !== 'confirmed') throw new Fail(`--fixed ${id}: el hallazgo está ${f.status}, no confirmed`);
+    }
+    const reports = o.pos.map(readJson);
+    const j = o.judgment ? readJson(o.judgment) : null;
+    const next = checked(asFail(() => L.nextRound(ledger, { sha: o.sha, fixed: o.fixed, reports, judgment: j })));
     writeJson(o.ledger, next);
     print({ ok: true, round: next.round });
     return 0;

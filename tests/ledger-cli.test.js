@@ -165,3 +165,34 @@ test('plan sin --profile usa el perfil de la config del usuario (balanced por de
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(r.out, { lenses: ['risk', 'resilience', 'readability', 'reliability', 'testability'], refuters: 1, judgmentDay: false });
 });
+
+test('round --fixed con un id inexistente o no confirmed → exit 1 y no gasta la ronda', () => {
+  const dir = makeTempDir();
+  const out = built(dir, [[finding('1', 'reliability', 'a.js:1', 'CRITICAL'), finding('2', 'reliability', 'a.js:9', 'WARNING')]]);
+  cli(['repro', '--ledger', out, '--id', 'reliability-1', '--red']);
+  const before = fs.readFileSync(out, 'utf8');
+  for (const id of ['reliability-9', 'reliability-2']) {
+    const r = cli(['round', '--ledger', out, '--sha', SHA2, '--fixed', id]);
+    assert.strictEqual(r.status, 1, `${id}: ${r.stderr}`);
+    assert.match(r.stderr, new RegExp(id));
+  }
+  assert.strictEqual(fs.readFileSync(out, 'utf8'), before);
+});
+
+test('build: un hallazgo sin id → exit 1 (no "risk-undefined")', () => {
+  const dir = makeTempDir();
+  const nid = writeJson(dir, 'nid.json', [{ lens: 'risk', location: 'a.js:1', severity: 'WARNING', evidence: 'e' }]);
+  const out = path.join(dir, 'ledger.json');
+  const r = cli(['build', '--sha', SHA, '--level', 'medium', '--profile', 'balanced', '--out', out, nid]);
+  assert.strictEqual(r.status, 1, r.stderr);
+  assert.ok(!fs.existsSync(out));
+});
+
+test('JSON corrupto (ledger o informe) → exit 1, no 2', () => {
+  const dir = makeTempDir();
+  const bad = path.join(dir, 'bad.json');
+  fs.writeFileSync(bad, '{"v":1,');
+  assert.strictEqual(cli(['next', '--ledger', bad]).status, 1);
+  assert.strictEqual(cli(['validate', bad]).status, 1);
+  assert.strictEqual(cli(['build', '--sha', SHA, '--level', 'medium', '--profile', 'balanced', '--out', path.join(dir, 'l.json'), bad]).status, 1);
+});

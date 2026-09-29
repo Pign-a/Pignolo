@@ -129,6 +129,7 @@ function buildLedger({ sha, level, profile, round = 0, reports = [], judgment: j
   const findings = [];
   const add = (f, status, extra = {}) => {
     if (!isObj(f)) throw new Error('un hallazgo no es un objeto');
+    if (!isText(f.id)) throw new Error(`un hallazgo de ${isText(f.lens) ? f.lens : '?'} no tiene id`);
     findings.push({ ...f, id: `${f.lens}-${f.id}`, status, ...extra });
   };
   for (const r of reports) {

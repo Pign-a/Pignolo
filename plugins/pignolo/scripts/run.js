@@ -111,7 +111,7 @@ function commitOf(git, worktree, what, ref) {
 // '\' y un './' inicial; una ruta absoluta o con '..' es un error de uso.
 function normFile(p) {
   const s = String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
-  if (s === '' || /^([a-zA-Z]:)?\//.test(s) || s.split('/').includes('..')) {
+  if (s === '' || /^([a-zA-Z]:|\/)/.test(s) || s.split('/').includes('..')) {
     throw new Usage(`--file debe ser una ruta relativa a la worktree, sin '..': ${p}`);
   }
   return s;

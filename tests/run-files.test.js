@@ -70,3 +70,9 @@ test('start agrega .gitignore, tmp/ y worktrees/ al .gitignore de .pignolo, y gi
   fs.writeFileSync(path.join(repo, '.pignolo', 'tmp', 'x.json'), '{}');
   assert.ok(!git(['status', '--porcelain', '--untracked-files=all'], repo).includes('.pignolo/'), 'ni tmp/ ni el propio .gitignore');
 });
+
+test('--file relativa a una unidad (C:foo) → exit 2', () => {
+  const s = setup();
+  assert.strictEqual(task(s, '--file', 'C:foo', '--agent', 'pignolo:implementer').status, 2);
+  assert.strictEqual(task(s, '--file', 'c:src/a.js', '--agent', 'pignolo:implementer').status, 2);
+});
