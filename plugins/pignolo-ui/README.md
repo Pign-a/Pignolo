@@ -1,6 +1,6 @@
 # Pignolo UI
 
-Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.2 en construcción (hito 2a de 5: catálogo y `ui-check`).
+Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.3 en construcción (hito 2 de 5 terminado: catálogo, `ui-check`, SEO estático, `files` y `report-check`).
 
 Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
@@ -42,7 +42,7 @@ Escribe `ui-check.json` dentro de la carpeta de la corrida (siempre bajo `.pigno
 
     node <root>/scripts/ui-check.mjs [--project <raíz del repo>] --run <carpeta bajo .pignolo-ui/>
         (--files <ruta>)... [--files-from <lista.json>] [--design <DESIGN.md>]
-        [--base <ref>] [--dom <archivo>]... [--gate]
+        [--base <ref>] [--dom <archivo>]... [--url <URL de desarrollo>]... [--gate]
 
 - `--project` es opcional: por defecto, la raíz de git desde el cwd (o el cwd sin git). `--files` se repite, una ruta por vez. Sin `--files` ni `--dom`, la corrida vale solo con `--design` (corren las reglas de proyecto); sin ninguno de los tres es error de uso.
 - `--base <ref>` separa lo nuevo de la deuda: un hallazgo que ya estaba en la ref (contado como multiconjunto, sin depender del número de línea) es deuda (`alto`, no bloquea). Una ref inválida da exit 2 con un mensaje en español.
@@ -52,6 +52,8 @@ Escribe `ui-check.json` dentro de la carpeta de la corrida (siempre bajo `.pigno
 - `unverified` no bloquea porque no es un hallazgo: es una regla que corrió y no pudo decidir (extensión no soportada como `.astro`, JSX dinámico, `layout.tsx` de Next.js donde el `<title>` viene de `metadata`). Se lista como pendiente para la revisión del auditor o del navegador; nunca se cuenta como `pass`.
 - Umbral de texto grande en tokens: sobre pares de tokens no se conoce la tipografía, así que COLOR-03 exige 4,5:1, salvo un componente con `typography` grande (`fontSize` ≥ 24px, o ≥ 18,66px con `fontWeight` ≥ 700) o un par de prosa marcado `(texto grande)`, que usan 3:1.
 - Rechazos del `DESIGN.md` (`pignolo.rejections`) son piso: si reaparecen en algo nuevo, `bloquea`.
+- `--url` (se repite, hasta 20, necesita `--design`) suma a la revisión de SEO las páginas que devuelve tu servidor de desarrollo. Solo se aceptan direcciones locales (`localhost`, `127.0.0.0/8`, `[::1]`), de un solo origen, por `http` o `https`; nada sale a internet. Cada pedido tiene 5 s y todo lo de `--url` tiene 60 s en total; lo que no llega queda no verificado con el motivo.
+- SEO: las siete reglas (SEO-01, 02, 04, 05, 06, 09, 18) corren solo si el `DESIGN.md` declara `web.public: true`; si no, cada una deja un `pass` que dice por qué no aplica. Con `web.indexable: false` el `noindex` cuenta como declarado. **El SEO nunca bloquea ni cambia el código de salida**: lo que no se puede saber (metadatos generados en tiempo de ejecución, un `robots` condicional) queda no verificado.
 
 ### Catálogo
 
@@ -98,6 +100,62 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 | SEO-09 | No a without href used as a link; no href="javascript:..." | document | no | medio | no | Google Search Central, link best practices (crawlable links), https://developers.google.com/search/docs/crawling-indexing/links-crawlable (consulted 2026-09-29) | ui-check |
 | SEO-18 | og:title, og:type, og:image and og:url present | document | no | detalle | sí | The Open Graph protocol, https://ogp.me/ (consulted 2026-09-29) | ui-check |
 <!-- catalog:end -->
+
+## Aplicar sin romper (`files`)
+
+**En palabras simples.** Antes de editar un lote de archivos (hasta 5), `files` guarda una copia de cada uno. Cuando terminás de editar, comprueba que solo cambiaron los archivos que anunciaste. Si algo sale mal, deshace el lote. Nunca borra ni pisa nada sin poder probar que ese archivo es el que dejó el lote; si no puede probarlo, lo deja como está y te avisa (`BLOCKED`).
+
+**Cuidado:** `restore` borra los archivos nuevos que se crearon durante el lote, **incluidos los que no estaban en `expected.json`**, si nadie los tocó después de `verify`. Por eso conviene mirar la lista `unexpected` de `verify` antes de correr `restore`.
+
+**Detalle técnico.**
+
+    node <root>/scripts/files.mjs save    --project <raíz del repo> --batch <carpeta bajo .pignolo-ui/> --expected <expected.json>
+    node <root>/scripts/files.mjs verify  --project <raíz del repo> --batch <carpeta>
+    node <root>/scripts/files.mjs restore --project <raíz del repo> --batch <carpeta>
+
+`expected.json` es una lista de 1 a 5 archivos:
+
+    [
+      { "path": "src/Save.tsx", "exists": true, "change": "structure" },
+      { "path": "src/tokens.css", "exists": false, "change": "tokens" }
+    ]
+
+- `save` copia byte a byte los archivos que existen (en `<lote>/copies/`) y anota el estado inicial de git (`status --porcelain`). Se niega (exit 1, sin escribir nada) si una ruta sale del proyecto, está bajo `.git/` o `.pignolo-ui/`, se repite, pasa por un enlace simbólico o *junction* que sale del proyecto, difiere del disco en mayúsculas, tiene un `exists` que no coincide con el disco o tiene cambios sin commitear, o si el lote ya tiene registro.
+- `verify` compara el estado de git con el inicial. Exit 0 si todo lo cambiado estaba en la lista; exit 1 y la lista `unexpected` si no. Informa las líneas cambiadas y `overLineLimit` (más de 200: informativo).
+- `restore` exige `verify` previo. Restaura desde la copia los archivos que existían y borra los que se crearon, solo con prueba (sha256). Exit 0 si restauró todo; exit 1 si dejó algo (`BLOCKED`); exit 2 en error propio.
+- `BLOCKED` y por qué: `changed-after-the-batch` (alguien editó el archivo después), `not-verified` (apareció algo después de `verify`), `not-in-project` (un enlace lleva fuera del proyecto) y `unexpected-change-not-restorable`: un cambio inesperado sobre un archivo con seguimiento, o que ya estaba sucio antes del lote, no tiene copia y git nunca se escribe, así que se le pregunta al usuario.
+- Solo lee git (`status`, `rev-parse`, `diff --numstat`); nunca `checkout`, `reset`, `clean` ni `stash`.
+- Los archivos ignorados por git no aparecen en `git status`: un cambio en uno de ellos no se detecta.
+
+## Informe verificado (`report-check`)
+
+**En palabras simples.** El informe final no se cree: se cruza. Cada cosa que el informe afirma tiene que apuntar a una prueba (un resultado de `ui-check`, una captura o un archivo editado) y esa prueba tiene que decir lo mismo. Lo que no se sostiene se **retira** del informe antes de mostrarlo. Si el trabajo implementó un diseño aprobado, el informe tiene que citarlo y la cita tiene que coincidir con la que registra `DESIGN.md`.
+
+**Detalle técnico.**
+
+    node <root>/scripts/report-check.mjs --project <raíz del repo> --run <carpeta bajo .pignolo-ui/runs/>
+
+Lee `<run>/report.json` y escribe `<run>/report-check.json` (`reportSha256`, `kept`, `retired`, `implements`, `exitCode`).
+
+    {
+      "version": 1,
+      "implemented": true,
+      "implements": { "path": "design/approved/checkout", "manifestSha256": "<64 hex>" },
+      "evidence": { "ui-check.json": "<sha256>", "browser.json": "<sha256>" },
+      "claims": [
+        { "id": "c1", "text": "…", "rule": "A11Y-04", "status": "pass", "measure": { "ratio": 4.8 },
+          "ref": { "source": "ui-check", "fingerprint": "A11Y-04|src/Save.tsx|button …", "line": 3 } },
+        { "id": "c2", "text": "…", "ref": { "source": "capture", "path": "captures/home-1440.png", "sha256": "<64 hex>" } },
+        { "id": "c3", "text": "…", "ref": { "source": "file", "path": "src/app/page.tsx", "sha256": "<64 hex>" } }
+      ]
+    }
+
+- Cuatro fuentes de evidencia: `ui-check` (entradas de `ui-check.json`, citado por sha256), `browser` (entradas de `browser.json`, que llega con el hito 3; hasta entonces la afirmación se retira con `browser.json not in the run`), `capture` (un PNG dentro del run, con su sha256) y `file` (un archivo editado, con su sha256).
+- Una afirmación con `rule`, `status` o `measure` se compara con la entrada citada: mismo id, mismo estado y, por cada clave de `measure` que trae, el mismo valor. `measure` no puede ser `{}`. Una entrada de una regla que no aplica (`measure.applicable: false`) no respalda nada.
+- `ui-check.json` vencido (algún archivo de sus `inputs` cambió después de correrlo) retira toda afirmación que lo cita.
+- `implemented` es obligatorio. Si el run tiene un lote verificado (`files.json`), se trata como implementado aunque diga `false`. Con `implemented: true` hace falta `implements`, y su `manifestSha256` tiene que coincidir con el que registra `DESIGN.md`.
+- Códigos: `0` no se retiró nada y la cita del aprobado está bien; `1` se retiró al menos una afirmación o falta o no coincide la cita (el informe se muestra depurado y el flujo no puede decir "terminado"); `2` error propio, cuenta como "sin verificar".
+- "Retirada" quiere decir que la afirmación no se muestra como verdadera; el motivo queda en `retired` (por ejemplo `invalid claim`, `duplicate claim id`, `ui-check.json is stale: <archivo> changed after it ran`).
 
 ## Instalar (desarrollo)
 

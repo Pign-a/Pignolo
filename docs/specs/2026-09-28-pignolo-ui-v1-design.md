@@ -436,6 +436,21 @@ Registradas al construir el catálogo (plan `docs/plans/2026-09-29-pignolo-ui-hi
 - **Rechazos (§5.6) en el hito 2.** Son piso (§4.1), así que entran en 2a: `rule: X` sube cada `fail` de X a piso con `reason` `rejected R-nnn`; un `pattern` (`value` = regex de JavaScript con banderas `iu` y tope de 200 caracteres) produce hallazgos con `id` = `R-nnn`. Un rechazo que ya falla en la base es deuda (`alto`, no bloquea), como cualquier otro hallazgo.
 - **Invocación ampliada de `ui-check`.** `node <root>/scripts/ui-check.mjs [--project <raíz>] --run <carpeta> (--files <ruta>)… [--files-from <lista.json>] [--design <DESIGN.md>] [--base <ref>] [--dom <archivo>]… [--gate]`. `--project` es opcional (por defecto, la raíz de git desde el cwd, o el cwd sin git); `--files` se repite; sin `--files` ni `--dom`, la corrida es válida solo con `--design`. Una `--base` que no es una ref válida es error de uso (exit 2, mensaje en español sin stack). `--gate` da la misma corrida con una línea de resumen en stderr; cómo arma el núcleo la compuerta es del hito 5.
 
+### 5.9 Aclaraciones técnicas del hito 2b
+
+Registradas al construir el SEO estático, `files` y `report-check` (plan `docs/plans/2026-09-29-pignolo-ui-hito-2-catalogo.md`, sección del hito 2b). Son decisiones técnicas del agente: no cambian A-12 ni ninguna decisión del autor.
+
+- **Compuerta `web.public` (A-06).** Sin `DESIGN.md` o con `web.public` distinto de `true`, cada id de SEO devuelve un `pass` con `measure: { applicable: false }` y el motivo. `report-check` no acepta una afirmación que se apoye solo en entradas así. Con un `DESIGN.md` ilegible, `unverified`.
+- **SEO como reglas de proyecto.** Los 7 ids quedan `level: document` en el catálogo (§5.2), pero se implementan como reglas de proyecto: SEO-06 compara entre rutas y SEO-01 y SEO-05 leen archivos de sitio (`robots.txt`, sitemap en la raíz, `public/` o `static/`). Ninguna es piso ni `bloquea`.
+- **Páginas y `--url` local (§0).** Las páginas de SEO son los documentos de las entradas que no son mockups (`design/approved/**` y `.pignolo-ui/runs/**` no cuentan) y las que devuelve el servidor de desarrollo. `--url` acepta solo `localhost`, `127.0.0.0/8` y `[::1]` (sin resolver nombres), un solo origen y hasta 20; sigue hasta 5 redirecciones dentro del origen; 5 s por pedido y 60 s en total. Un sitemap de producción declarado en `robots.txt` se busca por su ruta en el origen de desarrollo o como archivo del proyecto; nunca se pide la URL de producción. Lo que no se puede revisar es `unverified` con el motivo.
+- **SEO-01, 04, 06 y 18 en JSX.** Sin `robots.txt` (ni archivo ni 404) pasa como "todo permitido" y SEO-05 queda `unverified`. En `export const metadata` solo cuentan los valores literales; un valor dinámico, `generateMetadata` o un elemento dentro de una expresión `{…}` (`{preview && <meta …/>}`) es `unverified`. Los títulos de JSX nunca se comparan entre páginas (un layout da valores por defecto). `openGraph` completo con `title`, `type`, `url` e `images` pasa; incompleto es `unverified`.
+- **SEO-02.** `alto` en el código fuente y `detalle` en la URL de desarrollo, en `--dom` y en `X-Robots-Tag`; con `web.indexable: false` pasa.
+- **`ui-check.json`.** `inputs` suma `{ url, sha256 }` por cada recurso bajado con éxito; `catalogVersion` es `0.3.0`. Con `--base`, los hallazgos de `--url` son siempre `new`; la base tampoco ve un sitemap en una ruta no estándar ni lo que generan `app/robots.ts` o `app/sitemap.ts`, lo que solo cambia el alcance informado (el SEO no bloquea).
+- **Invocación.** Se suma `[--url <URL de desarrollo>]…` a la de §5.8; `--url` necesita `--design`. La compuerta del núcleo (hito 5) no la usa.
+- **`files.json`.** Registro por lote en `<run>/<lote>/`: copias byte a byte, estado inicial de git y, tras `verify`, el sha256 de cada archivo esperado y de cada cambio inesperado. `restore` reescribe o borra solo con prueba de sha256 y nunca a través de un enlace que salga del proyecto. Los archivos ignorados por git no se vigilan.
+- **`report.json`** (contrato interno, lo escribe la skill): `version`, `implemented`, `implements: { path, manifestSha256 }`, `evidence` (sha256 de `ui-check.json` y `browser.json`) y `claims` con `id`, `text`, `rule`, `status`, `measure` y `ref` (`ui-check` por fingerprint, `browser`, `capture` o `file` con sha256). `measure` compara por igualdad exacta las claves que trae la afirmación. Un run con un lote verificado se trata como implementado aunque diga `false`; un `ui-check.json` vencido (algún `inputs` cambió) retira toda afirmación que lo cita.
+- **`browser.json`** (contrato que hereda el hito 3): un objeto con `entries` de la misma forma que las de `ui-check.json`. Hasta el hito 3, una afirmación que lo cita se retira con `browser.json not in the run`.
+
 ---
 
 ## 6. Topes de los flujos
@@ -561,12 +576,13 @@ Si el problema está en `DESIGN.md`, primero se propone completarlo como diff. C
 3. `files.mjs save`: copia cada archivo esperado que ya existe (contenido + sha256). Los que se van a crear se registran como "no existía".
 4. Se edita la fuente de tokens que ya existe (§4.5).
 5. **Después de editar:**
-   - Se toma de nuevo `git status --porcelain --untracked-files=all` y se compara el **delta** con el estado inicial. Todo archivo nuevo o modificado del delta tiene que estar en la lista esperada; si no, se revierte. Así se detectan los archivos nuevos sin seguimiento, y los cambios sucios previos en otros archivos no disparan nada.
+   - Se toma de nuevo `git status --porcelain --untracked-files=all` y se compara el **delta** con el estado inicial. Todo archivo nuevo o modificado del delta tiene que estar en la lista esperada; si no, `verify` sale con 1 y lo lista como inesperado (qué hace `restore` con eso, abajo). Así se detectan los archivos nuevos sin seguimiento, y los cambios sucios previos en otros archivos no disparan nada.
    - Se relee cada archivo editado.
    - Corre el primer script que exista entre `typecheck`, `build` y `lint` de `package.json`. Si no hay ninguno: "no verificado: el proyecto no declara build".
 6. **Revertir** (si falla el paso 5 o el usuario rechaza el antes/después):
    - `files.mjs restore` reescribe desde las copias, y `verify` comprueba que el sha256 coincida con el original.
    - Un archivo registrado como "no existía" se borra **solo** si su sha256 actual es el que escribió el lote. Si no coincide, `BLOCKED`: se le pregunta al usuario y no se borra nada.
+   - Un cambio inesperado sobre un archivo con seguimiento (o que ya estaba sucio antes del lote) **no se revierte**: el lote no tiene copia de ese archivo y git no se escribe, así que queda `BLOCKED` y se le pregunta al usuario. Decisión del autor D-2b-1 (2026-09-29). Un archivo nuevo sin seguimiento que apareció fuera de la lista sí se borra, con la misma prueba de sha256.
    - Nunca se usa git destructivo — porque la guardia del núcleo lo niega y porque sin copia previa se pierde el original. Funciona igual con núcleo y sin él.
 
 ---
@@ -663,6 +679,8 @@ El principio 2 se aplica así:
 - Si hay algún `bloquea` en alcance o fallan `report-check` o el build → `BLOCKED`, con la lista.
 - Si `ui-check` o `report-check` salen con 2 → "sin verificar", con el motivo.
 - Nunca "terminado" en esos casos. Los chequeos "no verificado" sueltos (por ejemplo, sin navegador o porque requiere sesión) no impiden "terminado", pero se listan como pendientes.
+
+El formato de `report.json` y de `browser.json` y las reglas de retiro están en §5.9.
 
 **Publicación en el lienzo:** el lienzo publicado **no se relee** para verificar, porque el tipo lo pide. Se verifica lo local: los `.dc.html` que genera `to-canvas` se registran con su sha256 en el run, y son exactamente los bytes que se publican. Es la única excepción al principio 2, y queda declarada. El resultado del tool (URL) se cita en el informe.
 
