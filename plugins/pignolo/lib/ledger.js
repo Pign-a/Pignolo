@@ -67,29 +67,42 @@ function applyRepro(finding, { red } = {}) {
 }
 
 function refutation(verdicts, { profile, level } = {}) {
-  const expected = level === 'high' && PROFILE_PARAMS[profile] ? PROFILE_PARAMS[profile].refutersHighRisk : 1;
+  if (level === 'high' && !PROFILE_PARAMS[profile]) throw new Error(`perfil desconocido: ${profile}`);
+  const expected = level === 'high' ? PROFILE_PARAMS[profile].refutersHighRisk : 1;
   const list = Array.isArray(verdicts) ? verdicts.slice(0, expected) : [];
   const refuted = list.filter((v) => v === 'REFUTED').length;
   return refuted >= (expected === 1 ? 1 : 2) ? 'refuted' : 'stands';
 }
 
+// Empareja los hallazgos de los dos jueces por el par más cercano (misma ruta, ≤ 3 líneas),
+// de a pares de menor distancia primero, así un par cercano no se pierde por uno anterior.
 function judgment(a, b) {
   const out = { fix: [], suspect: [], conflicts: [] };
-  const usedB = new Set();
-  for (const fa of a) {
+  const pairs = [];
+  a.forEach((fa, i) => {
     const la = parseLocation(fa.location);
-    const j = b.findIndex((fb, i) => {
-      if (usedB.has(i) || !la) return false;
+    if (!la) return;
+    b.forEach((fb, j) => {
       const lb = parseLocation(fb.location);
-      return lb && lb.file === la.file && Math.abs(lb.line - la.line) <= LINE_DISTANCE;
+      const d = lb && lb.file === la.file ? Math.abs(lb.line - la.line) : Infinity;
+      if (d <= LINE_DISTANCE) pairs.push([d, i, j]);
     });
-    if (j < 0) { out.suspect.push(fa); continue; }
+  });
+  pairs.sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2]);
+  const matchOfA = new Map();
+  const usedB = new Set();
+  for (const [, i, j] of pairs) {
+    if (matchOfA.has(i) || usedB.has(j)) continue;
+    matchOfA.set(i, j);
     usedB.add(j);
-    const fb = b[j];
+  }
+  a.forEach((fa, i) => {
+    if (!matchOfA.has(i)) { out.suspect.push(fa); return; }
+    const fb = b[matchOfA.get(i)];
     if (BLOCKING.includes(fa.severity) !== BLOCKING.includes(fb.severity)) out.conflicts.push([fa, fb]);
     else out.fix.push(fa);
-  }
-  b.forEach((fb, i) => { if (!usedB.has(i)) out.suspect.push(fb); });
+  });
+  b.forEach((fb, j) => { if (!usedB.has(j)) out.suspect.push(fb); });
   return out;
 }
 
@@ -100,9 +113,12 @@ function nextStep(ledger, { reopened = [] } = {}) {
   return ledger.round >= 2 ? 'escalate' : 'fix';
 }
 
-// Congelado = el HEAD actual sigue siendo el SHA revisado; cualquier cambio posterior invalida (§12).
-function isFrozen(ledger, headSha) {
-  return isObj(ledger) && typeof headSha === 'string' && ledger.sha === headSha;
+// Congelado = el HEAD actual sigue siendo el SHA revisado y el árbol de trabajo es el de ese
+// commit (`workingTree` = tree-hash de la copia de trabajo, `headTree` = <sha>^{tree});
+// cualquier cambio posterior, commiteado o no, invalida (§12). Sin los árboles, no congela.
+function isFrozen(ledger, headSha, { headTree, workingTree } = {}) {
+  return isObj(ledger) && typeof headSha === 'string' && ledger.sha === headSha
+    && typeof headTree === 'string' && headTree !== '' && headTree === workingTree;
 }
 
 module.exports = {

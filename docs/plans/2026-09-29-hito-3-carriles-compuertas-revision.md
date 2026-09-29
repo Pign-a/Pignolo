@@ -413,7 +413,7 @@ Todas parten de `contract/hito-3a/v1`. Ninguna toca los archivos de la ola 0; si
   - `refutation(verdicts: Array<'CONFIRMED'|'REFUTED'|'INCONCLUSIVE'|any>, { profile, level }) → 'stands'|'refuted'`: cantidad esperada = `refutersHighRisk` en `high`, si no 1. Con 3 esperados: `refuted` solo si ≥ 2 son `REFUTED`. Con 1: `refuted` solo si es `REFUTED`. Faltantes, `INCONCLUSIVE` o valores malformados cuentan como "queda en pie".
   - `judgment(a: Finding[], b: Finding[]) → { fix: Finding[], suspect: Finding[], conflicts: Array<[Finding, Finding]> }` según el ruling de coincidencia.
   - `nextStep(ledger, { reopened: Finding[] }) → 'done'|'fix'|'escalate'`: sin confirmados abiertos → `done`; con confirmados y `round < 2` → `fix`; con `round >= 2` y algo abierto → `escalate` (§12: "máx. 2 rondas").
-  - `isFrozen(ledger, headSha) → boolean` (§12: "cambios posteriores invalidan la revisión").
+  - `isFrozen(ledger, headSha, { headTree, workingTree }) → boolean` (§12: "cambios posteriores invalidan la revisión"; también un árbol de trabajo sucio, arreglo M6 de la revisión final).
 - CLI `scripts/ledger.js`: `validate <archivo>`; `plan --level <l> --profile <p>`; `judgment <a.json> <b.json>`; `refute --profile <p> --level <l> <verdicts.json>`. Salida JSON; exit 0, 1 si `validate` encuentra errores, 2 uso.
 
 - [ ] **Paso 1: tests primero (de tabla):**

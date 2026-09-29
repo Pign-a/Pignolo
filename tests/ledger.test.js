@@ -92,9 +92,22 @@ test('nextStep', () => {
   assert.equal(L.nextStep({ ...base, round: 2, findings: [F({ status: 'fixed' })] }, { reopened: [F()] }), 'escalate');
 });
 
-test('isFrozen', () => {
-  assert.equal(L.isFrozen({ sha: SHA }, SHA), true);
-  assert.equal(L.isFrozen({ sha: SHA }, 'b'.repeat(40)), false);
+test('isFrozen: mismo HEAD y árbol de trabajo limpio (M6)', () => {
+  const T = 'c'.repeat(40);
+  assert.equal(L.isFrozen({ sha: SHA }, SHA, { headTree: T, workingTree: T }), true);
+  assert.equal(L.isFrozen({ sha: SHA }, 'b'.repeat(40), { headTree: T, workingTree: T }), false);
+  assert.equal(L.isFrozen({ sha: SHA }, SHA, { headTree: T, workingTree: 'd'.repeat(40) }), false);
+  assert.equal(L.isFrozen({ sha: SHA }, SHA), false);
+});
+
+test('judgment: empareja por el par más cercano (M6)', () => {
+  const r = L.judgment([F({ location: 'x:10' }), F({ location: 'x:16' })], [F({ location: 'x:13' }), F({ location: 'x:10' })]);
+  assert.equal(r.fix.length, 2);
+  assert.equal(r.suspect.length, 0);
+});
+
+test('refutation con perfil desconocido en riesgo alto: error (M6)', () => {
+  assert.throws(() => L.refutation(['REFUTED'], { profile: 'maxx', level: 'high' }), /perfil/);
 });
 
 test('CLI validate inválido: exit 1 con la lista; uso: exit 2', () => {
