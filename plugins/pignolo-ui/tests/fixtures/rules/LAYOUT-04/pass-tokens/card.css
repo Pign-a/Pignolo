@@ -1,0 +1,4 @@
+:root { --radius-md: 8px; }
+.card { border-radius: var(--radius-md); }
+.avatar { border-radius: 50%; }
+.flat { border-radius: 0; }

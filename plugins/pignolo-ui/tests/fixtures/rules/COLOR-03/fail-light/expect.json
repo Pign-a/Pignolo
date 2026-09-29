@@ -1,0 +1,8 @@
+{
+  "severity": "bloquea",
+  "measure": {
+    "ratio": 3.45,
+    "required": 4.5,
+    "theme": "light"
+  }
+}

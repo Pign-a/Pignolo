@@ -25,6 +25,9 @@ const ALLOWED = {
   extract: ['project', 'out', 'date', 'catalog'],
 };
 
+// Options that take a value; the rest (official, write) are boolean flags.
+const VALUE_OPTS = new Set(['file', 'ops', 'project', 'out', 'date', 'catalog']);
+
 function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   const opts = {};
@@ -37,8 +40,10 @@ function parseArgs(argv) {
       throw new UsageError(`opción desconocida ${a} para ${cmd}; opciones válidas: ${allowed.map((k) => `--${k}`).join(', ')}`);
     }
     const next = rest[i + 1];
-    if (next === undefined || next.startsWith('--')) opts[key] = true;
-    else { opts[key] = next; i++; }
+    if (next === undefined || next.startsWith('--')) {
+      if (VALUE_OPTS.has(key)) throw new UsageError(`--${key} necesita un valor`);
+      opts[key] = true;
+    } else { opts[key] = next; i++; }
   }
   return { cmd, opts };
 }
@@ -101,6 +106,7 @@ function checkOp(op, i) {
 // patch introduces a finding that rejects the file (for example intentional on the floor).
 function cmdPatch(opts) {
   if (!opts.file || !opts.ops) throw new UsageError('faltan --file <DESIGN.md> y --ops <ops.json>');
+  if (opts.project !== undefined) requireProjectDir(opts.project);
   const text = readText(opts.file, 'el archivo');
   let ops;
   try {
@@ -138,6 +144,9 @@ function cmdExtract(opts) {
   }
   // DESIGN.md changes only through the diff the user confirms, and a proposal lives in the run folder.
   if (path.basename(opts.out).toLowerCase() === 'design.md') throw new UsageError('--out no puede llamarse DESIGN.md: extract solo escribe una propuesta');
+  // The run folder's own .gitignore is created by ensureRunRoot; writing a proposal over it would collide.
+  const norm = (p) => (process.platform === 'win32' ? path.resolve(p).toLowerCase() : path.resolve(p));
+  if (norm(opts.out) === norm(path.join(opts.project, RUN_ROOT, '.gitignore'))) throw new UsageError(`--out no puede ser ${RUN_ROOT}/.gitignore: es el archivo que ignora la carpeta de corridas`);
   if (!isInsideRunRoot(opts.project, opts.out)) throw new UsageError(`--out debe estar dentro de ${RUN_ROOT}/ del proyecto (carpeta de la corrida)`);
   if (fs.existsSync(opts.out)) throw new UsageError(`${opts.out} ya existe: extract nunca sobrescribe`);
   const existing = fs.readdirSync(opts.project).find((n) => n.toLowerCase() === 'design.md');

@@ -1,0 +1,4 @@
+:root {
+  --color-primary: #0b6bcb;
+}
+.btn { color: var(--color-primary); background: transparent; }

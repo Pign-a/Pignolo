@@ -1,0 +1,2 @@
+:root { --radius-md: 8px; }
+.btn { color: var(--radius-md); }

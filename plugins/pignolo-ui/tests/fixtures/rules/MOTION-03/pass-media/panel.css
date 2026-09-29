@@ -1,0 +1,4 @@
+.panel { transition: transform 200ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .panel { transition: none; }
+}

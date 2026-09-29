@@ -1,0 +1,2 @@
+:root { --space-2: 8px; }
+.card { border-radius: var(--space-2); }

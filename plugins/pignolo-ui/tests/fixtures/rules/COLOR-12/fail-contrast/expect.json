@@ -1,0 +1,13 @@
+[
+  {
+    "severity": "medio"
+  },
+  {
+    "id": "COLOR-03",
+    "status": "fail",
+    "severity": "bloquea",
+    "lines": [
+      2
+    ]
+  }
+]
