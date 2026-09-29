@@ -37,3 +37,53 @@ test('!important does not hide a color literal', async () => {
   const r = await run({ 'a.css': '.a { color: red !important }\n' });
   assert.equal(only(r, 'COLOR-02', 'fail').length, 1);
 });
+
+// Ruling (0.2.0): a drawing declaration in the same rule or in :focus/:focus-visible of the
+// same base selector restores the indicator; so does a focus: or focus-visible: class that draws.
+test('STATE-04 restoring indicators (table)', async () => {
+  const cases = [
+    ['a.css', '.btn:focus { outline: none; box-shadow: 0 0 0 3px var(--ring); }\n', 0],
+    ['a.css', '.btn { outline: none; }\n.btn:focus { border: 2px solid var(--ring); }\n', 0],
+    ['a.css', '.btn { outline: none; }\n.btn:focus-visible { outline: 2px solid var(--ring); }\n', 0],
+    ['a.css', '.btn:focus { outline: none; box-shadow: none; }\n', 1],
+    ['a.css', '.btn { outline: none; }\n.card:focus { box-shadow: 0 0 0 3px var(--ring); }\n', 1],
+    ['a.css', '.btn { outline: none; }\n.btn:hover { box-shadow: 0 0 0 3px var(--ring); }\n', 1],
+    ['B.tsx', 'export const B = () => <button className="focus:outline-none focus:ring-2">x</button>;\n', 0],
+    ['B.tsx', 'export const B = () => <button className="outline-none focus:shadow-md">x</button>;\n', 0],
+    ['B.tsx', 'export const B = () => <button className="focus:outline-none focus-visible:border-2">x</button>;\n', 0],
+    ['B.tsx', 'export const B = () => <button className="focus:outline-none">x</button>;\n', 1],
+    ['B.tsx', 'export const B = () => <button className="focus:outline-none focus:ring-0">x</button>;\n', 1],
+    ['B.tsx', 'export const B = () => <button className="focus:outline-none hover:ring-2">x</button>;\n', 1],
+  ];
+  for (const [file, text, n] of cases) {
+    const r = await run({ [file]: text });
+    assert.equal(only(r, 'STATE-04', 'fail').length, n, text);
+  }
+});
+
+test('MOTION-03 exempts declarations inside prefers-reduced-motion: no-preference', async () => {
+  const cases = [
+    ['@media (prefers-reduced-motion: no-preference) { .a { transition: transform 0.2s; } }\n', 0],
+    ['@media (prefers-reduced-motion:no-preference) { .a { animation: spin 1s; } }\n', 0],
+    ['@media (min-width: 40em) { .a { transition: transform 0.2s; } }\n', 1],
+    ['@media (prefers-reduced-motion: no-preference) { .a { color: red; } }\n.b { animation: spin 1s; }\n', 1],
+  ];
+  for (const [text, n] of cases) {
+    const r = await run({ 'a.css': text });
+    assert.equal(only(r, 'MOTION-03', 'fail').length, n, text);
+  }
+});
+
+test('DEPTH-01 reason separates a literal shadow with a token color from a token of another family', async () => {
+  const cases = [
+    ['.a { box-shadow: 0 0 0 3px var(--ring); }\n', /literal box-shadow with a token color \(--ring\)/],
+    ['.a { box-shadow: var(--radius-md); }\n', /token of another family \(--radius-md\)/],
+    ['.a { box-shadow: 0 1px 2px black; }\n', /literal box-shadow outside tokens/],
+  ];
+  for (const [text, re] of cases) {
+    const r = await run({ 'a.css': text });
+    const fails = only(r, 'DEPTH-01', 'fail');
+    assert.equal(fails.length, 1, text);
+    assert.match(fails[0].reason, re, text);
+  }
+});

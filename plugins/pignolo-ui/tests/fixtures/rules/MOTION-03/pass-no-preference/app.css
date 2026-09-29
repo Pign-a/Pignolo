@@ -1,0 +1,5 @@
+.card { opacity: 1; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .card { transition: transform 0.2s ease; }
+}

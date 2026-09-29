@@ -70,7 +70,7 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 | A11Y-39 | No focusable element inside aria-hidden="true"; never on body | element | sí | bloquea | no | WCAG 2.2 SC 4.1.2 (A); WAI-ARIA 1.2 aria-hidden | ui-check |
 | COLOR-03 | Text contrast between token pairs: 4.5:1, or 3:1 for large text; alpha composited; both themes | style | sí | bloquea | no | WCAG 2.2 SC 1.4.3 (AA) | ui-check |
 | COLOR-04 | Non-text contrast (functional border, focus ring) of 3:1 | style | sí | bloquea | no | WCAG 2.2 SC 1.4.11 (AA) | ui-check |
-| STATE-04 | outline: none/0 without a :focus-visible that draws an indicator | style | sí | bloquea | no | WCAG 2.2 SC 2.4.7 (AA) | ui-check |
+| STATE-04 | outline: none/0 without a :focus or :focus-visible indicator (same rule or same base selector) that draws | style | sí | bloquea | no | WCAG 2.2 SC 2.4.7 (AA) | ui-check |
 | MOTION-03 | Animation or transform transition without @media (prefers-reduced-motion: reduce) | style | no | medio | no | WCAG 2.2 SC 2.3.3 (AAA); Media Queries Level 5 prefers-reduced-motion | ui-check |
 | MOTION-04 | transition: all | style | no | medio | sí | CSS Transitions Level 1 transition-property; pignolo-ui spec 2026-09-28 §5.4 | ui-check |
 | COLOR-02 | Color literals outside the token source, or a token of another family in a color property | style | no | medio | sí | Material Design 3 color roles (consulted 2026-09-28); pignolo-ui spec 2026-09-28 §4.5 | ui-check |

@@ -58,7 +58,7 @@ const isNone = (v) => /^(none|0|0px)$/i.test(norm(v));
 
 // ---- CSS parts -------------------------------------------------------------------------
 
-function tokenRule(ctx, isProp, { okFamily, literal, what }) {
+function tokenRule(ctx, isProp, { okFamily, literal, what, literalWithToken = false }) {
   const out = [];
   for (const d of ctx.css.decls) {
     if (d.inTokenBlock || !isProp(d.property)) continue;
@@ -66,7 +66,12 @@ function tokenRule(ctx, isProp, { okFamily, literal, what }) {
     const extra = { line: d.line, selector: d.selector };
     const names = varNames(d.value);
     const wrong = names.find((n) => !okFamily(n));
-    if (wrong) out.push(fail(key, { ...extra, reason: `token of another family (${wrong}) in ${d.property}` }));
+    // box-shadow: `0 0 0 3px var(--ring)` is a literal shadow that takes a token as its color,
+    // not a token of another family; say which one it is.
+    const rest = norm(d.value.replace(/var\([^)]*\)/g, ' '));
+    if (wrong && literalWithToken && rest && literal(rest)) {
+      out.push(fail(key, { ...extra, reason: `literal ${what} with a token color (${wrong}) outside tokens` }));
+    } else if (wrong) out.push(fail(key, { ...extra, reason: `token of another family (${wrong}) in ${d.property}` }));
     else if (!names.length && literal(d.value)) out.push(fail(key, { ...extra, reason: `literal ${what} outside tokens` }));
   }
   return out;
@@ -85,6 +90,7 @@ function depthCss(ctx) {
     okFamily: (n) => FAMILY.elevation.test(n),
     literal: (v) => !/^(none|inherit|initial|unset|revert|revert-layer)$/i.test(norm(v)),
     what: 'box-shadow',
+    literalWithToken: true,
   });
 }
 
@@ -98,6 +104,11 @@ function radiusCss(ctx) {
 
 const selectorBase = (sel) => norm(sel.replace(/:(focus-visible|focus-within|focus|hover|active)\b/g, ''));
 
+const FOCUS_PART = /:focus(-visible)?(?![\w-])/;
+
+// Ruling (0.2.0): the indicator is restored by a drawing declaration (outline or outline-style
+// other than none, box-shadow, border) in the same rule, or in a :focus / :focus-visible rule
+// of the same base selector.
 function stateCss(ctx) {
   const decls = ctx.css.decls;
   const draws = (d) => (d.property === 'outline' && !isNone(d.value))
@@ -108,18 +119,21 @@ function stateCss(ctx) {
   for (const d of decls) {
     if (!draws(d)) continue;
     for (const part of d.selector.split(',')) {
-      if (/:focus-visible\b/.test(part) && !/:not\(\s*:focus-visible/.test(part)) drawers.add(selectorBase(part));
+      if (FOCUS_PART.test(part) && !/:not\(\s*:focus/.test(part)) drawers.add(selectorBase(part));
     }
   }
+  const drawingRules = new Set(ctx.css.rules.filter((r) => r.decls.some(draws)));
+  const ruleOf = new Map(ctx.css.rules.flatMap((r) => r.decls.map((d) => [d, r])));
   const out = [];
   for (const d of decls) {
     const removes = (d.property === 'outline' && isNone(d.value)) || (d.property === 'outline-style' && /^none$/i.test(norm(d.value)));
     if (!removes) continue;
+    if (drawingRules.has(ruleOf.get(d))) continue;
     const parts = d.selector.split(',');
     const bad = parts.find((p) => !/:not\(\s*:focus-visible/.test(p) && !drawers.has(selectorBase(p)));
     if (bad === undefined) continue;
     out.push(fail(`${d.selector}|${d.property}|${norm(d.value)}`, {
-      line: d.line, selector: d.selector, reason: 'outline removed without a :focus-visible indicator',
+      line: d.line, selector: d.selector, reason: 'outline removed without a :focus or :focus-visible indicator',
     }));
   }
   return out;
@@ -140,7 +154,10 @@ function motionCss(ctx) {
   if (/prefers-reduced-motion\s*:\s*reduce/i.test(ctx.text)) return [];
   const out = [];
   const reason = 'motion without prefers-reduced-motion';
+  // declarations inside @media (prefers-reduced-motion: no-preference) are already guarded
+  const noPreference = (d) => d.atRules.some((a) => /prefers-reduced-motion\s*:\s*no-preference/i.test(a));
   for (const d of ctx.css.decls) {
+    if (noPreference(d)) continue;
     const animation = (d.property === 'animation' || d.property === 'animation-name') && !/^(none|initial|unset|revert)$/i.test(norm(d.value));
     if (animation || listsProperty(d, /^(transform|-webkit-transform|all)$/i)) {
       out.push(fail(`${d.selector}|${d.property}|${norm(d.value)}`, { line: d.line, selector: d.selector, reason }));
@@ -154,7 +171,9 @@ function motionCss(ctx) {
 
 // ---- Utility classes ---------------------------------------------------------------------
 
+// focus: / focus-visible: classes that draw an indicator (ruling 0.2.0); the -0/-none forms do not.
 const DRAWS_FOCUS = /^(ring|outline|border|shadow)/;
+const NO_DRAW = /^(outline-(none|hidden|0)|ring-0|border-0|shadow-none)$/;
 
 // Calls visit(cls, list) for each class of each list; lists carry their element and dynamic flag.
 function eachClass(ctx, visit) {
@@ -178,10 +197,11 @@ function stateUtility(ctx) {
   for (const list of ctx.classLists) {
     const hits = list.classes.filter((c) => c.base === 'outline-none' && (c.variants.length === 0 || (c.variants.length === 1 && c.variants[0] === 'focus')));
     if (!hits.length) continue;
-    const restores = list.classes.some((c) => c.variants.includes('focus-visible') && DRAWS_FOCUS.test(c.base) && c.base !== 'outline-none');
+    const restores = list.classes.some((c) => c.variants.some((v) => v === 'focus' || v === 'focus-visible')
+      && DRAWS_FOCUS.test(c.base) && !NO_DRAW.test(c.base));
     if (restores) continue;
     if (list.dynamic) out.push(unverified('dynamic class list: focus-visible indicator not resolvable', { line: hits[0].line, key: `${tagOf(list)}|dynamic` }));
-    else for (const c of hits) out.push(fail(utilKey(list, c), { line: c.line, reason: 'outline-none without a focus-visible indicator' }));
+    else for (const c of hits) out.push(fail(utilKey(list, c), { line: c.line, reason: 'outline-none without a focus or focus-visible indicator' }));
   }
   return out;
 }
