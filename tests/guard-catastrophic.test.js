@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { makeRepo, makeTempDir, runLauncher } = require('./helpers');
 const { evaluate } = require('../plugins/pignolo/lib/git-guard');
+const protect = require('../plugins/pignolo/hooks/handlers/protect-paths');
 
 const MODES = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions', 'dontAsk'];
 // Plazo holgado para el parseo de PowerShell: con la suite en paralelo, los 2 s reales
@@ -187,4 +188,69 @@ test('package deleters and in-place writers reaching .git are catastrophic (G9)'
     'dd if=.git/index of=/tmp/x']) {
     assert.strictEqual(evaluate(cmd, { mode: 'bypassPermissions' }).decision, 'allow', cmd);
   }
+});
+
+const bash = (command, cwd) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd });
+
+test('PIGNOLO_DISABLED=1 turns the guard off but not the catastrophic set', () => {
+  const repo = makeRepo();
+  assert.strictEqual(runLauncher('guard', bash('git reset --hard', repo), { PIGNOLO_DISABLED: '1' }).status, 0);
+  const r = runLauncher('guard', bash('rm -rf .g*', repo), { PIGNOLO_DISABLED: '1' });
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /pignolo bloqueó el comando/);
+  assert.ok(fs.existsSync(path.join(repo, '.git')));
+});
+
+test('/pignolo:off does not turn off the catastrophic set', () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.pignolo'));
+  fs.writeFileSync(path.join(repo, '.pignolo', '.disabled'), 'x');
+  assert.strictEqual(runLauncher('guard', bash('find .git -delete', repo)).status, 2);
+});
+
+test('Edit/Write protection holds in every case, also with PIGNOLO_DISABLED', () => {
+  const cwd = makeTempDir();
+  const home = makeTempDir();
+  for (const env of [{ PIGNOLO_HOME: home }, { PIGNOLO_HOME: home, PIGNOLO_DISABLED: '1' }]) {
+    for (const file_path of ['.git/config', '.git/hooks/pre-commit', 'sub/.git/HEAD', '.claude/settings.json',
+      '.claude/settings.local.json', '.claude/agents/x.md', '.gitconfig', path.join(os.homedir(), '.gitconfig'),
+      path.join(home, 'config.json'), path.join(home, 'shadow', 'x')]) {
+      const r = protect.run({ tool_name: 'Write', tool_input: { file_path }, cwd }, { env });
+      assert.strictEqual(r.exit, 2, `${file_path} ${JSON.stringify(env)}`);
+    }
+    for (const file_path of ['.claude/worktrees/t/src/a.js', 'src/a.js', '.github/workflows/x.yml', '.gitignore',
+      path.join(os.homedir(), '.claude', 'projects', 'p', 'memory', 'MEMORY.md')]) {
+      const r = protect.run({ tool_name: 'Edit', tool_input: { file_path }, cwd }, { env });
+      assert.strictEqual(r.exit, 0, file_path);
+    }
+  }
+});
+
+// Protects: ~/.claude del usuario por Edit/Write y por la guardia (G5, auditoría 3) ·
+// Breaks if: Write sobre ~/.claude/settings.json o el código instalado del plugin pasa,
+// o `~` no sale del HOME/USERPROFILE del entorno del hook.
+test('Edit/Write and the guard protect the user ~/.claude settings and installed plugins, not the rest of ~/.claude', () => {
+  const cwd = makeTempDir();
+  const other = makeTempDir();
+  const cfg = makeTempDir();
+  const claude = (...p) => path.join(os.homedir(), '.claude', ...p);
+  for (const env of [{}, { PIGNOLO_DISABLED: '1' }]) {
+    for (const file_path of [claude('settings.json'), claude('settings.local.json'),
+      claude('plugins', 'cache', 'pignolo', 'pignolo', '0.1.0', 'lib', 'git-guard.js'), claude('plugins', 'installed_plugins.json'),
+      '~/.claude/settings.json']) {
+      assert.strictEqual(protect.run({ tool_name: 'Write', tool_input: { file_path }, cwd }, { env }).exit, 2, file_path);
+    }
+    for (const file_path of [claude('projects', 'p', 'memory', 'MEMORY.md'), claude('plans', 'plan.md'), claude('jobs', 'j', 'tmp', 'a.js'),
+      claude('skills', 'x', 'SKILL.md'), claude('CLAUDE.md')]) {
+      assert.strictEqual(protect.run({ tool_name: 'Write', tool_input: { file_path }, cwd }, { env }).exit, 0, file_path);
+    }
+  }
+  const env = { HOME: other, USERPROFILE: other, CLAUDE_CONFIG_DIR: cfg };
+  for (const file_path of ['~/.claude/settings.json', path.join(other, '.claude', 'settings.json'), path.join(cfg, 'settings.json')]) {
+    assert.strictEqual(protect.run({ tool_name: 'Write', tool_input: { file_path }, cwd }, { env }).exit, 2, file_path);
+  }
+  const repo = makeRepo();
+  const r = runLauncher('guard', { ...bash(`echo '{}' > ~/.claude/settings.json`, repo), permission_mode: 'bypassPermissions' }, { HOME: other, USERPROFILE: other, PIGNOLO_DISABLED: '1' });
+  assert.strictEqual(r.status, 2, r.stdout);
+  assert.match(r.stderr, /~\/\.claude\/settings\*\.json/);
 });

@@ -42,3 +42,12 @@ test('F7: a redirect whose target starts with an unknown variable is unverifiabl
   assert.strictEqual(rule('echo x > "$CLAUDE_JOB_DIR/tmp/a.txt"'), null);
   assert.strictEqual(rule('echo x > .pignolo/$f'), 'protected-flag');
 });
+
+test('relative paths resolve against the cwd of the payload', () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.pignolo'));
+  const payload = (command, cwd) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd });
+  // Solo el cwd del payload dice que `.disabled` es el flag.
+  assert.strictEqual(runLauncher('guard', payload('touch .disabled', path.join(repo, '.pignolo'))).status, 2);
+  assert.strictEqual(runLauncher('guard', payload('touch .disabled', repo)).status, 0);
+});

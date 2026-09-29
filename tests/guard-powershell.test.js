@@ -122,3 +122,10 @@ test('powershell.exe that cannot start fails closed, by mode', () => {
   assert.strictEqual(auto.rule, 'ps-unavailable');
   assert.strictEqual(ps('Get-Date', 'default', opts).decision, 'ask');
 });
+
+test('through the launcher, without powershell.exe on PATH, PowerShell fails closed', () => {
+  const empty = makeTempDir();
+  const r = runLauncher('guard', { hook_event_name: 'PreToolUse', tool_name: 'PowerShell', permission_mode: 'bypassPermissions',
+    tool_input: { command: 'Get-Date' }, cwd: makeRepo() }, { PATH: empty, Path: empty, SystemRoot: empty, windir: empty });
+  assert.strictEqual(r.status, 2, r.stderr);
+});

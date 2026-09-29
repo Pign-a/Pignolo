@@ -145,3 +145,21 @@ test('an unknown git subcommand may be an alias: unverifiable; -c alias.* is den
   assert.strictEqual(evaluate("git -c alias.x='!rm -rf .' x").rule, 'git-config-override');
   assert.strictEqual(evaluate('git lfs pull', { mode: 'auto' }).decision, 'allow');
 });
+
+const payload = (command, extra = {}) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, ...extra });
+
+test('the handler reads permission_mode: unverifiable is ask when interactive, deny when autonomous', () => {
+  const repo = makeRepo();
+  const ask = runLauncher('guard', payload('eval "$X"', { cwd: repo, permission_mode: 'default' }));
+  assert.strictEqual(ask.status, 0);
+  assert.strictEqual(JSON.parse(ask.stdout).hookSpecificOutput.permissionDecision, 'ask');
+  for (const permission_mode of AUTONOMOUS) {
+    const r = runLauncher('guard', payload('eval "$X"', { cwd: repo, permission_mode }));
+    assert.strictEqual(r.status, 2, permission_mode);
+  }
+  assert.strictEqual(runLauncher('guard', payload('git reset --hard', { cwd: repo, permission_mode: 'default' })).status, 2);
+});
+
+test('an invalid payload is denied (the launcher exits 2)', () => {
+  for (const bad of ['no es json', '[]', '"texto"']) assert.strictEqual(runLauncher('guard', bad).status, 2, bad);
+});
