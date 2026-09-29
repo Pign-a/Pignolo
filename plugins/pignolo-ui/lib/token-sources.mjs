@@ -8,8 +8,12 @@
 //
 // readTokenSources(root) -> { sources, unsupported, unverified, darkDetected }
 // scanCss(text) -> { blocks, dark }        parseTailwindConfig(text) -> { ok, theme, leaves } | { ok: false, reason }
+//
+// Writes (v1): setCssVar edits a variable inside an existing block; replaceTailwindLiteral
+// replaces an existing literal value. Neither creates a block, a key or a new source.
 import fs from 'node:fs';
 import path from 'node:path';
+import { detectFormat, formatColor } from './color.mjs';
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'out', '.next', '.nuxt', '.svelte-kit', '.output', 'coverage', '.pignolo-ui', '.turbo', '.cache']);
 const TAILWIND_CONFIGS = ['tailwind.config.js', 'tailwind.config.cjs', 'tailwind.config.mjs', 'tailwind.config.ts'];
@@ -380,4 +384,67 @@ export function readTokenSources(root, { maxFiles = 2000 } = {}) {
   }
 
   return { sources, unsupported, unverified, darkDetected };
+}
+
+// ---- writes ------------------------------------------------------------------------------
+
+// Sets `name: value` inside the first token block whose selector equals `selector`
+// (':root', '.dark', '@theme', '@theme inline'...). Only the value span or one new line
+// changes; a missing block is refused (never a second source).
+export function setCssVar(text, { selector, name, value }) {
+  if (!/^--[A-Za-z0-9_-]+$/.test(name || '')) return { ok: false, reason: 'invalid-name' };
+  if (typeof value !== 'string' || !value.trim() || /[;{}\r\n]/.test(value)) return { ok: false, reason: 'invalid-value' };
+  const want = String(selector).replace(/\s+/g, ' ').trim();
+  const block = scanCss(text).blocks.find((b) => b.selector === want);
+  if (!block) return { ok: false, reason: 'block-not-found' };
+  const lineAt = lineIndex(text);
+  const existing = block.vars.find((v) => v.name === name);
+  if (existing) {
+    const before = text.slice(existing.valueStart, existing.valueEnd);
+    return { ok: true, text: text.slice(0, existing.valueStart) + value + text.slice(existing.valueEnd), line: existing.line, before, after: value };
+  }
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const closeLineStart = text.lastIndexOf('\n', block.close - 1) + 1;
+  const beforeClose = text.slice(closeLineStart, block.close);
+  const last = block.vars[block.vars.length - 1];
+  if (closeLineStart > block.open && /^[ \t]*$/.test(beforeClose)) {
+    let indent = `${beforeClose}  `;
+    if (last) {
+      const ls = text.lastIndexOf('\n', last.valueStart) + 1;
+      indent = /^[ \t]*/.exec(text.slice(ls))[0];
+    }
+    let out = `${text.slice(0, closeLineStart)}${indent}${name}: ${value};${eol}${text.slice(closeLineStart)}`;
+    if (last && !/^\s*;/.test(text.slice(last.valueEnd))) out = `${out.slice(0, last.valueEnd)};${out.slice(last.valueEnd)}`;
+    return { ok: true, text: out, line: lineAt(closeLineStart), before: null, after: value };
+  }
+  const trimmed = text.slice(block.open + 1, block.close).trimEnd();
+  const needsSemi = trimmed.trim() !== '' && !trimmed.endsWith(';');
+  const at = block.open + 1 + trimmed.length;
+  const out = `${text.slice(0, at)}${needsSemi ? ';' : ''} ${name}: ${value}; ${text.slice(block.close)}`;
+  return { ok: true, text: out, line: lineAt(block.open), before: null, after: value };
+}
+
+const WRITABLE_FORMATS = { hex: 'hex', rgb: 'rgb', hsl: 'hsl', 'hsl-bare': 'hsl-bare', oklch: 'oklch' };
+
+// Writes `rgba` in the notation of `sample` (shadcn bare HSL stays bare HSL). null when
+// that notation is not one pignolo-ui writes (var(), color-mix(), lab()...).
+export function formatLike(sample, rgba) {
+  const f = WRITABLE_FORMATS[detectFormat(sample)];
+  return f ? formatColor(rgba, f) : null;
+}
+
+function quoteJs(s, q) {
+  let body = s.replace(/\\/g, '\\\\').split(q).join(`\\${q}`);
+  if (q === '`') body = body.replace(/\$\{/g, '\\${');
+  return `${q}${body}${q}`;
+}
+
+// Replaces one literal value of a literal Tailwind v3 theme; never adds keys.
+export function replaceTailwindLiteral(text, keyPath, newValue) {
+  const r = parseTailwindConfig(text);
+  if (!r.ok) return { ok: false, reason: `unverified: ${r.reason}` };
+  const leaf = r.leaves.find((l) => l.path.length === keyPath.length && l.path.every((p, i) => String(p) === String(keyPath[i])));
+  if (!leaf) return { ok: false, reason: 'not-a-literal-value' };
+  const lit = typeof newValue === 'number' && !leaf.quote ? String(newValue) : quoteJs(String(newValue), leaf.quote || "'");
+  return { ok: true, text: text.slice(0, leaf.start) + lit + text.slice(leaf.end), line: leaf.line, before: leaf.value, after: newValue };
 }
