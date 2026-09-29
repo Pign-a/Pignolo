@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempDir, writeTree, runScript } from './helpers.mjs';
-import { findLeaks, checkLeaks } from '../lib/leak-check.mjs';
+import { findLeaks, checkLeaks, readValuesFile } from '../lib/leak-check.mjs';
 
 // Synthetic identities only: nothing here belongs to a real person or machine.
 const VALUES = ['ana.perez@example.com', 'Ana Pérez', 'aperez'];
@@ -57,4 +57,45 @@ test('CLI: exit 0 clean, 1 with a leak, 2 on a bad values file', () => {
   fs.writeFileSync(values, '{"not":"a list"}');
   out = runScript('leak-check.mjs', ['--dir', clean, '--values-file', values]);
   assert.equal(out.status, 2);
+});
+
+test('a malformed values file exits 2 without echoing any of its content', () => {
+  const secret = 'secret.user@example.com';
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, `['${secret}']`);
+  const dir = writeTree(makeTempDir(), { 'a.html': '<p>ok</p>' });
+  const out = runScript('leak-check.mjs', ['--dir', dir, '--values-file', values]);
+  assert.equal(out.status, 2);
+  assert.ok(!out.stderr.includes(secret) && !out.stderr.includes('secret.us'));
+  assert.ok(!out.stdout.includes(secret));
+});
+
+test('a values file with a leading BOM is read', () => {
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, String.fromCharCode(0xFEFF) + JSON.stringify(VALUES));
+  assert.deepEqual(readValuesFile(values), VALUES);
+});
+
+test('CLI: unknown options, a missing --dir and a missing --values-file are exit 2 with usage', () => {
+  const dir = writeTree(makeTempDir(), { 'a.html': '<p>ok</p>' });
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, '[]');
+  for (const args of [
+    ['--dir', dir, '--value-file', values],
+    ['--dir', dir],
+    ['--values-file', values],
+  ]) {
+    const out = runScript('leak-check.mjs', args);
+    assert.equal(out.status, 2, args.join(' '));
+    assert.match(out.stderr, /uso: leak-check\.mjs --dir/);
+  }
+  assert.equal(runScript('leak-check.mjs', ['--dir', dir, '--values-file', values]).status, 0);
+});
+
+test('values match on word boundaries: dev does not flag device but flags dev and /dev/', () => {
+  assert.deepEqual(findLeaks('un device', ['dev']), []);
+  assert.deepEqual(findLeaks('dev', ['dev']), [{ kind: 'value', index: 0, line: 1 }]);
+  assert.deepEqual(findLeaks('ls /dev/null', ['dev']), [{ kind: 'value', index: 0, line: 1 }]);
+  assert.deepEqual(findLeaks('mailto:ana.perez@example.com.', VALUES), [{ kind: 'value', index: 0, line: 1 }]);
+  assert.deepEqual(findLeaks('a.b+c (x)', ['a.b+c (x)']), [{ kind: 'value', index: 0, line: 1 }]);
 });
