@@ -19,7 +19,7 @@ The brief gives a frozen SHA, the task-card or spec, and the changed files. Noth
 4. Record each finding with evidence you observed; unverified suspicions are labeled "not verified".
 
 ## Output
-Findings, each with: id, location, severity, evidence, and a repro-spec for BLOCKER and CRITICAL.
+Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`judge-a`), `location` (`path:line`, a single line number), `severity`, `evidence`, `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). With no findings the block is `[]`. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
 - BLOCKER: must not ship.
 - CRITICAL: serious on a plausible path.
 - WARNING: limited weakness.

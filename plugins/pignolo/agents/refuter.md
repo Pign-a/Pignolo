@@ -19,7 +19,7 @@ The brief gives a SHA and a numbered list of claims, each with a location and an
 4. Decide from what you observed. Quote the command and output, or the file and line.
 
 ## Output
-For each claim: claim id, verdict, reason with evidence.
+Write the verdicts as one fenced `json` block: an array with one object per claim, keys in this order: `claim` (the claim id from the brief), `verdict`, `reason` (the evidence: command and output, or file and line). Pignolo feeds the block to its refutation rule as is, so it must be valid JSON.
 - CONFIRMED: you tried to refute it and could not, or you reproduced it.
 - REFUTED: you have concrete evidence it is false.
 - INCONCLUSIVE: you could not run or read enough to decide, or the claim is malformed or missing data. An INCONCLUSIVE claim stands.
