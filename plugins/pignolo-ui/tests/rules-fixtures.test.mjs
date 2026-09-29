@@ -4,7 +4,8 @@
 //   fail-*       at least one fail
 //   unverified-* at least one unverified and no fail
 // expect.json (optional): one object or a list of objects, one per id:
-//   { id, status, severity, count, lines, reason, measure, allowUnverified, absent, exitCode }
+//   { id, status, severity, count, lines, reason, measure, allowUnverified, absent, exitCode,
+//     noFindingsPass }
 // Run one group with: node --test --test-name-pattern "rule (ID1|ID2) " <this file>
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -55,8 +56,20 @@ async function runCase(id, name) {
   // prefix expectations for the folder's id
   const mine = result.entries.filter((e) => e.id === id);
   const count = (s) => mine.filter((e) => e.status === s).length;
+  // The runner adds `pass('no findings')` for an applicable rule that returned nothing: it
+  // proves the rule ran, not that the fixture reached the case. A pass-* case needs a pass the
+  // rule itself emitted, unless its expect.json declares `noFindingsPass: true` (the rule only
+  // speaks when something is wrong, so the clean case can only be the runner's pass). The flag
+  // is refused when the rule did emit its own pass, so it is never set by habit.
+  const synthetic = (e) => e.status === 'pass' && e.fingerprint === `${id}|${e.file ?? ''}|no findings`;
+  const emitted = mine.filter((e) => e.status === 'pass' && !synthetic(e));
   if (name.startsWith('pass-')) {
-    assert.ok(count('pass') > 0, `${id} ${name}: expected a pass\n${show(mine)}`);
+    if (own.noFindingsPass === true) {
+      assert.equal(emitted.length, 0, `${id} ${name}: noFindingsPass set but the rule emitted its own pass\n${show(emitted)}`);
+      assert.ok(count('pass') > 0, `${id} ${name}: expected the runner's 'no findings' pass\n${show(mine)}`);
+    } else {
+      assert.ok(emitted.length > 0, `${id} ${name}: expected a pass emitted by the rule, not the runner's 'no findings' (see noFindingsPass)\n${show(mine)}`);
+    }
     assert.equal(count('fail'), 0, `${id} ${name}: unexpected fail\n${show(mine)}`);
     const allow = own.allowUnverified ? new RegExp(own.allowUnverified) : null;
     const extra = mine.filter((e) => e.status === 'unverified' && !(allow && allow.test(e.reason || '')));
