@@ -2,7 +2,8 @@
 
 ## 0.2.3 — 2026-09-29
 
-- Guardia de shell: borrar una raíz calculada desde código inline (`process.cwd()`, `__dirname`, `os.getcwd()`, `Path.cwd()`/`Path.home()`, `Dir.pwd`, `Deno.cwd()`, `HOME`/`USERPROFILE`/`PWD` del entorno...) es catastrófico cuando es el argumento entero del borrado; antes era solo no verificable. Una subruta (`path.join(process.cwd(), 'dist')`) sigue siendo no verificable.
+- Guardia de shell: borrar una raíz calculada desde código inline (`process.cwd()`, `__dirname`, `os.getcwd()`, `Path.cwd()`/`Path.home()`, `Dir.pwd`, `Deno.cwd()`, `HOME`/`USERPROFILE`/`PWD` del entorno...) es catastrófico cuando es el argumento entero del borrado, también envuelta (`path.join(process.cwd())`, `str(Path.home())`), con `.resolve()`/`.parent` o subiendo (`path.resolve(__dirname, '..')`); antes era solo no verificable. Una subruta (`path.join(process.cwd(), 'dist')`, `Path.home() / '.cache'`) es no verificable, salvo que caiga en el conjunto catastrófico (`os.homedir() + '/.claude'`); antes, cualquier cosa que empezara con el HOME era catastrófica.
+- Guardia de shell: `rm`, `rmdir`, `unlink` y `rename` de node se reconocen en cualquier receptor y `rm(` suelto: `require('fs/promises').rm('.git', …)`, `import('fs/promises').then(f => f.rm(…))` y `const {rm} = require('fs/promises')` pasaban también con la guardia encendida. Un literal seguido de algo que no es literal (`rmSync('tmp' + x)`) es no verificable.
 - Guardia de shell: la lista corta de `git -c` compara las claves con puntos literales; antes `diffXcontext` pasaba como `diff.context`.
 - La regla amplia de código inline (un literal protegido en cualquier parte más un borrado es catastrófico) queda como falso positivo declarado en `tests/guard/residual-risk.md`: angostarla abre rodeos por `chdir` o enlaces a `.git`.
 

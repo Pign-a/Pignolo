@@ -273,6 +273,57 @@ test('inline code deleting a computed root or home is catastrophic', () => {
   }
 });
 
+// Protects: rm/rmdir/unlink/rename de node como método de cualquier receptor o suelto
+// (revisión de 0.2.3, I-1) · Breaks if: `require('fs/promises').rm('.git', …)`,
+// `import('fs/promises').then(f => f.rm(…))` o `const {rm} = …; rm('.', …)` pasan.
+test('node async and destructured delete forms on a protected target are catastrophic', () => {
+  const forms = (t) => [`node -e "require('fs/promises').rm(${t}, {recursive: true, force: true})"`,
+    `node -e "require('fs').rm(${t}, {recursive: true}, () => {})"`, `node -e "const {rm} = require('fs/promises'); rm(${t}, {recursive: true})"`,
+    `node -e "import('fs/promises').then(f => f.rm(${t}, {recursive: true}))"`, `node -e "require('fs').rmdir(${t}, {recursive: true}, () => {})"`,
+    `node -e "require('fs').rename(${t}, 'x', () => {})"`];
+  for (const cmd of [...forms(`'.git'`), ...forms('process.cwd()'), ...forms(`'.'`)]) {
+    for (const mode of MODES) assert.strictEqual(evaluate(cmd, { mode }).rule, 'catastrophic-delete', `${mode}: ${cmd}`);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'block', `apagada: ${cmd}`);
+  }
+  for (const cmd of [`node -e "require('fs/promises').rm('dist', {recursive: true, force: true})"`,
+    `node -e "const {rm} = require('fs/promises'); rm('build/out.txt')"`]) {
+    assert.strictEqual(evaluate(cmd, { mode: 'bypassPermissions' }).decision, 'allow', cmd);
+  }
+});
+
+// Protects: más formas de raíz calculada (revisión de 0.2.3, M-1, M-2, M-5) · Breaks if:
+// una raíz envuelta en path.join/resolve, con .resolve()/.parent, con '..' o '/' agregado,
+// como argumento con nombre, o las alternativas menos comunes (Cwd::cwd, ENV.fetch,
+// $ENV{PWD}, Deno.env.get, os.getcwdb, __DIR__) dejan de ser catastróficas; o una subruta
+// del HOME (`Path.home() / '.cache'`) pasa a ser catastrófica.
+test('more computed root forms are catastrophic and home subpaths stay unverifiable', () => {
+  for (const cmd of [`node -e "require('fs').rmSync(require('path').resolve('.'), {recursive: true})"`,
+    `node -e "const path = require('path'); require('fs').rmSync(path.join(process.cwd()), {recursive: true})"`,
+    `python -c "import os, shutil; shutil.rmtree(os.path.join(os.getcwd()))"`,
+    `python -c "from pathlib import Path; import shutil; shutil.rmtree(Path.cwd().resolve())"`,
+    `python -c "from pathlib import Path; import shutil; shutil.rmtree(Path('.').resolve())"`,
+    `node -e "require('fs').rmSync(process.cwd() + '/', {recursive: true})"`,
+    `node -e "const path = require('path'); require('fs').rmSync(path.join(process.cwd(), '..'), {recursive: true})"`,
+    `node -e "const path = require('path'); require('fs').rmSync(path.resolve(__dirname, '..'), {recursive: true})"`,
+    `python -c "import os, shutil; shutil.rmtree(path=os.getcwd())"`, `python -c "import os, shutil; shutil.rmtree(os.path.dirname(os.getcwd()))"`,
+    `python -c "from pathlib import Path; import shutil; shutil.rmtree(Path.cwd().parent)"`,
+    `node -e "require('fs').rmSync(require('os').homedir() + '/.claude', {recursive: true})"`,
+    `python -c "import os, shutil; shutil.rmtree(os.environ.get('HOME'))"`, `python -c "import os, shutil; shutil.rmtree(os.getcwdb())"`,
+    `ruby -e "require 'fileutils'; FileUtils.rm_rf(ENV.fetch('HOME'))"`, `perl -MFile::Path -e 'rmtree($ENV{PWD})'`,
+    `perl -MCwd -MFile::Path -e 'rmtree(Cwd::cwd())'`, `deno eval "Deno.removeSync(Deno.env.get('HOME'), {recursive: true})"`,
+    `php -r 'rename(__DIR__, "/tmp/x");'`]) {
+    for (const mode of MODES) assert.strictEqual(evaluate(cmd, { mode }).rule, 'catastrophic-delete', `${mode}: ${cmd}`);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'block', `apagada: ${cmd}`);
+  }
+  for (const cmd of [`python -c "import shutil; from pathlib import Path; shutil.rmtree(Path.home() / '.cache' / 'pip')"`,
+    `node -e "require('fs').rmSync(process.env.HOME + '/.cache/x', {recursive: true})"`,
+    `node -e "require('fs').rmSync(require('os').homedir() + '/tmp/x', {recursive: true})"`,
+    `node -e "require('fs').rmSync(require('path').join(__dirname, 'tmp'), {recursive: true})"`]) {
+    assert.deepStrictEqual([evaluate(cmd).decision, evaluate(cmd).rule], ['ask', 'inline-code'], cmd);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'allow', cmd);
+  }
+});
+
 // Protects: la regla amplia de I1 (un literal protegido en cualquier parte del código inline
 // hace catastrófico todo borrado) · Breaks if: se angosta la regla a "el literal es el
 // argumento del borrado" sin cubrir los rodeos: chdir a .git, enlace a .git, variable.

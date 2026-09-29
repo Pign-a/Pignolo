@@ -1169,47 +1169,62 @@ function inlineCheck(name, out, st, ctx) {
 
 // APIs de borrado o movimiento en código inline (I1): fs.rmSync, shutil.rmtree, os.remove,
 // Path(...).unlink, FileUtils.rm_rf, unlink de perl/php, Deno.remove, Remove-Item...
+// rm/rmdir/unlink/rename cuentan como método de cualquier receptor (`require('fs/promises').rm`,
+// `f.rm` tras `import()`) y `rm(` suelto (desestructurado de fs).
 const DELETE_API = new RegExp([
   String.raw`\b(rmSync|rmdirSync|unlinkSync|renameSync|removeSync|moveSync|emptyDirSync|rmtree|rimraf|remove_tree|removedirs)\b`,
   String.raw`\b(fs|fsp|fsPromises|promises|fse)\.(rm|rmdir|unlink|rename|remove|move|emptyDir)\b`,
   String.raw`\bshutil\.(rmtree|move)\b`, String.raw`\bos\.(remove|unlink|rmdir|rename|replace)\b`,
-  String.raw`\.(unlink|rmdir)\s*\(`, String.raw`\bFileUtils\.(rm\w*|remove\w*|mv|move)\b`,
+  String.raw`\.(rm|rmdir|unlink|rename)\s*\(`, String.raw`(^|[^.\w$])rm\s*\(`, String.raw`\bFileUtils\.(rm\w*|remove\w*|mv|move)\b`,
   String.raw`\b(File|Dir|FileUtils)\.(delete|unlink|rename|rmdir)\b`, String.raw`\bDeno\.(remove|rename)(Sync)?\b`,
-  String.raw`(^|[^.\w$])(unlink|rmdir|rename)\b(?=\s*\(?\s*['"])`, String.raw`\bRemove-Item\b`,
+  String.raw`(^|[^.\w$])(unlink|rmdir|rename)\b(?=\s*\(?\s*(['"]|__DIR__\b|getcwd\s*\())`, String.raw`\bRemove-Item\b`,
 ].join('|'), 'g');
-const HOME_EXPR = /^(os\.homedir\(\)|require\(\s*['"](node:)?os['"]\s*\)\.homedir\(\)|Path\.home\(\)|Dir\.home|process\.env\.(HOME|USERPROFILE)|os\.environ\[\s*['"]HOME['"]\s*\]|ENV\[\s*['"]HOME['"]\s*\]|\$ENV\{HOME\}|\$HOME|getenv\(\s*['"]HOME['"]\s*\))/;
 // Raíces calculadas: el cwd (que es la raíz o está dentro del repo) y el HOME, en node,
-// python, ruby, perl, php y deno. Solo cuentan como el argumento entero del borrado, quizá
-// envueltas en funciones que no cambian la ruta (ROOT_WRAP); `join(cwd, 'dist')` o
-// `cwd() + '/dist'` son subrutas: no verificables, no catastróficas.
+// python, ruby, perl, php y deno. Cuentan cuando son el argumento entero del borrado, quizá
+// envueltas en funciones que no cambian la ruta o suben (ROOT_WRAP), con `.resolve()` o
+// `.parent` detrás, o con literales agregados (`+ '/'`, `/ '..'`, `join(cwd, '..')`).
 const ROOT_ENV = String.raw`(HOME|USERPROFILE|PWD)`;
 const ROOT_EXPR = new RegExp('^(' + [
   String.raw`(require\(\s*['"](node:)?os['"]\s*\)|os)\.homedir\(\)`, String.raw`process\.cwd\(\)`, String.raw`__dirname\b`, String.raw`__DIR__\b`,
   String.raw`Deno\.cwd\(\)`, String.raw`(pathlib\.)?Path\.(home|cwd)\(\)`, String.raw`os\.getcwdb?\(\)`, String.raw`os\.curdir\b`,
-  String.raw`Dir\.(home|pwd|getwd)\b`, String.raw`(Cwd::)?(getcwd|cwd)\(\)`, String.raw`path\.resolve\(\s*\)`,
+  String.raw`Dir\.(home|pwd|getwd)\b`, String.raw`(Cwd::)?(getcwd|cwd)\(\)`, String.raw`(require\(\s*['"](node:)?path['"]\s*\)|path)\.resolve\(\s*\)`,
   String.raw`process\.env\.${ROOT_ENV}\b`, String.raw`process\.env\[\s*['"]${ROOT_ENV}['"]\s*\]`,
   String.raw`os\.environ\[\s*['"]${ROOT_ENV}['"]\s*\]`, String.raw`os\.environ\.get\(\s*['"]${ROOT_ENV}['"]\s*\)`,
   String.raw`(os\.)?getenv\(\s*['"]${ROOT_ENV}['"]\s*\)`, String.raw`ENV(\.fetch\(|\[)\s*['"]${ROOT_ENV}['"]\s*[\])]`,
-  String.raw`\$ENV\{${ROOT_ENV}\}`, String.raw`Deno\.env\.get\(\s*['"]${ROOT_ENV}['"]\s*\)`,
+  String.raw`\$ENV\{${ROOT_ENV}\}`, String.raw`\$HOME\b`, String.raw`Deno\.env\.get\(\s*['"]${ROOT_ENV}['"]\s*\)`,
 ].join('|') + ')');
-const ROOT_WRAP = /^(str|String|Path|pathlib\.Path|path\.(resolve|normalize)|os\.path\.(abspath|realpath|normpath|expanduser)|File\.(expand_path|realpath)|fs\.realpathSync|realpath)\(\s*(?!\))/;
+const HOME_ROOT = /home|HOME|USERPROFILE/;
+const ROOT_WRAP = /^(str|String|Path|pathlib\.Path|(require\(\s*['"](node:)?path['"]\s*\)|path)\.(resolve|normalize|join|dirname)|os\.path\.(abspath|realpath|normpath|expanduser|join|dirname)|File\.(expand_path|realpath)|fs\.realpathSync|realpath)\(\s*(?!\))/;
+const LIT_AT = /^(['"`])((?:\\.|(?!\1)[^\\])*)\1/;
 const STRING_LIT = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 
-// El argumento (texto desde el inicio del argumento) es una raíz calculada entera, o un
-// literal envuelto (`os.path.abspath('.')`) que se evalúa como literal.
-function computedRootArg(arg, st, ctx) {
-  let rest = arg;
-  let n = 0;
-  for (let m; (m = ROOT_WRAP.exec(rest)); n++) rest = rest.slice(m[0].length);
-  let lit = null;
+// Destino de un borrado a partir del texto de su primer argumento: un literal o una raíz
+// calculada, quizá envueltos y con literales agregados. Devuelve las rutas a evaluar y si
+// salen de una raíz calculada, o null si el destino no se conoce.
+function inlineTarget(arg) {
+  let rest = arg.replace(/^[A-Za-z_]\w*\s*=(?![=>])\s*/, ''); // argumento con nombre: rmtree(path=…)
+  let depth = 0;
+  for (let m; (m = ROOT_WRAP.exec(rest)); depth++) rest = rest.slice(m[0].length);
   const r = ROOT_EXPR.exec(rest);
-  if (r) rest = rest.slice(r[0].length);
-  else if (n > 0 && (lit = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest))) rest = rest.slice(lit[0].length);
-  else return false;
-  if (!new RegExp(String.raw`^(\s*\)){${n}}\s*([,);]|$)`).test(rest)) return false;
-  if (r) return true;
-  if (/\$\{|#\{/.test(lit[2])) return false;
-  return isCatastrophicOperand(word(lit[2].replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), { glob: /[*?[]/.test(lit[2]) }), st, ctx);
+  const lit = r ? null : LIT_AT.exec(rest);
+  if (!r && (!lit || /\$\{|#\{/.test(lit[2]))) return null;
+  let p = r ? (HOME_ROOT.test(r[0]) ? '~' : '.') : lit[2].replace(/^\$\{?HOME\}?(?=\/|$)/, '~');
+  const paths = [];
+  rest = rest.slice((r || lit)[0].length);
+  for (;;) {
+    let m;
+    if ((m = /^\s*(\.(resolve|absolute|expanduser|realpath)\(\s*\)|\.parent\b)/.exec(rest))) {
+      if (m[1] === '.parent') p += '/..';
+    } else if ((m = /^\s*([+/,])\s*(['"`])((?:\\.|(?!\2)[^\\])*)\2/.exec(rest)) && (m[1] !== ',' || depth > 0)) {
+      if (/\$\{|#\{/.test(m[3])) return null;
+      if (m[1] === '+') p += m[3];
+      else { p += `/${m[3]}`; if (/^([\\/]|[A-Za-z]:)/.test(m[3])) paths.push(m[3]); } // join/resolve con una absoluta
+    } else if (depth > 0 && (m = /^\s*\)/.exec(rest))) depth--;
+    else break;
+    rest = rest.slice(m[0].length);
+  }
+  if (depth > 0 || !/^\s*([,);]|$)/.test(rest)) return null;
+  return { paths: [p, ...paths], computed: Boolean(r) };
 }
 
 // Protegido por nombre, esté donde esté en el código: .git, .pignolo, ~ o $HOME solos.
@@ -1225,15 +1240,16 @@ function inlineDeletes(text, st, ctx, out) {
   if (lits.some(namesProtected)) { out.push(hit('catastrophic-delete')); return; }
   let unknown = false;
   for (const m of calls) {
-    // Destino: el primer argumento de la llamada, o el receptor de .unlink()/.rmdir().
+    // Destino: el primer argumento de la llamada, o el receptor de Path(…).unlink()/.rmdir().
     const after = text.slice(m.index + m[0].length).replace(/^\s*\(?\s*/, '');
     const before = text.slice(0, m.index);
-    const recv = /\.(unlink|rmdir)\s*\($/.test(m[0]) ? /\(\s*(['"])((?:\\.|(?!\1)[^\\])*)\1\s*\)\s*$/.exec(before) : null;
-    const first = recv || /^(['"`])((?:\\.|(?!\1)[^\\])*)\1/.exec(after);
-    if (HOME_EXPR.test(after) || (!recv && computedRootArg(after, st, ctx))) { out.push(hit('catastrophic-delete')); return; }
-    if (!first || /\$\{|#\{/.test(first[2])) { unknown = true; continue; }
-    const w = word(first[2].replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), { glob: /[*?[]/.test(first[2]) });
-    if (isCatastrophicOperand(w, st, ctx)) { out.push(hit('catastrophic-delete')); return; }
+    const recv = /\.(unlink|rmdir)\s*\($/.test(m[0]) ? /\b(pathlib\.)?(Pure|Posix|Windows)?Path\(\s*(['"])((?:\\.|(?!\3)[^\\])*)\3\s*\)\s*$/.exec(before) : null;
+    const t = recv && !/\$\{|#\{/.test(recv[4]) ? { paths: [recv[4]], computed: false } : inlineTarget(after);
+    // `.rename(` en un receptor cualquiera suele no ser de archivos (pandas `df.rename(columns=…)`):
+    // con destino desconocido no cuenta; con un literal o una raíz calculada, sí.
+    if (!t) { if (!/^\.rename\s*\($/.test(m[0])) unknown = true; continue; }
+    if (t.paths.some((p) => isCatastrophicOperand(word(p, { glob: /[*?[]/.test(p) }), st, ctx))) { out.push(hit('catastrophic-delete')); return; }
+    if (t.computed) unknown = true; // subruta de una raíz calculada: no verificable
   }
   if (unknown) out.push(hit('inline-code'));
 }
