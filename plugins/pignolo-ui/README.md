@@ -93,7 +93,7 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 | LAYOUT-11 | No text with scrollWidth > clientWidth + 1 without text-overflow and no horizontal scroll at 320 px (browser check B3) | document | sí | bloquea | no | WCAG 2.2 SC 1.4.10 (AA); floor | browser |
 | MOTION-07 | With prefers-reduced-motion: reduce and no scroll, all text of the first two viewports has opacity > 0 (browser check B4) | document | no | alto | no | pignolo-ui spec 2026-09-28 §5.4 (B4) | browser |
 | SEO-01 | robots.txt exists or answers 404 (everything allowed), does not block the public routes or the render assets of the checked pages, and references a sitemap | document | no | medio | sí | RFC 9309 Robots Exclusion Protocol, https://www.rfc-editor.org/rfc/rfc9309 (consulted 2026-09-29) | ui-check |
-| SEO-02 | No accidental noindex: meta robots/googlebot, Next.js metadata.robots or X-Robots-Tag; in the source of a public page alto, seen only on the development URL detalle | document | no | alto | no | Google Search Central, robots meta tag and X-Robots-Tag, https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag (consulted 2026-09-29) | ui-check |
+| SEO-02 | No accidental noindex: meta robots/googlebot, Next.js metadata.robots or X-Robots-Tag; in the source of a public page alto (medio in a Next.js page or layout that is not the root layout or the home), seen only on the development URL detalle | document | no | alto | no | Google Search Central, robots meta tag and X-Robots-Tag, https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag (consulted 2026-09-29) | ui-check |
 | SEO-04 | Exactly one link rel=canonical, with an absolute URL | document | no | medio | sí | RFC 6596 The Canonical Link Relation, https://www.rfc-editor.org/rfc/rfc6596 (consulted 2026-09-29) | ui-check |
 | SEO-05 | The sitemap referenced by robots.txt exists and is well-formed XML with the sitemaps.org shape | document | no | medio | sí | sitemaps.org protocol 0.9, https://www.sitemaps.org/protocol.html (consulted 2026-09-29) | ui-check |
 | SEO-06 | Title present, not empty and not repeated across the checked pages | document | no | medio | sí | HTML Living Standard, the title element, https://html.spec.whatwg.org/multipage/semantics.html#the-title-element (consulted 2026-09-29) | ui-check |
@@ -109,7 +109,7 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 
 **Detalle técnico.**
 
-    node <root>/scripts/files.mjs save    --project <raíz del repo> --batch <carpeta bajo .pignolo-ui/> --expected <expected.json>
+    node <root>/scripts/files.mjs save    --project <raíz del repo> --batch <carpeta bajo .pignolo-ui/runs/<run>/> --expected <expected.json>
     node <root>/scripts/files.mjs verify  --project <raíz del repo> --batch <carpeta>
     node <root>/scripts/files.mjs restore --project <raíz del repo> --batch <carpeta>
 
@@ -120,12 +120,13 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
       { "path": "src/tokens.css", "exists": false, "change": "tokens" }
     ]
 
-- `save` copia byte a byte los archivos que existen (en `<lote>/copies/`) y anota el estado inicial de git (`status --porcelain`). Se niega (exit 1, sin escribir nada) si una ruta sale del proyecto, está bajo `.git/` o `.pignolo-ui/`, se repite, pasa por un enlace simbólico o *junction* que sale del proyecto, difiere del disco en mayúsculas, tiene un `exists` que no coincide con el disco o tiene cambios sin commitear, o si el lote ya tiene registro.
-- `verify` compara el estado de git con el inicial. Exit 0 si todo lo cambiado estaba en la lista; exit 1 y la lista `unexpected` si no. Informa las líneas cambiadas y `overLineLimit` (más de 200: informativo).
+- `--batch` es una carpeta dentro de un run (`.pignolo-ui/runs/<run>/<lote>`): `report-check` busca los lotes solo dentro de su run. Otra ubicación es error de uso (exit 2).
+- `save` copia byte a byte los archivos que existen (en `<lote>/copies/`) y anota el estado inicial de git (`status --porcelain`) y las rutas que git ignora en ese momento (sin leer su contenido). Se niega (exit 1, sin escribir nada) si una ruta sale del proyecto, está bajo `.git/` o `.pignolo-ui/`, se repite, pasa por un enlace simbólico o *junction* que sale del proyecto, difiere del disco en mayúsculas, tiene un `exists` que no coincide con el disco o tiene cambios sin commitear, o si el lote ya tiene registro.
+- `verify` compara el estado de git con el inicial. Exit 0 si todo lo cambiado estaba en la lista; exit 1 y la lista `unexpected` si no. Informa las líneas cambiadas y `overLineLimit` (más de 200: informativo). Un archivo de la lista al que ahora se llega por un enlace que sale del proyecto aparece en `problems` (`not-in-project`) y también da exit 1.
 - `restore` exige `verify` previo. Restaura desde la copia los archivos que existían y borra los que se crearon, solo con prueba (sha256). Exit 0 si restauró todo; exit 1 si dejó algo (`BLOCKED`); exit 2 en error propio.
-- `BLOCKED` y por qué: `changed-after-the-batch` (alguien editó el archivo después), `not-verified` (apareció algo después de `verify`), `not-in-project` (un enlace lleva fuera del proyecto) y `unexpected-change-not-restorable`: un cambio inesperado sobre un archivo con seguimiento, o que ya estaba sucio antes del lote, no tiene copia y git nunca se escribe, así que se le pregunta al usuario.
-- Solo lee git (`status`, `rev-parse`, `diff --numstat`); nunca `checkout`, `reset`, `clean` ni `stash`.
-- Los archivos ignorados por git no aparecen en `git status`: un cambio en uno de ellos no se detecta.
+- `BLOCKED` y por qué: `changed-after-the-batch` (alguien editó el archivo después), `not-verified` (apareció algo después de `verify`), `not-in-project` (un enlace lleva fuera del proyecto), `unreadable` (la ruta sigue ahí pero no se puede leer), `existed-before-the-batch` (un archivo sin seguimiento que ya existía antes de `save`: estaba ignorado y dejó de estarlo, estaba en `HEAD` o se sacó del índice con `git rm --cached`; nunca se borra) y `unexpected-change-not-restorable`: un cambio inesperado sobre un archivo con seguimiento, o que ya estaba sucio antes del lote, no tiene copia y git nunca se escribe, así que se le pregunta al usuario.
+- Solo lee git (`status`, `rev-parse`, `diff --numstat`, `ls-files`, `ls-tree`); nunca `checkout`, `reset`, `clean` ni `stash`.
+- Los archivos ignorados por git no aparecen en `git status`: un cambio en uno de ellos no se detecta. Si durante el lote dejan de estar ignorados, `restore` no los borra (`existed-before-the-batch`).
 
 ## Informe verificado (`report-check`)
 
@@ -151,9 +152,9 @@ Lee `<run>/report.json` y escribe `<run>/report-check.json` (`reportSha256`, `ke
     }
 
 - Cuatro fuentes de evidencia: `ui-check` (entradas de `ui-check.json`, citado por sha256), `browser` (entradas de `browser.json`, que llega con el hito 3; hasta entonces la afirmación se retira con `browser.json not in the run`), `capture` (un PNG dentro del run, con su sha256) y `file` (un archivo editado, con su sha256).
-- Una afirmación con `rule`, `status` o `measure` se compara con la entrada citada: mismo id, mismo estado y, por cada clave de `measure` que trae, el mismo valor. `measure` no puede ser `{}`. Una entrada de una regla que no aplica (`measure.applicable: false`) no respalda nada.
+- Una afirmación con `rule`, `status` o `measure` tiene que citar `ui-check` o `browser`; con `capture` o `file` se retira (`rule claims need ui-check or browser evidence`). Se compara con la entrada citada: mismo id, mismo estado y, por cada clave de `measure` que trae, el mismo valor. `measure` no puede ser `{}`. Una entrada de una regla que no aplica (`measure.applicable: false`) no respalda nada.
 - `ui-check.json` vencido (algún archivo de sus `inputs` cambió después de correrlo) retira toda afirmación que lo cita.
-- `implemented` es obligatorio. Si el run tiene un lote verificado (`files.json`), se trata como implementado aunque diga `false`. Con `implemented: true` hace falta `implements`, y su `manifestSha256` tiene que coincidir con el que registra `DESIGN.md`.
+- `implemented` es obligatorio. Si el run tiene un lote (`files.json`, verificado o no), se trata como implementado aunque diga `false`. Con `implemented: true` hace falta `implements`, y su `manifestSha256` tiene que coincidir con el que registra `DESIGN.md`.
 - Códigos: `0` no se retiró nada y la cita del aprobado está bien; `1` se retiró al menos una afirmación o falta o no coincide la cita (el informe se muestra depurado y el flujo no puede decir "terminado"); `2` error propio, cuenta como "sin verificar".
 - "Retirada" quiere decir que la afirmación no se muestra como verdadera; el motivo queda en `retired` (por ejemplo `invalid claim`, `duplicate claim id`, `ui-check.json is stale: <archivo> changed after it ran`).
 
