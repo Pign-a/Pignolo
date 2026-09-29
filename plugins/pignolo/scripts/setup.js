@@ -8,7 +8,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { claudeDirs, userHomes, pignoloHome } = require('../lib/home');
-const { readConfig, writeConfig } = require('../lib/profiles');
+const { readConfig, writeConfig, resolveModel } = require('../lib/profiles');
+const { ROLES } = require('../lib/roles');
 
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'permissions.json');
 const PROBE_TIMEOUT = 8000;
@@ -256,6 +257,15 @@ function conflicts(args, env, cwd) {
   throw new Error('conflicts requiere --list, --check <archivo.json> o --record <archivo.json>');
 }
 
+// Modelo de cada rol según el perfil del usuario (§7): las skills lo pasan explícito en
+// cada despacho.
+function models(env) {
+  const cfg = readConfig({ env });
+  const out = {};
+  for (const role of Object.keys(ROLES)) out[role] = resolveModel(role, cfg);
+  return { profile: cfg.profile, models: out };
+}
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -281,7 +291,8 @@ function main(argv, env = process.env, cwd = process.cwd()) {
   if (cmd === 'permissions') return permissions(args, env, cwd);
   if (cmd === 'config') return config(args, env);
   if (cmd === 'conflicts') return conflicts(args, env, cwd);
-  throw new Error('uso: setup.js check | permissions --target user|project [--apply] | config --profile <p> [--presentation <x>] [--language <l>] | conflicts --list | --check <archivo.json> | --record <archivo.json>');
+  if (cmd === 'models') return models(env);
+  throw new Error('uso: setup.js check | permissions --target user|project [--apply] | config --profile <p> [--presentation <x>] [--language <l>] | models | conflicts --list | --check <archivo.json> | --record <archivo.json>');
 }
 
 if (require.main === module) {
