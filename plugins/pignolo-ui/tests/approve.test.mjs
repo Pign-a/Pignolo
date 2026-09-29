@@ -160,7 +160,7 @@ test('CLI: save, record (diff first, then --write) and verify', () => {
   const from = screens();
   const quote = path.join(makeTempDir(), 'quote.txt');
   fs.writeFileSync(quote, 'Me quedo con la B');
-  let out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', from, '--date', '2026-09-28']);
+  let out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', from, '--date', '2026-09-28', '--values-file', emptyValues()]);
   assert.equal(out.status, 0, out.stderr);
   assert.equal(out.json.path, 'design/approved/checkout');
   out = runScript('approve.mjs', ['verify', '--project', root, '--path', 'design/approved/checkout']);
@@ -175,9 +175,9 @@ test('CLI: save, record (diff first, then --write) and verify', () => {
   assert.equal(out.json.written, true);
   out = runScript('approve.mjs', ['verify', '--project', root, '--path', 'design/approved/checkout']);
   assert.equal(out.status, 0, out.stdout);
-  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', path.join(root, 'nope')]);
+  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', path.join(root, 'nope'), '--values-file', emptyValues()]);
   assert.equal(out.status, 2);
-  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens({ 'home.html': page('x', '<script></script>') })]);
+  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens({ 'home.html': page('x', '<script></script>') }), '--values-file', emptyValues()]);
   assert.equal(out.status, 1);
   assert.equal(out.json.ok, false);
 });
@@ -200,4 +200,37 @@ test('screens with event handlers, javascript: URLs, <base>, meta refresh or rem
     assert.ok(r.problems.some((p) => p.file === 'home.html' && p.problem === problem), `${problem}: ${html}`);
   }
   assert.deepEqual(checkScreens(screens({ 'home.html': page('x', '<a href="./detail.html">d</a>') })).problems, []);
+});
+
+function emptyValues() {
+  const file = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(file, '[]');
+  return file;
+}
+
+test('CLI save requires --values-file: the leak check cannot be skipped by omission or by a typo (spec 7.4)', () => {
+  const leaky = screens({ 'home.html': page('x', '<p>jdoe was here</p><a href="detail.html">d</a>') });
+  for (const extra of [[], ['--value-file', emptyValues()]]) {
+    const root = project();
+    const out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', leaky, ...extra]);
+    assert.equal(out.status, 2, JSON.stringify(extra));
+    assert.match(out.stderr, /--values-file/);
+    assert.doesNotMatch(out.stderr, /at .*\.mjs/);
+    assert.equal(fs.existsSync(path.join(root, 'design')), false);
+  }
+});
+
+test('CLI rejects unknown options per subcommand with exit 2 and a Spanish usage message', () => {
+  const root = project();
+  const cases = [
+    ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', emptyValues(), '--write'],
+    ['record', '--project', root, '--path', 'design/approved/checkout', '--quote-file', emptyValues(), '--flow', 'x'],
+    ['verify', '--project', root, '--path', 'design/approved/checkout', '--date', '2026-09-28'],
+  ];
+  for (const args of cases) {
+    const out = runScript('approve.mjs', args);
+    assert.equal(out.status, 2, args[0]);
+    assert.match(out.stderr, /opción desconocida/);
+    assert.match(out.stderr, /opciones válidas/);
+  }
 });

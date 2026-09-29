@@ -18,13 +18,24 @@ const PLUGIN_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..'
 
 class UsageError extends Error {}
 
+// Options each subcommand accepts: anything else is a usage error (a typo never goes unnoticed).
+const ALLOWED = {
+  validate: ['file', 'project', 'official', 'catalog'],
+  patch: ['file', 'ops', 'project', 'write', 'catalog'],
+  extract: ['project', 'out', 'date', 'catalog'],
+};
+
 function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   const opts = {};
+  const allowed = ALLOWED[cmd];
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
     const key = a.slice(2);
+    if (allowed && !allowed.includes(key)) {
+      throw new UsageError(`opción desconocida ${a} para ${cmd}; opciones válidas: ${allowed.map((k) => `--${k}`).join(', ')}`);
+    }
     const next = rest[i + 1];
     if (next === undefined || next.startsWith('--')) opts[key] = true;
     else { opts[key] = next; i++; }

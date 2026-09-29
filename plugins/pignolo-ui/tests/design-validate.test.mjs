@@ -224,3 +224,23 @@ test('CLI: exit 0 valid, 1 with findings, 2 unverified; --project detects dark C
   assert.equal(out.status, 2);
   assert.match(out.stderr, /no se pudo leer/);
 });
+
+test('CLI design-md: an unknown option is exit 2 with a Spanish usage message, per subcommand', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'DESIGN.md');
+  fs.writeFileSync(file, VALID);
+  const ops = path.join(dir, 'ops.json');
+  fs.writeFileSync(ops, '[]');
+  const cases = [
+    ['validate', '--file', file, '--fil', file],
+    ['validate', '--file', file, '--out', path.join(dir, 'x.md')],
+    ['patch', '--file', file, '--ops', ops, '--writ'],
+    ['extract', '--project', dir, '--out', path.join(dir, '.pignolo-ui', 'p.md'), '--file', file],
+  ];
+  for (const args of cases) {
+    const out = runScript('design-md.mjs', args);
+    assert.equal(out.status, 2, args.join(' '));
+    assert.match(out.stderr, /opción desconocida/);
+    assert.match(out.stderr, /opciones válidas/);
+  }
+});

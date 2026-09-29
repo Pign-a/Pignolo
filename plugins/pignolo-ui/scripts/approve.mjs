@@ -1,6 +1,6 @@
 // approve.mjs: save | record | verify of approved visual decisions (spec §3.3).
 //   save   --project <repo> --flow <slug> --from <folder with the chosen HTML> [--date YYYY-MM-DD]
-//          [--values-file <JSON list of user and machine values for the leak check>]
+//          --values-file <JSON list of user and machine values for the leak check; required, `[]` when there are none>
 //          0 saved, 1 refused (screens not self-contained or leaking data), 2 own error
 //   record --project <repo> --path design/approved/<flow> --quote-file <file> [--date] [--write]
 //          prints the diff of the "## Decisions" entry; writes DESIGN.md only with --write
@@ -17,12 +17,24 @@ import { readValuesFile } from '../lib/leak-check.mjs';
 
 class UsageError extends Error {}
 
+// Options each subcommand accepts: anything else is a usage error, so a typo such as
+// --value-file can never silently skip a check (spec §7.4).
+const ALLOWED = {
+  save: ['project', 'flow', 'from', 'date', 'values-file'],
+  record: ['project', 'path', 'quote-file', 'date', 'write'],
+  verify: ['project', 'path'],
+};
+
 function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   const opts = {};
+  const allowed = ALLOWED[cmd];
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
+    if (allowed && !allowed.includes(a.slice(2))) {
+      throw new UsageError(`opción desconocida ${a} para ${cmd}; opciones válidas: ${allowed.map((k) => `--${k}`).join(', ')}`);
+    }
     const next = rest[i + 1];
     if (next === undefined || next.startsWith('--')) opts[a.slice(2)] = true;
     else { opts[a.slice(2)] = next; i++; }
@@ -49,10 +61,10 @@ function isDir(p) {
 }
 
 function cmdSave(opts) {
-  need(opts, 'project', 'flow', 'from');
+  need(opts, 'project', 'flow', 'from', 'values-file');
   if (!isDir(opts.project)) throw new UsageError(`no existe el proyecto ${opts.project}`);
   if (!isDir(opts.from)) throw new UsageError(`no existe la carpeta de pantallas ${opts.from}`);
-  const leakValues = opts['values-file'] ? readValuesFile(opts['values-file']) : [];
+  const leakValues = readValuesFile(opts['values-file']);
   const r = saveApproved({ projectRoot: opts.project, flow: opts.flow, from: opts.from, date: opts.date || today(), leakValues });
   return { out: r, code: r.ok ? 0 : 1 };
 }
