@@ -1,0 +1,2 @@
+:root { --color-primary: #0b6bcb; }
+.card { box-shadow: var(--color-primary); }
