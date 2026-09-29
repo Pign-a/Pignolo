@@ -83,3 +83,24 @@ test('evals: 14 casos (8 lentes, 4 jueces, refuter, fixer) y la rama sonnet solo
   assert.match(fs.readFileSync(path.join(son, 'review-risk-defect', 'graders', 'model.md'), 'utf8'), /"model":"sonnet"/);
   assert.doesNotMatch(fs.readFileSync(path.join(son, 'fixer-confirmed-finding', 'prompt.md'), 'utf8'), /model (opus|sonnet)\)/);
 });
+
+test('evals: el grader de ubicación acepta un rango archivo:A-B que contiene la línea plantada y rechaza el que no', () => {
+  const defects = CASES.filter((c) => c.name.endsWith('-defect') && c.agent !== 'refuter');
+  assert.strictEqual(defects.length, 6);
+  for (const c of defects) {
+    const loc = /"location": "([^"]+):(\d+)"/.exec(c.samples.pass);
+    const [, file, line] = [null, loc[1], Number(loc[2])];
+    const withLocation = (location) => {
+      const text = c.samples.pass.replace(loc[0], `"location": "${location}"`);
+      return { trace: [brief(c.brief), event(text, 'toolu_p')].join('\n'), files: c.files };
+    };
+    const gs = [parseFrontmatter(fs.readFileSync(path.join(out, c.name, 'graders', 'finds-planted-defect.md'), 'utf8')).data];
+    assert.strictEqual(gs.length, 1, c.name);
+    assert.ok(grade(gs[0], withLocation(`${file}:${line}`)), `${c.name}: línea exacta`);
+    assert.ok(grade(gs[0], withLocation(`${file}:${line - 1}-${line + 2}`)), `${c.name}: rango que la contiene`);
+    assert.ok(grade(gs[0], withLocation(`${file}:1-${line}`)), `${c.name}: rango que termina en ella`);
+    assert.ok(!grade(gs[0], withLocation(`${file}:${line + 1}-${line + 4}`)), `${c.name}: rango que no la contiene`);
+    assert.ok(!grade(gs[0], withLocation(`${file}:1-${line - 1}`)), `${c.name}: rango que termina antes`);
+    assert.ok(!grade(gs[0], withLocation(`src/other.js:${line - 1}-${line + 2}`)), `${c.name}: otro archivo`);
+  }
+});
