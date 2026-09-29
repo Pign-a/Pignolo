@@ -121,7 +121,49 @@ function isFrozen(ledger, headSha, { headTree, workingTree } = {}) {
     && typeof headTree === 'string' && headTree !== '' && headTree === workingTree;
 }
 
+// Ledger de una ronda a partir de los informes de las lentes, sin reescribir los
+// hallazgos: el id pasa a <lente>-<id> (evita choques entre lentes) y el estado a 'open'.
+// Con `judgment` (salida de judgment()), `fix` entra 'open', `suspect` entra
+// 'suspect' y cada par de `conflicts` entra 'open' con `conflict` = id del otro.
+function buildLedger({ sha, level, profile, round = 0, reports = [], judgment: j = null }) {
+  const findings = [];
+  const add = (f, status, extra = {}) => {
+    if (!isObj(f)) throw new Error('un hallazgo no es un objeto');
+    findings.push({ ...f, id: `${f.lens}-${f.id}`, status, ...extra });
+  };
+  for (const r of reports) {
+    if (!Array.isArray(r)) throw new Error('cada informe debe ser una lista de hallazgos');
+    r.forEach((f) => add(f, 'open'));
+  }
+  if (j) {
+    (j.fix || []).forEach((f) => add(f, 'open'));
+    (j.suspect || []).forEach((f) => add(f, 'suspect'));
+    (j.conflicts || []).forEach(([a, b]) => {
+      add(a, 'open', { conflict: `${b.lens}-${b.id}` });
+      add(b, 'open', { conflict: `${a.lens}-${a.id}` });
+    });
+  }
+  const seen = new Set();
+  for (const f of findings) {
+    if (seen.has(f.id)) throw new Error(`id repetido: ${f.id}`);
+    seen.add(f.id);
+  }
+  return { v: 1, sha, level, profile, round, findings };
+}
+
+// Ronda siguiente tras el fixer (§12: re-revisión sobre ledger + delta): sha nuevo,
+// round + 1, los confirmados de `fixed` pasan a 'fixed' y se suman los hallazgos nuevos.
+// Con `judgment` (Judgment Day), lo nuevo entra emparejado como en buildLedger.
+function nextRound(ledger, { sha, fixed = [], reports = [], judgment: j = null }) {
+  if (ledger.round >= 2) throw new Error('máximo 2 rondas de fix (§12): lo abierto se escala');
+  const r = `r${ledger.round + 1}-`;
+  const fresh = buildLedger({ sha, level: ledger.level, profile: ledger.profile, reports, judgment: j }).findings
+    .map((f) => ({ ...f, id: `${r}${f.id}`, ...(f.conflict ? { conflict: `${r}${f.conflict}` } : {}) }));
+  const old = ledger.findings.map((f) => (fixed.includes(f.id) && f.status === 'confirmed' ? { ...f, status: 'fixed' } : f));
+  return { ...ledger, sha, round: ledger.round + 1, findings: [...old, ...fresh] };
+}
+
 module.exports = {
   SEVERITIES, STATUSES, LENSES,
-  validateFinding, validateLedger, reviewPlan, applyRepro, refutation, judgment, nextStep, isFrozen,
+  validateFinding, validateLedger, reviewPlan, applyRepro, refutation, judgment, nextStep, isFrozen, buildLedger, nextRound,
 };
