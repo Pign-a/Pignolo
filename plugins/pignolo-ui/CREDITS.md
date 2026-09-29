@@ -11,6 +11,14 @@ Fuentes de las ideas de pignolo-ui. No se copia código de terceros (los valores
 - CSS Transitions y Media Queries Level 5 (W3C): `transition`, `prefers-reduced-motion` (MOTION-03, MOTION-04).
 - Material Design 3 (Google): nombres semánticos de color; guía para el auditor, con enlace y sin citas textuales.
 - Fluent 2 (Microsoft): guía para el auditor, con enlace y sin citas textuales.
+- SEO estático (SEO-01, 02, 04, 05, 06, 09, 18), solo enlaces y sin texto copiado, todos consultados el 2026-09-29:
+  - RFC 9309, Robots Exclusion Protocol: https://www.rfc-editor.org/rfc/rfc9309
+  - RFC 6596, The Canonical Link Relation: https://www.rfc-editor.org/rfc/rfc6596
+  - sitemaps.org, protocolo 0.9: https://www.sitemaps.org/protocol.html
+  - HTML Living Standard, el elemento `title`: https://html.spec.whatwg.org/multipage/semantics.html#the-title-element
+  - The Open Graph protocol: https://ogp.me/
+  - Google Search Central, robots meta tag y X-Robots-Tag: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+  - Google Search Central, link best practices (enlaces rastreables): https://developers.google.com/search/docs/crawling-indexing/links-crawlable
 
 ## Third-party values (MIT)
 

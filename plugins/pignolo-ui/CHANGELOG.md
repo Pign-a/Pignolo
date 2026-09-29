@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — sin publicar
+
+- Hito 2b: SEO estático en `ui-check` (SEO-01, 02, 04, 05, 06, 09, 18; solo con `web.public: true` en el `DESIGN.md`, nunca bloquean; `--url` para revisar la URL de desarrollo local), `files.mjs` (`save | verify | restore`, §9) y `report-check.mjs` (§12).
+- Motivo de subir a 0.3.0: interfaces nuevas (`files`, `report-check`, `--url`, `report.json`) y 7 reglas más en el catálogo (`catalogVersion` 0.3.0).
+- Lo que cambia para el usuario: SEO-01 sin `robots.txt` pasa (todo permitido) y SEO-05 queda no verificado; `--url` acepta solo direcciones locales (`localhost`, `127.0.0.0/8`, `[::1]`); en `restore`, un cambio inesperado sobre un archivo con seguimiento (o que ya estaba sucio) queda `BLOCKED` y se le pregunta al usuario, en lugar de revertirse (decisión del autor D-2b-1, 2026-09-29); `restore` borra los archivos nuevos que se crearon durante el lote, también los que quedaron fuera de la lista, si nadie los tocó después de `verify`; los archivos ignorados por git no se vigilan.
+- Límite declarado con `--base`: la base no ve un sitemap en una ruta no estándar ni lo que generan `app/robots.ts` o `app/sitemap.ts`; esos hallazgos de SEO-01 y SEO-05 pueden salir `new` en lugar de `existing`. Como el SEO nunca bloquea, solo cambia el alcance informado, no el código de salida.
+
 ## 0.2.0 — sin publicar
 
 - Hito 2a: catálogo de reglas con checker y `ui-check` (`scripts/ui-check.mjs`): 25 reglas de accesibilidad, contraste, estilo, contenido, deriva y look de fábrica, más THEME-03 y 4 reglas de navegador para el hito 3; alcance nuevo/deuda con `--base`; rechazos traducidos del `DESIGN.md`; salida `ui-check.json` y códigos 0/1/2. El catálogo lleva ahora `checker`, `related`, `conflicts` y fuente con versión. Valores de terceros (MIT) en `catalog/` con su aviso en `CREDITS.md`.
