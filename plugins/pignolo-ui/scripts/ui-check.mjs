@@ -15,7 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCheck } from '../lib/ui-check.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
-import { BaseRefError } from '../lib/scope.mjs';
+import { BaseRefError, assertRef } from '../lib/scope.mjs';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
 
 class UsageError extends Error {}
@@ -98,7 +98,7 @@ function readFilesFrom(file) {
   return list;
 }
 
-export async function main(argv, { cwd = process.cwd() } = {}) {
+export async function main(argv, { cwd = process.cwd(), check = runCheck } = {}) {
   try {
     const opts = parseArgs(argv);
     const projectArg = opts.project !== undefined ? path.resolve(cwd, opts.project) : (gitToplevel(cwd) || cwd);
@@ -114,15 +114,12 @@ export async function main(argv, { cwd = process.cwd() } = {}) {
     const listed = [...opts.files, ...(opts['files-from'] !== undefined ? readFilesFrom(path.resolve(cwd, opts['files-from'])) : [])];
     const files = listed.map((f) => inputFile(project, path.resolve(cwd, f), '--files'));
     const dom = opts.dom.map((f) => inputFile(project, path.resolve(cwd, f), '--dom'));
-    let design = null;
-    if (opts.design !== undefined) {
-      design = canonical(path.resolve(cwd, opts.design));
-      if (!isFile(design)) throw new UsageError(`--design no existe o no es un archivo: ${opts.design}`);
-    }
+    const design = opts.design !== undefined ? inputFile(project, path.resolve(cwd, opts.design), '--design') : null;
     if (!files.length && !dom.length && !design) throw new UsageError('falta --files, --dom o --design: no hay nada que chequear');
 
     const base = opts.base ?? null;
-    const result = await runCheck({ project, files, design, base, dom });
+    if (base !== null) assertRef(project, base); // an invalid ref is a usage error, before any rule runs
+    const result = await check({ project, files, design, base, dom });
 
     ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
     fs.mkdirSync(runDir, { recursive: true });

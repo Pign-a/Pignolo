@@ -4,6 +4,7 @@
 //   Writes the version of each path at <ref> (git show, no shell) into a temporary folder.
 //   A path that does not exist at the base goes to `missing`. An invalid ref throws a
 //   BaseRefError whose message (Spanish) is what the CLI prints.
+// assertRef(project, ref) throws that BaseRefError; the CLI calls it before running any rule.
 // scopeRun({ project, base, relFiles, sourceFiles, designRel, evaluate }) -> base findings
 //   Materializes `sourceFiles` (the one source list of the scope ruling) at `base`, calls the
 //   runner's evaluate(dir, relFiles) (same rules, same catalog, project-relative paths) and
@@ -28,7 +29,7 @@ export class BaseRefError extends Error {
 
 const git = (project, args) => execFileSync('git', args, { cwd: project, timeout: GIT_TIMEOUT, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: MAX_BUFFER });
 
-function assertRef(project, ref) {
+export function assertRef(project, ref) {
   if (typeof ref !== 'string' || !ref || ref.startsWith('-')) throw new BaseRefError(ref);
   try {
     git(project, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);

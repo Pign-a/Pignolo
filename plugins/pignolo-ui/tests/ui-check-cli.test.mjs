@@ -26,12 +26,14 @@ const porcelain = (repo) => execFileSync('git', ['status', '--porcelain'], { cwd
 test('usage errors exit 2 with a Spanish message and no stack', async (t) => {
   const repo = makeRepo();
   const run = path.join(repo, '.pignolo-ui', 'runs', 'r1');
+  const outsideDesign = path.join(writeTree(makeTempDir(), { 'DESIGN.md': DESIGN }), 'DESIGN.md');
   const CASES = [
     ['no --run', ['--project', repo, '--files', 'src/a.css'], /falta --run/],
     ['--run outside .pignolo-ui', ['--project', repo, '--run', path.join(repo, 'out'), '--files', 'src/a.css'], /--run debe estar dentro de \.pignolo-ui/],
     ['unknown option', ['--project', repo, '--run', run, '--files', 'src/a.css', '--fast'], /opción desconocida --fast/],
     ['missing file', ['--project', repo, '--run', run, '--files', 'src/missing.css'], /no existe/],
     ['no --files, --dom or --design', ['--project', repo, '--run', run], /falta --files, --dom o --design/],
+    ['--design outside the project', ['--project', repo, '--run', run, '--design', outsideDesign], /--design está fuera del proyecto/],
   ];
   for (const [name, args, message] of CASES) {
     await t.test(name, () => {
@@ -114,4 +116,24 @@ test('an invalid --base prints its Spanish message without "error interno" or a 
   assert.match(r.stderr, /^ui-check: --base no es una ref válida: nope\n$/);
   assert.equal(r.stdout, '');
   assert.equal(fs.existsSync(path.join(run, 'ui-check.json')), false);
+});
+
+test('an invalid --base is a usage error checked before any rule runs', async () => {
+  const { main } = await import('../scripts/ui-check.mjs');
+  const repo = makeRepo();
+  const run = path.join(repo, '.pignolo-ui', 'runs', 'r1');
+  let checked = 0;
+  const check = async () => { checked++; return { entries: [], inputs: [], exitCode: 0 }; };
+  const errors = [];
+  const write = process.stderr.write;
+  process.stderr.write = (s) => { errors.push(String(s)); return true; };
+  let code;
+  try {
+    code = await main(['--project', repo, '--run', run, '--files', 'src/a.css', '--base', 'nope'], { cwd: repo, check });
+  } finally {
+    process.stderr.write = write;
+  }
+  assert.equal(code, 2);
+  assert.equal(checked, 0, 'runCheck must not run with an invalid --base');
+  assert.deepEqual(errors, ['ui-check: --base no es una ref válida: nope\n']);
 });
