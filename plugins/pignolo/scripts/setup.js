@@ -5,8 +5,9 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { claudeDirs, userHomes } = require('../lib/home');
+const { claudeDirs, userHomes, pignoloHome } = require('../lib/home');
 const { readConfig, writeConfig } = require('../lib/profiles');
 
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'permissions.json');
@@ -177,6 +178,84 @@ function config(args, env) {
   return writeConfig({ env }, partial);
 }
 
+const RESOLUTIONS = ['human', 'pignolo', 'custom'];
+
+function sha(text) {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+const isText = (v) => typeof v === 'string' && v.length > 0;
+
+function normalizeCandidate(e, i) {
+  const bad = (why) => new Error(`entrada ${i + 1} inválida: ${why}`);
+  if (!e || typeof e !== 'object' || Array.isArray(e)) throw bad('no es un objeto');
+  if (!e.source || !isText(e.source.path) || !isText(e.source.quote)) throw bad('source.path y source.quote');
+  if (!e.pignolo || !Number.isInteger(e.pignolo.rule) || e.pignolo.rule < 1 || e.pignolo.rule > 6 || !isText(e.pignolo.quote)) {
+    throw bad('pignolo.rule (1 a 6) y pignolo.quote');
+  }
+  if (!RESOLUTIONS.includes(e.resolution)) throw bad('resolution debe ser human, pignolo o custom');
+  if (e.note !== undefined && typeof e.note !== 'string') throw bad('note');
+  if (e.project !== undefined && typeof e.project !== 'string') throw bad('project');
+  const out = {
+    source: { path: e.source.path, quote: e.source.quote },
+    pignolo: { rule: e.pignolo.rule, quote: e.pignolo.quote },
+    resolution: e.resolution,
+  };
+  if (e.note !== undefined) out.note = e.note;
+  if (e.project !== undefined) out.project = e.project;
+  out.sha256 = { source: sha(e.source.quote), pignolo: sha(e.pignolo.quote) };
+  return out;
+}
+
+function readCandidates(file) {
+  if (!file) throw new Error('falta el archivo de entradas');
+  let data;
+  try { data = JSON.parse(readText(file)); } catch (_) { throw new Error(`archivo de entradas ilegible: ${file}`); }
+  if (!Array.isArray(data)) throw new Error('el archivo de entradas debe ser una lista');
+  return data.map(normalizeCandidate);
+}
+
+function loadConflicts(env) {
+  const file = path.join(pignoloHome(env), 'rule-conflicts.json');
+  if (!fs.existsSync(file)) return { file, entries: [] };
+  let data;
+  try { data = JSON.parse(readText(file)); } catch (_) { throw new Error(`rule-conflicts.json inválido: ${file}`); }
+  if (!data || !Array.isArray(data.entries)) throw new Error(`rule-conflicts.json inválido: ${file}`);
+  return { file, entries: data.entries };
+}
+
+// El mismo conflicto: mismo proyecto (o ninguno), misma fuente y las mismas citas.
+const sameHashes = (a, b) => a.sha256?.source === b.sha256.source && a.sha256?.pignolo === b.sha256.pignolo
+  && (a.project ?? null) === (b.project ?? null) && a.source?.path === b.source.path;
+
+// Resoluciones de conflictos de reglas (~/.pignolo/rule-conflicts.json). Si cambia una cita, vuelve a preguntarse.
+function conflicts(args, env, cwd) {
+  const resolve = (f) => path.resolve(cwd, f);
+  if (args.list) return loadConflicts(env);
+  if (args.check) {
+    const saved = loadConflicts(env);
+    const pending = readCandidates(resolve(args.check)).filter((c) => !saved.entries.some((e) => sameHashes(e, c)));
+    return { file: saved.file, pending };
+  }
+  if (args.record) {
+    const incoming = readCandidates(resolve(args.record));
+    const saved = loadConflicts(env);
+    const recorded = new Date().toISOString();
+    let replaced = 0;
+    let entries = saved.entries;
+    for (const c of incoming) {
+      const before = entries.length;
+      entries = entries.filter((e) => !sameHashes(e, c));
+      replaced += before - entries.length;
+      entries.push({ ...c, recorded });
+    }
+    fs.mkdirSync(path.dirname(saved.file), { recursive: true });
+    fs.writeFileSync(saved.file, JSON.stringify({ v: 1, entries }, null, 2) + '\n');
+    return { file: saved.file, recorded: incoming.length, replaced, total: entries.length };
+  }
+  throw new Error('conflicts requiere --list, --check <archivo.json> o --record <archivo.json>');
+}
+
 function parseArgs(argv) {
   const args = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -184,6 +263,7 @@ function parseArgs(argv) {
     if (!a.startsWith('--')) throw new Error(`argumento inesperado: ${a}`);
     const key = a.slice(2);
     if (key === 'apply') args.apply = true;
+    else if (key === 'list') args.list = true;
     else {
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('--')) throw new Error(`falta el valor de ${a}`);
@@ -200,7 +280,8 @@ function main(argv, env = process.env, cwd = process.cwd()) {
   if (cmd === 'check') return check(env, cwd);
   if (cmd === 'permissions') return permissions(args, env, cwd);
   if (cmd === 'config') return config(args, env);
-  throw new Error('uso: setup.js check | permissions --target user|project [--apply] | config --profile <p> [--presentation <x>] [--language <l>]');
+  if (cmd === 'conflicts') return conflicts(args, env, cwd);
+  throw new Error('uso: setup.js check | permissions --target user|project [--apply] | config --profile <p> [--presentation <x>] [--language <l>] | conflicts --list | --check <archivo.json> | --record <archivo.json>');
 }
 
 if (require.main === module) {

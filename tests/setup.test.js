@@ -289,3 +289,87 @@ test('check: el probe de merge-tree no corre los hooks globales del usuario', ()
   assert.equal(r.json.git.mergeTree, true);
   assert.equal(fs.existsSync(marker), false);
 });
+
+// Conflictos de reglas: ~/.pignolo/rule-conflicts.json (spec §3.1 / §14).
+const conflictEntry = (n, extra = {}) => ({
+  source: { path: `~/.claude/CLAUDE.md`, quote: `regla de ejemplo ${n}` },
+  pignolo: { rule: n, quote: `regla de pignolo ${n}` },
+  resolution: 'human',
+  ...extra,
+});
+
+function conflictsFile(sb) {
+  return path.join(sb.home, '.pignolo', 'rule-conflicts.json');
+}
+
+function candidates(sb, entries, name = 'cand.json') {
+  const f = path.join(sb.home, name);
+  fs.writeFileSync(f, JSON.stringify(entries));
+  return f;
+}
+
+test('conflicts --record: guarda con hashes; repetir con otra resolución reemplaza sin duplicar', () => {
+  const sb = sandbox();
+  assert.deepEqual(run(['conflicts', '--list'], sb).json.entries, []);
+  let r = run(['conflicts', '--record', candidates(sb, [conflictEntry(1), conflictEntry(2, { note: 'ñandú' })])], sb);
+  assert.equal(r.status, 0, r.stderr);
+  const saved = JSON.parse(fs.readFileSync(conflictsFile(sb), 'utf8'));
+  assert.equal(saved.entries.length, 2);
+  for (const e of saved.entries) {
+    assert.match(e.sha256.source, /^[0-9a-f]{64}$/);
+    assert.match(e.sha256.pignolo, /^[0-9a-f]{64}$/);
+    assert.ok(!Number.isNaN(Date.parse(e.recorded)));
+  }
+  r = run(['conflicts', '--record', candidates(sb, [conflictEntry(1, { resolution: 'pignolo' })])], sb);
+  assert.equal(r.status, 0, r.stderr);
+  const list = run(['conflicts', '--list'], sb).json;
+  assert.equal(list.file, conflictsFile(sb));
+  assert.equal(list.entries.length, 2);
+  assert.equal(list.entries.find((e) => e.pignolo.rule === 1).resolution, 'pignolo');
+});
+
+test('conflicts --check: una cita cambiada en un carácter queda pendiente; las mismas, no', () => {
+  const sb = sandbox();
+  run(['conflicts', '--record', candidates(sb, [conflictEntry(1), conflictEntry(2)])], sb);
+  const same = run(['conflicts', '--check', candidates(sb, [conflictEntry(1), conflictEntry(2)])], sb);
+  assert.equal(same.status, 0, same.stderr);
+  assert.deepEqual(same.json.pending, []);
+  const changed = conflictEntry(2);
+  changed.source.quote = changed.source.quote.replace('ejemplo', 'ejemplA');
+  const r = run(['conflicts', '--check', candidates(sb, [conflictEntry(1), changed])], sb);
+  assert.equal(r.json.pending.length, 1);
+  assert.equal(r.json.pending[0].source.quote, changed.source.quote);
+});
+
+test('conflicts --check: la resolución de un proyecto (o de otra fuente) no silencia otra (M7)', () => {
+  const sb = sandbox();
+  run(['conflicts', '--record', candidates(sb, [conflictEntry(1, { project: '/proyectos/uno' })])], sb);
+  const other = run(['conflicts', '--check', candidates(sb, [conflictEntry(1, { project: '/proyectos/dos' })])], sb);
+  assert.equal(other.json.pending.length, 1);
+  const moved = conflictEntry(1, { project: '/proyectos/uno' });
+  moved.source.path = 'otro/CLAUDE.md';
+  assert.equal(run(['conflicts', '--check', candidates(sb, [moved])], sb).json.pending.length, 1);
+  assert.deepEqual(run(['conflicts', '--check', candidates(sb, [conflictEntry(1, { project: '/proyectos/uno' })])], sb).json.pending, []);
+});
+
+test('conflicts --record: una entrada inválida sale con exit 1 y deja el archivo intacto', () => {
+  const bad = [
+    ['rule 7', conflictEntry(1, { pignolo: { rule: 7, quote: 'x' } })],
+    ['sin resolution', (() => { const e = conflictEntry(1); delete e.resolution; return e; })()],
+  ];
+  for (const [name, entry] of bad) {
+    const sb = sandbox();
+    run(['conflicts', '--record', candidates(sb, [conflictEntry(3)])], sb);
+    const before = fs.readFileSync(conflictsFile(sb));
+    const r = run(['conflicts', '--record', candidates(sb, [conflictEntry(4), entry], 'bad.json')], sb);
+    assert.equal(r.status, 1, name);
+    assert.ok(Buffer.compare(before, fs.readFileSync(conflictsFile(sb))) === 0, name);
+  }
+});
+
+test('SKILL de setup: nombra conflicts --check, --record y el archivo de conflictos', () => {
+  const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'setup', 'SKILL.md'), 'utf8');
+  assert.match(text, /conflicts --check/);
+  assert.match(text, /conflicts --record/);
+  assert.match(text, /rule-conflicts\.json/);
+});

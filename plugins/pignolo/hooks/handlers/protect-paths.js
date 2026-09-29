@@ -6,12 +6,15 @@
 //   la guardia en las sesiones siguientes). Cubre bypassPermissions, donde la
 //   protección nativa no rige. `~` sale del HOME/USERPROFILE del entorno del hook.
 // - Flags del interruptor (§3.3): apagable solo con PIGNOLO_DISABLED.
-const { readState, flagPaths } = require('../../lib/disabled');
+const path = require('node:path');
+const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { resolveClean, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
 
 const BLOCKED = 'pignolo bloqueó la escritura: los flags del interruptor solo los escribe /pignolo:off y /pignolo:on. Alternativa: pedile al humano que escriba el comando.\n';
 const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins. Alternativa: usá comandos git; lo que haya que cambiar ahí lo hace el humano.\n';
+
+const RUN_BLOCKED = 'pignolo bloqueó la escritura: .pignolo/run.json lo escriben solo las skills de pignolo desde la conversación principal. Alternativa: devolvé BLOCKED y nombrá lo que haga falta cambiar.\n';
 
 exports.run = (input, ctx = {}) => {
   const env = ctx.env || process.env;
@@ -25,6 +28,12 @@ exports.run = (input, ctx = {}) => {
   const abs = resolveClean(target, cwd, home);
   if (isProtectedWrite(abs, { home, pignoloHome: pignoloHome(env), claudeDirs: claudeDirs(env) })) return { exit: 2, stderr: PROTECTED };
   if (readState({ env, cwd }).guardOff) return { exit: 0 };
+
+  // run.json lo escriben solo las skills desde la conversación principal: un subagente
+  // (payload con agent_id) no.
+  if (input.agent_id && abs === resolveClean(path.join(mainRoot(cwd), '.pignolo', 'run.json'), cwd)) {
+    return { exit: 2, stderr: RUN_BLOCKED };
+  }
 
   const flags = flagPaths({ env, cwd });
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {

@@ -157,3 +157,26 @@ test('protect-paths allows normal files and rejects a non-string path', () => {
   assert.strictEqual(protect.run({ tool_name: 'Write', tool_input: { file_path: 'src/a.js' }, cwd: makeTempDir() }, { env }).exit, 0);
   assert.strictEqual(protect.run({ tool_name: 'Write', tool_input: { file_path: ['x'] }, cwd: makeTempDir() }, { env }).exit, 2);
 });
+
+// M3: solo el hilo principal opera el flujo; un subagente (payload con agent_id) no invoca
+// scripts/run.js de pignolo. Sin fricción fuera de eso.
+test('a subagent cannot run pignolo scripts/run.js; the main thread and other scripts can', async (t) => {
+  const { PLUGIN_ROOT } = require('./helpers');
+  const repo = makeRepo();
+  const runJs = path.join(PLUGIN_ROOT, 'scripts', 'run.js').split(path.sep).join('/');
+  const call = (command, agentId) => guard.run({ ...bash(command, repo), ...(agentId ? { agent_id: agentId } : {}) }, { snapshot: () => null });
+  for (const [name, command, agentId, exit] of [
+    ['subagent run.js end', `node "${runJs}" end`, 'a1', 2],
+    ['subagent run.js task --test-authorization via CLAUDE_PLUGIN_ROOT', 'node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" task --id t1 --test-authorization', 'a1', 2],
+    ['subagent start --replace from the plugin dir', `cd "${PLUGIN_ROOT.split(path.sep).join('/')}" && node scripts/run.js start --flow daily --replace`, 'a1', 2],
+    ['main thread run.js end', `node "${runJs}" end`, undefined, 0],
+    ['subagent gate.js', `node "${PLUGIN_ROOT.split(path.sep).join('/')}/scripts/gate.js" --level on-done --task t1`, 'a1', 0],
+    ['subagent project scripts/run.js', 'node scripts/run.js', 'a1', 0],
+  ]) {
+    await t.test(name, () => {
+      const r = call(command, agentId);
+      assert.strictEqual(r.exit, exit, r.stderr);
+      if (exit === 2) assert.match(r.stderr, /Alternativa:/);
+    });
+  }
+});
