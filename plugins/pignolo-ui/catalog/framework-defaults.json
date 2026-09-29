@@ -1,0 +1,8 @@
+[
+  { "framework": "Bootstrap", "version": "5.3", "source": "twbs/bootstrap v5.3.8, scss/_variables.scss: $blue #0d6efd (used by $primary) and $border-radius .375rem (MIT, see CREDITS.md)", "primary": "#0d6efd", "radius": "0.375rem" },
+  { "framework": "Tailwind CSS", "version": "3.4", "source": "tailwindlabs/tailwindcss v3.4.17, src/public/colors.js: blue 500 #3b82f6 (MIT, see CREDITS.md)", "primary": "#3b82f6" },
+  { "framework": "Tailwind CSS", "version": "4.x", "source": "tailwindlabs/tailwindcss v4.3.3, packages/tailwindcss/theme.css: --color-blue-500 (MIT, see CREDITS.md)", "primary": "oklch(62.3% 0.214 259.815)" },
+  { "framework": "shadcn/ui (Tailwind v3)", "version": "4.21.0", "source": "shadcn-ui/ui commit 08ab84f (shadcn@4.21.0), apps/v4/registry/_legacy-base-colors.ts: radius 0.5rem in the zinc and slate base colors (MIT, see CREDITS.md)", "radius": "0.5rem" },
+  { "framework": "shadcn/ui (Tailwind v4)", "version": "4.21.0", "source": "shadcn-ui/ui commit 08ab84f (shadcn@4.21.0), apps/v4/content/docs/(root)/theming.mdx: --radius 0.625rem (MIT, see CREDITS.md)", "radius": "0.625rem" },
+  { "framework": "Vite template", "version": "7.0.0", "source": "vitejs/vite v7.0.0, packages/create-vite/template-react/src/index.css: a color #646cff; the template of v8.3.1 no longer uses it (MIT, see CREDITS.md)", "primary": "#646cff" }
+]
