@@ -21,7 +21,7 @@ pignolo-ui es un plugin de Claude Code **opcional**, hermano de pignolo y en el 
 - **Cuatro piezas la sostienen:** `DESIGN.md` validado, script (`ui-check`), auditor con evidencia (`ui-auditor` + `report-check`) y memoria de rechazos. Criterio de diseño: ante la duda, lo más chico que sostenga la promesa — porque el autor pidió simplicidad.
 - **Técnico por detrás, llano por delante** (A-04): ids, umbrales y tokens viven en archivos y JSON. El usuario lee frases llanas con el id entre paréntesis al final.
 - **Sin dependencias npm, sin hooks, sin binarios y sin nada remoto en tiempo de ejecución** — porque es donde más fallan las skills de UI relevadas (R9, R17).
-- **Requisitos:** Node ≥ 20 (A-12) y Claude Code ≥ 2.1.271 — porque `omitClaudeMd` y `options` de `userConfig` existen desde esa versión, y en versiones anteriores `omitClaudeMd` se ignora sin aviso [V]. Al arrancar, cada comando corre `claude --version`. Si la versión es menor o no se puede leer, avisa y usa el camino secuencial (§7.5), porque sin `omitClaudeMd` el aislamiento de `ui-option` no rige.
+- **Requisitos:** Node ≥ 22 (A-12) y Claude Code ≥ 2.1.271 — porque `omitClaudeMd` y `options` de `userConfig` existen desde esa versión, y en versiones anteriores `omitClaudeMd` se ignora sin aviso [V]. Al arrancar, cada comando corre `claude --version`. Si la versión es menor o no se puede leer, avisa y usa el camino secuencial (§7.5), porque sin `omitClaudeMd` el aislamiento de `ui-option` no rige.
 
 ### 0.1 Criterio de éxito de la v1
 
@@ -50,7 +50,7 @@ Las de ronda 1 y ronda 2 se tomaron tras un debate con un agente opus por opció
 | A-09 | Validador de `DESIGN.md` propio y sin dependencias. El oficial corre solo si ya está instalado. Test de desarrollo contra la versión 0.4.0. |
 | A-10 | Tono por registro: `product` → contención; `brand` → identidad, con la audacia en un solo lugar. Las normas del autor mandan sobre la base. |
 | A-11 | El núcleo permite **exactamente** `pignolo-ui:ui-option` y `pignolo-ui:ui-auditor`. Con el núcleo activo, implementa su `implementer`, y el hilo principal registra en `decisions/` la elección del usuario tomada de su turno. **[spike]:** si el hook no distingue el origen del agente o la elección no se puede registrar desde un canal humano, se usa el camino secuencial y se declara. |
-| A-12 | Transporte al navegador: **`--remote-debugging-pipe`**, sin WebSocket ni puerto. Piso **Node ≥ 20**, el mismo que el núcleo. |
+| A-12 | Transporte al navegador: **`--remote-debugging-pipe`**, sin WebSocket ni puerto. Piso **Node ≥ 22** para pignolo-ui (el autor decidió no probar Node 20, sin soporte desde 2026-04-30; además `node --test` con globs lo exige). |
 | A-13 | **axe-core fuera de v1**: solo reglas propias. El spike mide axe en apps reales; si aporta, axe fijado en v1.1, que vuelve a ser decisión del autor (dependencia y licencia MPL-2.0). |
 | A-14 | Artifacts: solo **mockups y style tiles con datos de ejemplo**, y solo si el autor lo habilita **por proyecto**. Nunca capturas ni código. El camino principal es HTML local. **Modificada por A-20.** |
 | A-15 | **v1 mínima con el SEO estático adentro**; `noindex` en la URL de desarrollo como `detalle`. `ui-option` en **sonnet**, y en opus solo si el spike muestra que sonnet no pasa los chequeos de forma o de diversidad. 3 opciones, con estimación antes de cada ronda. |
@@ -567,7 +567,7 @@ model: opus
 
 ### 11.1 Driver CDP por pipe (`scripts/browser.mjs`)
 
-Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0` por los fd 3 y 4, sin WebSocket ni puerto. Un spike local (`local/pignolo-ui-2026-09-28/spikes/pipe-spike.mjs`) ya lo probó en Windows con Node 24, Edge y Chrome headless. **[spike]:** falta probarlo con Node 20. Lo corre solo el hilo principal.
+Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0` por los fd 3 y 4, sin WebSocket ni puerto. Un spike local (`local/pignolo-ui-2026-09-28/spikes/pipe-spike.mjs`) ya lo probó en Windows con Node 24, Edge y Chrome headless. Piso Node ≥ 22 (A-12). Lo corre solo el hilo principal.
 
 - **Perfil temporal propio siempre** (`--user-data-dir` absoluto, `--headless=new`). Nunca se engancha al navegador del usuario ni trae ventanas al frente — porque el perfil del usuario no es accesible y robar el foco molesta.
 - **Descubrimiento del navegador:**
@@ -747,7 +747,7 @@ Lo que se publique del spike sale sin datos de proyectos privados: solo cifras a
 |---|---|---|
 | **Nombre del agente en el hook** (A-11): (a) otro plugin llamado `pignolo-ui` desde otro marketplace; (b) versión mínima 2.1.271 comprobada; (c) nombre corto `ui-option` en el Agent tool | Allowlist exacta sobre `tool_input.subagent_type` | Sin allowlist; camino secuencial con el núcleo activo, declarado |
 | **Registro de la elección desde un canal humano** (A-11) | La elección cuenta para `visible-paths` | Pregunta normal del núcleo; camino secuencial |
-| **Pipe en Node 20 real** con Chrome y Edge, **con Edge ya abierto** con el perfil por defecto; también Node 24; limpieza | Transporte fijo (A-12) | Si falla solo en Node 20: la capa de navegador dice "no verificado: Node 20" y la pregunta del piso vuelve al autor |
+| **Pipe** con Chrome y Edge, **con Edge ya abierto** con el perfil por defecto, en Node 22 y 24; limpieza | Transporte fijo (A-12) | Si falla: la capa de navegador dice "no verificado" y la decisión vuelve al autor |
 | **Aislamiento de `ui-option`** con un archivo trampa | Ninguna opción contiene la frase y no hay lecturas | Bug de aislamiento: no hay release hasta corregirlo |
 | **`Write`/`Read` de subagentes fuera del proyecto** (los permisos se piden en la sesión principal [V]) | Carpeta del run en tmp | Respaldos 2 o 3 de §3.2 |
 | **Sonnet vs opus en `ui-option`**, ≥ 5 corridas, con `resolvedModel` leído del transcript | Sonnet (A-15) | Opus solo para `ui-option` (A-15) |
