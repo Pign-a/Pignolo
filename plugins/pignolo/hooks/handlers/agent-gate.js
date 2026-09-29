@@ -6,7 +6,7 @@
 // PIGNOLO_DISABLED=1 o el canario. /pignolo:off apaga la allowlist, no los respaldos.
 // Los respaldos se reparten lo que queda del plazo del launcher (ctx.deadline): si no
 // alcanza, se saltean con aviso y el despacho permitido pasa igual (spec §8.3).
-const { projectState, runState } = require('../../lib/project');
+const { projectState, readRun } = require('../../lib/project');
 const { readState } = require('../../lib/disabled');
 const { snapshotWip, backupRefs } = require('../../lib/git-backup');
 
@@ -26,8 +26,8 @@ exports.run = (input, ctx = {}) => {
   const deadline = typeof ctx.deadline === 'number' ? ctx.deadline : Date.now() + LAUNCHER_DEADLINE_MS;
   const left = () => deadline - MARGIN_MS - Date.now();
 
-  const { root, active } = projectState({ cwd, env });
-  const run = active ? runState(root) : { running: false };
+  const { root, main, active } = projectState({ cwd, env });
+  const run = active ? readRun(main) : { running: false };
   if (run.running && !allowed(type)) {
     const shown = String(type);
     // Explore y Plan son de lectura: su equivalente es pignolo:explorer. Para el resto

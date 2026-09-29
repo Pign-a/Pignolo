@@ -9,6 +9,8 @@ const gate = require('../plugins/pignolo/hooks/handlers/agent-gate');
 
 // Decisión del autor (2026-09-29): la allowlist rige solo mientras corre un flujo de
 // pignolo (.pignolo/run.json con `expires` en el futuro). activeRepo simula un flujo en curso.
+// run.json v1 valido (lib/project.js validateRun); expiresInMs negativo = vencido.
+const runJson = (expiresInMs) => JSON.stringify({ v: 1, flow: "daily", started: new Date().toISOString(), expires: new Date(Date.now() + expiresInMs).toISOString() });
 const writeRun = (repo, content) => fs.writeFileSync(path.join(repo, '.pignolo', 'run.json'), content);
 function configuredRepo() {
   const repo = makeRepo();
@@ -18,7 +20,7 @@ function configuredRepo() {
 }
 function activeRepo() {
   const repo = configuredRepo();
-  writeRun(repo, JSON.stringify({ expires: new Date(Date.now() + 3600e3).toISOString() }));
+  writeRun(repo, runJson(3600e3));
   return repo;
 }
 const call = (repo, subagent, extra = {}) => {
@@ -41,7 +43,7 @@ test('a configured project with no running flow lets built-in agents through', (
 
 test('an expired run marker no longer enforces the allowlist', () => {
   const repo2 = configuredRepo();
-  writeRun(repo2, JSON.stringify({ expires: new Date(Date.now() - 60e3).toISOString() }));
+  writeRun(repo2, runJson(-60e3));
   assert.strictEqual(call(repo2, 'general-purpose').r.exit, 0);
 });
 
@@ -142,7 +144,7 @@ test('a cwd in a subdirectory of an active project denies Explore, also without 
   const plain = makeTempDir('pignolo-plain-');
   fs.mkdirSync(path.join(plain, '.pignolo'));
   fs.writeFileSync(path.join(plain, '.pignolo', 'project.md'), '# proyecto\n');
-  writeRun(plain, JSON.stringify({ expires: new Date(Date.now() + 3600e3).toISOString() }));
+  writeRun(plain, runJson(3600e3));
   fs.mkdirSync(path.join(plain, 'sub'));
   const savedPath = process.env.PATH;
   try {
@@ -210,4 +212,22 @@ test('launcher: Explore in a repo with 4000 tags and no project.md passes (exit 
   const ms = Date.now() - t0;
   assert.strictEqual(res.status, 0, `${res.stderr} (${ms} ms)`);
   assert.ok(ms < 3000, `${ms} ms`);
+});
+
+test("a flow marker in the main checkout rules a dispatch made from a linked worktree", () => {
+  const main = activeRepo();
+  const wt = path.join(makeTempDir("pignolo-wt-"), "wt");
+  git(["worktree", "add", "-q", "-b", "rama", wt], main);
+  const r = call(wt, "Explore").r;
+  assert.strictEqual(r.exit, 2);
+  assert.match(r.stderr, /Alternativa:/);
+  assert.strictEqual(call(wt, "pignolo:implementer").r.exit, 0);
+});
+
+test("/pignolo:off in the main checkout also lifts the allowlist from a linked worktree", () => {
+  const main = activeRepo();
+  fs.writeFileSync(path.join(main, ".pignolo", ".disabled"), "x");
+  const wt = path.join(makeTempDir("pignolo-wt-"), "wt");
+  git(["worktree", "add", "-q", "-b", "rama", wt], main);
+  assert.strictEqual(call(wt, "Explore").r.exit, 0);
 });
