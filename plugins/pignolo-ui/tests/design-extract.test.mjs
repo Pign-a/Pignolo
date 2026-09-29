@@ -76,6 +76,19 @@ test('shadcn: bare HSL becomes hex; foreground, primary-foreground and card foll
   assert.deepEqual(v.findings.filter((f) => f.severity === 'alto' && /^colors./.test(f.path)), []);
 });
 
+test('shadcn without --card: no surface is invented and the validator reports it missing', () => {
+  const r = extractDesign(fixture('shadcn-no-card'), { date: DATE });
+  assert.equal(r.mode, 'config');
+  assert.deepEqual(r.renamed, [{ from: 'foreground', to: 'on-surface' }, { from: 'primary-foreground', to: 'on-primary' }]);
+  const data = parseYaml(splitFrontmatter(r.text).yaml).value;
+  assert.ok(data.colors.background);
+  assert.equal(data.colors.surface, undefined);
+  const hits = validateDesign(r.text, { catalog }).findings.filter((f) => f.id === 'DESIGN-CONTENT' && f.path === 'colors.surface');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].severity, 'alto');
+  assert.equal(hits[0].message, 'semantic color surface is missing');
+});
+
 test('without any config: most frequent colors, font and radii, all marked extracted', () => {
   const { r, data } = extract('frequency');
   assert.equal(r.mode, 'frequency');
