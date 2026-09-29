@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { makeTempDir, writeTree, FIXTURES } from './helpers.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
 import { fail } from '../lib/rules/api.mjs';
@@ -121,5 +122,16 @@ test('no DESIGN.md rejections: entries pass through untouched', async () => {
   assert.deepEqual(r.entries.filter((e) => /^R-/.test(e.id)), []);
 });
 
-// Needs Task 10 (scope by base): a rejected pattern already in the base is debt, alto, exit 0.
-test('rejection in the base is debt (alto, exit 0)', { todo: 'needs Task 10 (scope); completed in Task 12' }, () => {});
+// A rejected rule already failing in the base is debt: alto, exit 0 (scope from lib/scope.mjs).
+test('rejection in the base is debt (alto, exit 0)', async () => {
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': DESIGN, 'card.css': read('card.css') });
+  const git = (...args) => execFileSync('git', args, { cwd: project, stdio: 'pipe', timeout: 10000 });
+  git('init', '-q'); git('config', 'user.email', 't@example.com'); git('config', 'user.name', 'T'); git('config', 'core.autocrlf', 'false');
+  git('add', '.'); git('commit', '-q', '-m', 'base');
+  const r = await runCheck({ project, files: ['card.css'], design: path.join(project, 'DESIGN.md'), base: 'HEAD', dom: [], inject: { rules: [motion04] } });
+  const [e] = of(r.entries, 'MOTION-04').filter((x) => x.status === 'fail');
+  assert.equal(e.scope, 'debt');
+  assert.equal(e.severity, 'alto');
+  assert.equal(e.reason, 'rejected R-001');
+  assert.equal(r.exitCode, 0);
+});

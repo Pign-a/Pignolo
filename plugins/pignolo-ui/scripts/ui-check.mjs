@@ -15,6 +15,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { runCheck } from '../lib/ui-check.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
+import { BaseRefError } from '../lib/scope.mjs';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
 
 class UsageError extends Error {}
@@ -143,7 +144,7 @@ export async function main(argv, { cwd = process.cwd() } = {}) {
     }
     return result.exitCode;
   } catch (e) {
-    process.stderr.write(`ui-check: ${e instanceof UsageError ? e.message : `error interno (${e.stack || e.message})`}\n`);
+    process.stderr.write(`ui-check: ${e instanceof UsageError || e instanceof BaseRefError ? e.message : `error interno (${e.stack || e.message})`}\n`);
     return 2;
   }
 }

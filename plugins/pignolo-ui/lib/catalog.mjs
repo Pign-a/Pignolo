@@ -1,6 +1,7 @@
 // Rule catalog (spec §5.1): catalog/rules.json is the single source.
 //
 // loadCatalog(file?) -> { catalogVersion, note, rules }
+// renderCatalogMarkdown(catalog) -> Markdown table of every rule (README block).
 // checkCatalog(catalog) -> [problem strings]; [] when the catalog is sound:
 //   duplicate ids; a §5.1 field missing or invalid; checker outside ui-check|design-md|browser;
 //   class script with checker browser or class browser with another checker; related/conflicts
@@ -70,4 +71,18 @@ export function checkCatalog(catalog) {
     }
   }
   return problems;
+}
+
+// Markdown table of the catalog for the README (spec §5.1: counts and docs come from the catalog).
+const cell = (s) => String(s).replace(/</g, '&lt;').replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
+export function renderCatalogMarkdown(catalog) {
+  const yn = (b) => (b ? 'sí' : 'no');
+  const lines = [
+    '| Id | Qué chequea | Nivel | Piso | Severidad | `intentional` | Fuente | Checker |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  ];
+  for (const r of catalog.rules) {
+    lines.push(`| ${[r.id, r.criterion, r.level, yn(r.floor), r.severity, yn(r.acceptsIntentional), r.source, r.checker].map(cell).join(' | ')} |`);
+  }
+  return `${lines.join('\n')}\n`;
 }

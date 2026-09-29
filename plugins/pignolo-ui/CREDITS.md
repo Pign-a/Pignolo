@@ -5,6 +5,12 @@ Fuentes de las ideas de pignolo-ui. No se copia código de terceros (los valores
 - Formato `DESIGN.md` de Google Labs (`google-labs-code/design.md`, Apache-2.0), versión fijada 0.4.0. pignolo-ui lo lee y lo escribe con código propio; el linter oficial solo corre si ya está instalado.
 - WCAG 2.2 (W3C): fórmula de luminancia relativa y de contraste.
 - CSS Color Module Level 4 y OKLab (Björn Ottosson): conversiones de color.
+- WCAG 2.2 (W3C), criterios de éxito citados en las reglas del catálogo (`catalog/rules.json`, campo `source`).
+- WAI-ARIA 1.2 (W3C): roles que no toman su nombre del contenido (A11Y-04).
+- RFC 5646 / BCP 47 (IETF): forma de las etiquetas de idioma (A11Y-01).
+- CSS Transitions y Media Queries Level 5 (W3C): `transition`, `prefers-reduced-motion` (MOTION-03, MOTION-04).
+- Material Design 3 (Google): nombres semánticos de color; guía para el auditor, con enlace y sin citas textuales.
+- Fluent 2 (Microsoft): guía para el auditor, con enlace y sin citas textuales.
 
 ## Third-party values (MIT)
 

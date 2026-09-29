@@ -426,6 +426,16 @@ Hay una sola tabla de ruteo (`lib/route.mjs`), compartida por el script y el aud
 - `llms.txt` no se genera, y los permisos de crawlers de IA se difieren junto con GEO (§18).
 - `CREDITS.md` lista las fuentes de las ideas.
 
+### 5.8 Aclaraciones técnicas del hito 2a
+
+Registradas al construir el catálogo (plan `docs/plans/2026-09-29-pignolo-ui-hito-2-catalogo.md`). Son decisiones técnicas del agente: no cambian A-12 ni ninguna decisión del autor.
+
+- **Documento en JSX (C-01 frente a Next.js App Router).** Un `.jsx`/`.tsx` con `<html>` es documento, pero el framework puede poner el `<title>`, el `<main>` y el viewport fuera del archivo. En JSX, sin `<title>` A11Y-02 da `unverified`; sin `main` A11Y-05 da `unverified`; con dos o más `main`, `fail`. A11Y-28 lee también `export const viewport` (Next.js). En `.html` y en `--dom`, la ausencia de `<title>` o de `main` es `fail`.
+- **Pares de COLOR-04.** §4.5 solo define pares de texto, así que se miden `pignolo.focus.color` sobre `surface` y sobre `background`, `outline` sobre `surface` y `pignolo.borders.strong` sobre `surface`, a 3:1 y en los dos temas. Sin `pignolo.focus`, la entrada es `unverified`; no se adivina con `primary`.
+- **Texto grande en tokens (COLOR-03).** Sobre pares de tokens no se conoce la tipografía: el umbral es 4,5:1, salvo un componente cuya `typography` es grande (`fontSize` ≥ 24px, o ≥ 18,66px con `fontWeight` ≥ 700) y un par de prosa marcado `(texto grande)` o `(large text)`, que usan 3:1. El 3:1 del texto grande real lo mide la capa de navegador (hito 3).
+- **Rechazos (§5.6) en el hito 2.** Son piso (§4.1), así que entran en 2a: `rule: X` sube cada `fail` de X a piso con `reason` `rejected R-nnn`; un `pattern` (`value` = regex de JavaScript con banderas `iu` y tope de 200 caracteres) produce hallazgos con `id` = `R-nnn`. Un rechazo que ya falla en la base es deuda (`alto`, no bloquea), como cualquier otro hallazgo.
+- **Invocación ampliada de `ui-check`.** `node <root>/scripts/ui-check.mjs [--project <raíz>] --run <carpeta> (--files <ruta>)… [--files-from <lista.json>] [--design <DESIGN.md>] [--base <ref>] [--dom <archivo>]… [--gate]`. `--project` es opcional (por defecto, la raíz de git desde el cwd, o el cwd sin git); `--files` se repite; sin `--files` ni `--dom`, la corrida es válida solo con `--design`. Una `--base` que no es una ref válida es error de uso (exit 2, mensaje en español sin stack). `--gate` da la misma corrida con una línea de resumen en stderr; cómo arma el núcleo la compuerta es del hito 5.
+
 ---
 
 ## 6. Topes de los flujos
