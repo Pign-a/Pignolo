@@ -1,9 +1,12 @@
 // Static SEO on pages (spec §5.4, A-06): SEO-02 noindex, SEO-04 canonical, SEO-06 title,
 // SEO-09 crawlable links, SEO-18 Open Graph. Project rules: they read every page at once
-// (documents among the inputs and pages fetched from the development URL). Never floor.
+// (documents and Next.js pages/layouts with metadata among the inputs, and pages fetched from
+// the development URL; SEO-09 reads every input with markup, components too). Never floor.
+// SEO-02 in the source is alto, except in a Next.js page or layout that is not the root layout
+// or the home, where a noindex is usually intended (/admin): medio (orchestrator ruling, hito 2b).
 import { pass, fail, unverified } from './api.mjs';
 import { staticText } from '../markup.mjs';
-import { seoGate, seoPages, indexable, staticAttr, metadataObject, prop } from './seo-common.mjs';
+import { seoGate, seoPages, seoMarkupInputs, indexable, staticAttr, metadataObject, prop, isNextRoute } from './seo-common.mjs';
 
 const isTag = (el, tag) => el.tag === tag && !el.component;
 const inSvg = (markup, el) => {
@@ -12,19 +15,21 @@ const inSvg = (markup, el) => {
 };
 const at = (page, extra = {}) => ({ file: page.file, ...extra });
 const NOINDEX = /(?:^|[\s,])(noindex|none)(?:$|[\s,])/i;
+const INDEX_FALSE = /(?:^|[^\w$])['"]?index['"]?\s*:\s*false\b/; // index: false, 'index': false
 
 // Runs fn over each page; a skipped page gives one unverified; no page gives one unverified.
-function perPage(pctx, fn) {
+function perPage(pctx, fn, pagesOf = seoPages) {
   const gate = seoGate(pctx);
   if (gate) return gate;
-  const pages = seoPages(pctx);
+  const pages = pagesOf(pctx);
   if (!pages.length) return [unverified('no page among the inputs (static SEO checks documents and the development URL)')];
   return pages.flatMap((page) => (page.skip ? [unverified(page.skip, at(page))] : fn(page, pctx)));
 }
 
 // ---- SEO-02: accidental noindex ------------------------------------------------------------
 function seo02(page, pctx) {
-  const sev = page.origin === 'file' ? {} : { severity: 'detalle' }; // seen only on the dev URL
+  const sev = page.origin !== 'file' ? { severity: 'detalle' } // seen only on the dev URL
+    : isNextRoute(page.file) === 'nested' ? { severity: 'medio' } : {};
   if (!indexable(pctx)) return [pass('indexable false', at(page, { reason: 'web.indexable is false: noindex is declared' }))];
   const out = [];
   for (const el of page.markup.elements) {
@@ -44,8 +49,8 @@ function seo02(page, pctx) {
   else if (meta) {
     const robots = prop(meta.text, 'robots');
     if (robots && robots.kind === 'dynamic') out.push(unverified('dynamic robots metadata', at(page)));
-    else if (robots && robots.kind === 'string' && NOINDEX.test(robots.value)) out.push(fail('noindex metadata', at(page, { reason: `metadata.robots "${robots.value}"` })));
-    else if (robots && robots.kind === 'object' && /\bindex\s*:\s*false\b/.test(robots.text)) out.push(fail('noindex metadata', at(page, { reason: 'metadata.robots has index: false' })));
+    else if (robots && robots.kind === 'string' && NOINDEX.test(robots.value)) out.push(fail('noindex metadata', at(page, { reason: `metadata.robots "${robots.value}"`, ...sev })));
+    else if (robots && robots.kind === 'object' && INDEX_FALSE.test(robots.text)) out.push(fail('noindex metadata', at(page, { reason: 'metadata.robots has index: false', ...sev })));
   }
   return out.length ? out : [pass('no noindex', at(page))];
 }
@@ -181,6 +186,6 @@ export const RULES = [
   { id: 'SEO-02', checkProject: (pctx) => perPage(pctx, seo02) },
   { id: 'SEO-04', checkProject: (pctx) => perPage(pctx, seo04) },
   { id: 'SEO-06', checkProject: seo06All },
-  { id: 'SEO-09', checkProject: (pctx) => perPage(pctx, seo09) },
+  { id: 'SEO-09', checkProject: (pctx) => perPage(pctx, seo09, seoMarkupInputs) },
   { id: 'SEO-18', checkProject: (pctx) => perPage(pctx, seo18) },
 ];

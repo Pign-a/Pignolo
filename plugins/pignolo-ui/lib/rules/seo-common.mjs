@@ -5,8 +5,14 @@
 // seoGate(pctx) -> null when the rules run, else the one finding each SEO rule returns; its
 //   pass carries measure { applicable: false }, so report-check never accepts a claim based on it
 // seoPages(pctx) -> [{ file, origin: 'file'|'dom'|'url', syntax, markup, text, headers, skip }]
-//   skip = reason (string) when the page cannot be checked; mockups never count (spec §3.3).
-//   Computed once per pctx (the seven rules share it); callers must not change it.
+//   documents among the inputs, JSX files with Next.js metadata (pages and layouts) and the
+//   fetched pages. skip = reason (string) when the page cannot be checked; mockups never count
+//   (spec §3.3). Computed once per pctx (the seven rules share it); callers must not change it.
+// seoMarkupInputs(pctx) -> same shape: every input with markup (components too) and the fetched
+//   pages, for rules on elements (SEO-09).
+// isNextRoute(file) -> 'root' | 'nested' | null: a Next.js page or layout file (app/ or pages/,
+//   optionally under src/); 'root' is the root layout, the home (route groups ignored) and pages/_app,
+//   _document and index.
 // metadataObject(ctx) -> { dynamic: true } | { text } | null   (JSX files only)
 // prop(objText, key) -> { kind: 'string'|'literal'|'object'|'array'|'dynamic', value?, text? } | null
 //   Only keys at the first level of objText (which starts with `{`) are found.
@@ -50,13 +56,23 @@ export function staticAttr(el, name) {
 const samePath = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 
 const PAGES = new WeakMap();
-export function seoPages(pctx) {
+const fileDoc = (ctx) => ({ file: ctx.file, origin: ctx.origin ?? 'file', syntax: ctx.syntax, markup: ctx.markup, text: ctx.text, headers: null, skip: null });
+function pagesOf(pctx) {
   if (PAGES.has(pctx)) return PAGES.get(pctx);
+  const inputs = (pctx.ctxs ?? []).filter((ctx) => !ctx.mockup && ctx.markup);
+  // a page: a document, or a JSX file with Next.js metadata (a page or layout without <html>)
+  const pages = inputs.filter((ctx) => ctx.isDocument || metadataObject(ctx)).map(fileDoc);
+  const urls = urlPages(pctx);
+  const all = { pages: [...pages, ...urls], withMarkup: [...inputs.map(fileDoc), ...urls] };
+  PAGES.set(pctx, all);
+  return all;
+}
+export const seoPages = (pctx) => pagesOf(pctx).pages;
+// Every input with markup (components too) plus the fetched pages: for rules on elements (SEO-09).
+export const seoMarkupInputs = (pctx) => pagesOf(pctx).withMarkup;
+
+function urlPages(pctx) {
   const out = [];
-  for (const ctx of pctx.ctxs ?? []) {
-    if (!ctx.isDocument || ctx.mockup || !ctx.markup) continue;
-    out.push({ file: ctx.file, origin: ctx.origin ?? 'file', syntax: ctx.syntax, markup: ctx.markup, text: ctx.text, headers: null, skip: null });
-  }
   for (const page of pctx.site?.pages ?? []) {
     const doc = { file: page.url, origin: 'url', syntax: 'html', markup: null, text: '', headers: page.headers ?? null, skip: null };
     if (page.error) doc.skip = page.error;
@@ -71,7 +87,6 @@ export function seoPages(pctx) {
     }
     out.push(doc);
   }
-  PAGES.set(pctx, out);
   return out;
 }
 
@@ -159,4 +174,14 @@ export function metadataObject(ctx) {
   if (src[at] !== '{') return { dynamic: true };
   const end = closeOf(maskStrings(src), at);
   return end < 0 ? { dynamic: true } : { text: src.slice(at, end + 1) };
+}
+
+const APP_ROUTE = /^(?:src\/)?app\/((?:[^/]+\/)*)(?:page|layout)\.[jt]sx$/;
+const PAGES_ROUTE = /^(?:src\/)?pages\/(.+)\.[jt]sx$/;
+export function isNextRoute(file) {
+  const app = APP_ROUTE.exec(String(file));
+  if (app) return app[1].split('/').filter(Boolean).every((seg) => /^\(.+\)$/.test(seg)) ? 'root' : 'nested';
+  const pages = PAGES_ROUTE.exec(String(file));
+  if (pages && !pages[1].startsWith('api/')) return ['index', '_app', '_document'].includes(pages[1]) ? 'root' : 'nested';
+  return null;
 }
