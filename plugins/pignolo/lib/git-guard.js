@@ -323,8 +323,10 @@ function decide(found, ctx) {
 
 // Si el texto no se puede analizar, igual se mira si parece un borrado catastrófico
 // (para que el conjunto catastrófico siga activo con PIGNOLO_DISABLED).
-const TEXT_DELETE = /(^|[\s;&|(`'"])((rm|rmdir|rd|del|erase|remove-item|ri|mv|move|move-item|mi|robocopy)(\.exe)?\s|find(\.exe)?\s.*\s-(delete|exec(dir)?\s+(rm|mv)))/i;
-const TEXT_TARGET = /\.git\b|\.pignolo|~|\*|\?|\$/;
+const TEXT_DELETE = /(^|[\s;&|(`'"])((rm|rmdir|rd|del|erase|remove-item|ri|mv|move|move-item|mi|robocopy)(\.exe)?(\s|$)|find(\.exe)?\s.*\s-(delete|exec(dir)?\s+(rm|mv)))/i;
+// Un pipe a un borrador (`gci -Force | Remove-Item`) recibe las rutas de la etapa anterior:
+// sin parseo no se sabe cuáles, y en la raíz es catastrófico (M4).
+const TEXT_TARGET = /\.git\b|\.pignolo|~|\*|\?|\$|\|\s*(remove-item|ri|rm|rmdir|del|rd|erase|move-item|mi)\b/i;
 
 function script(text, shell, ctx, out, depth, st) {
   if (depth > MAX_DEPTH) { out.push(hit('too-deep')); return; }
@@ -647,6 +649,10 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   if (ps && (name === 'invoke-expression' || name === 'iex')) { out.push(hit('hidden-code')); return; }
   if (ps && ['set-alias', 'new-alias', 'sal', 'nal'].includes(name)) { analyzeSetAlias(args, out); return; }
   if (ps && ['new-item', 'ni', 'set-item', 'si'].includes(name) && args.some((w) => /^alias:/i.test(w.value))) { out.push(hit('ps-sink')); return; }
+  if (ps && cmd.pipedIn && ['foreach-object', '%', 'foreach'].includes(name) && /^(delete|moveto)$/i.test(psMemberName(args))) {
+    checkDeleteOperands(pipedPaths(cmd), st, ctx, out); // gci -Force | % Delete (M6)
+    return;
+  }
   if (ps && ['start-process', 'saps', 'start'].includes(name)) { analyzeStartProcess(args, cmd, shell, ctx, out, depth, st); return; }
   // Un paquete que npx ejecuta recibe `git` como dato (npx vercel git connect): su contenido está fuera de alcance.
   if (!INERT.has(name) && !cmd.viaPkg && args.some((w) => !w.dyn && progName(w.value) === 'git')) out.push(hit('unknown-with-git'));
@@ -1434,6 +1440,31 @@ const PS_SINK_TARGET = /\bscriptblock\b|diagnostics\.process|\$executioncontext|
 const PS_SINK_MEMBER = /^(invokescript|addscript|newscriptblock)$/i;
 const PS_IO_TYPE = /^type:(system\.)?io\.(file|directory)$/i;
 
+// Argumento de un método Delete*: un literal se evalúa como operando de un borrado; con
+// variables, $PWD y $HOME se reemplazan y, si queda algo dinámico, solo cuenta si nombra
+// .git o .pignolo (un `$db.DeleteRows($n)` no es un borrado de archivos).
+function protectedMemberArg(a, st, ctx) {
+  if (!a.dyn) return isCatastrophicOperand(a, st, ctx);
+  const v = a.value.replace(/\\/g, '/').replace(/^(\$pwd|\$\{pwd\}|\$\((get-location|pwd|gl)\))(?=\/|$)/i, '.')
+    .replace(/^(\$home|\$env:(userprofile|home))(?=\/|$)/i, '~');
+  if (!v.includes('$')) return isCatastrophicOperand(word(v), st, ctx);
+  return GIT_DIR_RE.test(cleanPath(v)) || /(^|\/)\.pignolo(\/|$)/.test(v);
+}
+
+// Nombre del miembro de ForEach-Object: -MemberName <x> o el primer posicional.
+function psMemberName(args) {
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i];
+    if (w.kind === 'scriptblock') return '';
+    if (w.kind === 'param') {
+      if (/^-m(e(m(b(e(r(n(a(me?)?)?)?)?)?)?)?)?$/i.test(w.value)) return args[i + 1] && !args[i + 1].dyn ? args[i + 1].value : '';
+      continue;
+    }
+    return w.dyn ? '' : w.value;
+  }
+  return '';
+}
+
 function psCommands(text, ctx, st) {
   const r = parsePsAst(text, ctx.psTimeoutMs ? { exe: ctx.psExe, timeoutMs: ctx.psTimeoutMs } : { exe: ctx.psExe });
   if (r.errors.length) throw new ParseError(r.errors[0]);
@@ -1449,6 +1480,10 @@ function psCommands(text, ctx, st) {
       // FileSystemInfo.Delete()/MoveTo() sobre un objeto (G2): borrado; destino de MoveTo/CopyTo: escritura.
       if (!/^copyto$/i.test(m.member)) checkDeleteOperands([memberTarget(m.target)], st, ctx, extra);
       if (!/^delete$/i.test(m.member)) for (const a of m.args) if (!a.dyn) checkWriteTarget(a, st, ctx, extra);
+    } else if (m.member && /^delete/i.test(m.member) && m.args.some((a) => protectedMemberArg(a, st, ctx))) {
+      // Delete* de cualquier tipo ([Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory,
+      // FileSystemObject.DeleteFolder) con una ruta protegida como argumento (M6).
+      extra.push(hit('catastrophic-delete'));
     }
   }
   // Una variable asignada siempre con el mismo literal se propaga; si no, es dinámica.

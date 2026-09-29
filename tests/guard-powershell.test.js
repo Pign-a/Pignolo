@@ -101,6 +101,24 @@ test('powershell deletes through the pipeline, FileSystemInfo methods and aliase
   }
 });
 
+// Protects: métodos Delete* de cualquier tipo y ForEach-Object -MemberName Delete (M6,
+// revisión final) · Breaks if: [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory
+// sobre .git o `gci -Force | % Delete` en la raíz pasan.
+test('Delete* members of any type on a protected target and ForEach-Object -MemberName Delete are catastrophic (M6)', () => {
+  for (const cmd of ["[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('.git','DeleteAllContents')",
+    "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('.git', 'OnlyErrorDialogs', 'SendToRecycleBin')",
+    "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(\"$PWD\\.git\", 'DeleteAllContents')",
+    "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('.git\\index')", 'gci -Force | % Delete', 'gci -Force -Recurse | ForEach-Object -MemberName Delete',
+    'Get-ChildItem -Force | foreach Delete', 'Get-Item .git -Force | % Delete']) {
+    for (const mode of ['default', 'bypassPermissions']) assert.strictEqual(ps(cmd, mode).rule, 'catastrophic-delete', `${mode}: ${cmd}`);
+    assert.strictEqual(ps(cmd, 'default', { onlyCatastrophic: true }).decision, 'block', cmd);
+  }
+  for (const cmd of ["[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('dist', 'DeleteAllContents')", 'gci dist -Recurse | % Delete',
+    'gci -Force | % Name', 'Get-ChildItem | ForEach-Object -MemberName FullName', '$db.DeleteRows(5)']) {
+    assert.strictEqual(ps(cmd).decision, 'allow', cmd);
+  }
+});
+
 test('assignment with a literal CommandAst is allowed (F12)', () => {
   for (const cmd of ['$branch = git rev-parse --abbrev-ref HEAD', '$s = git status --porcelain; if ($s) { Write-Host dirty }',
     '$m = "C:\\tmp\\medir.ps1"; & $m -Archivo x.png', 'Set-Alias ll Get-ChildItem', 'Start-Process notepad']) {
@@ -121,6 +139,20 @@ test('powershell.exe that cannot start fails closed, by mode', () => {
   assert.strictEqual(auto.decision, 'block');
   assert.strictEqual(auto.rule, 'ps-unavailable');
   assert.strictEqual(ps('Get-Date', 'default', opts).decision, 'ask');
+});
+
+// Protects: el conjunto catastrófico sin parseo de PowerShell (M4, revisión final) · Breaks
+// if: con powershell.exe caído, un pipe a Remove-Item (sin ruta en el texto) sale ask.
+test('without powershell.exe, a pipe into a deleter is catastrophic by its text (M4)', () => {
+  const opts = { psExe: 'pignolo-no-existe-powershell.exe' };
+  for (const cmd of ['Get-ChildItem -Force | Remove-Item -Recurse -Force', 'gci -Force | ri -r -fo', 'ls | rm -r', 'dir | del',
+    'Get-ChildItem | Move-Item -Destination x']) {
+    for (const mode of ['default', 'bypassPermissions']) assert.strictEqual(ps(cmd, mode, opts).rule, 'catastrophic-delete', `${mode}: ${cmd}`);
+    assert.strictEqual(ps(cmd, 'default', { ...opts, onlyCatastrophic: true }).decision, 'block', cmd);
+  }
+  for (const cmd of ['Get-ChildItem | Select-Object Name', 'Get-Content x | Measure-Object']) {
+    assert.deepStrictEqual([ps(cmd, 'default', opts).decision, ps(cmd, 'default', opts).rule], ['ask', 'ps-unavailable'], cmd);
+  }
 });
 
 test('through the launcher, without powershell.exe on PATH, PowerShell fails closed', () => {
