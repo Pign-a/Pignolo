@@ -30,7 +30,7 @@ const THEME_AT_RULE = /^@theme(\s+(inline|static|reference))*$/;
 const TOKEN_SELECTOR = /^(:root|html|:host|\.dark|\.light|(:root|html)(\.dark|\.light)|(:root|html)?\[data-theme(=(["']?)[\w-]+\6)?\])$/;
 const DARK_PRELUDE = /\.dark(?![\w-])|\[data-theme|prefers-color-scheme\s*:\s*dark/;
 
-function lineIndex(text) {
+export function lineIndex(text) {
   const starts = [0];
   for (let i = 0; i < text.length; i++) if (text[i] === '\n') starts.push(i + 1);
   return (offset) => {
@@ -79,7 +79,7 @@ function themeOf(selector, context) {
   return 'light';
 }
 
-function isTokenBlock(selector) {
+export function isTokenBlock(selector) {
   if (THEME_AT_RULE.test(selector)) return true;
   return selector.split(',').every((part) => TOKEN_SELECTOR.test(part.trim()));
 }
