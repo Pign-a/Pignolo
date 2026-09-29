@@ -50,6 +50,9 @@ test('claims stay only when the cited evidence exists and says the same', async 
     ['capture with another hash', { ref: { source: 'capture', path: 'captures/home.png', sha256: 'b'.repeat(64) } }, /sha256 does not match/],
     ['file without hash', { ref: { source: 'file', path: 'src/Save.tsx' } }, /without sha256/],
     ['unknown source', { ref: { source: 'memory' } }, /unknown evidence source/],
+    ['rule claim on a file', { rule: 'COLOR-03', status: 'pass', measure: { ratio: 7.1 }, ref: { source: 'file', path: 'src/Save.tsx', sha256: fileSha } }, /rule claims need ui-check or browser evidence/],
+    ['status claim on a capture', { status: 'pass', ref: { source: 'capture', path: 'captures/home.png', sha256: sha(PNG) } }, /rule claims need ui-check or browser evidence/],
+    ['measure claim on a file', { measure: { ratio: 7.1 }, ref: { source: 'file', path: 'src/Save.tsx', sha256: fileSha } }, /rule claims need ui-check or browser evidence/],
   ];
   for (const [name, claim, retired] of CASES) {
     await t.test(name, () => {
@@ -140,14 +143,15 @@ test('a pass that says the rule does not apply supports no claim; measure {} is 
   ]);
 });
 
-test('a run with a verified batch implemented something: implemented false gives missing', () => {
+test('a run with a saved batch implemented something: implemented false gives missing', () => {
   const { project, run } = setup();
+  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'not-required'); // no batch
   writeTree(run, { 'batch-1/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: null }) });
-  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'not-required'); // saved, not verified
+  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'missing'); // saved, never verified: still applied
   writeTree(run, { 'batch-2/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: { files: {}, unexpected: [] } }) });
   const r = checkReport({ project, run, report: report([]) });
   assert.deepEqual([r.exitCode, r.implements.status], [1, 'missing']);
-  assert.match(r.implements.reason, /verified batch/);
+  assert.match(r.implements.reason, /has a batch \(files\.json\)/);
   const cited = checkReport({ project, run, report: report([], { implements: { path: 'design/approved/checkout', manifestSha256: MANIFEST } }) });
   assert.deepEqual([cited.exitCode, cited.implements.status], [0, 'ok']);
 });

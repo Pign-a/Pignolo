@@ -239,3 +239,73 @@ test('git that fails or takes too long is a BatchError with a Spanish message', 
   const dir = repo();
   assert.throws(() => saveBatch({ project: dir, batch: batchOf(dir), expected: [NEW], gitTimeoutMs: 1 }), (e) => e instanceof BatchError && /git status no terminó en 0\.001 s/.test(e.message));
 });
+
+// ---- final review of hito 2b: restore never deletes what existed before save ---------------
+const gitIn = (dir, ...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe', timeout: 10000 });
+
+test('CRITICAL: an ignored file that stops being ignored during the batch is never deleted', () => {
+  const dir = repo({ '.gitignore': 'secret.txt\nbuild/\n' });
+  write(dir, 'secret.txt', 'USER DATA\n');
+  write(dir, 'build/out/app.js', 'user build\n');
+  assert.equal(saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] }).ok, true);
+  write(dir, 'src/page.tsx', 'agent\n');
+  write(dir, '.gitignore', '');
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  const byPath = Object.fromEntries(v.unexpected.map((u) => [u.path, u]));
+  assert.equal(byPath['secret.txt'].existedBefore, true);
+  assert.equal(byPath['build/out/app.js'].existedBefore, true);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.deleted, []);
+  assert.ok(r.blocked.some((b) => b.path === 'secret.txt' && b.problem === 'existed-before-the-batch'), JSON.stringify(r.blocked));
+  assert.ok(r.blocked.some((b) => b.path === 'build/out/app.js' && b.problem === 'existed-before-the-batch'), JSON.stringify(r.blocked));
+  assert.equal(read(dir, 'secret.txt'), 'USER DATA\n');
+  assert.equal(read(dir, 'build/out/app.js'), 'user build\n');
+});
+
+test('a tracked file removed from the index during the batch is never deleted', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'src/page.tsx', 'agent\n');
+  gitIn(dir, 'rm', '-q', '--cached', 'src/other.tsx'); // `D  src/other.tsx` and `?? src/other.tsx`
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.ok(r.blocked.some((b) => b.path === 'src/other.tsx' && b.problem === 'existed-before-the-batch'), JSON.stringify(r.blocked));
+  assert.equal(read(dir, 'src/other.tsx'), 'o\n');
+});
+
+test('a file that was in HEAD at save and shows as untracked after a commit is never deleted', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  gitIn(dir, 'rm', '-q', '--cached', 'src/other.tsx');
+  gitIn(dir, 'commit', '-q', '-m', 'untrack');
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.ok(r.blocked.some((b) => b.path === 'src/other.tsx' && b.problem === 'existed-before-the-batch'), JSON.stringify(r.blocked));
+  assert.equal(read(dir, 'src/other.tsx'), 'o\n');
+});
+
+test('restore never reports restored while a created path it cannot read is still there', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [NEW] });
+  write(dir, 'src/New.tsx', 'n\n');
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  fs.rmSync(path.join(dir, 'src', 'New.tsx'));
+  fs.mkdirSync(path.join(dir, 'src', 'New.tsx')); // an empty folder: git does not list it, and it has no sha256
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.ok(r.blocked.some((b) => b.path === 'src/New.tsx' && b.problem === 'unreadable'), JSON.stringify(r.blocked));
+});
+
+test('verify warns when an expected file is reached through a link that leaves the project', () => {
+  const dir = repo({ 'src/sub/page.tsx': 'p\n' });
+  const outside = writeTree(makeTempDir(), { 'page.tsx': 'outside\n' });
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [{ path: 'src/sub/page.tsx', exists: true, change: 'tokens' }] });
+  fs.renameSync(path.join(dir, 'src', 'sub'), path.join(dir, 'src', 'sub-old'));
+  linkDir(outside, path.join(dir, 'src', 'sub'));
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.problems, [{ path: 'src/sub/page.tsx', problem: 'not-in-project' }]);
+});

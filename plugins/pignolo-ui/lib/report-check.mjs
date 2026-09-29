@@ -6,8 +6,9 @@
 //   kept    [claim id]    retired [{ id, reason }]
 //   implements { status: 'ok'|'not-required'|'missing'|'mismatch'|'no-design-md', cited?, registered?, reason? }
 //   exitCode 0 nothing retired and implements ok or not required; 1 otherwise.
-// A run with a verified batch (any **/files.json whose `after` is not null) implemented
-// something, whatever report.json says: `implemented: false` there gives implements missing.
+// A run with a saved batch (any **/files.json, verified or not) implemented something,
+// whatever report.json says: `implemented: false` there gives implements missing. A claim that
+// cites a file or a capture states no rule: with rule, status or measure it is retired.
 // ui-check.json is stale (every claim citing it is retired) when a file in its `inputs` no
 // longer has the sha256 it had when ui-check ran. An entry whose measure says
 // `applicable: false` (a rule that did not apply) supports no claim. `measure` in a claim is a
@@ -77,6 +78,7 @@ function checkClaim(claim, { project, run, sources }) {
     return null;
   }
   if (ref.source === 'capture' || ref.source === 'file') {
+    if (claim.rule !== undefined || claim.status !== undefined || claim.measure !== undefined) return 'rule claims need ui-check or browser evidence';
     const root = ref.source === 'capture' ? run : project;
     const abs = inside(root, ref.path);
     if (!abs) return `${ref.source} path outside the ${ref.source === 'capture' ? 'run' : 'project'}`;
@@ -90,19 +92,12 @@ function checkClaim(claim, { project, run, sources }) {
   return `unknown evidence source ${JSON.stringify(ref.source)}`;
 }
 
-// true when some batch of the run was verified (files.json with `after`): the run edited files.
+// true when the run has a batch (any files.json, verified or not): save comes before editing,
+// so a saved batch counts as applied whether or not verify ran.
 function runApplied(run) {
   let names;
   try { names = fs.readdirSync(run, { recursive: true }); } catch { return false; }
-  return names.some((n) => {
-    if (path.basename(String(n)) !== 'files.json') return false;
-    try {
-      const rec = JSON.parse(fs.readFileSync(path.join(run, String(n)), 'utf8'));
-      return !isMap(rec) || rec.after != null;
-    } catch {
-      return true; // unreadable: count it as applied, never as proof of nothing done
-    }
-  });
+  return names.some((n) => path.basename(String(n)) === 'files.json');
 }
 
 function checkImplements(project, run, report) {
@@ -110,7 +105,7 @@ function checkImplements(project, run, report) {
   if (report.implemented !== true && !forced) return { status: 'not-required' };
   const imp = report.implements;
   if (!isMap(imp) || typeof imp.path !== 'string' || !APPROVED_PATH.test(imp.path) || typeof imp.manifestSha256 !== 'string') {
-    return forced ? { status: 'missing', reason: 'the run has a verified batch (files.json) but report.json says implemented: false' } : { status: 'missing' };
+    return forced ? { status: 'missing', reason: 'the run has a batch (files.json) but report.json says implemented: false' } : { status: 'missing' };
   }
   const designFile = findDesignFile(project);
   if (!designFile) return { status: 'no-design-md', cited: imp.manifestSha256 };

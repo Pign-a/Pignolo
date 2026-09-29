@@ -8,18 +8,23 @@
 //   or goes through a folder whose real path leaves the project (not-in-project), a path whose
 //   letters differ from the disk only in case (case-mismatch), a declared state that does not
 //   match the disk, an expected file with uncommitted changes, more than 5 files, or a batch
-//   folder that already has files.json. Copies each existing file to <batch>/copies/<n>.
+//   folder that already has files.json. Copies each existing file to <batch>/copies/<n>, and
+//   records the paths git ignores (`ignored`, folders collapsed, nothing hashed).
 // verifyBatch({ project, batch, gitTimeoutMs })   -> { ok, unexpected, files, lines, overLineLimit }
 //   Delta of the current status against the initial one: every new or changed entry outside
-//   the expected list is `unexpected`. Records what the batch left (sha256 of each file) in
-//   files.json (`after`), which restore needs.
+//   the expected list is `unexpected`; an untracked one that existed before save (ignored then,
+//   in HEAD then, or still in the index) carries `existedBefore: true`. Records what the batch
+//   left (sha256 of each file) in files.json (`after`), which restore needs. `problems` lists
+//   expected files now reached through a link that leaves the project (not-in-project).
 // restoreBatch({ project, batch, gitTimeoutMs })  -> { ok, restored, deleted, blocked }
 //   Recomputes the delta first: a change that verify did not record is BLOCKED (not-verified).
 //   Nothing is written or deleted through a link that leaves the project (not-in-project).
 //   Expected files that existed: rewritten from the copy only when they are missing or their
 //   sha256 is the original or the one verify recorded (else changed-after-the-batch), then
 //   checked by sha256. Created files (expected new or unexpected untracked): deleted only if
-//   their sha256 is the one verify recorded; otherwise BLOCKED and left alone. Anything else
+//   their sha256 is the one verify recorded; otherwise BLOCKED and left alone; a path still
+//   there whose sha256 cannot be read is BLOCKED (unreadable). An untracked file that existed
+//   before save is BLOCKED (existed-before-the-batch), never deleted. Anything else
 //   unexpected: BLOCKED (unexpectedAction, decision D-2b-1).
 // Git runs with a deadline (GIT_TIMEOUT_MS); a failure or a timeout is a BatchError.
 import fs from 'node:fs';
@@ -121,7 +126,20 @@ function caseMismatch(project, rel) {
 // BLOCKED and the user is asked. The alternative (revert a tracked file that was clean with
 // `git checkout -- <file>`) changes only this function and the "git is only read" constraint.
 function unexpectedAction(u) {
+  if (u.code === '??' && u.existedBefore) return 'existed-before-the-batch';
   return u.code === '??' && !u.wasDirty ? 'delete-if-ours' : 'block';
+}
+
+// Paths git ignored at save (`--directory`: an ignored folder is one entry ending in '/').
+function ignoredOf(project, timeoutMs) {
+  return git(project, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], timeoutMs).split('\0').filter(Boolean);
+}
+const underIgnored = (ignored, p) => ignored.some((i) => (i.endsWith('/') ? p.startsWith(i) : p === i));
+
+// Every path of a commit (only read when some untracked entry needs it).
+function treePaths(project, head, timeoutMs) {
+  if (!head) return new Set();
+  return new Set(git(project, ['ls-tree', '-r', '-z', '--name-only', '--full-tree', head], timeoutMs).split('\0').filter(Boolean));
 }
 
 const readRecord = (batch) => {
@@ -169,7 +187,8 @@ export function saveBatch({ project, batch, expected, gitTimeoutMs = GIT_TIMEOUT
   });
   let head = null;
   try { head = git(project, ['rev-parse', '--verify', '--quiet', 'HEAD'], gitTimeoutMs).trim() || null; } catch (e) { if (e.timeout) throw e; head = null; } // no commit yet
-  const record = { version: 1, head, files: recorded, initial, after: null };
+  const ignored = ignoredOf(project, gitTimeoutMs);
+  const record = { version: 1, head, files: recorded, initial, ignored, after: null };
   fs.writeFileSync(path.join(batch, RECORD), `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
   return { ok: true, problems: [], record };
 }
@@ -210,6 +229,17 @@ function deltaOf(project, record, timeoutMs) {
   for (const b of record.initial) {
     if (!nowPaths.has(b.path) && !expected.has(b.path)) unexpected.push({ path: b.path, code: 'clean-now', sha256: fileSha(project, b.path), wasDirty: true });
   }
+  // An untracked file restore could delete: did it exist before save? Ignored then (and no
+  // longer), in HEAD then, or with another status entry now (`git rm --cached`: `D ` + `??`).
+  // A record without `ignored` (older save) cannot tell: it counts as existing.
+  const untracked = unexpected.filter((u) => u.code === '??' && !u.wasDirty);
+  if (untracked.length) {
+    const inHead = treePaths(project, record.head, timeoutMs);
+    const otherEntry = new Set(current.filter((e) => e.code !== '??').flatMap((e) => (e.from ? [e.path, e.from] : [e.path])));
+    for (const u of untracked) {
+      if (!Array.isArray(record.ignored) || underIgnored(record.ignored, u.path) || inHead.has(u.path) || otherEntry.has(u.path)) u.existedBefore = true;
+    }
+  }
   return unexpected;
 }
 
@@ -220,10 +250,11 @@ export function verifyBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) {
     const now = fileSha(project, f.path);
     return { path: f.path, existed: f.existed, exists: now !== null, changed: now !== f.sha256, sha256: now };
   });
+  const problems = record.files.flatMap((f) => { const link = linkProblem(project, f.path); return link ? [{ path: f.path, problem: link }] : []; });
   const lines = changedLines(project, record.head, record.files, gitTimeoutMs);
   record.after = { files: Object.fromEntries(files.map((f) => [f.path, f.sha256])), unexpected };
   writeRecord(batch, record);
-  return { ok: unexpected.length === 0, unexpected, files, lines, overLineLimit: lines > MAX_LINES };
+  return { ok: unexpected.length === 0 && problems.length === 0, unexpected, problems, files, lines, overLineLimit: lines > MAX_LINES };
 }
 
 export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) {
@@ -235,13 +266,16 @@ export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) 
   const abs = (rel) => path.join(project, ...rel.split('/'));
   // before touching anything: a change that verify did not record is not the batch's to undo
   const verified = new Set(record.after.unexpected.map((u) => u.path));
+  const fresh = new Map();
   for (const u of deltaOf(project, record, gitTimeoutMs)) {
+    fresh.set(u.path, u);
     if (!verified.has(u.path)) blocked.push({ path: u.path, problem: 'not-verified' });
   }
   const deleteIfOurs = (rel, wrote) => {
     const link = linkProblem(project, rel);
     if (link) { blocked.push({ path: rel, problem: link }); return; }
     const now = fileSha(project, rel);
+    if (now === null && fs.existsSync(abs(rel))) { blocked.push({ path: rel, problem: 'unreadable' }); return; }
     if (now === null) return; // already gone
     if (wrote && now === wrote) {
       fs.rmSync(abs(rel), { force: false });
@@ -267,8 +301,9 @@ export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) 
     }
   }
   for (const u of record.after.unexpected) {
-    if (unexpectedAction(u) === 'delete-if-ours') deleteIfOurs(u.path, u.sha256);
-    else blocked.push({ path: u.path, problem: 'unexpected-change-not-restorable' });
+    const action = unexpectedAction({ ...u, existedBefore: u.existedBefore || fresh.get(u.path)?.existedBefore });
+    if (action === 'delete-if-ours') deleteIfOurs(u.path, u.sha256);
+    else blocked.push({ path: u.path, problem: action === 'block' ? 'unexpected-change-not-restorable' : action });
   }
   return { ok: blocked.length === 0, restored, deleted, blocked };
 }

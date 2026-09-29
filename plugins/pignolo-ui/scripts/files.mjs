@@ -1,5 +1,5 @@
 // files.mjs: save | verify | restore of one batch of edits (spec §9).
-//   save    --project <repo> --batch <folder in .pignolo-ui/> --expected <list.json>
+//   save    --project <repo> --batch <folder in .pignolo-ui/runs/<run>/> --expected <list.json>
 //           list = [{ "path", "exists": true|false, "change": "tokens"|"structure" }], at most 5
 //           0 saved, 1 refused (see problems), 2 own error
 //   verify  --project <repo> --batch <folder>
@@ -58,7 +58,9 @@ export function main(argv, { cwd = process.cwd() } = {}) {
     if (!top || real(top) !== real(projectArg)) throw new UsageError('--project tiene que ser la raíz de un repo git');
     const project = real(projectArg);
     const batch = path.resolve(cwd, opts.batch);
-    if (!isInsideRunRoot(project, batch)) throw new UsageError(`--batch debe estar dentro de ${RUN_ROOT}/ del proyecto`);
+    // inside a run (runs/<run>/<batch>): report-check only looks for files.json in its run
+    const inRun = path.relative(path.join(project, RUN_ROOT), batch).split(path.sep);
+    if (!isInsideRunRoot(project, batch) || inRun.length < 3 || inRun[0] !== 'runs') throw new UsageError(`--batch debe estar dentro de ${RUN_ROOT}/runs/<run>/ del proyecto`);
     let result;
     if (cmd === 'save') {
       let expected;
