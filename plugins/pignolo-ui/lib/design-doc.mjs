@@ -240,8 +240,8 @@ export function validateDesign(text, { catalog, darkInCss = false } = {}) {
   const ctx = {
     data,
     hasToken,
-    add(id, p, message, { severity = 'alto', rejects = false } = {}) {
-      findings.push({ id, severity, path: p.join('.'), line: lineFor(p), message, rejects });
+    add(id, p, message, { severity = 'alto', rejects = false, line } = {}) {
+      findings.push({ id, severity, path: p.join('.'), line: line ?? lineFor(p), message, rejects });
     },
   };
 
@@ -309,7 +309,7 @@ export function validateDesign(text, { catalog, darkInCss = false } = {}) {
     const isControl = CONTROL_PREFIXES.some((pre) => name === pre || name.startsWith(`${pre}-`));
     if (isControl && !STATE_SUFFIX.test(name) && !has(components, `${name}-hover`)) content(['components', `${name}-hover`], `control ${name} has no hover state variant`);
   }
-  if (!HIERARCHY_HEADING.test(fm.body)) content(['body'], 'no prose section on hierarchy and reading order');
+  if (!HIERARCHY_HEADING.test(fm.body)) ctx.add('DESIGN-CONTENT', ['body'], 'no prose section on hierarchy and reading order', { line: fm.bodyLine });
   if (!isMap(pig)) {
     content(['pignolo'], 'pignolo: section is missing (platform, register, elevation, motion, states, focus)');
   } else {

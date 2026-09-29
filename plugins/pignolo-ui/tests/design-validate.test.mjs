@@ -269,3 +269,11 @@ test('CLI design-md: a missing or nonexistent --project, a bad --date and an op 
   clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /operación/);
   assert.equal(fs.readFileSync(file, 'utf8'), VALID);
 });
+
+test('the missing-hierarchy finding points at the body (first body line), not at the YAML', () => {
+  const r = check(edit('### Hierarchy and reading order', '### Reading'));
+  const f = r.findings.find((x) => x.id === 'DESIGN-CONTENT' && x.path === 'body');
+  assert.ok(f, JSON.stringify(r.findings));
+  assert.equal(f.line, splitFrontmatter(VALID).bodyLine);
+  assert.equal(f.line, 56);
+});
