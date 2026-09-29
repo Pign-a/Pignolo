@@ -181,3 +181,20 @@ test('CLI: save, record (diff first, then --write) and verify', () => {
   assert.equal(out.status, 1);
   assert.equal(out.json.ok, false);
 });
+
+test('screens with event handlers, javascript: URLs, <base>, meta refresh or remote srcset candidates are refused', () => {
+  const link = '<a href="detail.html">d</a>';
+  const cases = [
+    ['script', page('x', `<img src="a.png" alt="" onerror="alert(1)">${link}`)],
+    ['script', page('x', `<button onclick="fetch(1)">b</button>${link}`)],
+    ['script', page('x', '<a href="javascript:alert(1)">j</a>')],
+    ['remote-resource', page('x', `<base href="https://evil.example/">${link}`)],
+    ['remote-resource', page('x', `<meta http-equiv="refresh" content="0;url=detail.html">${link}`)],
+    ['remote-resource', page('x', `<img srcset="a.png 1x, https://cdn.example/b.png 2x" alt="">${link}`)],
+  ];
+  for (const [problem, html] of cases) {
+    const r = checkScreens(screens({ 'home.html': html }));
+    assert.ok(r.problems.some((p) => p.file === 'home.html' && p.problem === problem), `${problem}: ${html}`);
+  }
+  assert.deepEqual(checkScreens(screens({ 'home.html': page('x', '<a href="./detail.html">d</a>') })).problems, []);
+});
