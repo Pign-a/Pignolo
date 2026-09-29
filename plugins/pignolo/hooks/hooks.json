@@ -22,6 +22,14 @@
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "toggle"], "timeout": 30 }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "session-start"], "timeout": 60 }
+        ]
+      }
     ]
   }
 }

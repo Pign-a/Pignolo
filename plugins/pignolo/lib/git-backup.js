@@ -64,7 +64,19 @@ function seedShadow({ cwd, env = process.env, sessionId, now = new Date(), timeo
   return shadow.seedShadow({ run, env, info, key: shadow.sessionKey(sessionId, info.top), now, onSeeded });
 }
 
-function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 60000 } = {}) {
+// Estado de la sombra para SessionStart: null fuera de un repo; si no,
+// { state: 'absent'|'seeding'|'ok'|'error', error?, warnings?, gitDir }.
+function shadowState({ cwd, env = process.env, timeoutMs = 3000 } = {}) {
+  if (!cwd || !fs.existsSync(cwd)) return null;
+  const info = shadow.repoInfo(withDeadline(cwd, timeoutMs));
+  if (!info) return null;
+  const p = shadow.shadowPaths(env, info);
+  if (!fs.existsSync(path.join(p.dir, 'HEAD'))) return { state: 'absent', gitDir: p.dir };
+  const st = shadow.readStatus(p) || { state: 'seeding' };
+  return { ...st, gitDir: p.dir };
+}
+
+function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 60000, outside = true } = {}) {
   if (!cwd || !isRepo(cwd)) return null;
   const out = gitRun(['for-each-ref', '--format=%(objectname) %(refname)', 'refs/heads', 'refs/tags'], cwd);
   const base = `refs/pignolo/backup/${shadow.stamp(now)}`;
@@ -74,6 +86,7 @@ function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 6000
   });
   if (lines.length) gitRun(['update-ref', '--stdin'], cwd, { input: lines.join('') });
   const result = { base, count: lines.length };
+  if (!outside) return result;
   // Fuera del repo, solo si la sombra ya existe (la crea la siembra).
   const run = withDeadline(cwd, timeoutMs);
   const info = shadow.repoInfo(run);
@@ -87,4 +100,4 @@ function setReflogPolicy({ cwd } = {}) {
   gitRun(['config', '--local', 'gc.reflogExpireUnreachable', 'never'], cwd);
 }
 
-module.exports = { snapshotWip, seedShadow, backupRefs, setReflogPolicy };
+module.exports = { snapshotWip, seedShadow, shadowState, backupRefs, setReflogPolicy };

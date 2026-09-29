@@ -98,3 +98,58 @@ test('backup: a fallback snapshot while the seed is broken is announced with sys
   assert.strictEqual(r.status, 0);
   assert.match(JSON.parse(r.stdout).systemMessage, /no se pudo sembrar \(simulado\)/);
 });
+
+// SessionStart siembra la sombra en segundo plano (spec §11.6).
+const { shadowState } = require('../plugins/pignolo/lib/git-backup');
+
+async function waitFor(fn, ms = 30000) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (Date.now() > end) return v;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+}
+
+const sessionStart = (repo, home, extra = {}) => runLauncher('session-start', { hook_event_name: 'SessionStart', source: 'startup', cwd: repo, session_id: SESSION, ...extra }, { PIGNOLO_HOME: home, ...(extra.env || {}) });
+
+test('SessionStart seeds the shadow in the background; later snapshots go there', async () => {
+  const repo = cleanRepo();
+  const home = makeTempDir('pignolo-home-');
+  const env = { ...process.env, PIGNOLO_HOME: home };
+  const t0 = Date.now();
+  const r = sessionStart(repo, home);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(JSON.parse(r.stdout).systemMessage, /sembrando el repo sombra en segundo plano/);
+  const ok = await waitFor(() => { const s = shadowState({ cwd: repo, env }); return s && s.state === 'ok' && s; });
+  assert.ok(ok, `the seed finished: ${JSON.stringify(shadowState({ cwd: repo, env }))} after ${Date.now() - t0} ms`);
+  makeDirty(repo);
+  runIndirectDestroyer(repo, home);
+  const S = ['--git-dir', ok.gitDir];
+  assert.strictEqual(git([...S, 'show', `${latestWip(S, repo)}:a.txt`], repo), 'trabajo sin commitear');
+  assert.deepStrictEqual(git(['for-each-ref', 'refs/pignolo/wip'], repo), '', 'no fallback inside the repo');
+  // /pignolo:status informa el estado de la sombra.
+  const st = runLauncher('session-start', { source: 'status', cwd: repo }, { PIGNOLO_HOME: home });
+  assert.match(JSON.parse(st.stdout).systemMessage, /repo sombra ok\.$/);
+});
+
+test('SessionStart reports a failed previous seed and retries it', async () => {
+  const repo = cleanRepo();
+  const home = makeTempDir('pignolo-home-');
+  const env = { ...process.env, PIGNOLO_HOME: home };
+  seedShadow({ cwd: repo, env, sessionId: 'anterior' });
+  const statusFile = path.join(shadowState({ cwd: repo, env }).gitDir, 'pignolo', 'status.json');
+  fs.writeFileSync(statusFile, JSON.stringify({ state: 'error', at: new Date().toISOString(), error: 'disco lleno' }));
+  const r = sessionStart(repo, home);
+  assert.match(JSON.parse(r.stdout).systemMessage, /última siembra del repo sombra falló \(disco lleno\)/);
+  assert.ok(await waitFor(() => shadowState({ cwd: repo, env }).state === 'ok'), 'retried');
+});
+
+test('with PIGNOLO_DISABLED=1 SessionStart does not seed', async () => {
+  const repo = cleanRepo();
+  const home = makeTempDir('pignolo-home-');
+  sessionStart(repo, home, { env: { PIGNOLO_DISABLED: '1' } });
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.ok(!fs.existsSync(path.join(home, 'shadow')));
+});
