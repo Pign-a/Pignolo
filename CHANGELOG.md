@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-09-29
+
+- Hito 3a (compuertas y revisión, sin las skills de los carriles): `scripts/risk.js` (piso de riesgo, tripwires y carril), `scripts/gate.js` (compuertas fuera de todo hook, con sello del árbol de trabajo), `scripts/run.js` (marca de flujo `.pignolo/run.json` v1 y tarea en curso) y `scripts/ledger.js` (ledger de revisión y Judgment Day). Motivo: sin una verificación fuera del agente, un `DONE` del implementador era palabra suelta; el hito 3b sumará las skills que los usan.
+- Handback-gate: `SubagentStop` (`implementer`, `fixer`, `test-writer`), `PreToolUse` sobre `SubagentHandback` (auto mode) y `PostToolUse` sobre `Agent`. Acepta `DONE` solo con un sello vigente y la integridad de tests; contador propio de 8 antes de dejar pasar; avisa al hilo principal si la tarea quedó sin aceptar.
+- `project.md` se lee con un parser propio (subconjunto de YAML) y globs propios; la marca de flujo y los flags de `/pignolo:on` y `/pignolo:off` se resuelven en el checkout principal aunque la sesión esté en un worktree; `run.json` queda protegido de la escritura de los subagentes.
+- `/pignolo:setup` guarda los conflictos de reglas en `~/.pignolo/rule-conflicts.json` (vuelven a preguntarse si el texto cambia) y respalda una config inválida antes de reescribirla.
+- Todo lo nuevo actúa solo durante un flujo de pignolo. Conocido y anotado para la revisión final: los contadores `_noword`/`_malformed` no se reinician, y tras el tope de 8 un `DONE` pasa sin verificar hasta que `run.js task` limpie el contador. Hipótesis por verificar en `tests/manual/hito-3a.md`.
+
 ## 0.2.3 — 2026-09-29
 
 - Guardia de shell: borrar una raíz calculada desde código inline (`process.cwd()`, `__dirname`, `os.getcwd()`, `Path.cwd()`/`Path.home()`, `Dir.pwd`, `Deno.cwd()`, `HOME`/`USERPROFILE`/`PWD` del entorno...) es catastrófico cuando es el argumento entero del borrado, también envuelta (`path.join(process.cwd())`, `str(Path.home())`), con `.resolve()`/`.parent` o subiendo (`path.resolve(__dirname, '..')`); antes era solo no verificable. Una subruta (`path.join(process.cwd(), 'dist')`, `Path.home() / '.cache'`) es no verificable, salvo que caiga en el conjunto catastrófico (`os.homedir() + '/.claude'`); antes, cualquier cosa que empezara con el HOME era catastrófica.
