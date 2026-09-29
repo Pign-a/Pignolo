@@ -1201,7 +1201,7 @@ const STRING_LIT = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
 // Destino de un borrado a partir del texto de su primer argumento: un literal o una raíz
 // calculada, quizá envueltos y con literales agregados. Devuelve las rutas a evaluar y si
 // salen de una raíz calculada, o null si el destino no se conoce.
-function inlineTarget(arg) {
+function inlineTarget(arg, bare) {
   let rest = arg.replace(/^[A-Za-z_]\w*\s*=(?![=>])\s*/, ''); // argumento con nombre: rmtree(path=…)
   let depth = 0;
   for (let m; (m = ROOT_WRAP.exec(rest)); depth++) rest = rest.slice(m[0].length);
@@ -1223,7 +1223,9 @@ function inlineTarget(arg) {
     else break;
     rest = rest.slice(m[0].length);
   }
-  if (depth > 0 || !/^\s*([,);]|$)/.test(rest)) return null;
+  // Fin del argumento; sin paréntesis (perl/ruby) también `or`, `and`, `if`, `unless`, `||`, `&&`, `?`.
+  const end = bare ? /^\s*([,);?]|$|\|\||&&|(or|and|if|unless)\b)/ : /^\s*([,);]|$)/;
+  if (depth > 0 || !end.test(rest)) return null;
   return { paths: [p, ...paths], computed: Boolean(r) };
 }
 
@@ -1241,14 +1243,18 @@ function inlineDeletes(text, st, ctx, out) {
   let unknown = false;
   for (const m of calls) {
     // Destino: el primer argumento de la llamada, o el receptor de Path(…).unlink()/.rmdir().
-    const after = text.slice(m.index + m[0].length).replace(/^\s*\(?\s*/, '');
+    const tail = text.slice(m.index + m[0].length);
+    const bare = !/\($/.test(m[0]) && !/^\s*\(/.test(tail); // perl/ruby sin paréntesis
+    const after = tail.replace(/^\s*\(?\s*/, '');
     const before = text.slice(0, m.index);
     const recv = /\.(unlink|rmdir)\s*\($/.test(m[0]) ? /\b(pathlib\.)?(Pure|Posix|Windows)?Path\(\s*(['"])((?:\\.|(?!\3)[^\\])*)\3\s*\)\s*$/.exec(before) : null;
-    const t = recv && !/\$\{|#\{/.test(recv[4]) ? { paths: [recv[4]], computed: false } : inlineTarget(after);
+    const t = recv && !/\$\{|#\{/.test(recv[4]) ? { paths: [recv[4]], computed: false } : inlineTarget(after, bare);
     // `.rename(` en un receptor cualquiera suele no ser de archivos (pandas `df.rename(columns=…)`):
     // con destino desconocido no cuenta; con un literal o una raíz calculada, sí.
     if (!t) { if (!/^\.rename\s*\($/.test(m[0])) unknown = true; continue; }
     if (t.paths.some((p) => isCatastrophicOperand(word(p, { glob: /[*?[]/.test(p) }), st, ctx))) { out.push(hit('catastrophic-delete')); return; }
+    // Mismo trato que `rm` desde la shell: ~/.claude/plugins, ~/.claude/settings*.json, ~/.pignolo/**.
+    if (t.paths.some((p) => resolveAll(p, st, ctx).some((q) => isProtectedWrite(q, SHELL_LOCS(ctx))))) { out.push(hit('protected-path')); return; }
     if (t.computed) unknown = true; // subruta de una raíz calculada: no verificable
   }
   if (unknown) out.push(hit('inline-code'));

@@ -324,6 +324,28 @@ test('more computed root forms are catastrophic and home subpaths stay unverifia
   }
 });
 
+// Protects: perl/ruby sin paréntesis con `or`, `if`, `unless` detrás del argumento y rutas
+// protegidas de escritura en código inline (re-revisión de 0.2.3) · Breaks if:
+// `rmtree '.' or die` o `FileUtils.rm_rf Dir.pwd if …` dejan de ser catastróficos, o
+// borrar ~/.claude/plugins o ~/.claude/settings.json desde código inline pasa.
+test('inline deletes without parentheses and of write-protected paths are denied with the guard off', () => {
+  for (const cmd of [`perl -MFile::Path -e "rmtree '.' or die"`, `ruby -e "require 'fileutils'; FileUtils.rm_rf '.' if true"`,
+    `ruby -e "require 'fileutils'; FileUtils.rm_rf '..' unless ENV['X']"`, `ruby -e "require 'fileutils'; FileUtils.rm_rf Dir.pwd if true"`,
+    `ruby -e "require 'fileutils'; FileUtils.rm_rf(Dir.getwd)"`, `ruby -e "require 'fileutils'; FileUtils.rm_rf(ENV['HOME'])"`,
+    `node -e "require('fs').rmSync(require('path').resolve(), {recursive: true})"`, `perl -MFile::Path -e 'rmtree($HOME)'`]) {
+    for (const mode of MODES) assert.strictEqual(evaluate(cmd, { mode }).rule, 'catastrophic-delete', `${mode}: ${cmd}`);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'block', `apagada: ${cmd}`);
+  }
+  for (const cmd of [`python -c "import os, shutil; shutil.rmtree(os.path.expanduser('~/.claude/plugins'))"`,
+    `node -e "require('fs').rmSync(require('path').resolve('~/.claude/plugins'), {recursive: true})"`,
+    `node -e "require('fs').rmSync('~/.claude/plugins', {recursive: true})"`,
+    `node -e "require('fs').rmSync(require('os').homedir() + '/.claude/plugins', {recursive: true})"`,
+    `python -c "import os; os.remove(os.path.expanduser('~/.claude/settings.json'))"`]) {
+    for (const mode of MODES) assert.strictEqual(evaluate(cmd, { mode }).decision, 'block', `${mode}: ${cmd}`);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'block', `apagada: ${cmd}`);
+  }
+});
+
 // Protects: la regla amplia de I1 (un literal protegido en cualquier parte del código inline
 // hace catastrófico todo borrado) · Breaks if: se angosta la regla a "el literal es el
 // argumento del borrado" sin cubrir los rodeos: chdir a .git, enlace a .git, variable.
