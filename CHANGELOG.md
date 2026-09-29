@@ -4,6 +4,7 @@
 
 - `/pignolo:off` y `/pignolo:on` guardan el flag en la raíz del proyecto (la primera carpeta hacia arriba con `.pignolo/project.md` o `.git`) aunque el cwd de la sesión esté en un subdirectorio. Antes, con el cwd en `.claude/`, el flag quedaba en `.claude/.pignolo/.disabled` y la allowlist de agentes lo ignoraba. La allowlist y el interruptor usan ahora la misma función de raíz.
 - Al negar un despacho, la alternativa depende del agente: `Explore` y `Plan` sugieren `pignolo:explorer`; el resto, hacer la tarea en la conversación principal o `/pignolo:off`. Hallados en el checklist manual del hito 2.
+- La allowlist de agentes rige solo mientras corre un flujo de pignolo (`.pignolo/run.json` con `expires` vigente; ilegible = en curso, vencido = no). Decisión del autor tras el checklist: el bloqueo permanente hacía que cada pedido suelto chocara y preguntara, sin beneficio hasta que existan las reglas inyectadas y el handback-gate. El respaldo antes de cada despacho sigue siempre.
 
 ## 0.2.1 — 2026-09-29
 

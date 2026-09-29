@@ -7,10 +7,18 @@ const { execFileSync } = require('node:child_process');
 const { makeRepo, makeTempDir, runLauncher, git } = require('./helpers');
 const gate = require('../plugins/pignolo/hooks/handlers/agent-gate');
 
-function activeRepo() {
+// Decisión del autor (2026-09-29): la allowlist rige solo mientras corre un flujo de
+// pignolo (.pignolo/run.json con `expires` en el futuro). activeRepo simula un flujo en curso.
+const writeRun = (repo, content) => fs.writeFileSync(path.join(repo, '.pignolo', 'run.json'), content);
+function configuredRepo() {
   const repo = makeRepo();
   fs.mkdirSync(path.join(repo, '.pignolo'));
   fs.writeFileSync(path.join(repo, '.pignolo', 'project.md'), '# proyecto\n');
+  return repo;
+}
+function activeRepo() {
+  const repo = configuredRepo();
+  writeRun(repo, JSON.stringify({ expires: new Date(Date.now() + 3600e3).toISOString() }));
   return repo;
 }
 const call = (repo, subagent, extra = {}) => {
@@ -25,6 +33,25 @@ const call = (repo, subagent, extra = {}) => {
 };
 
 const repo = activeRepo();
+
+test('a configured project with no running flow lets built-in agents through', () => {
+  const r = call(configuredRepo(), 'Explore').r;
+  assert.deepStrictEqual({ exit: r.exit, stderr: r.stderr || '' }, { exit: 0, stderr: '' });
+});
+
+test('an expired run marker no longer enforces the allowlist', () => {
+  const repo2 = configuredRepo();
+  writeRun(repo2, JSON.stringify({ expires: new Date(Date.now() - 60e3).toISOString() }));
+  assert.strictEqual(call(repo2, 'general-purpose').r.exit, 0);
+});
+
+test('a malformed run marker counts as a running flow (fail closed) and says how to clear it', () => {
+  const repo2 = configuredRepo();
+  writeRun(repo2, '{no es json');
+  const r = call(repo2, 'Explore').r;
+  assert.strictEqual(r.exit, 2);
+  assert.match(r.stderr, /run\.json/);
+});
 
 for (const t of ['pignolo:implementer', 'pignolo:review-risk', 'pignolo-ui:ui-option', 'pignolo-ui:ui-auditor']) {
   test(`allows ${t}`, () => {
@@ -115,6 +142,7 @@ test('a cwd in a subdirectory of an active project denies Explore, also without 
   const plain = makeTempDir('pignolo-plain-');
   fs.mkdirSync(path.join(plain, '.pignolo'));
   fs.writeFileSync(path.join(plain, '.pignolo', 'project.md'), '# proyecto\n');
+  writeRun(plain, JSON.stringify({ expires: new Date(Date.now() + 3600e3).toISOString() }));
   fs.mkdirSync(path.join(plain, 'sub'));
   const savedPath = process.env.PATH;
   try {

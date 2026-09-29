@@ -1,11 +1,12 @@
 'use strict';
-// PreToolUse Agent. En un proyecto con pignolo activo solo se despachan agentes
+// PreToolUse Agent. En un proyecto con pignolo activo y un flujo de pignolo en curso
+// (.pignolo/run.json vigente; decisión del autor, 2026-09-29) solo se despachan agentes
 // pignolo (allowlist A-11, igualdad exacta sobre tool_input.subagent_type). Antes
 // de cada despacho permitido se respalda (instantánea WIP y refs) salvo con
 // PIGNOLO_DISABLED=1 o el canario. /pignolo:off apaga la allowlist, no los respaldos.
 // Los respaldos se reparten lo que queda del plazo del launcher (ctx.deadline): si no
 // alcanza, se saltean con aviso y el despacho permitido pasa igual (spec §8.3).
-const { projectState } = require('../../lib/project');
+const { projectState, runState } = require('../../lib/project');
 const { readState } = require('../../lib/disabled');
 const { snapshotWip, backupRefs } = require('../../lib/git-backup');
 
@@ -26,7 +27,8 @@ exports.run = (input, ctx = {}) => {
   const left = () => deadline - MARGIN_MS - Date.now();
 
   const { root, active } = projectState({ cwd, env });
-  if (active && !allowed(type)) {
+  const run = active ? runState(root) : { running: false };
+  if (run.running && !allowed(type)) {
     const shown = String(type);
     // Explore y Plan son de lectura: su equivalente es pignolo:explorer. Para el resto
     // no hay un agente pignolo que haga lo mismo.
@@ -35,7 +37,7 @@ exports.run = (input, ctx = {}) => {
       : 'hacé la tarea en la conversación principal, o pedile al humano /pignolo:off si necesita ese agente';
     return {
       exit: 2,
-      stderr: `pignolo bloqueó el despacho de "${shown}": en este proyecto solo se despachan agentes pignolo:* (y pignolo-ui:ui-option, pignolo-ui:ui-auditor). Alternativa: ${alternative}.\n`,
+      stderr: `pignolo bloqueó el despacho de "${shown}": mientras corre un flujo de pignolo solo se despachan agentes pignolo:* (y pignolo-ui:ui-option, pignolo-ui:ui-auditor). Alternativa: ${alternative}.${run.malformed ? ` El marcador del flujo (${run.file}) no se puede leer; si no hay un flujo en curso, pedile al humano que lo borre.` : ''}\n`,
     };
   }
 

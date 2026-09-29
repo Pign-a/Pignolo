@@ -12,6 +12,7 @@ Primera corrida parcial en una sesión real de Claude Code, 2026-09-29. Windows 
 | 5. `/pignolo:off` y `/pignolo:on` | OK tras un bug | **Bug:** el modelo había entrado a `.claude/` y el cwd persistió; `/pignolo:off` guardó el flag en `.claude/.pignolo/.disabled` y la allowlist, que mira la raíz, siguió negando. Arreglado en 0.2.2 (el flag se resuelve a la raíz del proyecto). Repitiendo `/pignolo:off` desde la raíz, `general-purpose` pasó; `/pignolo:on` lo volvió a encender. |
 | 6. `pignolo:explorer` | OK (parcial) | Pasa con el proyecto activo y devolvió un inventario del repo. No se verificó el modelo. El hilo principal no lo usó por su cuenta ("solo para skills de pignolo"): la frase fija de `description` funciona contra la delegación espontánea. |
 | 10. `pignolo:researcher` | OK (parcial) | Pasa, investigó en la web y marcó los datos poco firmes con su fuente. No se verificó que no reciba el CLAUDE.md. |
+| Decisión | Cambio de contrato | El autor encontró lenta la fricción: cada pedido de agente chocaba con el bloqueo y Claude preguntaba. Tras un debate (A mantener, B solo en flujos, C quitar) eligió B: la allowlist rige solo con `.pignolo/run.json` vigente (0.2.2). Los puntos 4 y 5 pasan a verificarse con esa marca. |
 | 2, 7, 8, 9, 11, 12 | Sin probar todavía | |
 
 ## Pendiente
