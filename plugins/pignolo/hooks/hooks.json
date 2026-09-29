@@ -19,6 +19,28 @@
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "protect-paths"], "timeout": 30 }
         ]
+      },
+      {
+        "matcher": "SubagentHandback",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "handback-gate"], "timeout": 30 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "handback-gate"], "timeout": 30 }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^pignolo:(implementer|fixer|test-writer)$",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "handback-gate"], "timeout": 30 }
+        ]
       }
     ],
     "UserPromptExpansion": [

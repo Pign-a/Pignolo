@@ -41,3 +41,12 @@ test('the test-only _echo handler is not registered', () => {
     for (const h of handlersFor(event)) assert.notStrictEqual(h.args[1], '_echo');
   }
 });
+
+test('handback-gate is registered on SubagentStop (pignolo writers), PreToolUse SubagentHandback and PostToolUse Agent', () => {
+  const stop = handlersFor('SubagentStop').filter((h) => h.args[1] === 'handback-gate');
+  assert.deepStrictEqual(stop.map((h) => h.matcher), ['^pignolo:(implementer|fixer|test-writer)$']);
+  const pre = handlersFor('PreToolUse').filter((h) => h.args[1] === 'handback-gate');
+  assert.deepStrictEqual(pre.map((h) => h.matcher), ['SubagentHandback']);
+  const postHooks = handlersFor('PostToolUse').filter((h) => h.args[1] === 'handback-gate');
+  assert.deepStrictEqual(postHooks.map((h) => h.matcher), ['Agent']);
+});
