@@ -74,7 +74,10 @@ function readReport(name) {
 module.exports = { readReport };
 `;
 const REPORT_BUG = REPORT.replace("  if (!/^[a-z0-9-]+\\.txt$/.test(name)) throw new Error('nombre inválido');\n", '');
-const REPORT_CLEAN = REPORT.replace("throw new Error('nombre inválido')", "throw new Error(`nombre de informe inválido: ${name}`)");
+// Cambio limpio y neutro: la regex pasa a una constante con nombre; la validación no cambia.
+const REPORT_CLEAN = REPORT
+  .replace("const DIR = path.join(__dirname, '..', 'reports');\n", "const DIR = path.join(__dirname, '..', 'reports');\nconst SAFE_NAME = /^[a-z0-9-]+\\.txt$/;\n")
+  .replace('if (!/^[a-z0-9-]+\\.txt$/.test(name))', 'if (!SAFE_NAME.test(name))');
 
 const TOKEN = `'use strict';
 // true si el token ya venció.

@@ -83,3 +83,11 @@ test('evals: 14 casos (8 lentes, 4 jueces, refuter, fixer) y la rama sonnet solo
   assert.match(fs.readFileSync(path.join(son, 'review-risk-defect', 'graders', 'model.md'), 'utf8'), /"model":"sonnet"/);
   assert.doesNotMatch(fs.readFileSync(path.join(son, 'fixer-confirmed-finding', 'prompt.md'), 'utf8'), /model (opus|sonnet)\)/);
 });
+
+test('evals: el diff limpio de la lente risk es neutro (renombra la regex; no mete la entrada en un mensaje)', () => {
+  const c = CASES.find((x) => x.name === 'review-risk-clean');
+  const src = c.files['src/report.js'];
+  assert.doesNotMatch(src, /\$\{name\}/);
+  assert.match(src, /^const SAFE_NAME = \/\^\[a-z0-9-\]\+\\.txt\$\/;$/m);
+  assert.match(src, /if \(!SAFE_NAME\.test\(name\)\) throw new Error\('nombre inválido'\);/);
+});
