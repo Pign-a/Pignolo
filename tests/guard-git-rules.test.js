@@ -126,3 +126,16 @@ test('git -c with a key outside the short allow list is unverifiable (M1)', () =
   check('git -c alias.x=y x', 'block', 'git-config-override'); // la lista negra sigue siendo deny
   check('git -c x=y reset --hard', 'block', 'reset-hard', { mode: 'default' });
 });
+
+// Protects: la lista corta de git -c compara claves con puntos literales (0.2.3) · Breaks if:
+// un punto sin escapar en OVERRIDE_ALLOW deja pasar una clave parecida (`diffXcontext`).
+test('git -c override allow list matches literal dots only', () => {
+  for (const cmd of ['git -c diffxcontext=3 diff', 'git -c i18nxxfoo=1 log', 'git -c statusxshowuntrackedfiles=no status',
+    'git -c grepxlinenumber=true grep x', 'git -c packxthreads=1 log', 'git -c corexabbrev=12 log', 'git -c mergexrenames=true log']) {
+    check(cmd, 'block', 'git-config-unknown');
+  }
+  for (const cmd of ['git -c diff.context=3 diff', 'git -c i18n.logOutputEncoding=utf-8 log', 'git -c status.showUntrackedFiles=no status',
+    'git -c grep.lineNumber=true grep x', 'git -c pack.threads=1 log', 'git -c core.abbrev=12 log', 'git -c merge.renames=true log']) {
+    check(cmd, 'allow');
+  }
+});

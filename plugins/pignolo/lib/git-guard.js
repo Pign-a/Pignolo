@@ -117,7 +117,7 @@ const PROTECTED_CONFIG = /^(alias\..+|core\.(hookspath|fsmonitor|sshcommand|page
 const CONFIG_ALLOW = /^(user\.(name|email|signingkey)|color\..+|core\.(autocrlf|eol|filemode|ignorecase|quotepath|longpaths|safecrlf|whitespace|symlinks)|init\.defaultbranch|pull\.(rebase|ff)|push\.(default|autosetupremote)|fetch\.prune|merge\.conflictstyle|rerere\.enabled|diff\.(algorithm|renames|colormoved)|log\.[a-z]+|format\.[a-z]+|branch\.[^.]+\.(remote|merge|rebase|description)|remote\.[^.]+\.url|advice\..+|help\.autocorrect|safe\.directory|commit\.gpgsign|tag\.gpgsign)$/;
 // git -c solo pasa con claves de CONFIG_ALLOW o de esta lista (inofensivas para una sola
 // corrida); cualquier otra es no verificable (M1): hay decenas de claves que ejecutan programas.
-const OVERRIDE_ALLOW = /^(i18n..+|diff.(noprefix|mnemonicprefix|renamelimit|context|interhunkcontext|indentheuristic)|merge.(ff|renames|renamelimit|verbosity)|status.[a-z]+|grep.[a-z]+|pack.threads|core.(abbrev|precomposeunicode|preloadindex|untrackedcache))$/;
+const OVERRIDE_ALLOW = /^(i18n\..+|diff\.(noprefix|mnemonicprefix|renamelimit|context|interhunkcontext|indentheuristic)|merge\.(ff|renames|renamelimit|verbosity)|status\.[a-z]+|grep\.[a-z]+|pack\.threads|core\.(abbrev|precomposeunicode|preloadindex|untrackedcache))$/;
 const CONFIG_READ_FLAGS = ['get', 'get-all', 'get-regexp', 'get-urlmatch', 'list', 'get-color', 'get-colorbool', 'show-origin', 'show-scope'];
 const CONFIG_WRITE_FLAGS = ['unset', 'unset-all', 'add', 'replace-all', 'rename-section', 'remove-section'];
 
@@ -1178,7 +1178,39 @@ const DELETE_API = new RegExp([
   String.raw`(^|[^.\w$])(unlink|rmdir|rename)\b(?=\s*\(?\s*['"])`, String.raw`\bRemove-Item\b`,
 ].join('|'), 'g');
 const HOME_EXPR = /^(os\.homedir\(\)|require\(\s*['"](node:)?os['"]\s*\)\.homedir\(\)|Path\.home\(\)|Dir\.home|process\.env\.(HOME|USERPROFILE)|os\.environ\[\s*['"]HOME['"]\s*\]|ENV\[\s*['"]HOME['"]\s*\]|\$ENV\{HOME\}|\$HOME|getenv\(\s*['"]HOME['"]\s*\))/;
+// Raíces calculadas: el cwd (que es la raíz o está dentro del repo) y el HOME, en node,
+// python, ruby, perl, php y deno. Solo cuentan como el argumento entero del borrado, quizá
+// envueltas en funciones que no cambian la ruta (ROOT_WRAP); `join(cwd, 'dist')` o
+// `cwd() + '/dist'` son subrutas: no verificables, no catastróficas.
+const ROOT_ENV = String.raw`(HOME|USERPROFILE|PWD)`;
+const ROOT_EXPR = new RegExp('^(' + [
+  String.raw`(require\(\s*['"](node:)?os['"]\s*\)|os)\.homedir\(\)`, String.raw`process\.cwd\(\)`, String.raw`__dirname\b`, String.raw`__DIR__\b`,
+  String.raw`Deno\.cwd\(\)`, String.raw`(pathlib\.)?Path\.(home|cwd)\(\)`, String.raw`os\.getcwdb?\(\)`, String.raw`os\.curdir\b`,
+  String.raw`Dir\.(home|pwd|getwd)\b`, String.raw`(Cwd::)?(getcwd|cwd)\(\)`, String.raw`path\.resolve\(\s*\)`,
+  String.raw`process\.env\.${ROOT_ENV}\b`, String.raw`process\.env\[\s*['"]${ROOT_ENV}['"]\s*\]`,
+  String.raw`os\.environ\[\s*['"]${ROOT_ENV}['"]\s*\]`, String.raw`os\.environ\.get\(\s*['"]${ROOT_ENV}['"]\s*\)`,
+  String.raw`(os\.)?getenv\(\s*['"]${ROOT_ENV}['"]\s*\)`, String.raw`ENV(\.fetch\(|\[)\s*['"]${ROOT_ENV}['"]\s*[\])]`,
+  String.raw`\$ENV\{${ROOT_ENV}\}`, String.raw`Deno\.env\.get\(\s*['"]${ROOT_ENV}['"]\s*\)`,
+].join('|') + ')');
+const ROOT_WRAP = /^(str|String|Path|pathlib\.Path|path\.(resolve|normalize)|os\.path\.(abspath|realpath|normpath|expanduser)|File\.(expand_path|realpath)|fs\.realpathSync|realpath)\(\s*(?!\))/;
 const STRING_LIT = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
+
+// El argumento (texto desde el inicio del argumento) es una raíz calculada entera, o un
+// literal envuelto (`os.path.abspath('.')`) que se evalúa como literal.
+function computedRootArg(arg, st, ctx) {
+  let rest = arg;
+  let n = 0;
+  for (let m; (m = ROOT_WRAP.exec(rest)); n++) rest = rest.slice(m[0].length);
+  let lit = null;
+  const r = ROOT_EXPR.exec(rest);
+  if (r) rest = rest.slice(r[0].length);
+  else if (n > 0 && (lit = /^(['"])((?:\\.|(?!\1)[^\\])*)\1/.exec(rest))) rest = rest.slice(lit[0].length);
+  else return false;
+  if (!new RegExp(String.raw`^(\s*\)){${n}}\s*([,);]|$)`).test(rest)) return false;
+  if (r) return true;
+  if (/\$\{|#\{/.test(lit[2])) return false;
+  return isCatastrophicOperand(word(lit[2].replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), { glob: /[*?[]/.test(lit[2]) }), st, ctx);
+}
 
 // Protegido por nombre, esté donde esté en el código: .git, .pignolo, ~ o $HOME solos.
 function namesProtected(lit) {
@@ -1198,7 +1230,7 @@ function inlineDeletes(text, st, ctx, out) {
     const before = text.slice(0, m.index);
     const recv = /\.(unlink|rmdir)\s*\($/.test(m[0]) ? /\(\s*(['"])((?:\\.|(?!\1)[^\\])*)\1\s*\)\s*$/.exec(before) : null;
     const first = recv || /^(['"`])((?:\\.|(?!\1)[^\\])*)\1/.exec(after);
-    if (HOME_EXPR.test(after)) { out.push(hit('catastrophic-delete')); return; }
+    if (HOME_EXPR.test(after) || (!recv && computedRootArg(after, st, ctx))) { out.push(hit('catastrophic-delete')); return; }
     if (!first || /\$\{|#\{/.test(first[2])) { unknown = true; continue; }
     const w = word(first[2].replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), { glob: /[*?[]/.test(first[2]) });
     if (isCatastrophicOperand(w, st, ctx)) { out.push(hit('catastrophic-delete')); return; }

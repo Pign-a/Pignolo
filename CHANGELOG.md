@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3 — 2026-09-29
+
+- Guardia de shell: borrar una raíz calculada desde código inline (`process.cwd()`, `__dirname`, `os.getcwd()`, `Path.cwd()`/`Path.home()`, `Dir.pwd`, `Deno.cwd()`, `HOME`/`USERPROFILE`/`PWD` del entorno...) es catastrófico cuando es el argumento entero del borrado; antes era solo no verificable. Una subruta (`path.join(process.cwd(), 'dist')`) sigue siendo no verificable.
+- Guardia de shell: la lista corta de `git -c` compara las claves con puntos literales; antes `diffXcontext` pasaba como `diff.context`.
+- La regla amplia de código inline (un literal protegido en cualquier parte más un borrado es catastrófico) queda como falso positivo declarado en `tests/guard/residual-risk.md`: angostarla abre rodeos por `chdir` o enlaces a `.git`.
+
 ## 0.2.2 — 2026-09-29
 
 - `/pignolo:off` y `/pignolo:on` guardan el flag en la raíz del proyecto (la primera carpeta hacia arriba con `.pignolo/project.md` o `.git`) aunque el cwd de la sesión esté en un subdirectorio. Antes, con el cwd en `.claude/`, el flag quedaba en `.claude/.pignolo/.disabled` y la allowlist de agentes lo ignoraba. La allowlist y el interruptor usan ahora la misma función de raíz.
