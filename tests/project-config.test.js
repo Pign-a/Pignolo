@@ -111,3 +111,18 @@ test('usa el run recibido en vez de abrir un plazo propio', () => {
   assert.strictEqual(c.type, 'docs');
   assert.ok(calls.length >= 1);
 });
+
+test('M2: un plazo vencido no se presenta como ref inexistente ni como project.md ausente', async (t) => {
+  const root = makeRepo();
+  const expired = () => { throw new Error('se agotó el plazo de 100 ms'); };
+  await t.test('rev-parse vencido -> error de plazo', () => {
+    assert.throws(() => readProjectConfig({ root, ref: 'HEAD', run: expired }), (e) => /plazo/.test(e.message) && !/no existe/.test(e.message));
+  });
+  await t.test('git show vencido -> error, no "no encontrado"', () => {
+    const run = (args) => (args[0] === 'rev-parse' ? 'abc' : expired());
+    assert.throws(() => readProjectConfig({ root, ref: 'HEAD', run }), /plazo/);
+  });
+  await t.test('ref inexistente -> "no existe"', () => {
+    assert.throws(() => readProjectConfig({ root, ref: 'no-existe-esta-ref' }), /no existe/);
+  });
+});

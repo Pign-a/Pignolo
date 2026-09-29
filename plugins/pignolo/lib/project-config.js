@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
-const { withDeadline } = require('./git');
+const { withDeadline, isGitFailure } = require('./git');
 const { parseFrontmatter, YamlLiteError } = require('./yaml-lite');
 
 const PROJECT_MD = '.pignolo/project.md';
@@ -102,12 +102,15 @@ function readProjectConfig({ root, ref, timeoutMs = 1000, run } = {}) {
     try {
       git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], { cwd: root });
     } catch (e) {
-      throw new Error(`la ref ${ref} no existe en ${root}: ${e.message}`);
+      // Solo un fallo de git dice que la ref no existe; un plazo vencido (o git ausente) no.
+      if (isGitFailure(e)) throw new Error(`la ref ${ref} no existe en ${root}: ${e.message}`);
+      throw new Error(`no se pudo leer la ref ${ref} en ${root} (plazo vencido o git no disponible): ${e.message}`);
     }
     try {
       text = git(['show', `${ref}:${PROJECT_MD}`], { cwd: root });
-    } catch (_) {
-      return notFound(); // la ref existe pero no tiene el archivo
+    } catch (e) {
+      if (isGitFailure(e)) return notFound(); // la ref existe pero no tiene el archivo
+      throw new Error(`no se pudo leer ${PROJECT_MD} en ${ref} (plazo vencido o git no disponible): ${e.message}`);
     }
   } else {
     try {
