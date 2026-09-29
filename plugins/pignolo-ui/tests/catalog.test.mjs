@@ -7,20 +7,21 @@ const SPEC_5_4 = ['A11Y-01', 'A11Y-02', 'A11Y-04', 'A11Y-05', 'A11Y-16', 'A11Y-2
   'STATE-04', 'MOTION-03', 'MOTION-04', 'COLOR-02', 'DEPTH-01', 'LAYOUT-04', 'DRIFT-01', 'THEME-01', 'THEME-02', 'COLOR-11',
   'COLOR-12', 'ICON-01', 'CONTENT-01', 'COPY-01', 'META-01'];
 const BROWSER = ['NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07'];
+const SEO = ['SEO-01', 'SEO-02', 'SEO-04', 'SEO-05', 'SEO-06', 'SEO-09', 'SEO-18'];
 
-test('catalog ids cover the 25 rules of spec 5.4, THEME-03 and the 4 browser checks', () => {
+test('catalog ids cover the 25 rules of spec 5.4, THEME-03, the 4 browser checks and the 7 SEO ids', () => {
   const ids = catalog.rules.map((r) => r.id);
-  assert.deepEqual([...ids].sort(), [...SPEC_5_4, 'THEME-03', ...BROWSER].sort());
-  assert.equal(catalog.catalogVersion, '0.2.0');
+  assert.deepEqual([...ids].sort(), [...SPEC_5_4, 'THEME-03', ...BROWSER, ...SEO].sort());
+  assert.equal(catalog.catalogVersion, '0.3.0');
 });
 
 test('the real catalog has no problems', () => {
   assert.deepEqual(checkCatalog(catalog), []);
 });
 
-test('checkers: 25 ui-check, THEME-03 design-md, browser rules browser; COLOR-12 related to COLOR-03', () => {
+test('checkers: 25 + 7 SEO ui-check, THEME-03 design-md, browser rules browser; COLOR-12 related to COLOR-03', () => {
   const by = (c) => catalog.rules.filter((r) => r.checker === c).map((r) => r.id).sort();
-  assert.deepEqual(by('ui-check'), [...SPEC_5_4].sort());
+  assert.deepEqual(by('ui-check'), [...SPEC_5_4, ...SEO].sort());
   assert.deepEqual(by('design-md'), ['THEME-03']);
   assert.deepEqual(by('browser'), [...BROWSER].sort());
   for (const id of BROWSER) assert.equal(catalog.rules.find((r) => r.id === id).class, 'browser', id);
@@ -64,4 +65,16 @@ for (const [name, rules, message] of CASES) {
 test('checkCatalog: conflicting rules on disjoint platforms can coexist', () => {
   const rules = [base({ platform: 'D', conflicts: ['X-02'] }), base({ id: 'X-02', platform: 'M' })];
   assert.deepEqual(checkCatalog({ catalogVersion: '0.2.0', rules }), []);
+});
+
+test('SEO never blocks: document level, no floor, no bloquea; SEO-02 and SEO-09 refuse intentional', () => {
+  for (const id of SEO) {
+    const r = catalog.rules.find((x) => x.id === id);
+    assert.equal(r.level, 'document', id);
+    assert.equal(r.floor, false, id);
+    assert.notEqual(r.severity, 'bloquea', id);
+    assert.equal(r.acceptsIntentional, !['SEO-02', 'SEO-09'].includes(id), id);
+  }
+  assert.equal(catalog.rules.find((x) => x.id === 'SEO-02').severity, 'alto');
+  assert.equal(catalog.rules.find((x) => x.id === 'SEO-18').severity, 'detalle');
 });
