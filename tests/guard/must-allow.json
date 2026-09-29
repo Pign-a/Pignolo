@@ -1,0 +1,298 @@
+[
+ {
+  "shell": "bash",
+  "command": "git commit -m \"$(cat <<'EOF'\nfeat: x\n\nCo-Authored-By: a <b@c>\nEOF\n)\""
+ },
+ {
+  "shell": "bash",
+  "command": "git log --oneline -5"
+ },
+ {
+  "shell": "bash",
+  "command": "git diff --stat"
+ },
+ {
+  "shell": "bash",
+  "command": "npm test && git status"
+ },
+ {
+  "shell": "bash",
+  "command": "git add path/a path/b"
+ },
+ {
+  "shell": "bash",
+  "command": "git checkout -b feat/x"
+ },
+ {
+  "shell": "bash",
+  "command": "git fetch origin && git pull --rebase"
+ },
+ {
+  "shell": "bash",
+  "command": "git rebase main"
+ },
+ {
+  "shell": "bash",
+  "command": "git branch --show-current"
+ },
+ {
+  "shell": "bash",
+  "command": "git worktree add ../wt -b x"
+ },
+ {
+  "shell": "bash",
+  "command": "git log --format=\"%h %s\" -n 3 | head -3"
+ },
+ {
+  "shell": "bash",
+  "command": "git diff HEAD -- src/"
+ },
+ {
+  "shell": "bash",
+  "command": "git commit -m \"fix: $MSG\""
+ },
+ {
+  "shell": "bash",
+  "command": "for f in *.js; do git add \"$f\"; done"
+ },
+ {
+  "shell": "bash",
+  "command": "git -C ../other status"
+ },
+ {
+  "shell": "bash",
+  "command": "git log --oneline main..HEAD 2>&1 | head -20"
+ },
+ {
+  "shell": "bash",
+  "command": "git stash list"
+ },
+ {
+  "shell": "bash",
+  "command": "gh pr create --title x --body \"$(cat <<'EOF'\nbody\nEOF\n)\""
+ },
+ {
+  "shell": "bash",
+  "command": "[[ $(git status --porcelain) ]] && echo dirty"
+ },
+ {
+  "shell": "bash",
+  "command": "git show HEAD:src/a.js | head"
+ },
+ {
+  "shell": "powershell",
+  "command": "git log --oneline -5"
+ },
+ {
+  "shell": "powershell",
+  "command": "$branch = git rev-parse --abbrev-ref HEAD"
+ },
+ {
+  "shell": "powershell",
+  "command": "$s = git status --porcelain; if ($s) { Write-Host dirty }"
+ },
+ {
+  "shell": "powershell",
+  "command": "git add $file"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status; if ($LASTEXITCODE -ne 0) { exit 1 }"
+ },
+ {
+  "shell": "powershell",
+  "command": "git diff --stat | Out-String"
+ },
+ {
+  "shell": "powershell",
+  "command": "git commit -m \"fix: $msg\""
+ },
+ {
+  "shell": "powershell",
+  "command": "npm test; git status"
+ },
+ {
+  "shell": "powershell",
+  "command": "git log -n $n --oneline"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-ChildItem -Recurse -Filter *.js | Select-String \"git\""
+ },
+ {
+  "shell": "powershell",
+  "command": "git commit -m @'\nfeat: x\n\nbody\n'@"
+ },
+ {
+  "shell": "bash",
+  "command": "git add -A && git commit -q -m \"$(cat <<'EOF'\nfeat: cambio\n\nCo-Authored-By: Agente <agente@example.invalid>\nEOF\n)\""
+ },
+ {
+  "shell": "bash",
+  "command": "git add src/a.ts src/b.ts && git commit -q -F - <<'EOF'\nfix: algo\nEOF"
+ },
+ {
+  "shell": "bash",
+  "command": "git status --short && git log --oneline -5"
+ },
+ {
+  "shell": "bash",
+  "command": "git diff --stat HEAD~1 -- src/"
+ },
+ {
+  "shell": "bash",
+  "command": "git -C .claude/worktrees/tarea status --short | head -20"
+ },
+ {
+  "shell": "bash",
+  "command": "for w in .claude/worktrees/*/; do git -C \"$w\" log --oneline -3; done"
+ },
+ {
+  "shell": "bash",
+  "command": "git worktree add .claude/worktrees/tarea -b tarea main"
+ },
+ {
+  "shell": "bash",
+  "command": "git worktree list && git branch --merged main"
+ },
+ {
+  "shell": "bash",
+  "command": "git log --oneline main..HEAD | cat"
+ },
+ {
+  "shell": "bash",
+  "command": "git merge-base main HEAD | xargs git log -1 --format=%h"
+ },
+ {
+  "shell": "bash",
+  "command": "npm test 2>&1 | tail -20"
+ },
+ {
+  "shell": "bash",
+  "command": "npx tsc --noEmit && echo TSC_OK"
+ },
+ {
+  "shell": "bash",
+  "command": "npx vitest run src/a.test.ts 2>&1 | grep -E \"Tests|FAIL\""
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .next test-results"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -f server.log /tmp/a.txt"
+ },
+ {
+  "shell": "bash",
+  "command": "mkdir -p docs/plans && cp /tmp/plan.md docs/plans/"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -i 's/viejo/nuevo/' src/a.ts && grep -n nuevo src/a.ts"
+ },
+ {
+  "shell": "bash",
+  "command": "perl -pi -e 's/viejo/nuevo/' src/a.ts"
+ },
+ {
+  "shell": "bash",
+  "command": "python - <<'PY'\nimport io\np='src/a.css'\ns=io.open(p,encoding='utf-8').read()\nio.open(p,'w',encoding='utf-8').write(s.replace('a','b'))\nPY"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"const fs=require('fs');const s=fs.readFileSync('src/a.ts','utf8');console.log(s.length)\""
+ },
+ {
+  "shell": "bash",
+  "command": "f=src/a.ts && node -e \"const fs=require('fs');fs.writeFileSync('$f', fs.readFileSync('$f','utf8').trim())\""
+ },
+ {
+  "shell": "bash",
+  "command": "cat > \"$CLAUDE_JOB_DIR/tmp/nota.txt\" <<'EOF'\ntexto\nEOF"
+ },
+ {
+  "shell": "bash",
+  "command": "J=\"$CLAUDE_JOB_DIR/tmp/r.json\"; curl -s -o \"$J\" http://localhost:3000/api; node -e \"console.log(1)\"; rm -f $J"
+ },
+ {
+  "shell": "bash",
+  "command": "mv captura.png \"$CLAUDE_JOB_DIR/tmp/\""
+ },
+ {
+  "shell": "bash",
+  "command": "(npx next dev -p 3000 > /tmp/dev.log 2>&1 &) ; sleep 8; curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000"
+ },
+ {
+  "shell": "bash",
+  "command": "find . -path ./node_modules -prune -o -name \"*.test.ts\" -print 2>/dev/null"
+ },
+ {
+  "shell": "bash",
+  "command": "find src -name \"*.tmp\" -delete"
+ },
+ {
+  "shell": "bash",
+  "command": "ls -la .claude/worktrees 2>/dev/null; cat .claude/settings.json"
+ },
+ {
+  "shell": "bash",
+  "command": "cd src && grep -rn \"TODO\" . | head"
+ },
+ {
+  "shell": "bash",
+  "command": "for c in py python3; do command -v $c; done"
+ },
+ {
+  "shell": "bash",
+  "command": "which node && node --version"
+ },
+ {
+  "shell": "bash",
+  "command": "echo \"git reset --hard borra trabajo\" > /tmp/nota.txt"
+ },
+ {
+  "shell": "bash",
+  "command": "rg -n \"git (stash|reset)\" docs"
+ },
+ {
+  "shell": "bash",
+  "command": "git fetch origin && git status -sb"
+ },
+ {
+  "shell": "bash",
+  "command": "git show HEAD~1:package.json | head -20"
+ },
+ {
+  "shell": "bash",
+  "command": "git config user.email agente@example.invalid"
+ },
+ {
+  "shell": "bash",
+  "command": "bash -c \"npm run build && npm test\""
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-ChildItem -Recurse -Filter *.ts | Select-String \"TODO\""
+ },
+ {
+  "shell": "powershell",
+  "command": "$b = git rev-parse --abbrev-ref HEAD; Write-Host $b"
+ },
+ {
+  "shell": "powershell",
+  "command": "$m = \"C:\\tmp\\medir.ps1\"; & $m -Archivo captura.png"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item -Recurse -Force node_modules"
+ },
+ {
+  "shell": "powershell",
+  "command": "Test-Path .pignolo\\.disabled"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status 2>$null; if ($LASTEXITCODE -ne 0) { exit 1 }"
+ }
+]

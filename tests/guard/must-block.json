@@ -1,0 +1,1712 @@
+[
+ {
+  "shell": "bash",
+  "command": "GIT_WORK_TREE=/tmp/x git clean -fdx",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "bash",
+  "command": "command git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "\\git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "exec git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "xargs -I{} sh -c 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "find . -exec sh -c 'git clean -fd' \\;",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "bash",
+  "command": "$'git' reset --hard",
+  "expect": "block",
+  "rule": "dynamic-command"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset $'--hard'",
+  "expect": "block",
+  "rule": "dynamic-argument"
+ },
+ {
+  "shell": "bash",
+  "command": "\"/c/Program Files/Git/cmd/git.exe\" reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c alias.x='!rm -rf .' x",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git worktree remove ../wt --force",
+  "expect": "block",
+  "rule": "worktree-remove-force"
+ },
+ {
+  "shell": "bash",
+  "command": "git clean -fdx",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "bash",
+  "command": "git branch -d -f x",
+  "expect": "ask",
+  "rule": "branch-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "git push origin main --force",
+  "expect": "block",
+  "rule": "push-force"
+ },
+ {
+  "shell": "bash",
+  "command": "git push --forc origin main",
+  "expect": "block",
+  "rule": "push-force"
+ },
+ {
+  "shell": "bash",
+  "command": "git checkout HEAD~1 -- .",
+  "expect": "block",
+  "rule": "checkout-path"
+ },
+ {
+  "shell": "bash",
+  "command": "git switch --discard main",
+  "expect": "block",
+  "rule": "switch-force"
+ },
+ {
+  "shell": "bash",
+  "command": "git restore .",
+  "expect": "block",
+  "rule": "restore"
+ },
+ {
+  "shell": "bash",
+  "command": "git stash save \"msg\"",
+  "expect": "block",
+  "rule": "stash"
+ },
+ {
+  "shell": "bash",
+  "command": "git update-ref refs/heads/main HEAD~5",
+  "expect": "ask",
+  "rule": "ref-move"
+ },
+ {
+  "shell": "bash",
+  "command": "git checkout -B main HEAD~3",
+  "expect": "ask",
+  "rule": "ref-move"
+ },
+ {
+  "shell": "bash",
+  "command": "git switch -C main HEAD~3",
+  "expect": "ask",
+  "rule": "ref-move"
+ },
+ {
+  "shell": "bash",
+  "command": "git reflog expire --expire=now --all",
+  "expect": "block",
+  "rule": "reflog-expire"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c gc.pruneExpire=now gc",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "npm test || git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git status | git clean -fd",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "bash",
+  "command": "(git reset --hard)",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "{ git reset --hard; }",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "if true; then git clean -fd; fi",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "bash",
+  "command": "f() { git reset --hard; }; f",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "case x in x) g''it reset --hard;; esac",
+  "expect": "block",
+  "rule": "unparseable"
+ },
+ {
+  "shell": "bash",
+  "command": "case x in x) git reset --hard;; esac",
+  "expect": "block",
+  "rule": "unparseable"
+ },
+ {
+  "shell": "bash",
+  "command": "time git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "winpty git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "watch -n 1 git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "setsid git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "flock /tmp/l git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "script -qc 'git reset --hard' /dev/null",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "strace -f git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "source <(echo git reset --hard)",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "bash <(echo git reset --hard)",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": ". /dev/stdin <<< \"git reset --hard\"",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "perl -E 'system(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "awk 'BEGIN{system(\"git reset --hard\")}'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n '1e git reset --hard' a.txt",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "git submodule foreach \"git reset --hard\"",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git rebase -x \"git reset --hard HEAD~1\" HEAD~1",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git bisect run sh -c \"git clean -fdx\"",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git merge --no-verify feature",
+  "expect": "block",
+  "rule": "no-verify"
+ },
+ {
+  "shell": "bash",
+  "command": "git send-pack --force origin main",
+  "expect": "block",
+  "rule": "send-pack"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c remote.origin.mirror=true push origin",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "cd .pig*; touch .disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "F=.pignolo/.disabled; echo x > $F",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "G=.git; echo x > $G/HEAD",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .gi?",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .g*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "find .git -delete",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "cd plugins/pignolo/hooks && node launcher.js toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "L=x/hooks/launcher.js; echo {} | node \"$L\" toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "cp /dev/null .pignolo/.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "mkdir -p .pignolo/.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "git -C . reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git --git-dir=.git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "ln -s x .pignolo/.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -Ic \"import os; os.system('git stash')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "powershell -NoP -W Hidden -c \"git reset --hard\"",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git fetch origin +main:main",
+  "expect": "ask",
+  "rule": "ref-move"
+ },
+ {
+  "shell": "powershell",
+  "command": "Invoke-Expression (\"gi\"+\"t reset --hard\")",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "powershell",
+  "command": "iex (\"gi\"+\"t reset --hard\")",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "powershell",
+  "command": "[scriptblock]::Create('gi'+'t reset --hard').Invoke()",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "$ExecutionContext.InvokeCommand.InvokeScript('gi'+'t reset --hard')",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Set-Alias x Invoke-Expression; x ('gi'+'t reset --hard')",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Start-Process ('gi'+'t') -ArgumentList 'reset','--hard'",
+  "expect": "block",
+  "rule": "dynamic-command"
+ },
+ {
+  "shell": "powershell",
+  "command": "[System.Diagnostics.Process]::Start('gi'+'t', 'reset --hard')",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Start-Process git -ArgumentList \"reset --hard\"",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "cmd /c git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "cmd /c --% git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "git reset `\n--hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status; git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status && git reset --hard",
+  "expect": "block",
+  "rule": "unparseable"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status || git clean -fd",
+  "expect": "block",
+  "rule": "unparseable"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status | git clean -fd",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "powershell",
+  "command": "@'\ngit reset --hard\n'@ | iex",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "powershell",
+  "command": "@'\ngit reset --hard\n'@ | powershell -",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "@'\ngit reset --hard\n'@ | powershell",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "& git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "& 'C:\\Program Files\\Git\\cmd\\git.exe' reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "Start-Job { git reset --hard }",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "1..1 | ForEach-Object { git clean -fdx }",
+  "expect": "block",
+  "rule": "clean"
+ },
+ {
+  "shell": "powershell",
+  "command": "$null = git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "git reset --hard 2>$null",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "git reset -`-hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item -Recurse -Force .gi*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item -Recurse -Force .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "'x' | Out-File .pignolo\\.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "powershell",
+  "command": "[IO.File]::WriteAllText('.pignolo\\.disabled','')",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "powershell",
+  "command": "git update-ref refs/heads/main HEAD~5",
+  "expect": "ask",
+  "rule": "ref-move"
+ },
+ {
+  "shell": "powershell",
+  "command": "Invoke-Command -ScriptBlock ([scriptblock]::Create(\"gi\"+\"t stash\"))",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "pwsh -c \"git reset --hard\"",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "wsl git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "$e='Invoke-Expression'; & $e 'gi'",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item -Recurse -Force .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -c'import os; os.system(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "perl -e'system(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "ruby -e'system(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c core.editor=\"rm -rf .\" commit",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git difftool -y -x \"git reset --hard\"",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c diff.external=x diff",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git stash push",
+  "expect": "block",
+  "rule": "stash"
+ },
+ {
+  "shell": "bash",
+  "command": "git stash push -- a.txt",
+  "expect": "block",
+  "rule": "stash"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .[g]it",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .{git,nada}",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf ./.g*t",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .[!.]*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "find . -name .git -exec rm -rf {} +",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "G=.git; rm -rf $G",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "export G=.git; rm -rf \"$G\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "read G <<< .git; rm -rf $G",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "for d in .git; do rm -rf $d; done",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf \"$(git rev-parse --git-dir)\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf \"$PWD\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf \"$PIGNOLO_HOME\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "$p = '.git'; Remove-Item $p -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item ('.g'+'it') -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset --hard \"",
+  "expect": "block",
+  "rule": "unparseable"
+ },
+ {
+  "shell": "bash",
+  "command": "watch -n1 git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "sudo git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "timeout -k 5 10 git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "nice -n 5 git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "command command command git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command command git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env env git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env -i PATH=/usr/bin git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env -S 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env -S'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env --split-string='git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "rlwrap git reset --hard",
+  "expect": "block",
+  "rule": "unknown-with-git"
+ },
+ {
+  "shell": "bash",
+  "command": "taskset 1 git reset --hard",
+  "expect": "block",
+  "rule": "unknown-with-git"
+ },
+ {
+  "shell": "bash",
+  "command": "valgrind -q git reset --hard",
+  "expect": "block",
+  "rule": "unknown-with-git"
+ },
+ {
+  "shell": "bash",
+  "command": "coproc git reset --hard",
+  "expect": "block",
+  "rule": "unknown-with-git"
+ },
+ {
+  "shell": "bash",
+  "command": "parallel git reset ::: --hard",
+  "expect": "block",
+  "rule": "unknown-with-git"
+ },
+ {
+  "shell": "bash",
+  "command": "echo 'git reset --hard' | xargs -I{} sh -c '{}'",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "echo 'git reset --hard' | xargs -I % bash -c %",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "source <(echo 'git reset --hard')",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "bash <(echo 'git reset --hard')",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": ". /dev/stdin <<< 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "bash < <(echo 'git reset --hard')",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "echo 'git reset --hard' | bash",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "tee >(git reset --hard) < /dev/null",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "sh -s <<< 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "ruby -e '`git reset --hard`'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python -c'import os;os.system(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n '1e git reset --hard' README.md",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require('child_process').execSync('git reset --hard')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "Rscript -e 'system(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "lua -e 'os.execute(\"git reset --hard\")'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "pwsh -c 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "npm exec -c 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "npx -c 'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "npm exec -- git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "pnpm exec git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "yarn exec git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git submodule foreach 'git reset --hard'",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git rebase -x 'git reset --hard' HEAD~1",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git bisect run sh -c 'git reset --hard'",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git difftool -x 'git reset --hard' HEAD",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c difftool.x.cmd='git reset --hard' difftool -y --tool=x HEAD",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git fetch --upload-pack='git reset --hard; git-upload-pack' .",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git ls-remote --upload-pack='git reset --hard; git-upload-pack' .",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git clone -u 'git reset --hard; git-upload-pack' . ../copia",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git archive --remote=. --exec='git reset --hard; git-upload-archive' HEAD",
+  "expect": "block",
+  "rule": "git-shell"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c protocol.allow=always fetch 'ext::sh -c git% reset% --hard'",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "GIT_ALLOW_PROTOCOL=ext git fetch 'ext::sh -c git% reset% --hard'",
+  "expect": "block",
+  "rule": "git-env-config"
+ },
+ {
+  "shell": "bash",
+  "command": "GIT_EDITOR='git reset --hard;' git commit",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "EDITOR='git reset --hard;' git commit",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "GIT_SEQUENCE_EDITOR='git reset --hard;' git rebase -i HEAD~1",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "GIT_EXTERNAL_DIFF='git reset --hard;' git diff",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "GIT_SSH_COMMAND='git reset --hard;' git fetch origin",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c help.browser=x -c browser.x.cmd='git reset --hard;' help -w log",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c gpg.format=ssh -c gpg.ssh.defaultKeyCommand='git reset --hard' commit -S --allow-empty -F msg.txt",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c remote.origin.push=+refs/heads/*:refs/heads/* push origin",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git refs migrate --ref-format=reftable --no-reflog",
+  "expect": "block",
+  "rule": "reflog-expire"
+ },
+ {
+  "shell": "bash",
+  "command": "git stash save x",
+  "expect": "block",
+  "rule": "stash"
+ },
+ {
+  "shell": "bash",
+  "command": "git checkout HEAD -- .",
+  "expect": "block",
+  "rule": "checkout-path"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset --ha",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git -C . checkout src/a.js",
+  "expect": "block",
+  "rule": "git-C"
+ },
+ {
+  "shell": "bash",
+  "command": "git update-ref -d refs/pignolo/wip/x/y",
+  "expect": "block",
+  "rule": "pignolo-ref"
+ },
+ {
+  "shell": "bash",
+  "command": "git for-each-ref --format='delete %(refname)' refs/pignolo | git update-ref --stdin",
+  "expect": "block",
+  "rule": "update-ref-stdin"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c gc.reflogExpire=now gc --prune=now",
+  "expect": "block",
+  "rule": "git-config-override"
+ },
+ {
+  "shell": "bash",
+  "command": "git push origin +HEAD",
+  "expect": "block",
+  "rule": "push-force"
+ },
+ {
+  "shell": "powershell",
+  "command": "$ExecutionContext.InvokeCommand.InvokeScript('git reset --hard')",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "[PowerShell]::Create().AddScript('git reset --hard').Invoke()",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Set-Alias x Invoke-Expression; x 'git reset --hard'",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "[Diagnostics.Process]::Start('git','reset --hard')",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Invoke-Command -ScriptBlock { git reset --hard }",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "& ('gi'+'t') reset --hard",
+  "expect": "block",
+  "rule": "dynamic-command"
+ },
+ {
+  "shell": "powershell",
+  "command": "& (Get-Command git) reset --hard",
+  "expect": "block",
+  "rule": "dynamic-command"
+ },
+ {
+  "shell": "powershell",
+  "command": "$g = 'git'; & $g reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "$a = 'reset','--hard'; git @a",
+  "expect": "block",
+  "rule": "dynamic-argument"
+ },
+ {
+  "shell": "powershell",
+  "command": "git ('re'+'set') --hard",
+  "expect": "block",
+  "rule": "dynamic-argument"
+ },
+ {
+  "shell": "powershell",
+  "command": "git reset `-`-hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "git --% reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "New-Item -Path alias:g -Value git; g reset --hard",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Set-Item alias:g git; g reset --hard",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "Set-Alias g Remove-Item; g .git -Recurse -Force",
+  "expect": "block",
+  "rule": "ps-sink"
+ },
+ {
+  "shell": "powershell",
+  "command": "function r { Remove-Item @args -Recurse -Force }; r .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-ChildItem -Force -Filter .git | Remove-Item -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-Item .git -Force | Remove-Item -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "'.git' | Remove-Item -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "(Get-Item .git -Force).Delete($true)",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "[IO.DirectoryInfo]::new('.git').Delete($true)",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item -Path:.git -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "[IO.Directory]::Delete('.git', $true)",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "cmd /c \"rd /s /q .git\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "cmd /c rmdir .git /s /q",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "cmd /c g^it reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "powershell",
+  "command": "cmd /c \"g^i^t reset --hard\"",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "cmd /c \"git reset --hard\"",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "wsl git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "wsl -e rm -rf .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "wsl.exe -- rm -rf .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "cd plugins/pignolo/hooks && echo '{}' | node launcher.js toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "touch .pignolo/.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "powershell",
+  "command": "New-Item .pignolo\\.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset --ha\"\"rd",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset --$'hard'",
+  "expect": "block",
+  "rule": "dynamic-argument"
+ },
+ {
+  "shell": "bash",
+  "command": "g$'i't reset --hard",
+  "expect": "block",
+  "rule": "dynamic-command"
+ },
+ {
+  "shell": "bash",
+  "command": "g\\it reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset --ha\\\nrd",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "echo foo#bar; git reset --hard",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "x=$(( $(git reset --hard >/dev/null; echo 1) + 1 ))",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "echo ${x:-$(git reset --hard)}",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "a[$(git reset --hard)]=1",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "[[ -n \"$(git stash)\" ]]",
+  "expect": "block",
+  "rule": "stash"
+ },
+ {
+  "shell": "bash",
+  "command": "cat <<-EOF\n\tx\n\tEOF\ngit reset --hard\nEOF",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "cat <<EOF; git reset --hard\nx\nEOF",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "bash <<EOF\ngit reset --hard\nEOF",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "cat <<'EOF' | bash\ngit reset --hard\nEOF",
+  "expect": "block",
+  "rule": "hidden-code"
+ },
+ {
+  "shell": "bash",
+  "command": "(cd /tmp); rm -rf .g*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "false && cd /tmp; rm -rf .g*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "cd /no/existe; rm -rf .g*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "cd /tmp | true; rm -rf .gi?",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -i 's/a/b/' .git/config",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "dd if=/dev/zero of=.git/index bs=1 count=1",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "perl -pi -e 's/a/b/' .git/HEAD",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "npx rimraf .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "npx shx rm -rf .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "npx del-cli .git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "tar -xf x.tar -C .git",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "powershell",
+  "command": "Set-Content -Path .git\\HEAD -Value x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "powershell",
+  "command": "(Get-Content x) | Out-File .git\\HEAD",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "powershell",
+  "command": "Clear-Content .git\\index",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf D:\\\\pignolo\\\\.git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf 'D:\\pignolo\\.GIT'",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf .git.",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf '.git::$INDEX_ALLOCATION'",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item \"\\\\?\\D:\\pignolo\\.git\" -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item .\\.git\\ -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf /d/pignolo/.git",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf ~/.pignolo",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf $HOME/.pignolo/shadow",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item $env:USERPROFILE\\.pignolo -Recurse -Force",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf ~/.claude",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -rf *",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "! cd /nope && rm -rf .g*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c submodule.x.update='!git reset --hard' submodule update",
+  "expect": "block",
+  "rule": "git-config-unknown"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c sendemail.sendmailcmd='git reset --hard' send-email x",
+  "expect": "block",
+  "rule": "git-config-unknown"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c core.alternateRefsCommand='rm -rf .git' fetch",
+  "expect": "block",
+  "rule": "git-config-unknown"
+ },
+ {
+  "shell": "bash",
+  "command": "claude plugin disable pignolo",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "claude plugin uninstall pignolo@pignolo",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "env -iS'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env -vS'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "unzip -o x.zip -d .git",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "7z x x.7z -o.git",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "patch .git/config < p",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "git apply --directory=.git p",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "curl -o .git/config http://x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "curl -Lo .git/hooks/commit-msg https://example.com/x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "wget -O .git/config http://x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require('fs').rmSync('.git',{recursive:true})\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "python -c \"import shutil; shutil.rmtree('.git')\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "gci -Force | % Delete",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "gci -Force -Recurse | ForEach-Object -MemberName Delete",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(\"$PWD\\.git\", 'DeleteAllContents')",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('.git', 'OnlyErrorDialogs', 'SendToRecycleBin')",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ }
+]
