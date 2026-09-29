@@ -10,10 +10,15 @@ Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
 - git ≥ 2.31 (el repo sombra usa `rev-parse --path-format=absolute` y `fetch --no-write-fetch-head`).
 - En Windows, PowerShell (`powershell.exe`) para leer comandos de PowerShell por su AST; sin él, esos comandos quedan como no verificables.
 
-## Instalar (desarrollo)
+## Instalar
+
+Desde la terminal:
 
     claude plugin marketplace add Pign-a/Pignolo
-    claude plugin install pignolo
+    claude plugin install pignolo@pignolo
+    claude plugin install pignolo-ui@pignolo   # opcional: interfaces web
+
+O dentro de Claude Code: `/plugin marketplace add Pign-a/Pignolo` y `/plugin install pignolo@pignolo`. Para tomar cambios nuevos: `/plugin marketplace update pignolo`.
 
 ## Tests
 
