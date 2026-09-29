@@ -62,8 +62,16 @@ function validate(partial) {
 
 function writeConfig({ env = process.env } = {}, partial = {}) {
   validate(partial);
-  const merged = { ...load(env), ...partial };
   const file = configPath(env);
+  let current;
+  try {
+    current = load(env);
+  } catch (_) {
+    // Config inválida en disco: se respalda tal cual y se reescribe con defaults + partial.
+    fs.copyFileSync(file, `${file}.pignolo-bak-${Date.now()}`);
+    current = {};
+  }
+  const merged = { ...current, ...partial };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(merged, null, 2) + '\n');
   return withDefaults(merged);
