@@ -54,7 +54,7 @@ test('start writes a valid run.json and the gitignore, which hides it from git',
   assert.deepStrictEqual(validateRun(obj), []);
   assert.strictEqual(obj.flow, 'daily');
   assert.ok(Date.parse(obj.expires) > Date.now());
-  assert.strictEqual(fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8'), 'run.json\n.disabled\n');
+  assert.strictEqual(fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8'), '.gitignore\nrun.json\n.disabled\ntmp/\nworktrees/\n');
   assert.strictEqual(git(['status', '--porcelain'], repo).split('\n').filter((l) => l.includes('run.json')).length, 0);
 });
 
@@ -64,7 +64,7 @@ test('start with a gitignore that already has lines keeps them', () => {
   fs.writeFileSync(path.join(repo, '.pignolo', '.gitignore'), 'foo\n');
   run(repo, ['start', '--flow', 'plan']);
   run(repo, ['start', '--flow', 'plan', '--replace']);
-  assert.strictEqual(fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8'), 'foo\nrun.json\n.disabled\n');
+  assert.strictEqual(fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8'), 'foo\n.gitignore\nrun.json\n.disabled\ntmp/\nworktrees/\n');
 });
 
 test('start: a live flow needs --replace; an unreadable one names the path', () => {
