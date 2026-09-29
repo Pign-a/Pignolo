@@ -7,6 +7,11 @@
       "name": "pignolo",
       "source": "./plugins/pignolo",
       "description": "Autonomía acotada, verificación real y guardia de git para desarrollo con agentes"
+    },
+    {
+      "name": "pignolo-ui",
+      "source": "./plugins/pignolo-ui",
+      "description": "Interfaces web con decisiones de diseño explícitas y verificadas (opcional, anda sin pignolo)"
     }
   ]
 }
