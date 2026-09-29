@@ -16,7 +16,7 @@ Primera corrida en una sesión real de Claude Code, 2026-09-29. Windows 11, Powe
 | 10. `PIGNOLO_DISABLED=1` | OK | Aparece el aviso ⚠ al arrancar y `rm -rf .git` sigue bloqueado. |
 | 11. Instantánea WIP en la sombra, ninguna en el repo, deduplicada | OK | `session_id` de PreToolUse igual al de SessionStart. 3 instantáneas para muchos comandos: solo cuando algo cambió. |
 | 12. Canario con la guardia caída | OK fuera de Claude Code | En vivo no avisó. Probablemente se renombró el archivo en el fuente y no en la copia instalada (`~/.claude/plugins/cache/...`). Con una copia exacta del plugin instalado y `guard.js` renombrado, el canario nombra las cuatro familias. Repetir en vivo. |
-| 13. `/pignolo:status` | OK, con un bug | **Bug:** al llamar el launcher por pipe desde PowerShell 5.1, el BOM que antepone el pipe hacía fallar el parseo ("entrada JSON inválida"). Arreglado en `45d1e99` con su test en rojo. |
+| 13. `/pignolo:status` | OK, con un bug | **Bug:** al llamar el launcher por pipe desde PowerShell 5.1, el BOM que antepone el pipe hacía fallar el parseo ("entrada JSON inválida"). Arreglado en `78cc3fc` con su test en rojo. |
 | 14. `--fork-session` / `/branch` crea juego de respaldo | Sin probar | Lo cubren los tests. |
 | 15. Siembra en segundo plano | OK | Apareció "sembrando el repo sombra en segundo plano" en el primer arranque. No se midió el tiempo hasta `"state": "ok"`. |
 | 16. `/resume` y `/clear` | OK (`/clear`) | `/clear` cambia el `session_id`, reejecuta el arranque (con un juego de respaldo nuevo) y la instantánea siguiente va a la sombra: 4 grupos para 4 sesiones. `/resume` no se probó. |

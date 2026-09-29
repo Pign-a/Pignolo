@@ -1,7 +1,7 @@
 # Auditoría independiente del plan del hito 1 (ronda 3)
 
 - **Fecha:** 2026-09-29
-- **Objeto:** `docs/plans/2026-09-26-hito-1-esqueleto-y-guardia.md` en `884ce0a` (tareas 1, 2, 3a–3e, 4, 5, 6, 7, 7b, 7c, 8 y 9)
+- **Objeto:** `docs/plans/2026-09-26-hito-1-esqueleto-y-guardia.md` en `f13bac1` (tareas 1, 2, 3a–3e, 4, 5, 6, 7, 7b, 7c, 8 y 9)
 - **Auditor:** agente opus sin contexto previo, sobre un directorio vacío. No leyó las copias de trabajo del autor (`local/core-plan-rewrite/`, `local/guard-fix-2026-09-28/`).
 - **Entorno:** Windows 11 Pro 10.0.26200, Node 24.13.1, git 2.52.0.windows.1, Windows PowerShell 5.1 y Git Bash; `claude plugin validate` del CLI instalado.
 - **Veredicto:** `REQUEST_CHANGES`

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Node.js ≥ 22 (A-12; probado con 24.13.1, Node 22 sin probar), `node:test` + `node:assert/strict`, ESM `.mjs`, sin dependencias npm. Solo en desarrollo, y fuera de `package.json`: `@google/design.md@0.4.0` instalado a mano para el test de desarrollo contra el linter oficial.
 
-**Spec:** `docs/specs/2026-09-28-pignolo-ui-v1-design.md`, versión de `bb97471` (§0–§4; §3.2 carpeta del run; §5.1 y §5.4 para el catálogo semilla; §7.4 chequeo de fuga; §16.1; §17 hito 1).
+**Spec:** `docs/specs/2026-09-28-pignolo-ui-v1-design.md`, versión de `baacaee` (§0–§4; §3.2 carpeta del run; §5.1 y §5.4 para el catálogo semilla; §7.4 chequeo de fuga; §16.1; §17 hito 1).
 
 **Prerrequisito:** la Task 1 del plan del núcleo (`docs/plans/2026-09-26-hito-1-esqueleto-y-guardia.md`) está aplicada: existen `package.json` y `.claude-plugin/marketplace.json` en la raíz. La Task 1 de este plan los reemplaza por la versión que agrega pignolo-ui.
 
