@@ -25,6 +25,12 @@ test('invalid JSON on stdin exits 2', () => {
   assert.match(r.stderr, /entrada JSON inválida/);
 });
 
+test('stdin with a leading BOM (PowerShell 5.1 pipe) is accepted', () => {
+  const r = runLauncher('_echo', String.fromCharCode(0xfeff) + JSON.stringify({ hello: 'bom' }));
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(JSON.parse(r.stdout).hello, 'bom');
+});
+
 test('stdin that is not a JSON object exits 2', () => {
   for (const raw of ['', 'null', '[]', '"git reset --hard"', '42']) {
     const r = runLauncher('_echo', raw);

@@ -63,7 +63,9 @@ function main() {
 
   let input;
   try {
-    input = JSON.parse(fs.readFileSync(0, 'utf8'));
+    // PowerShell 5.1 antepone un BOM al texto que pasa por el pipe.
+    const raw = fs.readFileSync(0, 'utf8');
+    input = JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
   } catch (e) {
     fail(`entrada JSON inválida (${e.message})`);
   }
