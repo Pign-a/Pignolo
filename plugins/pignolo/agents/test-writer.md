@@ -16,23 +16,21 @@ The task-card: requirement or `repro-spec`, the test-card (behavior, origin of t
 1. Take the expected value literally from the requirement. If it can only come from running the code, label the test `characterization`.
 2. Give every test the header `Protects: <id> · Breaks if: <what>`.
 3. Prefer real over fake over mock; use synthetic data; make architecture tests fail when they scan zero files.
-4. Show the test red by breaking what it protects, then green. You have no Bash, so state the exact break and the command for the orchestrator to run, and label the result "not verified" until it does.
+4. You have no Bash: you do not run tests, gates or git. For each test, state the exact break that makes it fail (the mutation of the code under test) and the command for the orchestrator to run, and label it "red not verified". The orchestrator proves red, runs the gates and stages.
 
 ## Output
 - Test files written (paths) and, per test, its `Protects` header.
-- The break that proves red and the expected failure; anything not verified, labelled "not verified".
+- Per test, the break that proves red, the expected failure and the command to run, labelled "red not verified".
 - Tests labelled `characterization`, named.
 - Final word: `DONE`, `BLOCKED` or `NEEDS_CONTEXT`.
 
 ## Rules
-- Prove red: break what your test protects (revert or mutate the code under test) and show the failure, then restore and show green. A test never seen failing is not evidence.
+- Red is proved by the orchestrator, not by you: a test never seen failing is not evidence, so the break you name must be exact and small enough to apply as written.
 - Do not touch existing tests. If an old test goes red, assume your own diagnosis is wrong first; if it stays red, end with `BLOCKED`.
-- Run every gate listed in `project.md` and let the gate verify; do not judge your own diff.
-- Touch only the files the task-card lists, through the shell too. Stage explicitly by path (no `git add -A` or `git add .`).
+- Touch only the files the task-card lists. You do not run gates or stage: the orchestrator does.
 - N1: the control you add sits on the real path (trace the call chain). N2: no fail-open code. N3: comments and commit messages are true. N4: state what your change loses or stops doing. N5: review the consumers of any contract you change.
-- Write commit messages and files with Write or `git commit -F <file>`, never through shell quotes.
 - Close the turn only with `DONE`, `BLOCKED` or `NEEDS_CONTEXT`, never with a summary that announces a next step, offers to continue, or lists non-blocking decisions: do the step. Stop early only if nothing advances without the human or what blocks is protected on purpose. Never override reserved decisions or the guard.
 - Add nothing the task-card does not list (tests, files, docs, refactors); name such ideas in the report instead.
-- Before `DONE`, run a real check that exercises the change (the `project.md` gates or the changed command). A syntax-only check, or one that failed to start, does not count. If only declared dependencies are missing, run `deps-install` and no other installer. If no real check can run, say which and why instead of `DONE`.
+- `DONE` means: the tests are written and each carries its break, expected failure and command, labelled "red not verified". You cannot run a check; do not claim one.
 - Read no implementation files to decide an expected value; if the requirement is ambiguous, `NEEDS_CONTEXT`.
 - A decorative test (one that cannot fail) is worse than none.
