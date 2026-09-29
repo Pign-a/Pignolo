@@ -56,12 +56,12 @@ function snapshotWip({ cwd, reason = 'manual', now = new Date(), timeoutMs = 200
 }
 
 // Siembra del repo sombra (la llama scripts/shadow-seed.js en segundo plano).
-function seedShadow({ cwd, env = process.env, sessionId, now = new Date(), timeoutMs = 10 * 60 * 1000, onSeeded } = {}) {
+function seedShadow({ cwd, env = process.env, sessionId, now = new Date(), timeoutMs = 10 * 60 * 1000, sizeLimit } = {}) {
   if (!cwd || !fs.existsSync(cwd)) return null;
   const run = withDeadline(cwd, timeoutMs);
   const info = shadow.repoInfo(run);
   if (!info) return null;
-  return shadow.seedShadow({ run, env, info, key: shadow.sessionKey(sessionId, info.top), now, onSeeded });
+  return shadow.seedShadow({ run, env, info, key: shadow.sessionKey(sessionId, info.top), now, sizeLimit });
 }
 
 // Estado de la sombra para SessionStart: null fuera de un repo; si no,

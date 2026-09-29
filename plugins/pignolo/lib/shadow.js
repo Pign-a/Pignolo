@@ -120,7 +120,8 @@ function commitIndex({ run, env, prefix, reason, now, parent }) {
   if (last && last.tree === tree) return { ref: last.ref, sha: last.sha, tree, reused: true };
   const args = ['commit-tree', tree, '-m', `pignolo wip: ${reason}`];
   if (parent) args.splice(2, 0, '-p', parent);
-  const commit = run(args, { env: { ...env, ...IDENTITY } });
+  const date = now.toISOString(); // la retención se mide con esta fecha
+  const commit = run(args, { env: { ...env, ...IDENTITY, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } });
   const ref = `${prefix}${stamp(now)}-${process.pid}`;
   run(['update-ref', ref, commit]);
   return { ref, sha: commit, tree, reused: false };
@@ -212,9 +213,133 @@ function importWip({ run, p, info }) {
   return local;
 }
 
+// ---- Retención (spec §11.6, decisión del autor 2026-09-27) ----
+// Una sola regla: se borra lo que tiene más de 14 días, salvo la última unidad de
+// cada una de las 3 sesiones previas (y la última de la sesión actual). Nunca se
+// borra nada en automático fuera de esta regla.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const KEEP_MS = 14 * DAY_MS;
+const KEEP_SESSIONS = 3;
+const SIZE_WARN_BYTES = 1024 * 1024 * 1024;
+
+// units: [{ id, group, time }] → ids a borrar.
+function retentionPrune(units, now, currentGroup) {
+  const newest = new Map();
+  for (const u of units) {
+    const n = newest.get(u.group);
+    if (!n || u.time > n.time) newest.set(u.group, u);
+  }
+  const keep = new Set([...newest.entries()]
+    .filter(([g]) => g !== currentGroup)
+    .sort((a, b) => b[1].time - a[1].time)
+    .slice(0, KEEP_SESSIONS)
+    .map(([, u]) => u.id));
+  if (newest.has(currentGroup)) keep.add(newest.get(currentGroup).id);
+  return units.filter((u) => now - u.time > KEEP_MS && !keep.has(u.id)).map((u) => u.id);
+}
+
+// Instantáneas: una unidad por ref, agrupadas por la clave de sesión.
+function wipUnits(run, gitDirArgs = []) {
+  const out = run([...gitDirArgs, 'for-each-ref', '--format=%(refname) %(objectname) %(committerdate:unix)', 'refs/pignolo/wip/']);
+  return out.split('\n').filter(Boolean).map((l) => {
+    const [ref, s, t] = l.split(' ');
+    const parts = ref.split('/');
+    return { id: ref, sha: s, group: parts.length > 4 ? parts[3] : '', time: Number(t) * 1000 };
+  });
+}
+
+function deleteRefs(run, gitDirArgs, refs) {
+  if (!refs.length) return;
+  run([...gitDirArgs, 'update-ref', '--stdin'], { input: refs.map((r) => `delete ${r.ref} ${r.sha}\n`).join('') });
+}
+
+function prune({ run, p, key, now }) {
+  const G = ['--git-dir', p.dir];
+  // 1. Dentro del repo: solo lo que la sombra ya tiene (nunca la única copia).
+  const inShadow = new Map(listRefs(run, 'refs/pignolo/wip/', G).map((x) => [x.ref, x.sha]));
+  const repoUnits = wipUnits(run);
+  const repoGone = new Set(retentionPrune(repoUnits, now, key));
+  const repoDel = repoUnits.filter((u) => repoGone.has(u.id) && inShadow.get(u.id) === u.sha).map((u) => ({ ref: u.id, sha: u.sha }));
+  deleteRefs(run, [], repoDel);
+  // 2. Instantáneas de la sombra.
+  const shUnits = wipUnits(run, G);
+  const shGone = new Set(retentionPrune(shUnits, now, key));
+  const shDel = shUnits.filter((u) => shGone.has(u.id)).map((u) => ({ ref: u.id, sha: u.sha }));
+  deleteRefs(run, G, shDel);
+  // 3. Juegos de refs: cada juego es una unidad y su propio grupo; el actual es el último.
+  const sets = new Map();
+  for (const x of listRefs(run, 'refs/pignolo/refs/', G)) {
+    const base = x.ref.split('/').slice(0, 4).join('/');
+    if (!sets.has(base)) sets.set(base, []);
+    sets.get(base).push(x);
+  }
+  const setUnits = [...sets.keys()].map((b) => ({ id: b, group: b, time: parseStamp(b.split('/')[3]) }));
+  const latestSet = [...sets.keys()].sort().pop();
+  const setDel = retentionPrune(setUnits, now, latestSet).flatMap((b) => sets.get(b));
+  deleteRefs(run, G, setDel);
+  // 3b. Respaldos de refs dentro del repo (refs/pignolo/backup/<ts>/, uno por
+  // arranque): misma regla por juego. Se evalúa después de podar la sombra y solo
+  // se borra una ref cuyo commit sigue en un juego de la sombra (nunca la única copia).
+  const shadowShas = new Set(listRefs(run, 'refs/pignolo/refs/', G).map((x) => x.sha));
+  const bsets = new Map();
+  for (const x of listRefs(run, 'refs/pignolo/backup/')) {
+    const base = x.ref.split('/').slice(0, 4).join('/');
+    if (!bsets.has(base)) bsets.set(base, []);
+    bsets.get(base).push(x);
+  }
+  const bUnits = [...bsets.keys()].map((b) => ({ id: b, group: b, time: parseStamp(b.split('/')[3]) })).filter((u) => u.time > 0);
+  const latestB = [...bsets.keys()].sort().pop();
+  const bDel = retentionPrune(bUnits, now, latestB).flatMap((b) => bsets.get(b)).filter((x) => shadowShas.has(x.sha));
+  deleteRefs(run, [], bDel);
+  // 4. Índices de sesiones viejas y temporales huérfanos (de un proceso cortado).
+  let files = 0;
+  for (const f of fs.readdirSync(p.own)) {
+    const m = /^index-([0-9a-f]+)(\.(tmp|seed)-\d+)?$/.exec(f);
+    if (!m || (m[1] === key && !m[2])) continue;
+    const age = now - fs.statSync(path.join(p.own, f)).mtimeMs;
+    if (age > (m[2] ? 60 * 60 * 1000 : KEEP_MS)) { fs.rmSync(path.join(p.own, f), { force: true }); files += 1; }
+  }
+  // gc --auto con el vencimiento por defecto (2 semanas): seguro con otras
+  // sesiones escribiendo, así que no hace falta el lock exclusivo.
+  run([...G, 'gc', '--auto', '--quiet']);
+  return { repoWip: repoDel.length, shadowWip: shDel.length, refSets: new Set(setDel.map((x) => x.ref.split('/').slice(0, 4).join('/'))).size, repoBackups: bDel.length, files };
+}
+
+function parseStamp(s) {
+  const m = /^(\d{4}-\d\d-\d\d)T(\d\d)-(\d\d)-(\d\d)-(\d{3})Z$/.exec(s || '');
+  return m ? Date.parse(`${m[1]}T${m[2]}:${m[3]}:${m[4]}.${m[5]}Z`) : 0;
+}
+
+function dirSize(dir) {
+  let total = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const f = path.join(dir, e.name);
+    if (e.isDirectory()) total += dirSize(f);
+    else { try { total += fs.statSync(f).size; } catch (_) { /* borrado entre medio */ } }
+  }
+  return total;
+}
+
+const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+// Aviso si la sombra de este repo pasa el límite, con los archivos no ignorados
+// más pesados de la última instantánea como candidatos a .gitignore.
+function sizeWarnings({ run, p, snapRef, limit = SIZE_WARN_BYTES }) {
+  const size = dirSize(p.dir);
+  if (size <= limit) return [];
+  let heavy = '';
+  if (snapRef) {
+    const files = run(['--git-dir', p.dir, 'ls-tree', '-r', '-l', snapRef]).split('\n').filter(Boolean)
+      .map((l) => { const m = /^\S+ blob \S+\s+(\d+)\t(.*)$/.exec(l); return m && { size: Number(m[1]), name: m[2] }; })
+      .filter(Boolean).sort((a, b) => b.size - a.size).slice(0, 5);
+    if (files.length) heavy = ` Archivos no ignorados más pesados (candidatos a .gitignore): ${files.map((f) => `${f.name} (${mb(f.size)})`).join(', ')}.`;
+  }
+  return [`el repo sombra de este repo ocupa ${mb(size)} en ${p.dir} (aviso a partir de ${mb(limit)}). No se borra nada fuera de la regla de 14 días.${heavy}`];
+}
+
 // Siembra la sombra para la sesión. Pensada para correr en segundo plano; con
 // lock para que dos sesiones no siembren a la vez.
-function seedShadow({ run, env, info, key, now = new Date(), onSeeded }) {
+function seedShadow({ run, env, info, key, now = new Date(), sizeLimit }) {
   const p = shadowPaths(env, info, key);
   if (!acquireLock(p.lock)) return { busy: true };
   try {
@@ -246,9 +371,11 @@ function seedShadow({ run, env, info, key, now = new Date(), onSeeded }) {
         fs.rmSync(`${tmp}.lock`, { force: true });
       }
     }
-    const extra = onSeeded ? onSeeded({ p }) : {};
-    writeStatus(p, { state: 'ok', at: new Date().toISOString(), ...extra });
-    return { gitDir: p.dir, refs, imported: imported.length, snapshot: snap, ...extra };
+    const pruned = prune({ run, p, key, now });
+    const last = lastRef(shadowGit(run, p, info), `refs/pignolo/wip/${key}/`);
+    const warnings = sizeWarnings({ run, p, snapRef: last && last.ref, limit: sizeLimit });
+    writeStatus(p, { state: 'ok', at: new Date().toISOString(), warnings, pruned });
+    return { gitDir: p.dir, refs, imported: imported.length, snapshot: snap, pruned, warnings };
   } catch (e) {
     const error = String(e.message || e).split('\n')[0];
     try { writeStatus(p, { state: 'error', at: new Date().toISOString(), error }); } catch (_) { /* nada */ }
@@ -261,5 +388,5 @@ function seedShadow({ run, env, info, key, now = new Date(), onSeeded }) {
 
 module.exports = {
   IDENTITY, stamp, repoIdForGitDir, sessionKey, repoInfo, shadowPaths, readStatus, recordFailure,
-  addAll, commitIndex, shadowSnapshot, seedWarning, seedShadow, mirrorRefs,
+  addAll, commitIndex, shadowSnapshot, seedWarning, seedShadow, mirrorRefs, retentionPrune, prune,
 };
