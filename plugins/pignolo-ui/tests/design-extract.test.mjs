@@ -131,22 +131,25 @@ test('CLI extract into the run folder creates .pignolo-ui/.gitignore first and l
 });
 
 test('CLI extract: writes only the proposal, never over a file, never when DESIGN.md exists', () => {
-  const dir = makeTempDir();
-  const out = path.join(dir, 'proposal.md');
-  let res = runScript('design-md.mjs', ['extract', '--project', fixture('css-root'), '--out', out, '--date', DATE]);
+  const copy = makeTempDir();
+  fs.cpSync(fixture('css-root'), copy, { recursive: true });
+  const out = path.join(copy, '.pignolo-ui', 'runs', 'r1', 'proposal.md');
+  let res = runScript('design-md.mjs', ['extract', '--project', copy, '--out', out, '--date', DATE]);
   assert.equal(res.status, 0, res.stderr);
   assert.equal(res.json.mode, 'config');
-  assert.equal(fs.readFileSync(out, 'utf8'), extractDesign(fixture('css-root'), { date: DATE }).text);
+  assert.equal(fs.readFileSync(out, 'utf8'), extractDesign(copy, { date: DATE }).text);
   assert.ok(res.json.diff.split('\n').slice(2).filter(Boolean).every((l) => l.startsWith('+') || l.startsWith('@@')));
-  res = runScript('design-md.mjs', ['extract', '--project', fixture('css-root'), '--out', out, '--date', DATE]);
+  res = runScript('design-md.mjs', ['extract', '--project', copy, '--out', out, '--date', DATE]);
   assert.equal(res.status, 2);
   assert.match(res.stderr, /ya existe/);
   const project = writeTree(makeTempDir(), { 'design.md': '# mine\n', 'a.css': ':root { --primary: #000 }' });
-  res = runScript('design-md.mjs', ['extract', '--project', project, '--out', path.join(dir, 'p2.md')]);
+  const p2 = path.join(project, '.pignolo-ui', 'p2.md');
+  res = runScript('design-md.mjs', ['extract', '--project', project, '--out', p2]);
   assert.equal(res.status, 1);
   assert.equal(res.json.mode, 'exists');
-  assert.equal(fs.existsSync(path.join(dir, 'p2.md')), false);
-  res = runScript('design-md.mjs', ['extract', '--project', makeTempDir(), '--out', path.join(dir, 'p3.md')]);
+  assert.equal(fs.existsSync(p2), false);
+  const empty = makeTempDir();
+  res = runScript('design-md.mjs', ['extract', '--project', empty, '--out', path.join(empty, '.pignolo-ui', 'p3.md')]);
   assert.equal(res.status, 1);
   assert.equal(res.json.mode, 'none');
 });
@@ -188,4 +191,29 @@ test('Tailwind v3: a top-level foreground is on-surface (not "on-"), and first-w
   const data = parseYaml(splitFrontmatter(r.text).yaml).value;
   assert.ok(!Object.keys(data.colors).includes('on-'), JSON.stringify(data.colors));
   assert.deepEqual(data.colors, { 'on-surface': '#111111', primary: '#0b6bcb', 'on-primary': '#ffffff', 'card-text': '#222222' });
+});
+
+test('CLI extract refuses an --out named design.md (any case) or outside the run root; DESIGN.md changes only through the confirmed diff', () => {
+  const repo = writeTree(makeTempDir(), { 'a.css': ':root { --primary: #0b6bcb; --on-primary: #fff; --font-body: Inter; }' });
+  const outside = makeTempDir();
+  const runs = path.join(repo, '.pignolo-ui', 'runs', 'r1');
+  const bad = [
+    path.join(repo, 'DESIGN.md'),
+    path.join(repo, 'design.md'),
+    path.join(runs, 'DESIGN.md'),
+    path.join(runs, 'Design.MD'),
+    path.join(outside, 'proposal.md'),
+    path.join(repo, 'proposal.md'),
+    path.join(repo, '.pignolo-ui', '..', 'proposal.md'),
+  ];
+  for (const out of bad) {
+    const res = runScript('design-md.mjs', ['extract', '--project', repo, '--out', out, '--date', DATE]);
+    assert.equal(res.status, 2, out);
+    assert.match(res.stderr, /--out/);
+    assert.doesNotMatch(res.stderr, /error interno/);
+    assert.equal(fs.existsSync(out), false, out);
+  }
+  assert.equal(fs.existsSync(path.join(repo, '.pignolo-ui')), false, 'a refused run must not create the run root');
+  const ok = runScript('design-md.mjs', ['extract', '--project', repo, '--out', path.join(runs, 'DESIGN.proposal.md'), '--date', DATE]);
+  assert.equal(ok.status, 0, ok.stderr);
 });

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { validateDesign } from '../lib/design-doc.mjs';
 import { patchDesign, formatDiff } from '../lib/design-patch.mjs';
 import { extractDesign } from '../lib/design-extract.mjs';
-import { ensureRunRoot, isInsideRunRoot } from '../lib/run-folder.mjs';
+import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
 import { runOfficialLint } from '../lib/official-lint.mjs';
 import { readTokenSources } from '../lib/token-sources.mjs';
 
@@ -128,7 +128,7 @@ function cmdPatch(opts) {
   return { out: { written: Boolean(opts.write), diff: r.diff, hunks: r.hunks, validation }, code: 0 };
 }
 
-// Writes a proposal (never DESIGN.md itself, never over an existing file); the diff is shown
+// Writes a proposal inside the run folder (never DESIGN.md itself, never over an existing file); the diff is shown
 // and the user confirms it before the flow copies it to DESIGN.md.
 function cmdExtract(opts) {
   if (!opts.project || !opts.out) throw new UsageError('faltan --project <raíz del repo> y --out <archivo de propuesta>');
@@ -136,15 +136,16 @@ function cmdExtract(opts) {
   if (opts.date !== undefined && !isRealDate(opts.date)) {
     throw new UsageError('--date debe ser una fecha real con formato YYYY-MM-DD');
   }
+  // DESIGN.md changes only through the diff the user confirms, and a proposal lives in the run folder.
+  if (path.basename(opts.out).toLowerCase() === 'design.md') throw new UsageError('--out no puede llamarse DESIGN.md: extract solo escribe una propuesta');
+  if (!isInsideRunRoot(opts.project, opts.out)) throw new UsageError(`--out debe estar dentro de ${RUN_ROOT}/ del proyecto (carpeta de la corrida)`);
   if (fs.existsSync(opts.out)) throw new UsageError(`${opts.out} ya existe: extract nunca sobrescribe`);
   const existing = fs.readdirSync(opts.project).find((n) => n.toLowerCase() === 'design.md');
   if (existing) return { out: { mode: 'exists', file: existing }, code: 1 };
   const r = extractDesign(opts.project, opts.date ? { date: opts.date } : {});
   if (!r.text) return { out: { mode: r.mode, unsupported: r.unsupported, unverified: r.unverified }, code: 1 };
-  if (isInsideRunRoot(opts.project, opts.out)) {
-    ensureRunRoot(opts.project); // .gitignore before the first write (spec §3.2)
-    fs.mkdirSync(path.dirname(opts.out), { recursive: true });
-  }
+  ensureRunRoot(opts.project); // .gitignore before the first write (spec §3.2)
+  fs.mkdirSync(path.dirname(opts.out), { recursive: true });
   fs.writeFileSync(opts.out, r.text, { flag: 'wx' });
   const v = validateDesign(r.text, { catalog: loadCatalog(opts), darkInCss: r.darkDetected });
   const diff = formatDiff([{ line: 1, removed: [], added: r.text.replace(/\n$/, '').split('\n') }]);
