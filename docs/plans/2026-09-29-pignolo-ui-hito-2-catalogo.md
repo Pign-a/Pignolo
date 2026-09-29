@@ -1,4 +1,4 @@
-# pignolo-ui v1 — Hito 2a: catálogo verificado y checker (`ui-check`). Plan de implementación
+# pignolo-ui v1 — Hito 2 (2a y 2b): catálogo verificado, checker (`ui-check`), SEO estático, `files` y `report-check`. Plan de implementación
 
 > **Para quien ejecute:** usar superpowers:subagent-driven-development con el método de ejecución de abajo (olas en paralelo, worktrees creadas a mano, sin revisión por tarea, una revisión final opus). Los pasos usan casillas (`- [ ]`).
 
@@ -17,7 +17,7 @@
 §17 asigna al hito 2: `rules.json` completo, `route`, `strip-comments`, `ui-check` (25 reglas, alcance y SEO), `files` y `report-check`. Es demasiado para un plan con olas de archivos disjuntos y una sola revisión final, así que se parte en dos (decisión técnica, registrada en Rulings):
 
 - **Hito 2a (este plan, completo):** arreglos diferidos del hito 1, lectores, catálogo completo menos SEO, runner y CLI de `ui-check`, las 25 reglas con checker de §5.4, alcance (`--base`, multiconjunto) y rechazos (§5.6).
-- **Hito 2b (esbozo al final; se escribe completo cuando 2a esté unido):** los 7 ids de SEO estático (§5.4), `scripts/files.mjs` (`save | verify | restore` y delta de §9) y `scripts/report-check.mjs` (§12).
+- **Hito 2b (plan completo al final de este archivo, escrito con 2a unido):** los 7 ids de SEO estático (§5.4), `scripts/files.mjs` (`save | verify | restore` y delta de §9) y `scripts/report-check.mjs` (§12).
 
 Quedan fuera de 2a y de 2b: B1–B4 y `--measures` (hito 3), las ~125 reglas de guía (pregunta para el plan del hito 4), las líneas del diff multi-op y el frontmatter de skills (antes del hito 4) y `!important` al escribir tokens (antes de §9, hito 4).
 
@@ -579,16 +579,7 @@ pignolo:
 
 ---
 
-## Esbozo del hito 2b (se escribe completo al unir 2a)
-
-- **Task A — SEO estático (7 ids, §5.4):** SEO-01, 02, 04, 05, 06, 09, 18 en `lib/rules/seo.mjs`, `level: document`, solo con `web.public: true`; sobre archivos y, con URL de desarrollo, sobre lo que devuelve `fetch` (el test levanta un servidor en 127.0.0.1; sin red). Nunca bloquean. Fixtures por el mismo arnés.
-- **Task B — `scripts/files.mjs` (`save | verify | restore`, §9):** copias con sha256, "no existía", delta de `git status --porcelain --untracked-files=all` contra el estado inicial; borrar un archivo creado solo si su sha256 es el que escribió el lote, si no `BLOCKED`. Tests de §16.1 "Delta de §9".
-- **Task C — `scripts/report-check.mjs` (§12):** `report.json` con afirmaciones que citan una entrada de `ui-check.json`/`browser.json` o una captura con sha256; cita del aprobado (`implements: { path, manifestSha256 }`) contra `DESIGN.md`; salidas 0/1/2. Tests de §16.1 "`report-check`".
-- Olas: las tres en paralelo desde `main` con 2a unido; un cierre con revisión final opus.
-
----
-
-## Decisiones que necesita el autor
+## Decisiones que necesita el autor (hito 2a)
 
 1. **Datos de terceros dentro del plugin** (THEME-01 y THEME-02 necesitan valores por defecto de frameworks: shadcn/ui, Tailwind CSS, Bootstrap, plantilla de Vite; todos con licencia MIT). Es un tema legal y de dependencias de contenido.
    - (a) Guardar los valores en `catalog/*.json` con fuente y versión, y copiar en `CREDITS.md` el aviso de copyright MIT de cada proyecto.
@@ -602,7 +593,7 @@ Es la única decisión del autor de este plan. El método de ejecución y su cos
 
 No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5, es un contrato entre los dos plugins) y axe en v1.1 (A-13; el spike recomienda medir otra app antes).
 
-## Contradicciones y huecos del spec encontrados
+## Contradicciones y huecos del spec encontrados (hito 2a)
 
 1. **C-01 frente a Next.js App Router:** tal como está escrito (§5.2), A11Y-02 y A11Y-05 bloquearían todo `layout.tsx`, que tiene `<html>` pero no `<title>` ni `<main>`. Ruling: en JSX dan `unverified`.
 2. **COLOR-04** pide contraste de "borde funcional, focus-ring", pero §4.5 solo define pares de texto. Ruling con los pares no textuales.
@@ -610,3 +601,3200 @@ No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5
 4. **Rechazos** (§5.6) son piso (§4.1), pero §17 no los asigna a ningún hito. Entran en 2a.
 5. **"Fuente con versión"** (§5.1): el catálogo semilla del hito 1 tiene fuentes sin versión ("pignolo-ui research"). La Task 3 lo corrige.
 6. **COLOR-12** dice que el contraste de las paradas "se reporta como COLOR-03", pero no dice contra qué fondo. Ruling: `background`, o `surface` si no hay.
+
+---
+
+## Hito 2b: SEO estático, `files` y `report-check` (plan completo)
+
+> **Para quien ejecute:** mismo método que el 2a (olas en paralelo, worktrees creadas a mano, sin revisión por tarea, una revisión final opus). Valen las **Global Constraints** del 2a (arriba) más las de esta sección. Los pasos usan casillas (`- [ ]`).
+
+**Objetivo:** cerrar el hito 2 de §17. `ui-check` suma los 7 ids de SEO estático (§5.4, A-06), que solo corren si `DESIGN.md` declara `web.public: true` y **nunca bloquean**; `scripts/files.mjs` (`save | verify | restore`) aplica un lote sin romper (§9); `scripts/report-check.mjs` cruza cada afirmación del informe con su evidencia y exige la cita del aprobado (§12).
+
+**Arquitectura:**
+- **SEO.** Dos módulos de reglas de proyecto (`checkProject`): `lib/rules/seo-site.mjs` (SEO-01 `robots.txt`, SEO-05 sitemap) y `lib/rules/seo-page.mjs` (SEO-02, 04, 06, 09, 18). Leen las páginas de una sola vez: los documentos de las entradas (`ctx.isDocument`, nunca mockups) y, con `--url`, las páginas que devuelve el servidor de desarrollo **local** (`lib/site-fetch.mjs`). Lo compartido va en `lib/rules/seo-common.mjs` (compuerta `web.public`, lista de páginas, lector de literales de `export const metadata` de Next.js), `lib/robots.mjs` (RFC 9309), `lib/site-files.mjs` (`robots.txt`/`sitemap.xml` en la raíz, `public/` o `static/`) y `lib/xml-check.mjs`. El runner solo cambia en tres cosas: `pctx` gana `ctxs` y `site`, cada `ctx` gana `origin`, y `runCheck` acepta `urls`.
+- **`files`.** `lib/batch-files.mjs` + CLI fina. Copias byte a byte en `<run>/<lote>/copies/`, registro `files.json`, delta de `git status --porcelain=v1 -z --untracked-files=all` contra el estado inicial (con sha256 de cada entrada sucia, así un cambio del agente sobre un archivo que ya estaba sucio también se ve). Solo lee git.
+- **`report-check`.** `lib/report-check.mjs` + CLI fina. Lee `<run>/report.json`, verifica cada afirmación contra `ui-check.json`/`browser.json` (citados por sha256), una captura o un archivo editado, y la cita del aprobado contra `DESIGN.md` (`registeredManifestSha`, que sale de `lib/approved.mjs` sin cambiar su comportamiento). Escribe `<run>/report-check.json`.
+
+**Spec:** §0 (nada remoto), §3.2–§3.3, §5.2–§5.5, §5.8, §9, §12, §16.1 ("Delta de §9", "`report-check`"), §17 hito 2.
+
+**Prerrequisito:** hito 2a unido a `main` (`30657ab` y siguientes, con la pasada de arreglos de su revisión final). Lo que 2b consume de 2a, con su firma real:
+- `runCheck({ project, files, design, base, dom, inject })` → `{ entries, inputs, exitCode }` (`lib/ui-check.mjs`); `ctx` por archivo `{ file, text, syntax, route, mockup, isDocument, markup, css, classLists, design, tokens, catalog }`; `pctx` `{ project, design, tokens, catalog, files }`; `design` = `{ data, aliases, rel, status }` (`data` es `null` si el frontmatter o el YAML no se pudieron leer).
+- `pass(key, extra)`, `fail(key, extra)`, `unverified(reason, extra)` (`lib/rules/api.mjs`); un hallazgo de `checkProject` lleva su `file` y el runner lo respeta.
+- `parseMarkup(text, { syntax })` → `{ elements, hasHtmlRoot, styles, exportsText }`; `staticText(markup, el)`; atributos JSX literales (`{'x'}`, `{-1}`, `{true}`) son estáticos; `aria-*` sin valor vale `'true'` (`lib/markup.mjs`).
+- `stripComments(text, syntax)`, `loadCatalog()`, `checkCatalog()`, `renderCatalogMarkdown()`, `ensureRunRoot()`, `isInsideRunRoot()`, `findDesignFile()`, `APPROVED_PATH`, `verifyApproved()`.
+- Arnés `tests/rules-fixtures.test.mjs`: `pass-*` exige un `pass` emitido por la regla (no el sintético del runner), `fail-*` al menos un `fail`, `unverified-*` al menos un `unverified` y ningún `fail`; `expect.json` con `status`, `severity`, `count`, `lines`, `reason`, `measure`, `allowUnverified`, `absent`, `exitCode`.
+
+### Alcance del 2b
+
+- **Adentro:** SEO-01, 02, 04, 05, 06, 09, 18 con fixtures por el arnés; `--url` en `ui-check`; `files.mjs`; `report-check.mjs`; `registeredManifestSha`; pruebas transversales; versión 0.3.0.
+- **Afuera:**
+  - B1–B4, `browser.mjs` y la producción de `browser.json` (hito 3). `report-check` ya lee `browser.json` con el contrato de abajo.
+  - Correr `typecheck`/`build`/`lint` del paso 5 de §9 y armar el informe: lo hace la skill (hito 4) con estos scripts.
+  - SEO de v1.1 (hreflang, datos estructurados, sitemap completo, Core Web Vitals), GEO, `llms.txt`, crawlers de IA (§18).
+  - **Las ~125 reglas de guía del auditor:** su pregunta (cuándo y cómo escribirlas, con fuentes con copyright) es del plan del hito 4, no de este.
+
+### Global Constraints (además de las del 2a)
+
+- **Nada remoto en tiempo de ejecución** (§0): `--url` acepta solo `localhost`, `*.localhost`, `127.0.0.0/8` y `[::1]`, por `http`/`https`, sin usuario ni clave, un solo origen y como mucho 20. Las redirecciones se siguen a mano, hasta 5 y dentro del mismo origen. Un `Sitemap:` con dominio de producción se pide **por su ruta** en el origen de desarrollo o se busca como archivo del proyecto; nunca se pide la URL de producción.
+- **Tests sin red:** el servidor de prueba es `serveRoutes` (`tests/helpers.mjs`, en `127.0.0.1` con puerto aleatorio). Un test que corre una CLI contra un servidor del mismo proceso usa `spawn` asíncrono: `spawnSync` bloquea el event loop y el servidor no contesta.
+- **Git solo se lee** en `files.mjs` (`status`, `rev-parse`, `diff --numstat`). Nunca `checkout`, `reset`, `clean`, `stash` ni `restore`.
+- **Borrar solo con prueba:** `files.mjs restore` borra un archivo únicamente si su sha256 actual es el que `verify` registró como escrito por el lote; si no, `BLOCKED` y no toca nada.
+- **U+FEFF:** la herramienta de escritura convierte el escape `\uFEFF` en el carácter literal. Después de escribir cualquier archivo, correr desde la raíz de la worktree:
+
+  ```bash
+  node -e "const fs=require('fs');const B=String.fromCharCode(0xfeff),E=String.fromCharCode(92)+'uFEFF';for(const f of process.argv.slice(1)){const s=fs.readFileSync(f,'utf8');if(s.includes(B)){fs.writeFileSync(f,s.split(B).join(E));console.log('escape en',f);}}" <archivos escritos>
+  ```
+
+- **Costo lineal:** nada de recorrer ancestros por cada elemento ni `slice` dentro de un bucle sobre el texto; cada lector nuevo tiene un test de tiempo holgado (miles de elementos anidados, < 3–5 s).
+
+## Método de ejecución (2b)
+
+- **Rama base:** `ui/hito-2b`, desde `main`. Al terminar cada ola se une a `ui/hito-2b` y `npm run test:quiet` corre **una vez**.
+- **Olas** (sin archivos compartidos dentro de una ola; tabla de archivos en cada tarea):
+  - **Ola 0:** Task B1 (opus) ∥ Task B2 (opus) ∥ Task B3 (sonnet).
+  - **Ola 1:** Task B4 ∥ Task B5 (sonnet). Parten del commit de unión de la ola 0.
+  - **Ola 2:** Task B6 (sonnet), unión, docs, revisión final opus de `main..ui/hito-2b`, una pasada de arreglos y una confirmación acotada.
+- **Por qué opus en B1 y B2:** la Task B1 cambia el contrato del runner y abre la red local (plazos, redirecciones, tope de bytes); la Task B2 borra archivos del usuario. En las otras, las tarjetas traen código y casos literales.
+- **Worktrees:** `git worktree add -b task/ui-2b/<NN> <scratchpad>/wt-2b-<NN> ui/hito-2b`. Primer paso de cada implementador: `git merge-base --is-ancestor <sha de la ola anterior> HEAD`; si falla, `BLOCKED`. Si el contrato no alcanza, `BLOCKED` con la propuesta, sin cambiarlo.
+- **Tests:** cada implementador corre solo sus archivos (`node --test --test-reporter=dot <archivo>`; para el arnés, `--test-name-pattern "rule (SEO-01|SEO-05) "`). En el informe va el resumen del reporter `dot`.
+
+## Review Focus (2b)
+
+1. **Falsos positivos en patrones comunes.** Un `layout.tsx` de Next.js con `metadataBase`, `title.template`, `alternates.canonical: '/'`, `openGraph`, `robots` según `process.env` y `{preview && <meta name="robots" content="noindex" />}` no da **ningún** `fail` de SEO (Task B6, caso realista). Un `index.html` sin canonical ni Open Graph da SEO-04 (`medio`) y SEO-18 (`detalle`), nunca algo que bloquee. Nada de SEO cambia el código de salida.
+2. **`files.mjs` nunca borra ni pisa sin prueba.** Los tres casos de §16.1, un archivo ya sucio que el agente tocó, rutas con espacios, `ñ` y renombres, CRLF y BOM restaurados byte a byte.
+3. **`report-check` no deja pasar teatro:** afirmación sin referencia, con estado o medida distintos, con `ui-check.json` sin citar por hash o cambiado después, captura fuera del run o que no es PNG, implementación sin cita del aprobado o con otro sha256.
+4. **Red local acotada:** URL remota o de dos orígenes rechazada antes de correr; redirección a otro origen, respuesta enorme o servidor colgado → `unverified` con motivo, nunca `pass`.
+5. **Costo lineal:** XML de 50 000 URLs y 20 000 niveles, patrones de `robots.txt` con miles de `*`, 2000 elementos anidados con enlaces.
+
+## Rulings del plan 2b (técnicos, registrados)
+
+- **Método y costo:** el mismo que el 2a, aprobado por el autor. 6 tareas en 3 olas; opus solo en las Tasks B1 y B2 (ver Método).
+- **Compuerta `web.public`** (A-06): sin `DESIGN.md` o con `web.public` distinto de `true`, cada id de SEO devuelve **un** `pass` con `reason` que dice por qué no aplica (`no DESIGN.md: …` o `web.public is not true: …`), como THEME-02 sin shadcn. Con un `DESIGN.md` que no se pudo leer (`design.data === null`), un `unverified`.
+- **SEO como reglas de proyecto.** Las 7 quedan `level: document` en el catálogo (§5.2), pero se implementan con `checkProject`: comparan entre rutas (SEO-06), leen archivos de sitio (SEO-01, 05) y así un componente que no es documento no genera 7 entradas `unverified (not a document)`. Sin ninguna página entre las entradas: una entrada `unverified (no page among the inputs …)` por id de página.
+- **Páginas de SEO:** documentos de las entradas que no son mockup (`design/approved/**` y `.pignolo-ui/runs/**` nunca cuentan) y páginas de `--url`. Una página de `--url` que no se puede revisar da `unverified` con el motivo: error de red o plazo, estado HTTP distinto de 200, respuesta que no es HTML, ruta final distinta de la pedida (sin contar la barra final: `redirected to <ruta> (may require a session)`, §11.2) o un `input[type=password]` (`requires a session (password field)`).
+- **`--dom`** cuenta como página renderizada: su `ctx.origin` es `'dom'` y SEO-02 lo trata como la URL de desarrollo (`detalle`).
+- **Severidad de SEO-02:** `alto` en el código fuente (`origin: 'file'`); `detalle` en la URL de desarrollo o en `--dom`, incluido `X-Robots-Tag`. Con `web.indexable: false`, `pass` (el `noindex` es declarado).
+- **Condicionales y valores de entorno en JSX:** un elemento dentro de una expresión `{…}` hija (`{preview && <meta …/>}`, `{items.map(…)}`) lleva `inExpression: true` (cambio chico en `lib/markup.mjs`). Un `meta robots` o `link canonical` condicional da `unverified`. En `export const metadata`, solo cuentan valores literales: una clave cuyo valor tiene identificadores, llamadas, spreads o plantillas con `${}` es `dynamic` → `unverified`. `generateMetadata` → `unverified (metadata is generated at run time)`.
+- **SEO-01:** sin `robots.txt` (ni archivo ni 404 del servidor) → `pass` "everything is allowed", y SEO-05 queda `unverified (no sitemap referenced)`: el "referencia un sitemap" de §5.4 se exige solo cuando `robots.txt` existe. Rutas públicas = `/` + la ruta de cada `--url`. *Assets* de render = `link[rel~=stylesheet][href]` y `script[src]` con ruta del mismo origen (empiezan con `/`, no `//`) de las páginas revisadas; sin ninguno, no se evalúa esa parte (así `Disallow: /assets/` no falla en un proyecto que no los usa). Solo se evalúa el grupo `User-agent: *` (RFC 9309: gana la regla más larga; en empate, `Allow`). Next.js `app/robots.ts` → `unverified (generated)`. Con `--url`, el `robots.txt` servido manda: un proyecto sin el archivo no agrega una segunda entrada.
+- **SEO-05:** el sitemap declarado se busca **por su ruta** (archivo en raíz/`public/`/`static/`, o pedido al origen de desarrollo). XML bien formado según el subconjunto de `lib/xml-check.mjs` (sin subconjunto interno de DTD), raíz `urlset` o `sitemapindex` con cualquier prefijo y un `loc` no vacío por ítem. Más de 10 MB → `unverified`. `app/sitemap.ts` → `unverified (generated)`.
+- **SEO-04:** en HTML, `--url` y `--dom`, 0 o ≥ 2 `link[rel=canonical]` o `href` relativo → `fail`. En JSX: un `link` en el archivo se evalúa igual; si no hay, `metadata.alternates.canonical` literal absoluto → `pass`; relativo con `metadataBase` en el mismo objeto → `pass`; relativo sin él o ausente → `unverified` (el `metadataBase` o el canonical pueden estar en otro layout).
+- **SEO-06:** título vacío → `fail`; sin `<title>` en HTML → `fail` (se superpone con A11Y-02 a propósito: otra severidad y otro motivo); duplicados (sin distinguir mayúsculas, espacios normalizados) **solo** entre HTML, `--dom` y `--url`: cada página del grupo da `fail` con `measure.count`. Los títulos de JSX se leen (`title`, `title.absolute`, `title.default`) pero nunca se comparan, porque un layout da valores por defecto.
+- **SEO-09:** `a` sin `href` con `onclick`, `role` o `tabindex` → `fail`; `href` que empieza con `javascript:` → `fail`; `href` dinámico o spread → `unverified`; `a` sin `href` y sin nada de eso es un marcador de posición válido → sin hallazgo. Los componentes (`<Link>`) no se miran.
+- **SEO-18:** en HTML/`--url`/`--dom`, faltan `og:title`, `og:type`, `og:image` u `og:url` (por `property` o `name`) → `fail` `detalle` con `measure.missing`. En JSX, sin `meta og:*`: `metadata.openGraph` con `title`, `type`, `url` e `images` → `pass`; con claves faltantes o sin `openGraph` → `unverified` (pueden venir de otro layout o de `opengraph-image`).
+- **`acceptsIntentional`:** sí en SEO-01, 04, 05, 06 y 18; no en SEO-02 (para eso está `web.indexable: false`) ni en SEO-09 (un enlace no rastreable no es una elección de estilo). Ninguna es piso ni `bloquea`.
+- **Fuentes del catálogo:** RFC 9309, RFC 6596, sitemaps.org 0.9, HTML Living Standard, Open Graph protocol y Google Search Central, cada una con `(consulted AAAA-MM-DD)` reemplazado por el día en que el implementador la abre. Si no puede abrirla, lo dice en su informe y no inventa la fecha; el cierre (Task B6) lo resuelve. Solo enlaces en `CREDITS.md`, sin copiar texto.
+- **`ui-check.json`:** `inputs` suma `{ url, sha256 }` por cada recurso bajado con éxito (páginas, `robots.txt`, sitemaps), con la URL final. Es aditivo; `catalogVersion` pasa a `0.3.0`.
+- **Invocación:** se suma `[--url <URL de desarrollo>]…` a la de §5.8; `--url` necesita `--design`. La compuerta del núcleo (hito 5) no la usa: no cambia ningún contrato que consuma el núcleo.
+- **Alcance de SEO con `--base`:** `sourceFilesOf` suma `robots.txt` y `sitemap.xml` de la raíz, `public/` o `static/`, así la base ve los mismos archivos de sitio. Los hallazgos de `--url` no existen en la base: siempre `new` (nunca bloquean).
+- **`files.mjs`:**
+  - `save` exige la raíz del repo como `--project`, `--batch` dentro de `.pignolo-ui/`, una lista `[{ path, exists, change: tokens|structure }]` de 1 a 5 archivos, y rechaza (exit 1, sin escribir nada): ruta fuera del proyecto o bajo `.git/`/`.pignolo-ui/`, repetida (sin distinguir mayúsculas), `exists` que no coincide con el disco, un archivo esperado con cambios sin commitear (paso 2 de §9) y un lote que ya tiene `files.json`.
+  - `verify` registra en `files.json` (`after`) el sha256 de cada archivo esperado y de cada cambio inesperado; exit 1 si hay cambios fuera de la lista. Informa las líneas cambiadas (`git diff --numstat` contra el `HEAD` de `save` + líneas de los archivos nuevos) y `overLineLimit` (> 200): informativo, el tope de líneas lo planifica el agente (§9 paso 1).
+  - `restore` exige `verify` previo. Restaura los esperados que existían desde la copia y comprueba el sha256; borra los creados (esperados o inesperados sin seguimiento) solo si el sha256 coincide con `after`; **un cambio inesperado sobre un archivo con seguimiento o que ya estaba sucio queda `BLOCKED`** (no hay copia y git no se escribe): se le pregunta al usuario. Las carpetas vacías que quedan no se borran (git no las ve).
+  - Archivos ignorados por git no aparecen en `git status`: un cambio del agente en uno de ellos no se detecta (declarado en el README).
+- **`report.json`** (contrato nuevo, interno de pignolo-ui; lo escribe la skill en el hito 4):
+
+  ```json
+  {
+    "version": 1,
+    "implemented": true,
+    "implements": { "path": "design/approved/checkout", "manifestSha256": "<64 hex>" },
+    "evidence": { "ui-check.json": "<sha256>", "browser.json": "<sha256>" },
+    "claims": [
+      { "id": "c1", "text": "…", "rule": "A11Y-04", "status": "pass", "measure": { "ratio": 4.8 },
+        "ref": { "source": "ui-check", "fingerprint": "A11Y-04|src/Save.tsx|button …", "line": 3 } },
+      { "id": "c2", "text": "…", "ref": { "source": "capture", "path": "captures/home-1440.png", "sha256": "<64 hex>" } },
+      { "id": "c3", "text": "…", "ref": { "source": "file", "path": "src/app/page.tsx", "sha256": "<64 hex>" } }
+    ]
+  }
+  ```
+
+  `implemented` es obligatorio; con `true`, `implements` también. `measure` se compara por igualdad exacta con el valor guardado (el crudo que dejó la regla). Una afirmación inválida (sin `text`, id repetido) se retira; un `report.json` que no es un objeto, sin `claims` o sin `implemented` booleano es error (exit 2).
+- **`browser.json`** (contrato que hereda el hito 3): un objeto con `entries` de la misma forma que las de `ui-check.json` (`id`, `status`, `fingerprint`, `line?`, `measure?`). Hasta el hito 3, una afirmación que cita `browser` se retira con `browser.json not in the run`.
+- **Versión:** `plugin.json` y CHANGELOG `0.3.0` (interfaces nuevas: `files`, `report-check`, `--url`; el catálogo suma 7 reglas).
+
+---
+
+## Ola 0 del 2b (en paralelo: Tasks B1, B2 y B3)
+
+### Task B1 (opus): base del SEO en `ui-check` (runner, `--url`, sitio, catálogo)
+
+**Files:**
+- Create: `plugins/pignolo-ui/lib/site-fetch.mjs`, `lib/robots.mjs`, `lib/site-files.mjs`, `lib/rules/seo-common.mjs`
+- Create (stubs, los reemplazan las Tasks B4 y B5): `lib/rules/seo-site.mjs`, `lib/rules/seo-page.mjs`
+- Modify: `lib/ui-check.mjs`, `scripts/ui-check.mjs`, `lib/markup.mjs`, `catalog/rules.json`, `README.md` (solo el bloque entre `<!-- catalog:start -->` y `<!-- catalog:end -->`)
+- Test: create `tests/robots.test.mjs`, `tests/site-fetch.test.mjs`, `tests/seo-common.test.mjs`; modify `tests/helpers.mjs`, `tests/markup.test.mjs`, `tests/ui-check-runner.test.mjs`, `tests/ui-check-cli.test.mjs`, `tests/catalog.test.mjs`
+
+**Consumes:** `runCheck`, `parseMarkup`, `stripComments`, `pass`/`unverified`, `loadCatalog`, `renderCatalogMarkdown` (2a).
+
+**Produces (contrato de la ola 1):**
+- `runCheck({ …, urls = [], inject: { …, fetchOptions } })`; `pctx = { project, design, tokens, catalog, files, ctxs, site }` con `site` = resultado de `fetchSite` o `null` (siempre `null` en la corrida de la base); `ctx.origin` = `'file' | 'dom'`; `inputs` con `{ url, sha256 }`.
+- `fetchSite({ urls, timeoutMs = 5000, maxBytes = 2 MiB, fetchImpl })` → `{ origin, pages, robots, sitemaps }` (ver el código); `isLoopbackUrl(u)`.
+- `parseRobots(text)`, `isAllowed(robots, path)`, `matchPattern(pattern, path)`.
+- `findSiteFile(project, urlPath)`, `generatedBy(project, name)`, `siteFiles(project)`.
+- `seoGate(pctx)`, `seoPages(pctx)`, `indexable(pctx)`, `staticAttr(el, name)`, `metadataObject(ctx)`, `prop(objText, key)`, `webOf(design)`.
+- `elements[i].inExpression` en `parseMarkup` (JSX; siempre `false` en HTML).
+- `serveRoutes(routes)` → `{ base, close }` en `tests/helpers.mjs`.
+- Catálogo `0.3.0` con los 7 ids de SEO (abajo) y el bloque del README regenerado.
+
+- [ ] **Paso 1: tests primero.** Crear y modificar los tests así (código completo):
+
+`tests/helpers.mjs` (agregado):
+
+```diff
+diff --git a/plugins/pignolo-ui/tests/helpers.mjs b/plugins/pignolo-ui/tests/helpers.mjs
+--- a/plugins/pignolo-ui/tests/helpers.mjs
++++ b/plugins/pignolo-ui/tests/helpers.mjs
+@@ -3,6 +3,7 @@ import os from 'node:os';
+ import path from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { spawnSync } from 'node:child_process';
++import http from 'node:http';
+ 
+ export const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
+ export const PLUGIN_ROOT = path.join(TESTS_DIR, '..');
+@@ -45,3 +46,20 @@ export function runScript(script, args, opts = {}) {
+   try { json = JSON.parse(res.stdout); } catch { /* not JSON */ }
+   return { status: res.status, stdout: res.stdout, stderr: res.stderr, json };
+ }
++
++// Serves routes on 127.0.0.1 (random port) for the tests of the development URL; never the
++// network. routes = { '/path': { status, headers, body } | (req, res) => void }; others 404.
++export async function serveRoutes(routes) {
++  const server = http.createServer((req, res) => {
++    const r = routes[req.url];
++    if (typeof r === 'function') return r(req, res);
++    if (!r) { res.writeHead(404); res.end(); return undefined; }
++    res.writeHead(r.status ?? 200, r.headers ?? {});
++    res.end(r.body ?? '');
++    return undefined;
++  });
++  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
++  const base = `http://127.0.0.1:${server.address().port}`;
++  const close = () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); });
++  return { base, close };
++}
+```
+
+`tests/robots.test.mjs`:
+
+```js
+// robots.txt reader (lib/robots.mjs, RFC 9309).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseRobots, isAllowed, matchPattern } from '../lib/robots.mjs';
+
+const ROBOTS = [
+  'User-agent: *',
+  'Disallow: /admin',
+  'Allow: /admin/public$',
+  'Disallow: /*.pdf$',
+  'Sitemap: https://www.example.com/sitemap.xml',
+  '',
+  'User-agent: Googlebot',
+  'Disallow: /',
+  '',
+].join('\n');
+
+test('parseRobots: groups, rules with line numbers and sitemaps', () => {
+  const r = parseRobots(ROBOTS);
+  assert.equal(r.groups.length, 2);
+  assert.deepEqual(r.groups[0].agents, ['*']);
+  assert.deepEqual(r.groups[0].rules.map((x) => [x.allow, x.pattern, x.line]), [[false, '/admin', 2], [true, '/admin/public$', 3], [false, '/*.pdf$', 4]]);
+  assert.deepEqual(r.sitemaps, [{ url: 'https://www.example.com/sitemap.xml', line: 5 }]);
+});
+
+test('isAllowed evaluates the * group: longest match wins, allow wins a tie', async (t) => {
+  const r = parseRobots(ROBOTS);
+  const CASES = [['/', true], ['/admin', false], ['/admin/x', false], ['/admin/public', true], ['/admin/public/x', false],
+    ['/a.pdf', false], ['/a.pdf?x=1', true], ['/robots.txt', true]];
+  for (const [p, allowed] of CASES) await t.test(p, () => assert.equal(isAllowed(r, p).allowed, allowed));
+  assert.equal(isAllowed(parseRobots('User-agent: *\nDisallow: /x\nAllow: /x'), '/x').allowed, true);
+  assert.equal(isAllowed(parseRobots('User-agent: *\nDisallow:'), '/').allowed, true); // empty disallow is no rule
+  assert.equal(isAllowed(parseRobots('User-agent: a\nUser-agent: *\nDisallow: /p'), '/p').allowed, false); // shared group
+  assert.equal(isAllowed(parseRobots('User-agent: Googlebot\nDisallow: /'), '/').allowed, true); // no * group
+  assert.equal(isAllowed(parseRobots('\uFEFFUser-agent: *\r\nDisallow: / # all\r\n'), '/x').rule.line, 2);
+});
+
+test('matchPattern: * and $ without regex, linear on long inputs', () => {
+  assert.equal(matchPattern('/a*b$', '/axxb'), true);
+  assert.equal(matchPattern('/a*b$', '/axxbc'), false);
+  assert.equal(matchPattern('/a*b', '/axxbc'), true);
+  assert.equal(matchPattern('/*.css$', '/x/y.css'), true);
+  const start = Date.now();
+  assert.equal(matchPattern(`/${'*a'.repeat(2000)}b$`, `/${'a'.repeat(5000)}`), false);
+  assert.ok(Date.now() - start < 2000, 'pattern matching must stay linear-ish');
+});
+```
+
+`tests/site-fetch.test.mjs`:
+
+```js
+// Fetch of the development URL (lib/site-fetch.mjs): loopback only, same-origin redirects,
+// byte cap and timeouts. The server runs on 127.0.0.1: no network.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { serveRoutes } from './helpers.mjs';
+import { isLoopbackUrl, fetchSite } from '../lib/site-fetch.mjs';
+
+test('isLoopbackUrl accepts only local http(s) addresses', async (t) => {
+  const CASES = [
+    ['http://localhost:3000/', true], ['http://127.0.0.1/', true], ['http://[::1]:5173/x', true], ['http://app.localhost/', true],
+    ['http://127.1.2.3/', true], ['http://2130706433/', true], // WHATWG URL normalizes to 127.0.0.1
+    ['https://example.com/', false], ['http://10.0.0.1/', false], ['http://192.168.0.10:3000/', false],
+    ['http://127.0.0.1.example.com/', false], ['file:///c:/x.html', false], ['http://u:p@localhost/', false], ['nope', false],
+  ];
+  for (const [u, ok] of CASES) await t.test(u, () => assert.equal(isLoopbackUrl(u), ok));
+});
+
+test('fetchSite: pages, robots.txt, sitemaps by path, redirects, caps and timeouts', async () => {
+  const html = (body, headers = {}) => ({ headers: { 'content-type': 'text/html; charset=utf-8', ...headers }, body });
+  const srv = await serveRoutes({
+    '/': html('<!doctype html><html lang="es"><head><title>Inicio</title></head><body>ñ</body></html>', { 'x-robots-tag': 'noindex' }),
+    '/same': { status: 301, headers: { location: '/' } },
+    '/away': { status: 302, headers: { location: 'https://www.example.com/login' } },
+    '/big': { body: 'x'.repeat(3 * 1024 * 1024) },
+    '/hang': () => {},
+    '/robots.txt': { headers: { 'content-type': 'text/plain' }, body: 'User-agent: *\nSitemap: https://www.example.com/sitemap.xml\n' },
+    '/sitemap.xml': { headers: { 'content-type': 'application/xml' }, body: '<urlset></urlset>' },
+  });
+  try {
+    const u = (p) => `${srv.base}${p}`;
+    const site = await fetchSite({ urls: [u('/'), u('/same'), u('/away'), u('/big'), u('/hang'), u('/missing')], timeoutMs: 400 });
+    const [root, same, away, big, hang, missing] = site.pages;
+    assert.equal(root.status, 200);
+    assert.equal(root.headers['x-robots-tag'], 'noindex');
+    assert.match(root.text, /ñ/);
+    assert.match(root.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(new URL(same.finalUrl).pathname, '/');
+    assert.equal(same.path, '/same');
+    assert.equal(away.error, 'redirected outside the development origin');
+    assert.match(big.error, /larger than/);
+    assert.match(hang.error, /no response in 400 ms/);
+    assert.equal(missing.status, 404);
+    assert.equal(site.robots.status, 200);
+    // the production URL in robots.txt is never requested: its path is fetched on the dev origin
+    assert.deepEqual(site.sitemaps.map((s) => [s.path, s.status, s.declared]), [['/sitemap.xml', 200, 'https://www.example.com/sitemap.xml']]);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('fetchSite refuses a non-loopback URL and URLs of two origins', async () => {
+  await assert.rejects(fetchSite({ urls: ['https://example.com/'] }), /not a loopback URL/);
+  await assert.rejects(fetchSite({ urls: ['http://127.0.0.1:1/', 'http://localhost:2/'] }), /one origin/);
+  assert.equal(await fetchSite({ urls: [] }), null);
+});
+```
+
+`tests/seo-common.test.mjs`:
+
+```js
+// Shared pieces of the SEO rules (lib/site-files.mjs, lib/rules/seo-common.mjs).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeTempDir, writeTree } from './helpers.mjs';
+import { findSiteFile, generatedBy, siteFiles } from '../lib/site-files.mjs';
+import { seoGate, seoPages, prop, metadataObject } from '../lib/rules/seo-common.mjs';
+import { parseMarkup } from '../lib/markup.mjs';
+
+test('site files: root, public/ and static/; generated route handlers are not files', () => {
+  const p = writeTree(makeTempDir(), { 'public/robots.txt': 'x', 'static/sitemap.xml': 'x', 'app/robots.ts': 'x', 'src/app/sitemap.ts': 'x' });
+  assert.equal(findSiteFile(p, '/robots.txt'), 'public/robots.txt');
+  assert.equal(findSiteFile(p, 'sitemap.xml'), 'static/sitemap.xml');
+  assert.equal(findSiteFile(p, '/nope.xml'), null);
+  assert.equal(findSiteFile(p, '/../x'), null);
+  assert.equal(generatedBy(p, 'robots'), 'app/robots.ts');
+  assert.equal(generatedBy(p, 'sitemap'), 'src/app/sitemap.ts');
+  assert.deepEqual(siteFiles(p), ['public/robots.txt', 'static/sitemap.xml']);
+});
+
+const design = (web) => ({ data: { pignolo: { schema: 1, ...(web ? { web } : {}) } } });
+
+test('seoGate: runs only when DESIGN.md declares web.public: true', () => {
+  assert.match(seoGate({ design: null })[0].reason, /no DESIGN\.md/);
+  assert.equal(seoGate({ design: null })[0].status, 'pass');
+  assert.equal(seoGate({ design: { data: null } })[0].status, 'unverified');
+  assert.match(seoGate({ design: design({ public: false }) })[0].reason, /web\.public is not true/);
+  assert.match(seoGate({ design: design(null) })[0].reason, /web\.public is not true/);
+  assert.equal(seoGate({ design: design({ public: true }) }), null);
+});
+
+const ctx = (file, text, extra = {}) => {
+  const syntax = file.endsWith('.tsx') ? 'jsx' : 'html';
+  const markup = parseMarkup(text, { syntax });
+  return { file, text, syntax, markup, isDocument: markup.hasHtmlRoot, mockup: false, origin: 'file', ...extra };
+};
+
+test('seoPages: documents among the inputs, never mockups or fragments; fetched pages with skip reasons', () => {
+  const doc = '<!doctype html><html><head><title>A</title></head><body></body></html>';
+  const page = (p, extra = {}) => ({ url: `http://127.0.0.1:1${p}`, path: p, finalUrl: `http://127.0.0.1:1${p}`, status: 200, headers: { 'content-type': 'text/html' }, text: doc, ...extra });
+  const pages = seoPages({
+    ctxs: [ctx('index.html', doc), ctx('Card.tsx', 'export const C = () => <div/>;'), ctx('design/approved/x/home.html', doc, { mockup: true })],
+    site: { pages: [
+      page('/'), page('/a/', { finalUrl: 'http://127.0.0.1:1/a' }), page('/cuenta', { finalUrl: 'http://127.0.0.1:1/login' }),
+      page('/b', { status: 500 }), page('/c', { headers: { 'content-type': 'application/json' } }),
+      page('/d', { text: '<html><body><form><input type="password"></form></body></html>' }), { url: 'http://127.0.0.1:1/e', path: '/e', error: 'no response in 5000 ms' },
+    ] },
+  });
+  assert.deepEqual(pages.map((p) => [p.file.replace('http://127.0.0.1:1', ''), p.origin, p.skip]), [
+    ['index.html', 'file', null], ['/', 'url', null], ['/a/', 'url', null],
+    ['/cuenta', 'url', 'redirected to /login (may require a session)'], ['/b', 'url', 'HTTP 500'], ['/c', 'url', 'not an HTML response'],
+    ['/d', 'url', 'requires a session (password field)'], ['/e', 'url', 'no response in 5000 ms'],
+  ]);
+});
+
+test('prop reads first-level literals of a metadata object and marks the rest dynamic', () => {
+  const src = "{ title: { template: '%s | T', default: 'T' }, robots: { index: false, googleBot: { index: true } }, alternates: { canonical: '/' }, metadataBase: new URL('https://x.com'), description: `a${b}`, n: 2, openGraph: { title: 'T', images: ['/og.png'] } }";
+  assert.deepEqual(prop(src, 'title'), { kind: 'object', text: "{ template: '%s | T', default: 'T' }" });
+  assert.deepEqual(prop(prop(src, 'title').text, 'default'), { kind: 'string', value: 'T' });
+  assert.equal(prop(src, 'robots').kind, 'object');
+  assert.deepEqual(prop(src, 'metadataBase'), { kind: 'dynamic' });
+  assert.deepEqual(prop(src, 'description'), { kind: 'dynamic' });
+  assert.deepEqual(prop(src, 'n'), { kind: 'literal', value: '2' });
+  assert.equal(prop(src, 'canonical'), null); // not at the first level
+  assert.deepEqual(prop(prop(src, 'alternates').text, 'canonical'), { kind: 'string', value: '/' });
+  assert.equal(prop("{ robots: process.env.X ? { index: false } : undefined }", 'robots').kind, 'dynamic');
+  assert.equal(prop("{ robots: { index: isPreview } }", 'robots').kind, 'dynamic');
+  assert.equal(prop("{ other: 'title: x' }", 'title'), null); // inside a string
+});
+
+test('metadataObject: Next.js export const metadata, typed or not; generateMetadata is dynamic', () => {
+  const m = (text) => metadataObject(ctx('app/layout.tsx', text));
+  assert.equal(m("export const metadata: Metadata = { title: 'A' };\nexport default function L() { return <html></html>; }").text, "{ title: 'A' }");
+  assert.equal(m("export const metadata = { title: 'A' };").text, "{ title: 'A' }");
+  assert.deepEqual(m('export async function generateMetadata() { return {}; }'), { dynamic: true });
+  assert.equal(m('export default function L() { return <html></html>; }'), null);
+  assert.equal(metadataObject(ctx('index.html', '<html></html>')), null);
+});
+```
+
+`tests/markup.test.mjs`, `tests/ui-check-runner.test.mjs`, `tests/ui-check-cli.test.mjs` y `tests/catalog.test.mjs`:
+
+```diff
+diff --git a/plugins/pignolo-ui/tests/catalog.test.mjs b/plugins/pignolo-ui/tests/catalog.test.mjs
+--- a/plugins/pignolo-ui/tests/catalog.test.mjs
++++ b/plugins/pignolo-ui/tests/catalog.test.mjs
+@@ -7,20 +7,21 @@ const SPEC_5_4 = ['A11Y-01', 'A11Y-02', 'A11Y-04', 'A11Y-05', 'A11Y-16', 'A11Y-2
+   'STATE-04', 'MOTION-03', 'MOTION-04', 'COLOR-02', 'DEPTH-01', 'LAYOUT-04', 'DRIFT-01', 'THEME-01', 'THEME-02', 'COLOR-11',
+   'COLOR-12', 'ICON-01', 'CONTENT-01', 'COPY-01', 'META-01'];
+ const BROWSER = ['NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07'];
++const SEO = ['SEO-01', 'SEO-02', 'SEO-04', 'SEO-05', 'SEO-06', 'SEO-09', 'SEO-18'];
+ 
+-test('catalog ids cover the 25 rules of spec 5.4, THEME-03 and the 4 browser checks', () => {
++test('catalog ids cover the 25 rules of spec 5.4, THEME-03, the 4 browser checks and the 7 SEO ids', () => {
+   const ids = catalog.rules.map((r) => r.id);
+-  assert.deepEqual([...ids].sort(), [...SPEC_5_4, 'THEME-03', ...BROWSER].sort());
+-  assert.equal(catalog.catalogVersion, '0.2.0');
++  assert.deepEqual([...ids].sort(), [...SPEC_5_4, 'THEME-03', ...BROWSER, ...SEO].sort());
++  assert.equal(catalog.catalogVersion, '0.3.0');
+ });
+ 
+ test('the real catalog has no problems', () => {
+   assert.deepEqual(checkCatalog(catalog), []);
+ });
+ 
+-test('checkers: 25 ui-check, THEME-03 design-md, browser rules browser; COLOR-12 related to COLOR-03', () => {
++test('checkers: 25 + 7 SEO ui-check, THEME-03 design-md, browser rules browser; COLOR-12 related to COLOR-03', () => {
+   const by = (c) => catalog.rules.filter((r) => r.checker === c).map((r) => r.id).sort();
+-  assert.deepEqual(by('ui-check'), [...SPEC_5_4].sort());
++  assert.deepEqual(by('ui-check'), [...SPEC_5_4, ...SEO].sort());
+   assert.deepEqual(by('design-md'), ['THEME-03']);
+   assert.deepEqual(by('browser'), [...BROWSER].sort());
+   for (const id of BROWSER) assert.equal(catalog.rules.find((r) => r.id === id).class, 'browser', id);
+@@ -65,3 +66,15 @@ test('checkCatalog: conflicting rules on disjoint platforms can coexist', () =>
+   const rules = [base({ platform: 'D', conflicts: ['X-02'] }), base({ id: 'X-02', platform: 'M' })];
+   assert.deepEqual(checkCatalog({ catalogVersion: '0.2.0', rules }), []);
+ });
++
++test('SEO never blocks: document level, no floor, no bloquea; SEO-02 and SEO-09 refuse intentional', () => {
++  for (const id of SEO) {
++    const r = catalog.rules.find((x) => x.id === id);
++    assert.equal(r.level, 'document', id);
++    assert.equal(r.floor, false, id);
++    assert.notEqual(r.severity, 'bloquea', id);
++    assert.equal(r.acceptsIntentional, !['SEO-02', 'SEO-09'].includes(id), id);
++  }
++  assert.equal(catalog.rules.find((x) => x.id === 'SEO-02').severity, 'alto');
++  assert.equal(catalog.rules.find((x) => x.id === 'SEO-18').severity, 'detalle');
++});
+diff --git a/plugins/pignolo-ui/tests/markup.test.mjs b/plugins/pignolo-ui/tests/markup.test.mjs
+--- a/plugins/pignolo-ui/tests/markup.test.mjs
++++ b/plugins/pignolo-ui/tests/markup.test.mjs
+@@ -190,3 +190,21 @@ test('markup jsx literal expressions are static; bare aria-* is "true"', () => {
+     assert.deepEqual([a.value, a.dynamic], [value, dynamic], src);
+   }
+ });
++
++test('JSX elements inside a {…} child expression are marked inExpression, with their subtree', () => {
++  const src = [
++    'export default function L({ children, preview, items }) {',
++    '  return (',
++    '    <html lang="es">',
++    '      <head><meta name="description" content="x" />{preview && <meta name="robots" content="noindex" />}</head>',
++    '      <body><main>{children}{items.map((i) => <a key={i} href={i}><span>x</span></a>)}</main></body>',
++    '    </html>',
++    '  );',
++    '}',
++  ].join('\n');
++  const m = parseMarkup(src, { syntax: 'jsx' });
++  assert.deepEqual(m.elements.map((e) => [e.tag, e.inExpression]), [
++    ['html', false], ['head', false], ['meta', false], ['meta', true], ['body', false], ['main', false], ['a', true], ['span', true],
++  ]);
++  assert.equal(parseMarkup('<p><b>x</b></p>', { syntax: 'html' }).elements.every((e) => e.inExpression === false), true);
++});
+diff --git a/plugins/pignolo-ui/tests/ui-check-cli.test.mjs b/plugins/pignolo-ui/tests/ui-check-cli.test.mjs
+--- a/plugins/pignolo-ui/tests/ui-check-cli.test.mjs
++++ b/plugins/pignolo-ui/tests/ui-check-cli.test.mjs
+@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+ import path from 'node:path';
+ import crypto from 'node:crypto';
+-import { execFileSync } from 'node:child_process';
+-import { makeTempDir, writeTree, runScript } from './helpers.mjs';
++import { execFileSync, spawn } from 'node:child_process';
++import { makeTempDir, writeTree, runScript, serveRoutes, PLUGIN_ROOT } from './helpers.mjs';
++import { loadCatalog } from '../lib/catalog.mjs';
+ 
+ const CSS = '.a { display: block; }\n';
+ const DESIGN = '---\npignolo:\n  schema: 1\n---\n';
+@@ -58,7 +59,7 @@ test('a healthy run writes ui-check.json inside an ignored run folder', () => {
+   assert.deepEqual(Object.keys(r.json.counts).sort(), ['blockingNew', 'fail', 'pass', 'unverified']);
+   const report = JSON.parse(fs.readFileSync(out, 'utf8'));
+   assert.deepEqual(Object.keys(report).sort(), ['base', 'catalogVersion', 'entries', 'inputs']);
+-  assert.equal(report.catalogVersion, '0.2.0');
++  assert.equal(report.catalogVersion, loadCatalog().catalogVersion);
+   assert.equal(report.base, null);
+   assert.deepEqual(report.inputs[0], { file: 'src/a.css', sha256: crypto.createHash('sha256').update(CSS).digest('hex') });
+   assert.ok(report.entries.length > 0);
+@@ -137,3 +138,38 @@ test('an invalid --base is a usage error checked before any rule runs', async ()
+   assert.equal(checked, 0, 'runCheck must not run with an invalid --base');
+   assert.deepEqual(errors, ['ui-check: --base no es una ref válida: nope\n']);
+ });
++
++test('--url: loopback only, one origin, at most 20, needs --design; fetched pages go to inputs', async (t) => {
++  const repo = makeRepo();
++  const run = path.join(repo, '.pignolo-ui', 'runs', 'r1');
++  const base = ['--project', repo, '--run', run, '--design', 'DESIGN.md'];
++  const many = Array.from({ length: 21 }, (_, i) => ['--url', `http://127.0.0.1:1/${i}`]).flat();
++  const CASES = [
++    ['remote URL', [...base, '--url', 'https://example.com/'], /--url solo acepta direcciones locales/],
++    ['two origins', [...base, '--url', 'http://127.0.0.1:1/', '--url', 'http://localhost:2/'], /mismo origen/],
++    ['more than 20', [...base, ...many], /como mucho 20/],
++    ['without --design', ['--project', repo, '--run', run, '--url', 'http://127.0.0.1:1/'], /--url necesita --design/],
++  ];
++  for (const [name, args, message] of CASES) {
++    await t.test(name, () => {
++      const r = runScript('ui-check.mjs', args, { cwd: repo });
++      assert.equal(r.status, 2, r.stderr);
++      assert.match(r.stderr, message);
++      assert.doesNotMatch(r.stderr, /\n\s+at /);
++    });
++  }
++  const srv = await serveRoutes({ '/': { headers: { 'content-type': 'text/html' }, body: '<!doctype html><html lang="es"><head><title>A</title></head><body></body></html>' } });
++  try {
++    const r = await new Promise((resolve) => {
++      const child = spawn(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', 'ui-check.mjs'), ...base, '--url', `${srv.base}/`], { cwd: repo });
++      let out = '';
++      child.stdout.on('data', (d) => { out += d; });
++      child.on('close', (status) => resolve({ status, out }));
++    });
++    assert.equal(r.status, 0, r.out);
++    const report = JSON.parse(fs.readFileSync(path.join(run, 'ui-check.json'), 'utf8'));
++    assert.ok(report.inputs.some((i) => i.url === `${srv.base}/` && /^[0-9a-f]{64}$/.test(i.sha256)), JSON.stringify(report.inputs));
++  } finally {
++    await srv.close();
++  }
++});
+diff --git a/plugins/pignolo-ui/tests/ui-check-runner.test.mjs b/plugins/pignolo-ui/tests/ui-check-runner.test.mjs
+--- a/plugins/pignolo-ui/tests/ui-check-runner.test.mjs
++++ b/plugins/pignolo-ui/tests/ui-check-runner.test.mjs
+@@ -186,3 +186,13 @@ test('mockup: design/approved and .pignolo-ui/runs files, not src', async () =>
+     { inject: { rules: [spy] } });
+   assert.deepEqual(mock, { 'design/approved/home/index.html': true, '.pignolo-ui/runs/r1/option-a/home.html': true, 'src/home.html': false });
+ });
++
++test('project rules receive the file contexts and the fetched site; each ctx says its origin', async () => {
++  let seen = null;
++  const spy = { id: 'SEO-06', checkProject: (pctx) => { seen = pctx; return [pass('k')]; } };
++  const r = await run({ 'index.html': '<html><head><title>A</title></head></html>\n', 'dom.html': '<html></html>\n' },
++    { files: ['index.html'], dom: ['dom.html'], inject: { rules: [spy] } });
++  assert.equal(r.exitCode, 0);
++  assert.deepEqual(seen.ctxs.map((c) => [c.file, c.origin, c.isDocument]), [['index.html', 'file', true], ['dom.html', 'dom', true]]);
++  assert.equal(seen.site, null);
++});
+```
+
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/robots.test.mjs plugins/pignolo-ui/tests/site-fetch.test.mjs plugins/pignolo-ui/tests/seo-common.test.mjs plugins/pignolo-ui/tests/markup.test.mjs plugins/pignolo-ui/tests/ui-check-runner.test.mjs plugins/pignolo-ui/tests/ui-check-cli.test.mjs plugins/pignolo-ui/tests/catalog.test.mjs` → fallan los tres archivos nuevos (módulos ausentes), el caso `inExpression`, el de `pctx.ctxs`, el de `--url` y los tres del catálogo; anotar el resumen.
+- [ ] **Paso 3: implementar.**
+
+`lib/robots.mjs`:
+
+```js
+// robots.txt reader (RFC 9309, 2022-09): groups, allow/disallow with `*` and `$`, sitemaps.
+// Only the group(s) for `*` are evaluated (declared: specific crawlers are not modeled).
+//
+// parseRobots(text) -> { groups: [{ agents, rules: [{ allow, pattern, line }] }], sitemaps: [{ url, line }] }
+// isAllowed(robots, path) -> { allowed, rule }   rule = the deciding rule or null
+// matchPattern(pattern, path) -> boolean          `*` = any run of characters, final `$` = end
+//
+// Never uses RegExp built from the file: a long pattern with many `*` stays O(n*m).
+
+export function parseRobots(text) {
+  const groups = [];
+  const sitemaps = [];
+  let current = null;
+  let lastWasAgent = false;
+  const lines = String(text ?? '').replace(/^\uFEFF/, '').split(/\r\n|\r|\n/);
+  lines.forEach((raw, i) => {
+    const line = raw.replace(/#.*$/, '').trim();
+    const m = /^([A-Za-z-]+)\s*:\s*(.*)$/.exec(line);
+    if (!m) return;
+    const key = m[1].toLowerCase();
+    const value = m[2].trim();
+    if (key === 'user-agent') {
+      if (!current || !lastWasAgent) { current = { agents: [], rules: [] }; groups.push(current); }
+      current.agents.push(value.toLowerCase());
+      lastWasAgent = true;
+      return;
+    }
+    lastWasAgent = false;
+    if (key === 'sitemap') { if (value) sitemaps.push({ url: value, line: i + 1 }); return; }
+    if ((key === 'allow' || key === 'disallow') && current) {
+      if (value === '') return; // an empty disallow is no rule
+      current.rules.push({ allow: key === 'allow', pattern: value, line: i + 1 });
+    }
+  });
+  return { groups, sitemaps };
+}
+
+// Iterative wildcard match with backtracking to the last `*` only: O(len(path) * len(pattern)).
+export function matchPattern(pattern, path) {
+  let p = pattern;
+  let anchored = false;
+  if (p.endsWith('$')) { anchored = true; p = p.slice(0, -1); }
+  if (!anchored) p += '*';
+  let i = 0; // path
+  let j = 0; // pattern
+  let star = -1;
+  let mark = 0;
+  while (i < path.length) {
+    if (j < p.length && p[j] !== '*' && p[j] === path[i]) { i++; j++; }
+    else if (j < p.length && p[j] === '*') { star = j++; mark = i; }
+    else if (star >= 0) { j = star + 1; i = ++mark; }
+    else return false;
+  }
+  while (j < p.length && p[j] === '*') j++;
+  return j === p.length;
+}
+
+export function isAllowed(robots, path) {
+  if (path === '/robots.txt') return { allowed: true, rule: null };
+  const rules = robots.groups.filter((g) => g.agents.includes('*')).flatMap((g) => g.rules);
+  let best = null;
+  for (const r of rules) {
+    if (!matchPattern(r.pattern, path)) continue;
+    const len = r.pattern.length;
+    if (!best || len > best.pattern.length || (len === best.pattern.length && r.allow && !best.allow)) best = r;
+  }
+  return { allowed: best ? best.allow : true, rule: best };
+}
+```
+
+`lib/site-fetch.mjs`:
+
+```js
+// Fetch of the development URL for the static SEO checks (spec §5.4, A-06). Local only: the
+// plugin never reaches anything remote at run time (spec §0), so every URL must be loopback.
+//
+// isLoopbackUrl(u) -> boolean      http(s) on localhost, *.localhost, 127.0.0.0/8 or [::1]
+// fetchSite({ urls, timeoutMs = 5000, maxBytes = 2 MiB, fetchImpl = fetch })
+//   -> { origin, pages: [resource], robots: resource, sitemaps: [resource & { declared }] } or null without urls
+//   page/resource = { url, path, finalUrl, status, headers: { 'content-type', 'x-robots-tag' },
+//                     text, sha256 } | { url, path, error }
+// Redirects are followed by hand, up to 5 hops, and only inside the same origin; a hop to
+// another origin stops with error 'redirected outside the development origin'. Never throws
+// for network problems: they become `error` (the rules turn it into unverified).
+import crypto from 'node:crypto';
+import { parseRobots } from './robots.mjs';
+
+const MAX_HOPS = 5;
+const MAX_SITEMAPS = 5;
+
+export function isLoopbackUrl(u) {
+  let url;
+  try { url = new URL(u); } catch { return false; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (url.username || url.password) return false;
+  const h = url.hostname.toLowerCase();
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h === '[::1]') return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  return Boolean(m) && Number(m[1]) === 127 && m.slice(2).every((x) => Number(x) <= 255);
+}
+
+async function readCapped(res, maxBytes) {
+  if (!res.body) return { buf: Buffer.alloc(0), tooLarge: false };
+  const reader = res.body.getReader();
+  const chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) { await reader.cancel().catch(() => {}); return { buf: null, tooLarge: true }; }
+    chunks.push(value);
+  }
+  return { buf: Buffer.concat(chunks.map((c) => Buffer.from(c))), tooLarge: false };
+}
+
+async function fetchOne(url, { origin, timeoutMs, maxBytes, fetchImpl }) {
+  const path = new URL(url).pathname;
+  let current = url;
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    for (let hop = 0; hop <= MAX_HOPS; hop++) {
+      const res = await fetchImpl(current, { redirect: 'manual', signal, headers: { accept: 'text/html,application/xml,text/plain;q=0.9,*/*;q=0.5' } });
+      if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
+        const next = new URL(res.headers.get('location'), current);
+        await res.body?.cancel().catch(() => {});
+        if (next.origin !== origin) return { url, path, error: 'redirected outside the development origin' };
+        current = next.href;
+        continue;
+      }
+      const body = await readCapped(res, maxBytes);
+      if (body.tooLarge) return { url, path, error: `response larger than ${maxBytes} bytes` };
+      return {
+        url,
+        path,
+        finalUrl: current,
+        status: res.status,
+        headers: { 'content-type': res.headers.get('content-type') ?? '', 'x-robots-tag': res.headers.get('x-robots-tag') ?? '' },
+        text: body.buf.toString('utf8'),
+        sha256: crypto.createHash('sha256').update(body.buf).digest('hex'),
+      };
+    }
+    return { url, path, error: 'too many redirects' };
+  } catch (e) {
+    const why = e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? `no response in ${timeoutMs} ms` : `request failed (${e && e.cause && e.cause.code ? e.cause.code : e && e.message})`;
+    return { url, path, error: why };
+  }
+}
+
+export async function fetchSite({ urls, timeoutMs = 5000, maxBytes = 2 * 1024 * 1024, fetchImpl = globalThis.fetch } = {}) {
+  if (!Array.isArray(urls) || urls.length === 0) return null;
+  for (const u of urls) if (!isLoopbackUrl(u)) throw new Error(`not a loopback URL: ${u}`);
+  const origin = new URL(urls[0]).origin;
+  for (const u of urls) if (new URL(u).origin !== origin) throw new Error(`all --url must share one origin: ${u}`);
+  const opts = { origin, timeoutMs, maxBytes, fetchImpl };
+  const pages = [];
+  for (const u of urls) pages.push(await fetchOne(u, opts));
+  const robots = await fetchOne(new URL('/robots.txt', origin).href, opts);
+  // sitemaps referenced by robots.txt, fetched by their path on the development origin
+  // (a production URL in robots.txt is never requested: nothing remote at run time)
+  const sitemaps = [];
+  if (!robots.error && robots.status === 200) {
+    for (const s of parseRobots(robots.text).sitemaps.slice(0, MAX_SITEMAPS)) {
+      let p;
+      try { p = new URL(s.url, origin).pathname; } catch { continue; }
+      sitemaps.push({ ...(await fetchOne(new URL(p, origin).href, opts)), declared: s.url });
+    }
+  }
+  return { origin, pages, robots, sitemaps };
+}
+```
+
+`lib/site-files.mjs`:
+
+```js
+// Where a web project keeps the files served at the site root (robots.txt, sitemap.xml...):
+// the project root, public/ (Next.js, Vite, CRA) and static/ (SvelteKit). Framework route
+// handlers that generate them (Next.js app/robots.ts, app/sitemap.ts) are not files: they
+// are reported as generated, never read.
+//
+// findSiteFile(project, urlPath) -> project-relative posix path or null
+// generatedBy(project, name)     -> project-relative path of app/<name>.(ts|js|tsx|jsx) or null
+// siteFiles(project)             -> the robots.txt and sitemap.xml that exist (for the scope's
+//                                   single source list)
+import fs from 'node:fs';
+import path from 'node:path';
+
+export const SITE_ROOTS = ['', 'public/', 'static/'];
+const APP_DIRS = ['app/', 'src/app/'];
+const EXTS = ['ts', 'js', 'tsx', 'jsx', 'mjs'];
+
+const isFile = (p) => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+
+export function findSiteFile(project, urlPath) {
+  const rel = String(urlPath).replace(/^\/+/, '');
+  if (!rel || rel.split('/').includes('..')) return null;
+  for (const root of SITE_ROOTS) {
+    const candidate = `${root}${rel}`;
+    if (isFile(path.join(project, ...candidate.split('/')))) return candidate;
+  }
+  return null;
+}
+
+export function generatedBy(project, name) {
+  for (const dir of APP_DIRS) {
+    for (const ext of EXTS) {
+      const candidate = `${dir}${name}.${ext}`;
+      if (isFile(path.join(project, ...candidate.split('/')))) return candidate;
+    }
+  }
+  return null;
+}
+
+export function siteFiles(project) {
+  return ['robots.txt', 'sitemap.xml'].map((n) => findSiteFile(project, n)).filter(Boolean);
+}
+```
+
+`lib/rules/seo-common.mjs`:
+
+```js
+// Shared pieces of the static SEO rules (spec §5.4, A-06): the web.public gate, the pages to
+// check (documents among the inputs and pages fetched from the development URL) and a reader
+// of literal values in a Next.js `export const metadata = { ... }` object.
+//
+// seoGate(pctx) -> null when the rules run, else the one finding each SEO rule returns
+// seoPages(pctx) -> [{ file, origin: 'file'|'dom'|'url', syntax, markup, text, headers, skip }]
+//   skip = reason (string) when the page cannot be checked; mockups never count (spec §3.3).
+// metadataObject(ctx) -> { dynamic: true } | { text } | null   (JSX files only)
+// prop(objText, key) -> { kind: 'string'|'literal'|'object'|'array'|'dynamic', value?, text? } | null
+//   Only keys at the first level of objText (which starts with `{`) are found.
+// staticAttr(el, name) -> string | null (null when absent, dynamic or boolean)
+import { pass, unverified } from './api.mjs';
+import { parseMarkup } from '../markup.mjs';
+import { stripComments } from '../strip-comments.mjs';
+
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+export function webOf(design) {
+  const pig = design && isMap(design.data) && isMap(design.data.pignolo) ? design.data.pignolo : null;
+  return pig && isMap(pig.web) ? pig.web : null;
+}
+
+export function seoGate(pctx) {
+  if (!pctx.design) return [pass('not public', { reason: 'no DESIGN.md: the site is not declared public (static SEO does not apply)' })];
+  if (!isMap(pctx.design.data)) return [unverified('DESIGN.md not validated: cannot tell whether the site is public')];
+  const web = webOf(pctx.design);
+  if (!web || web.public !== true) return [pass('not public', { reason: 'web.public is not true: static SEO does not apply' })];
+  return null;
+}
+
+export const indexable = (pctx) => webOf(pctx.design)?.indexable !== false;
+
+export function staticAttr(el, name) {
+  const a = el.attrs.get(name);
+  return a && !a.dynamic && typeof a.value === 'string' ? a.value : null;
+}
+
+const samePath = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
+
+export function seoPages(pctx) {
+  const out = [];
+  for (const ctx of pctx.ctxs ?? []) {
+    if (!ctx.isDocument || ctx.mockup || !ctx.markup) continue;
+    out.push({ file: ctx.file, origin: ctx.origin ?? 'file', syntax: ctx.syntax, markup: ctx.markup, text: ctx.text, headers: null, skip: null });
+  }
+  for (const page of pctx.site?.pages ?? []) {
+    const doc = { file: page.url, origin: 'url', syntax: 'html', markup: null, text: '', headers: page.headers ?? null, skip: null };
+    if (page.error) doc.skip = page.error;
+    else if (page.status !== 200) doc.skip = `HTTP ${page.status}`;
+    else if (!/\bhtml\b/i.test(page.headers?.['content-type'] ?? '')) doc.skip = 'not an HTML response';
+    else if (!samePath(new URL(page.finalUrl).pathname, page.path)) doc.skip = `redirected to ${new URL(page.finalUrl).pathname} (may require a session)`;
+    else {
+      doc.text = stripComments(page.text, 'html');
+      doc.markup = parseMarkup(doc.text, { syntax: 'html' });
+      if (!doc.markup.hasHtmlRoot) doc.skip = 'not a document';
+      else if (doc.markup.elements.some((e) => e.tag === 'input' && (staticAttr(e, 'type') ?? '').toLowerCase() === 'password')) doc.skip = 'requires a session (password field)';
+    }
+    out.push(doc);
+  }
+  return out;
+}
+
+// Same length as src; the content of string literals becomes spaces (quotes stay).
+function maskStrings(src) {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '"' || c === "'" || c === '`') {
+      let j = i + 1;
+      while (j < src.length && src[j] !== c) j += src[j] === '\\' ? 2 : 1;
+      out += c + ' '.repeat(Math.max(0, Math.min(j, src.length) - i - 1)) + (j < src.length ? c : '');
+      i = j + 1;
+    } else { out += c; i++; }
+  }
+  return out.slice(0, src.length);
+}
+
+const OPEN = { '{': '}', '[': ']', '(': ')' };
+function closeOf(masked, at) {
+  let depth = 0;
+  for (let i = at; i < masked.length; i++) {
+    if (masked[i] in OPEN) depth++;
+    else if (masked[i] === '}' || masked[i] === ']' || masked[i] === ')') { depth--; if (depth === 0) return i; }
+  }
+  return -1;
+}
+
+const IDENT = /[A-Za-z_$][\w$]*/g;
+const LITERALS = new Set(['true', 'false', 'null', 'undefined']);
+// true when every identifier is a key (followed by `:`) or a literal: no variables, calls, spreads.
+function isStaticValue(masked) {
+  if (masked.includes('...') || masked.includes('${')) return false;
+  const colon = /\s*:/y;
+  for (const m of masked.matchAll(IDENT)) {
+    colon.lastIndex = m.index + m[0].length;
+    if (colon.test(masked) || LITERALS.has(m[0])) continue;
+    return false;
+  }
+  return true;
+}
+
+export function prop(objText, key) {
+  const masked = maskStrings(objText);
+  let depth = 0;
+  for (let i = 0; i < masked.length; i++) {
+    const c = masked[i];
+    if (c in OPEN) { depth++; continue; }
+    if (c === '}' || c === ']' || c === ')') { depth--; continue; }
+    if (depth !== 1 || !masked.startsWith(key, i)) continue;
+    if (/[\w$]/.test(masked[i - 1] ?? '') || /[\w$]/.test(masked[i + key.length] ?? '')) continue;
+    const m = /^\s*:\s*/.exec(masked.slice(i + key.length));
+    if (!m) continue;
+    const v = i + key.length + m[0].length;
+    const ch = masked[v];
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const end = masked.indexOf(ch, v + 1);
+      const raw = objText.slice(v + 1, end < 0 ? objText.length : end);
+      if (ch === '`' && raw.includes('${')) return { kind: 'dynamic' };
+      return { kind: 'string', value: raw };
+    }
+    if (ch === '{' || ch === '[') {
+      const end = closeOf(masked, v);
+      if (end < 0) return { kind: 'dynamic' };
+      const text = objText.slice(v, end + 1);
+      return isStaticValue(masked.slice(v, end + 1)) ? { kind: ch === '{' ? 'object' : 'array', text } : { kind: 'dynamic' };
+    }
+    const lit = /^(-?\d+(?:\.\d+)?|true|false|null)\b/.exec(masked.slice(v));
+    if (lit) return { kind: 'literal', value: lit[1] };
+    return { kind: 'dynamic' };
+  }
+  return null;
+}
+
+const GENERATE = /export\s+(?:async\s+)?function\s+generateMetadata\b|export\s+const\s+generateMetadata\b/;
+export function metadataObject(ctx) {
+  if (ctx.syntax !== 'jsx') return null;
+  if (GENERATE.test(ctx.text)) return { dynamic: true };
+  const src = ctx.markup?.exportsText;
+  if (!src) return null;
+  const m = /export\s+const\s+metadata\b[^=]*=\s*/.exec(src);
+  if (!m) return null;
+  const at = m.index + m[0].length;
+  if (src[at] !== '{') return { dynamic: true };
+  const end = closeOf(maskStrings(src), at);
+  return end < 0 ? { dynamic: true } : { text: src.slice(at, end + 1) };
+}
+```
+
+Stubs (`lib/rules/seo-site.mjs` con `['SEO-01', 'SEO-05']`, `lib/rules/seo-page.mjs` con `['SEO-02', 'SEO-04', 'SEO-06', 'SEO-09', 'SEO-18']`):
+
+```js
+// Stub (hito 2b, Task B1): Task B4 replaces it (Task B5 for seo-page.mjs).
+import { unverified } from './api.mjs';
+
+export const RULES = ['SEO-01', 'SEO-05'].map((id) => ({ id, checkProject: () => [unverified('not implemented')] }));
+```
+
+Cambios en `lib/markup.mjs`, `lib/ui-check.mjs` y `scripts/ui-check.mjs`:
+
+```diff
+diff --git a/plugins/pignolo-ui/lib/markup.mjs b/plugins/pignolo-ui/lib/markup.mjs
+--- a/plugins/pignolo-ui/lib/markup.mjs
++++ b/plugins/pignolo-ui/lib/markup.mjs
+@@ -41,7 +41,7 @@ function createBuilder(src) {
+   const elements = [];
+   const styles = [];
+   const el = (tag, component, offset, parent) => {
+-    const e = { index: elements.length, tag, component, attrs: new Map(), spread: false, line: lineAt(offset), parent: parent ? parent.index : null, children: [], textParts: [], selfClosing: false };
++    const e = { index: elements.length, tag, component, attrs: new Map(), spread: false, line: lineAt(offset), parent: parent ? parent.index : null, children: [], textParts: [], selfClosing: false, inExpression: false };
+     hidden(e, 'offset', offset);
+     elements.push(e);
+     if (parent) parent.children.push(e.index);
+@@ -186,6 +186,7 @@ function normalizeJsxAttr(name) {
+ function parseJsx(src, b) {
+   const n = src.length;
+   let i = 0;
++  let exprDepth = 0; // > 0 while parsing a {…} child expression: its elements are conditional
+ 
+   function skipQuote() {
+     const q = src[i++];
+@@ -284,6 +285,7 @@ function parseJsx(src, b) {
+     const name = src.slice(ns, i);
+     const component = /^[A-Z]/.test(name) || name.includes('.');
+     const e = b.el(component ? name : name.toLowerCase(), component, start, parent);
++    e.inExpression = exprDepth > 0;
+     while (i < n) {
+       while (i < n && /\s/.test(src[i])) i++;
+       const c = src[i];
+@@ -342,7 +344,10 @@ function parseJsx(src, b) {
+       }
+       if (c === '{') {
+         i++;
+-        const { expr, start } = expression(parent);
++        exprDepth++;
++        let expr;
++        let start;
++        try { ({ expr, start } = expression(parent)); } finally { exprDepth--; }
+         const lead = expr.length - expr.trimStart().length;
+         if (!expr.trim() || !parent) continue;
+         const cls = classifyExpr(expr);
+diff --git a/plugins/pignolo-ui/lib/ui-check.mjs b/plugins/pignolo-ui/lib/ui-check.mjs
+--- a/plugins/pignolo-ui/lib/ui-check.mjs
++++ b/plugins/pignolo-ui/lib/ui-check.mjs
+@@ -33,8 +33,12 @@ import { RULES as CONTRAST } from './rules/contrast.mjs';
+ import { RULES as DEFAULTS } from './rules/defaults.mjs';
+ import { RULES as REJECTIONS, applyRejections as diskApplyRejections } from './rules/rejections.mjs';
+ import { scopeRun as diskScopeRun, classifyScope as diskClassifyScope } from './scope.mjs';
++import { RULES as SEO_SITE } from './rules/seo-site.mjs';
++import { RULES as SEO_PAGE } from './rules/seo-page.mjs';
++import { fetchSite } from './site-fetch.mjs';
++import { siteFiles } from './site-files.mjs';
+ 
+-const DISK_RULES = [...DOCUMENT, ...A11Y_ELEMENT, ...CONTENT, ...STYLE, ...CONTRAST, ...DEFAULTS, ...REJECTIONS];
++const DISK_RULES = [...DOCUMENT, ...A11Y_ELEMENT, ...CONTENT, ...STYLE, ...CONTRAST, ...DEFAULTS, ...SEO_SITE, ...SEO_PAGE, ...REJECTIONS];
+ const SYNTAX = { html: 'html', htm: 'html', jsx: 'jsx', tsx: 'jsx', css: 'css', vue: 'vue', svelte: 'svelte' };
+ const TAILWIND_CONFIGS = ['tailwind.config.js', 'tailwind.config.cjs', 'tailwind.config.mjs', 'tailwind.config.ts'];
+ const STATUSES = new Set(['pass', 'fail', 'unverified']);
+@@ -94,6 +98,7 @@ function buildCtx({ dir, rel, isDom, design, tokens, catalog }) {
+   else if (route.utilities === 'sfc') classLists = extractClassListsFromSfc(text);
+   return {
+     file: rel,
++    origin: isDom ? 'dom' : 'file',
+     text,
+     syntax,
+     route,
+@@ -154,7 +159,7 @@ function withRuleResults(findings, found, ruleId, catRule, file) {
+ 
+ // Steps 1-3 over `dir` (the project or a materialized base), plus the base severity and the
+ // fingerprint, so both runs are compared the same way. Files missing in `dir` are skipped.
+-function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, applyRejections }) {
++function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, applyRejections, site = null }) {
+   const byId = new Map(catalog.rules.map((r) => [r.id, r]));
+   const tokens = readTokenSources(dir);
+   const designFile = designRel ? path.join(dir, designRel) : null;
+@@ -179,7 +184,7 @@ function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog,
+       withRuleResults(findings, callRule(rule.checkFile, ctx, rule.id), rule.id, catRule, ctx.file);
+     }
+   }
+-  const pctx = { project: dir, design, tokens, catalog, files: ctxs.map((c) => c.file) };
++  const pctx = { project: dir, design, tokens, catalog, files: ctxs.map((c) => c.file), ctxs, site };
+   for (const rule of rules) {
+     if (typeof rule.checkProject !== 'function') continue;
+     withRuleResults(findings, callRule(rule.checkProject, pctx, rule.id), rule.id, byId.get(rule.id), undefined);
+@@ -261,13 +266,14 @@ function sourceFilesOf(project, relFiles, designRel) {
+   if (designRel) list.push(designRel);
+   const tokens = readTokenSources(project);
+   for (const s of [...tokens.sources, ...tokens.unverified]) if (s.file && s.file !== '.') list.push(s.file);
++  list.push(...siteFiles(project));
+   for (const name of ['components.json', 'package.json', ...TAILWIND_CONFIGS]) {
+     if (fs.existsSync(path.join(project, name))) list.push(name);
+   }
+   return [...new Set(list)];
+ }
+ 
+-export async function runCheck({ project, files = [], design = null, base = null, dom = [], inject = {} } = {}) {
++export async function runCheck({ project, files = [], design = null, base = null, dom = [], urls = [], inject = {} } = {}) {
+   const root = path.resolve(project);
+   const rules = inject.rules ?? DISK_RULES;
+   const catalog = inject.catalog ?? loadCatalog();
+@@ -281,7 +287,8 @@ export async function runCheck({ project, files = [], design = null, base = null
+   const designRel = design ? relTo(root, design) : null;
+   const evaluate = (dir, rels) => evaluateDir({ dir, relFiles: rels, designRel, rules, catalog, applyRejections });
+ 
+-  const current = evaluateDir({ dir: root, relFiles, domFiles, designRel, rules, catalog, applyRejections });
++  const site = urls.length ? await fetchSite({ urls, ...(inject.fetchOptions ?? {}) }) : null;
++  const current = evaluateDir({ dir: root, relFiles, domFiles, designRel, rules, catalog, applyRejections, site });
+   // (4) scope
+   const baseFindings = base
+     ? await scopeRun({ project: root, base, relFiles, sourceFiles: sourceFilesOf(root, relFiles, designRel), designRel, evaluate })
+@@ -294,6 +301,9 @@ export async function runCheck({ project, files = [], design = null, base = null
+ 
+   const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : [])]
+     .map((rel) => ({ file: rel, sha256: sha256(path.join(root, rel)) }));
++  if (site) {
++    for (const r of [...site.pages, site.robots, ...site.sitemaps]) if (r.sha256) inputs.push({ url: r.finalUrl, sha256: r.sha256 });
++  }
+   const exitCode = entries.some((e) => e.status === 'fail' && e.severity === 'bloquea' && e.scope === 'new') ? 1 : 0;
+   return { entries, inputs, exitCode };
+ }
+diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/scripts/ui-check.mjs
+--- a/plugins/pignolo-ui/scripts/ui-check.mjs
++++ b/plugins/pignolo-ui/scripts/ui-check.mjs
+@@ -2,7 +2,10 @@
+ //
+ // node <root>/scripts/ui-check.mjs [--project <repo root>] --run <folder in .pignolo-ui/>
+ //   (--files <path>)... [--files-from <list.json>] [--design <DESIGN.md>] [--base <ref>]
+-//   [--dom <file>]... [--gate]
++//   [--dom <file>]... [--url <development URL>]... [--gate]
++//
++// --url (at most 20, one origin, loopback only: nothing remote at run time) feeds the static
++// SEO rules with what the development server returns; it needs --design (spec §5.4, A-06).
+ //
+ // --project defaults to `git rev-parse --show-toplevel` from the cwd, or the cwd without git.
+ // Writes <run>/ui-check.json ({ catalogVersion, inputs, base, entries }) and prints
+@@ -17,15 +20,17 @@ import { runCheck } from '../lib/ui-check.mjs';
+ import { loadCatalog } from '../lib/catalog.mjs';
+ import { BaseRefError, assertRef } from '../lib/scope.mjs';
+ import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
++import { isLoopbackUrl } from '../lib/site-fetch.mjs';
+ 
+ class UsageError extends Error {}
+ 
+-const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom']);
+-const REPEATED = new Set(['files', 'dom']);
++const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url']);
++const REPEATED = new Set(['files', 'dom', 'url']);
++const MAX_URLS = 20;
+ const FLAGS = new Set(['gate']);
+ 
+ function parseArgs(argv) {
+-  const opts = { files: [], dom: [] };
++  const opts = { files: [], dom: [], url: [] };
+   for (let i = 0; i < argv.length; i++) {
+     const a = argv[i];
+     if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
+@@ -98,6 +103,16 @@ function readFilesFrom(file) {
+   return list;
+ }
+ 
++function checkUrls(urls, design) {
++  if (!urls.length) return [];
++  if (!design) throw new UsageError('--url necesita --design: el SEO estático solo corre si DESIGN.md declara web.public');
++  if (urls.length > MAX_URLS) throw new UsageError(`--url admite como mucho ${MAX_URLS} direcciones`);
++  for (const u of urls) if (!isLoopbackUrl(u)) throw new UsageError(`--url solo acepta direcciones locales (localhost, 127.0.0.1, ::1): ${u}`);
++  const origin = new URL(urls[0]).origin;
++  for (const u of urls) if (new URL(u).origin !== origin) throw new UsageError(`todas las --url deben tener el mismo origen (${origin}): ${u}`);
++  return urls;
++}
++
+ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {}) {
+   try {
+     const opts = parseArgs(argv);
+@@ -115,11 +130,12 @@ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {})
+     const files = listed.map((f) => inputFile(project, path.resolve(cwd, f), '--files'));
+     const dom = opts.dom.map((f) => inputFile(project, path.resolve(cwd, f), '--dom'));
+     const design = opts.design !== undefined ? inputFile(project, path.resolve(cwd, opts.design), '--design') : null;
++    const urls = checkUrls(opts.url, design);
+     if (!files.length && !dom.length && !design) throw new UsageError('falta --files, --dom o --design: no hay nada que chequear');
+ 
+     const base = opts.base ?? null;
+     if (base !== null) assertRef(project, base); // an invalid ref is a usage error, before any rule runs
+-    const result = await check({ project, files, design, base, dom });
++    const result = await check({ project, files, design, base, dom, urls });
+ 
+     ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
+     fs.mkdirSync(runDir, { recursive: true });
+```
+
+`catalog/rules.json`: `catalogVersion` → `"0.3.0"` y estas 7 reglas al final. `AAAA-MM-DD` se reemplaza por el día en que se abre cada fuente (ver Rulings); con el marcador, `checkCatalog` falla a propósito ("source has no version or date"):
+
+```json
+[
+  {
+    "id": "SEO-01",
+    "criterion": "robots.txt exists or answers 404 (everything allowed), does not block the public routes or the render assets of the checked pages, and references a sitemap",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "medio",
+    "floor": false,
+    "acceptsIntentional": true,
+    "source": "RFC 9309 Robots Exclusion Protocol (consulted AAAA-MM-DD)",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  },
+  {
+    "id": "SEO-02",
+    "criterion": "No accidental noindex: meta robots/googlebot, Next.js metadata.robots or X-Robots-Tag; in the source of a public page alto, seen only on the development URL detalle",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "alto",
+    "floor": false,
+    "acceptsIntentional": false,
+    "source": "Google Search Central, robots meta tag and X-Robots-Tag (consulted AAAA-MM-DD)",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  },
+  {
+    "id": "SEO-04",
+    "criterion": "Exactly one link rel=canonical, with an absolute URL",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "medio",
+    "floor": false,
+    "acceptsIntentional": true,
+    "source": "RFC 6596 The Canonical Link Relation (consulted AAAA-MM-DD)",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  },
+  {
+    "id": "SEO-05",
+    "criterion": "The sitemap referenced by robots.txt exists and is well-formed XML with the sitemaps.org shape",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "medio",
+    "floor": false,
+    "acceptsIntentional": true,
+    "source": "sitemaps.org protocol 0.9",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  },
+  {
+    "id": "SEO-06",
+    "criterion": "Title present, not empty and not repeated across the checked pages",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "medio",
+    "floor": false,
+    "acceptsIntentional": true,
+    "source": "HTML Living Standard, the title element (consulted AAAA-MM-DD)",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  },
+  {
+    "id": "SEO-09",
+    "criterion": "No a without href used as a link; no href=\"javascript:...\"",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "medio",
+    "floor": false,
+    "acceptsIntentional": false,
+    "source": "Google Search Central, crawlable links (consulted AAAA-MM-DD)",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  },
+  {
+    "id": "SEO-18",
+    "criterion": "og:title, og:type, og:image and og:url present",
+    "class": "script",
+    "level": "document",
+    "platform": "D+M",
+    "severity": "detalle",
+    "floor": false,
+    "acceptsIntentional": true,
+    "source": "The Open Graph protocol, ogp.me (consulted AAAA-MM-DD)",
+    "checker": "ui-check",
+    "related": [],
+    "conflicts": []
+  }
+]
+```
+
+README: regenerar el bloque del catálogo con `renderCatalogMarkdown(loadCatalog())` (el test de aceptación del 2a lo compara byte a byte), sin tocar el resto del archivo:
+
+```bash
+node -e "import('./plugins/pignolo-ui/lib/catalog.mjs').then(({loadCatalog,renderCatalogMarkdown})=>{const fs=require('fs');const f='plugins/pignolo-ui/README.md';const t=fs.readFileSync(f,'utf8');const n=t.replace(/(<!-- catalog:start -->\n)[\s\S]*?(\n<!-- catalog:end -->)/,(_,a,b)=>a+renderCatalogMarkdown(loadCatalog()).replace(/\n$/,'')+b);if(n===t)throw new Error('bloque sin cambios');fs.writeFileSync(f,n);})"
+```
+
+- [ ] **Paso 4: verde.** Los archivos del paso 2 más `tests/ui-check-acceptance.test.mjs`, `tests/lint-plugin.test.mjs` y `tests/approve.test.mjs`. El arnés queda en rojo solo en `rule SEO-xx has fixtures` (7 casos): es lo esperado y lo cierra la ola 1. Buscar U+FEFF literal (Global Constraints).
+- [ ] **Paso 5: commit.** `feat(ui): base del SEO estático en ui-check (--url local, páginas, robots y catálogo 0.3.0)`.
+
+### Task B2 (opus): `scripts/files.mjs` (aplicar sin romper, §9)
+
+**Files:**
+- Create: `plugins/pignolo-ui/lib/batch-files.mjs`, `scripts/files.mjs`
+- Test: `tests/batch-files.test.mjs` (en proceso), `tests/files-cli.test.mjs` (subproceso)
+
+**Consumes:** `ensureRunRoot`, `isInsideRunRoot`, `RUN_ROOT` (`lib/run-folder.mjs`); `makeTempDir`, `writeTree`, `runScript` (`tests/helpers.mjs`, sin cambios).
+
+**Produces:** `saveBatch`, `verifyBatch`, `restoreBatch`, `parsePorcelainZ`, `cleanRel`, `BatchError`, `MAX_FILES = 5`, `MAX_LINES = 200`; la CLI `files.mjs save|verify|restore` con salida JSON y códigos 0/1/2; el formato de `<batch>/files.json` (`{ version: 1, head, files: [{ path, existed, change, sha256, copy }], initial: [{ code, path, from?, sha256 }], after: null | { files: { <path>: sha256|null }, unexpected: [{ path, code, sha256, wasDirty }] } }`).
+
+- [ ] **Paso 1: tests primero.**
+
+`tests/batch-files.test.mjs`:
+
+```js
+// Apply without breaking (lib/batch-files.mjs, spec §9), in process, in temporary git repos.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { makeTempDir, writeTree } from './helpers.mjs';
+import { saveBatch, verifyBatch, restoreBatch, parsePorcelainZ, cleanRel, BatchError } from '../lib/batch-files.mjs';
+
+function repo(extra = {}) {
+  const dir = writeTree(makeTempDir(), { 'src/page.tsx': 'a\nb\n', 'src/other.tsx': 'o\n', '.pignolo-ui/.gitignore': '*\n', ...extra });
+  const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe', timeout: 10000 });
+  git('init', '-q');
+  git('config', 'user.email', 'test@example.com');
+  git('config', 'user.name', 'Test');
+  git('config', 'core.autocrlf', 'false');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'init');
+  return dir;
+}
+const write = (dir, rel, text) => writeTree(dir, { [rel]: text });
+const read = (dir, rel) => fs.readFileSync(path.join(dir, rel), 'utf8');
+const exists = (dir, rel) => fs.existsSync(path.join(dir, rel));
+const batchOf = (dir) => path.join(dir, '.pignolo-ui', 'runs', 'r1', 'batch-1');
+const PAGE = { path: 'src/page.tsx', exists: true, change: 'structure' };
+const NEW = { path: 'src/New.tsx', exists: false, change: 'structure' };
+
+test('parsePorcelainZ keeps spaces, accents and renames', () => {
+  const out = ' M a b.txt\0R  new name.txt\0old.txt\0?? dir/ñ.txt\0';
+  assert.deepEqual(parsePorcelainZ(out), [
+    { code: ' M', path: 'a b.txt' }, { code: 'R ', path: 'new name.txt', from: 'old.txt' }, { code: '??', path: 'dir/ñ.txt' },
+  ]);
+});
+
+test('cleanRel refuses paths outside the project and reserved folders', () => {
+  assert.equal(cleanRel('src\\a.tsx'), 'src/a.tsx');
+  assert.equal(cleanRel('./src/../src/a.tsx'), 'src/a.tsx');
+  for (const bad of ['../x', '/etc/x', 'C:/x', '.git/config', '.pignolo-ui/runs/x', '', '.']) assert.equal(cleanRel(bad), null, bad);
+});
+
+test('§16.1: a dirty tree with changes outside the list is not reverted', () => {
+  const dir = repo();
+  write(dir, 'src/other.tsx', 'user wip\n');
+  write(dir, 'notes.txt', 'mine\n');
+  const s = saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE, NEW] });
+  assert.equal(s.ok, true, JSON.stringify(s.problems));
+  write(dir, 'src/page.tsx', 'a\nb\nc\n');
+  write(dir, 'src/New.tsx', 'n\n');
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(v.ok, true, JSON.stringify(v.unexpected));
+  assert.deepEqual(v.files.map((f) => [f.path, f.existed, f.changed]), [['src/page.tsx', true, true], ['src/New.tsx', false, true]]);
+  assert.equal(v.lines, 2); // +1 in page.tsx, 1 line in New.tsx
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual([r.ok, r.restored, r.deleted, r.blocked], [true, ['src/page.tsx'], ['src/New.tsx'], []]);
+  assert.equal(read(dir, 'src/page.tsx'), 'a\nb\n');
+  assert.equal(read(dir, 'src/other.tsx'), 'user wip\n'); // the user's changes stay
+  assert.equal(read(dir, 'notes.txt'), 'mine\n');
+});
+
+test('§16.1: an unexpected new file is reported and removed by restore', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'src/page.tsx', 'z\n');
+  write(dir, 'src/stray/Extra.tsx', 'x\n');
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.unexpected.map((u) => [u.path, u.code, u.wasDirty]), [['src/stray/Extra.tsx', '??', false]]);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, true, JSON.stringify(r.blocked));
+  assert.equal(exists(dir, 'src/stray/Extra.tsx'), false);
+  assert.equal(read(dir, 'src/page.tsx'), 'a\nb\n');
+});
+
+test('§16.1: a created file edited by hand afterwards is BLOCKED and never deleted', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [NEW] });
+  write(dir, 'src/New.tsx', 'n\n');
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  write(dir, 'src/New.tsx', 'n edited by hand\n');
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.blocked, [{ path: 'src/New.tsx', problem: 'changed-after-the-batch' }]);
+  assert.equal(read(dir, 'src/New.tsx'), 'n edited by hand\n');
+});
+
+test('unexpected changes to tracked or previously dirty files are BLOCKED, not touched', () => {
+  const dir = repo();
+  write(dir, 'notes.txt', 'mine\n');
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'src/other.tsx', 'agent touched\n');
+  write(dir, 'notes.txt', 'agent touched my wip\n');
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(v.unexpected.map((u) => [u.path, u.wasDirty]).sort(), [['notes.txt', true], ['src/other.tsx', false]]);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.blocked.map((b) => b.path).sort(), ['notes.txt', 'src/other.tsx']);
+  assert.equal(read(dir, 'src/other.tsx'), 'agent touched\n');
+});
+
+test('save refuses what §9 forbids, and writes nothing', async (t) => {
+  const dir = repo();
+  write(dir, 'src/page.tsx', 'dirty\n');
+  const CASES = [
+    ['uncommitted expected file', [PAGE], 'uncommitted-changes'],
+    ['path outside', [{ path: '../x', exists: false, change: 'tokens' }], 'bad-path'],
+    ['git folder', [{ path: '.git/config', exists: true, change: 'tokens' }], 'bad-path'],
+    ['declared new but exists', [{ path: 'src/other.tsx', exists: false, change: 'tokens' }], 'declared-new-but-exists'],
+    ['declared existing but missing', [{ path: 'src/nope.tsx', exists: true, change: 'tokens' }], 'declared-existing-but-missing'],
+    ['bad change', [{ path: 'src/x.tsx', exists: false, change: 'both' }], 'bad-change'],
+    ['duplicate', [NEW, { ...NEW, path: 'src/new.tsx' }], 'duplicate'],
+    ['more than 5 files', Array.from({ length: 6 }, (_, i) => ({ path: `src/n${i}.tsx`, exists: false, change: 'tokens' })), 'too-many-files'],
+    ['empty list', [], 'empty-list'],
+  ];
+  for (const [name, expected, problem] of CASES) {
+    await t.test(name, () => {
+      const batch = path.join(dir, '.pignolo-ui', 'runs', 'r1', name.replace(/\s+/g, '-'));
+      const s = saveBatch({ project: dir, batch, expected });
+      assert.equal(s.ok, false);
+      assert.ok(s.problems.some((p) => p.problem === problem), JSON.stringify(s.problems));
+      assert.equal(fs.existsSync(path.join(batch, 'files.json')), false);
+    });
+  }
+});
+
+test('a second save on the same batch is refused; restore needs verify first', () => {
+  const dir = repo();
+  assert.equal(saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] }).ok, true);
+  const again = saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  assert.ok(again.problems.some((p) => p.problem === 'batch-exists'));
+  assert.throws(() => restoreBatch({ project: dir, batch: batchOf(dir) }), BatchError);
+});
+
+test('copies are byte exact: CRLF and a BOM come back unchanged', () => {
+  const original = '\uFEFFa\r\nb\r\n';
+  const dir = repo({ 'src/crlf.css': original });
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [{ path: 'src/crlf.css', exists: true, change: 'tokens' }] });
+  write(dir, 'src/crlf.css', 'changed\n');
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(restoreBatch({ project: dir, batch: batchOf(dir) }).ok, true);
+  assert.equal(read(dir, 'src/crlf.css'), original);
+});
+
+test('more than 200 changed lines is reported, not refused', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [NEW] });
+  write(dir, 'src/New.tsx', 'x\n'.repeat(201));
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(v.ok, true);
+  assert.equal(v.overLineLimit, true);
+});
+```
+
+`tests/files-cli.test.mjs`:
+
+```js
+// files CLI (scripts/files.mjs) in a subprocess: exit codes 0/1/2 and the run folder.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { makeTempDir, writeTree, runScript } from './helpers.mjs';
+
+function repo() {
+  const dir = writeTree(makeTempDir(), { 'src/a.css': '.a {}\n' });
+  const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe', timeout: 10000 });
+  git('init', '-q');
+  git('config', 'user.email', 'test@example.com');
+  git('config', 'user.name', 'Test');
+  git('config', 'core.autocrlf', 'false');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'init');
+  return dir;
+}
+const porcelain = (dir) => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: dir, encoding: 'utf8' });
+
+test('save, verify and restore with exit codes 0 and 1; the run folder never shows in git status', () => {
+  const dir = repo();
+  const batch = '.pignolo-ui/runs/r1/batch-1';
+  writeTree(path.join(dir, '.pignolo-ui', 'runs', 'r1'), { 'expected.json': JSON.stringify([{ path: 'src/a.css', exists: true, change: 'tokens' }]) });
+  const save = runScript('files.mjs', ['save', '--project', dir, '--batch', batch, '--expected', '.pignolo-ui/runs/r1/expected.json'], { cwd: dir });
+  assert.equal(save.status, 0, save.stderr);
+  assert.equal(save.json.ok, true);
+  assert.equal(fs.readFileSync(path.join(dir, '.pignolo-ui', '.gitignore'), 'utf8'), '*\n');
+  assert.equal(porcelain(dir), '');
+  writeTree(dir, { 'src/a.css': '.a { color: red; }\n', 'src/x.js': 'x\n' });
+  const verify = runScript('files.mjs', ['verify', '--project', dir, '--batch', batch], { cwd: dir });
+  assert.equal(verify.status, 1);
+  assert.deepEqual(verify.json.unexpected.map((u) => u.path), ['src/x.js']);
+  const restore = runScript('files.mjs', ['restore', '--project', dir, '--batch', batch], { cwd: dir });
+  assert.equal(restore.status, 0, restore.stderr);
+  assert.equal(restore.json.status, 'restored');
+  assert.equal(porcelain(dir), '');
+});
+
+test('usage errors exit 2 with a Spanish message and no stack', async (t) => {
+  const dir = repo();
+  const sub = path.join(dir, 'src');
+  const CASES = [
+    ['no subcommand', [], /subcomando desconocido/],
+    ['unknown option', ['verify', '--project', dir, '--batch', '.pignolo-ui/runs/r1/b', '--force'], /opción desconocida --force/],
+    ['missing option', ['verify', '--project', dir], /faltan --batch/],
+    ['batch outside .pignolo-ui', ['verify', '--project', dir, '--batch', 'tmp/b'], /--batch debe estar dentro de \.pignolo-ui/],
+    ['project not the repo root', ['verify', '--project', sub, '--batch', path.join(dir, '.pignolo-ui/runs/r1/b')], /raíz de un repo git/],
+    ['verify without save', ['verify', '--project', dir, '--batch', '.pignolo-ui/runs/r1/b'], /corré save primero/],
+    ['unreadable expected list', ['save', '--project', dir, '--batch', '.pignolo-ui/runs/r1/b', '--expected', 'nope.json'], /no se pudo leer --expected/],
+  ];
+  for (const [name, args, message] of CASES) {
+    await t.test(name, () => {
+      const r = runScript('files.mjs', args, { cwd: dir });
+      assert.equal(r.status, 2, r.stdout);
+      assert.match(r.stderr, message);
+      assert.doesNotMatch(r.stderr, /error interno|\n\s+at /);
+    });
+  }
+});
+```
+
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/batch-files.test.mjs plugins/pignolo-ui/tests/files-cli.test.mjs` → los dos archivos fallan (módulo y script ausentes). Después del verde, demostrar una vez el rojo de lo que protege la regla de borrado: cambiar en `restoreBatch` la condición `wrote && now === wrote` por `wrote !== undefined` → el caso "created file edited by hand" tiene que fallar (borra un archivo editado a mano); restaurar con el editor.
+- [ ] **Paso 3: implementar.**
+
+`lib/batch-files.mjs`:
+
+```js
+// Apply without breaking (spec §9): copies before editing, delta of `git status` against the
+// initial state after editing, and a restore that never deletes what it cannot prove it wrote.
+// No destructive git: git is only read (status, rev-parse, diff --numstat).
+//
+// saveBatch({ project, batch, expected })  -> { ok, problems, record }
+//   expected = [{ path, exists, change: 'tokens'|'structure' }] (at most 5). Refuses (ok false)
+//   a bad or repeated path, a path under .git/ or .pignolo-ui/, a declared state that does not
+//   match the disk, an expected file with uncommitted changes, more than 5 files, or a batch
+//   folder that already has files.json. Copies each existing file to <batch>/copies/<n>.
+// verifyBatch({ project, batch })          -> { ok, unexpected, files, lines, overLineLimit }
+//   Delta of the current status against the initial one: every new or changed entry outside
+//   the expected list is `unexpected`. Records what the batch left (sha256 of each file) in
+//   files.json (`after`), which restore needs.
+// restoreBatch({ project, batch })         -> { ok, restored, deleted, blocked }
+//   Expected files that existed: rewritten from the copy and checked by sha256. Created files
+//   (expected new or unexpected untracked): deleted only if their sha256 is the one verify
+//   recorded; otherwise BLOCKED and left alone. Anything else unexpected: BLOCKED.
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+
+export const MAX_FILES = 5;
+export const MAX_LINES = 200;
+const RECORD = 'files.json';
+
+export class BatchError extends Error {}
+
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const git = (project, args) => execFileSync('git', args, { cwd: project, encoding: 'utf8', timeout: 10000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+
+function fileSha(project, rel) {
+  try {
+    const abs = path.join(project, ...rel.split('/'));
+    return fs.statSync(abs).isFile() ? sha256(fs.readFileSync(abs)) : null;
+  } catch {
+    return null;
+  }
+}
+
+// `git status --porcelain=v1 -z --untracked-files=all` -> [{ code, path, from? }]
+export function parsePorcelainZ(out) {
+  const parts = out.split('\0');
+  const entries = [];
+  for (let k = 0; k < parts.length; k++) {
+    const p = parts[k];
+    if (p.length < 4) continue;
+    const code = p.slice(0, 2);
+    const entry = { code, path: p.slice(3) };
+    if (code[0] === 'R' || code[0] === 'C') entry.from = parts[++k];
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function statusOf(project) {
+  return parsePorcelainZ(git(project, ['status', '--porcelain=v1', '-z', '--untracked-files=all']))
+    .map((e) => ({ ...e, sha256: fileSha(project, e.path) }));
+}
+
+// Normalized project-relative posix path, or null when it leaves the project or is reserved.
+export function cleanRel(p) {
+  if (typeof p !== 'string' || p.trim() === '' || path.isAbsolute(p) || /^[A-Za-z]:/.test(p)) return null;
+  const rel = path.posix.normalize(p.replace(/\\/g, '/'));
+  if (rel === '.' || rel.startsWith('../') || rel === '..') return null;
+  const top = rel.split('/')[0].toLowerCase();
+  if (top === '.git' || top === '.pignolo-ui') return null;
+  return rel;
+}
+
+const readRecord = (batch) => {
+  const file = path.join(batch, RECORD);
+  if (!fs.existsSync(file)) throw new BatchError(`no hay ${RECORD} en el lote: corré save primero`);
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+};
+const writeRecord = (batch, record) => fs.writeFileSync(path.join(batch, RECORD), `${JSON.stringify(record, null, 2)}\n`);
+
+export function saveBatch({ project, batch, expected }) {
+  const problems = [];
+  if (!Array.isArray(expected) || expected.length === 0) problems.push({ problem: 'empty-list' });
+  else if (expected.length > MAX_FILES) problems.push({ problem: 'too-many-files', max: MAX_FILES, count: expected.length });
+  if (fs.existsSync(path.join(batch, RECORD))) problems.push({ problem: 'batch-exists' });
+  const initial = statusOf(project);
+  const dirty = new Set(initial.flatMap((e) => (e.from ? [e.path, e.from] : [e.path])));
+  const seen = new Set();
+  const files = [];
+  for (const [i, item] of (Array.isArray(expected) ? expected : []).entries()) {
+    const rel = cleanRel(item && item.path);
+    if (!rel) { problems.push({ path: item && item.path, problem: 'bad-path' }); continue; }
+    if (seen.has(rel.toLowerCase())) { problems.push({ path: rel, problem: 'duplicate' }); continue; }
+    seen.add(rel.toLowerCase());
+    if (typeof item.exists !== 'boolean') { problems.push({ path: rel, problem: 'exists-not-boolean' }); continue; }
+    if (item.change !== 'tokens' && item.change !== 'structure') { problems.push({ path: rel, problem: 'bad-change' }); continue; }
+    const abs = path.join(project, ...rel.split('/'));
+    const onDisk = fs.existsSync(abs);
+    if (onDisk !== item.exists) { problems.push({ path: rel, problem: item.exists ? 'declared-existing-but-missing' : 'declared-new-but-exists' }); continue; }
+    if (onDisk && !fs.statSync(abs).isFile()) { problems.push({ path: rel, problem: 'not-a-file' }); continue; }
+    if (dirty.has(rel)) { problems.push({ path: rel, problem: 'uncommitted-changes' }); continue; }
+    files.push({ path: rel, existed: onDisk, change: item.change, index: i });
+  }
+  if (problems.length) return { ok: false, problems };
+
+  fs.mkdirSync(path.join(batch, 'copies'), { recursive: true });
+  const recorded = files.map((f, n) => {
+    if (!f.existed) return { path: f.path, existed: false, change: f.change, sha256: null, copy: null };
+    const buf = fs.readFileSync(path.join(project, ...f.path.split('/')));
+    const copy = `copies/${n}`;
+    fs.writeFileSync(path.join(batch, copy), buf, { flag: 'wx' });
+    return { path: f.path, existed: true, change: f.change, sha256: sha256(buf), copy };
+  });
+  let head = null;
+  try { head = git(project, ['rev-parse', '--verify', '--quiet', 'HEAD']).trim() || null; } catch { head = null; }
+  const record = { version: 1, head, files: recorded, initial, after: null };
+  fs.writeFileSync(path.join(batch, RECORD), `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
+  return { ok: true, problems: [], record };
+}
+
+function changedLines(project, head, files) {
+  let lines = 0;
+  const tracked = files.filter((f) => f.existed).map((f) => f.path);
+  if (head && tracked.length) {
+    for (const row of git(project, ['diff', '--numstat', head, '--', ...tracked]).split('\n')) {
+      const m = /^(\d+)\t(\d+)\t/.exec(row);
+      if (m) lines += Number(m[1]) + Number(m[2]);
+    }
+  }
+  for (const f of files.filter((x) => !x.existed)) {
+    let text;
+    try { text = fs.readFileSync(path.join(project, ...f.path.split('/')), 'utf8'); } catch { continue; } // not created
+    if (text) lines += text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+  }
+  return lines;
+}
+
+export function verifyBatch({ project, batch }) {
+  const record = readRecord(batch);
+  const expected = new Set(record.files.map((f) => f.path));
+  const before = new Map(record.initial.map((e) => [e.path, e]));
+  const current = statusOf(project);
+  const unexpected = [];
+  const nowPaths = new Set();
+  for (const e of current) {
+    for (const p of e.from ? [e.path, e.from] : [e.path]) {
+      nowPaths.add(p);
+      if (expected.has(p)) continue;
+      const b = before.get(p);
+      if (b && b.code === e.code && b.sha256 === fileSha(project, p)) continue; // untouched prior change
+      unexpected.push({ path: p, code: e.code, sha256: fileSha(project, p), wasDirty: Boolean(b) });
+    }
+  }
+  for (const b of record.initial) {
+    if (!nowPaths.has(b.path) && !expected.has(b.path)) unexpected.push({ path: b.path, code: 'clean-now', sha256: fileSha(project, b.path), wasDirty: true });
+  }
+  const files = record.files.map((f) => {
+    const now = fileSha(project, f.path);
+    return { path: f.path, existed: f.existed, exists: now !== null, changed: now !== f.sha256, sha256: now };
+  });
+  const lines = changedLines(project, record.head, record.files);
+  record.after = { files: Object.fromEntries(files.map((f) => [f.path, f.sha256])), unexpected };
+  writeRecord(batch, record);
+  return { ok: unexpected.length === 0, unexpected, files, lines, overLineLimit: lines > MAX_LINES };
+}
+
+export function restoreBatch({ project, batch }) {
+  const record = readRecord(batch);
+  if (!record.after) throw new BatchError('el lote no tiene verificación: corré verify antes de restore');
+  const restored = [];
+  const deleted = [];
+  const blocked = [];
+  const abs = (rel) => path.join(project, ...rel.split('/'));
+  const deleteIfOurs = (rel, wrote) => {
+    const now = fileSha(project, rel);
+    if (now === null) return; // already gone
+    if (wrote && now === wrote) {
+      fs.rmSync(abs(rel), { force: false });
+      if (fs.existsSync(abs(rel))) blocked.push({ path: rel, problem: 'delete-failed' });
+      else deleted.push(rel);
+    } else blocked.push({ path: rel, problem: 'changed-after-the-batch' });
+  };
+  for (const f of record.files) {
+    if (f.existed) {
+      const buf = fs.readFileSync(path.join(batch, f.copy));
+      fs.mkdirSync(path.dirname(abs(f.path)), { recursive: true });
+      fs.writeFileSync(abs(f.path), buf);
+      if (fileSha(project, f.path) === f.sha256) restored.push(f.path);
+      else blocked.push({ path: f.path, problem: 'restore-mismatch' });
+    } else {
+      deleteIfOurs(f.path, record.after.files[f.path]);
+    }
+  }
+  for (const u of record.after.unexpected) {
+    if (u.code === '??' && !u.wasDirty) deleteIfOurs(u.path, u.sha256);
+    else blocked.push({ path: u.path, problem: 'unexpected-change-not-restorable' });
+  }
+  return { ok: blocked.length === 0, restored, deleted, blocked };
+}
+```
+
+`scripts/files.mjs`:
+
+```js
+// files.mjs: save | verify | restore of one batch of edits (spec §9).
+//   save    --project <repo> --batch <folder in .pignolo-ui/> --expected <list.json>
+//           list = [{ "path", "exists": true|false, "change": "tokens"|"structure" }], at most 5
+//           0 saved, 1 refused (see problems), 2 own error
+//   verify  --project <repo> --batch <folder>
+//           0 the delta is inside the expected list, 1 unexpected changes, 2 own error
+//   restore --project <repo> --batch <folder>
+//           0 everything restored, 1 BLOCKED (something left alone, nothing deleted without
+//           proof), 2 own error
+// Prints one JSON object on stdout. Never runs destructive git.
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { saveBatch, verifyBatch, restoreBatch, BatchError } from '../lib/batch-files.mjs';
+import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+
+class UsageError extends Error {}
+
+const ALLOWED = { save: ['project', 'batch', 'expected'], verify: ['project', 'batch'], restore: ['project', 'batch'] };
+
+function parseArgs(argv) {
+  const [cmd, ...rest] = argv;
+  if (!ALLOWED[cmd]) throw new UsageError(`subcomando desconocido ${cmd ?? '(ninguno)'}; usá save, verify o restore`);
+  const opts = {};
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
+    const key = a.slice(2);
+    if (!ALLOWED[cmd].includes(key)) throw new UsageError(`opción desconocida ${a} para ${cmd}; opciones válidas: ${ALLOWED[cmd].map((k) => `--${k}`).join(', ')}`);
+    const next = rest[i + 1];
+    if (next === undefined || next.startsWith('--')) throw new UsageError(`--${key} necesita un valor`);
+    if (opts[key] !== undefined) throw new UsageError(`--${key} se indicó más de una vez`);
+    opts[key] = next;
+    i++;
+  }
+  const missing = ALLOWED[cmd].filter((k) => opts[k] === undefined);
+  if (missing.length) throw new UsageError(`faltan ${missing.map((k) => `--${k}`).join(', ')}`);
+  return { cmd, opts };
+}
+
+function toplevel(dir) {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+const real = (p) => fs.realpathSync.native(p);
+
+export function main(argv, { cwd = process.cwd() } = {}) {
+  try {
+    const { cmd, opts } = parseArgs(argv);
+    const projectArg = path.resolve(cwd, opts.project);
+    if (!fs.existsSync(projectArg) || !fs.statSync(projectArg).isDirectory()) throw new UsageError(`--project no es una carpeta existente: ${opts.project}`);
+    const top = toplevel(projectArg);
+    if (!top || real(top) !== real(projectArg)) throw new UsageError('--project tiene que ser la raíz de un repo git');
+    const project = real(projectArg);
+    const batch = path.resolve(cwd, opts.batch);
+    if (!isInsideRunRoot(project, batch)) throw new UsageError(`--batch debe estar dentro de ${RUN_ROOT}/ del proyecto`);
+    let result;
+    if (cmd === 'save') {
+      let expected;
+      try { expected = JSON.parse(fs.readFileSync(path.resolve(cwd, opts.expected), 'utf8')); } catch (e) { throw new UsageError(`no se pudo leer --expected (${e.code || e.message})`); }
+      ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
+      fs.mkdirSync(batch, { recursive: true });
+      const r = saveBatch({ project, batch, expected });
+      result = { ok: r.ok, problems: r.problems, files: r.ok ? r.record.files.map(({ path: p, existed, change }) => ({ path: p, existed, change })) : [] };
+    } else if (cmd === 'verify') {
+      result = verifyBatch({ project, batch });
+    } else {
+      result = restoreBatch({ project, batch });
+      result.status = result.ok ? 'restored' : 'BLOCKED';
+    }
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return result.ok ? 0 : 1;
+  } catch (e) {
+    const known = e instanceof UsageError || e instanceof BatchError;
+    process.stderr.write(`files: ${known ? e.message : `error interno (${e.stack || e.message})`}\n`);
+    return 2;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main(process.argv.slice(2));
+}
+```
+
+- [ ] **Paso 4: verde** en los dos archivos y en `tests/lint-plugin.test.mjs`. Buscar U+FEFF literal (el test de CRLF y BOM lo usa como escape).
+- [ ] **Paso 5: commit.** `feat(ui): files.mjs aplica un lote sin romper (save, verify, restore)`.
+
+### Task B3 (sonnet): `scripts/report-check.mjs` (§12)
+
+**Files:**
+- Create: `plugins/pignolo-ui/lib/report-check.mjs`, `scripts/report-check.mjs`
+- Modify: `lib/approved.mjs` (extrae `registeredManifestSha`; `verifyApproved` la usa, sin cambio de comportamiento)
+- Test: `tests/report-check.test.mjs`, `tests/report-check-cli.test.mjs`
+
+**Consumes:** `findDesignFile`, `APPROVED_PATH` (`lib/approved.mjs`); `isInsideRunRoot`, `RUN_ROOT`.
+
+**Produces:** `checkReport({ project, run, report })` → `{ kept, retired, implements, exitCode }`, `ReportError`, `registeredManifestSha(designText, approvedPath)`; la CLI `report-check.mjs --project --run` que escribe `<run>/report-check.json` (`{ reportSha256, kept, retired, implements, exitCode }`) y sale con 0/1/2; los contratos `report.json` y `browser.json` de los Rulings.
+
+- [ ] **Paso 1: tests primero.**
+
+`tests/report-check.test.mjs`:
+
+```js
+// Claim <-> evidence cross-check (lib/report-check.mjs, spec §12), in process.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { makeTempDir, writeTree } from './helpers.mjs';
+import { checkReport, ReportError } from '../lib/report-check.mjs';
+import { registeredManifestSha } from '../lib/approved.mjs';
+
+const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
+const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('rest')]);
+const MANIFEST = 'a'.repeat(64);
+const UI = JSON.stringify({ catalogVersion: '0.3.0', entries: [
+  { id: 'A11Y-04', status: 'pass', severity: 'bloquea', scope: 'new', file: 'src/Save.tsx', line: 3, fingerprint: 'A11Y-04|src/Save.tsx|button' },
+  { id: 'COLOR-03', status: 'fail', severity: 'bloquea', scope: 'new', fingerprint: 'COLOR-03||on-surface/surface/light', measure: { ratio: 3.45, required: 4.5 } },
+] });
+
+function setup() {
+  const project = writeTree(makeTempDir(), {
+    'DESIGN.md': `---\nversion: alpha\nname: X\n---\n\n## Decisions\n\n- 2026-09-29 — approved \`design/approved/checkout/\` (manifest sha256 \`${MANIFEST}\`): "B"\n`,
+    'src/Save.tsx': 'export const S = () => <button>Guardar</button>;\n',
+    '.pignolo-ui/runs/r1/ui-check.json': UI,
+  });
+  const run = path.join(project, '.pignolo-ui', 'runs', 'r1');
+  fs.mkdirSync(path.join(run, 'captures'));
+  fs.writeFileSync(path.join(run, 'captures', 'home.png'), PNG);
+  return { project, run };
+}
+const uiRef = (fingerprint, extra = {}) => ({ source: 'ui-check', fingerprint, ...extra });
+const report = (claims, extra = {}) => ({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(UI) }, claims, ...extra });
+
+test('claims stay only when the cited evidence exists and says the same', async (t) => {
+  const { project, run } = setup();
+  const fileSha = sha(fs.readFileSync(path.join(project, 'src/Save.tsx')));
+  const CASES = [
+    ['ui-check pass', { rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button') }, null],
+    ['ui-check with line', { rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button', { line: 3 }) }, null],
+    ['same measure', { rule: 'COLOR-03', status: 'fail', measure: { ratio: 3.45 }, ref: uiRef('COLOR-03||on-surface/surface/light') }, null],
+    ['capture', { ref: { source: 'capture', path: 'captures/home.png', sha256: sha(PNG) } }, null],
+    ['edited file', { ref: { source: 'file', path: 'src/Save.tsx', sha256: fileSha } }, null],
+    ['no reference', {}, /no evidence reference/],
+    ['contradicting status', { rule: 'COLOR-03', status: 'pass', ref: uiRef('COLOR-03||on-surface/surface/light') }, /evidence says COLOR-03 fail/],
+    ['other rule', { rule: 'A11Y-16', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button') }, /evidence says A11Y-04 pass/],
+    ['other measure', { rule: 'COLOR-03', status: 'fail', measure: { ratio: 4.5 }, ref: uiRef('COLOR-03||on-surface/surface/light') }, /another measure/],
+    ['wrong line', { rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button', { line: 9 }) }, /no ui-check\.json entry/],
+    ['unknown fingerprint', { rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|x|y') }, /no ui-check\.json entry/],
+    ['browser.json absent', { rule: 'COLOR-03', status: 'pass', ref: { source: 'browser', fingerprint: 'x' } }, /browser\.json not in the run/],
+    ['capture outside the run', { ref: { source: 'capture', path: '../../../DESIGN.md', sha256: sha(PNG) } }, /outside the run/],
+    ['capture with another hash', { ref: { source: 'capture', path: 'captures/home.png', sha256: 'b'.repeat(64) } }, /sha256 does not match/],
+    ['file without hash', { ref: { source: 'file', path: 'src/Save.tsx' } }, /without sha256/],
+    ['unknown source', { ref: { source: 'memory' } }, /unknown evidence source/],
+  ];
+  for (const [name, claim, retired] of CASES) {
+    await t.test(name, () => {
+      const r = checkReport({ project, run, report: report([{ id: 'c1', text: 'afirmación', ...claim }]) });
+      if (retired) {
+        assert.equal(r.exitCode, 1);
+        assert.match(r.retired[0].reason, retired);
+      } else {
+        assert.deepEqual([r.exitCode, r.kept, r.retired], [0, ['c1'], []]);
+      }
+    });
+  }
+});
+
+test('ui-check.json must be cited by its current sha256', () => {
+  const { project, run } = setup();
+  const claim = { id: 'c1', text: 'x', rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button') };
+  assert.match(checkReport({ project, run, report: report([claim], { evidence: {} }) }).retired[0].reason, /not cited by sha256/);
+  fs.appendFileSync(path.join(run, 'ui-check.json'), '\n');
+  assert.match(checkReport({ project, run, report: report([claim]) }).retired[0].reason, /changed since the report was written/);
+});
+
+test('§16.1: an implementation must cite the approved with the sha256 DESIGN.md registers', () => {
+  const { project, run } = setup();
+  const imp = (manifestSha256) => report([], { implemented: true, implements: { path: 'design/approved/checkout', manifestSha256 } });
+  assert.deepEqual([checkReport({ project, run, report: imp(MANIFEST) }).exitCode, checkReport({ project, run, report: imp(MANIFEST) }).implements.status], [0, 'ok']);
+  const other = checkReport({ project, run, report: imp('b'.repeat(64)) });
+  assert.deepEqual([other.exitCode, other.implements.status], [1, 'mismatch']);
+  const missing = checkReport({ project, run, report: report([], { implemented: true }) });
+  assert.deepEqual([missing.exitCode, missing.implements.status], [1, 'missing']);
+  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'not-required');
+});
+
+test('§16.1: one claim without evidence and one contradicted: both retired, exit 1', () => {
+  const { project, run } = setup();
+  const r = checkReport({ project, run, report: report([
+    { id: 'c1', text: 'Todo en orden' },
+    { id: 'c2', text: 'El contraste pasa', rule: 'COLOR-03', status: 'pass', ref: uiRef('COLOR-03||on-surface/surface/light') },
+    { id: 'c3', text: 'Guardar tiene nombre', rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button') },
+  ]) });
+  assert.deepEqual([r.exitCode, r.kept, r.retired.map((x) => x.id)], [1, ['c3'], ['c1', 'c2']]);
+});
+
+test('malformed reports throw ReportError; bad claims are retired, not fatal', () => {
+  const { project, run } = setup();
+  assert.throws(() => checkReport({ project, run, report: [] }), ReportError);
+  assert.throws(() => checkReport({ project, run, report: { implemented: false } }), ReportError);
+  assert.throws(() => checkReport({ project, run, report: { claims: [] } }), ReportError);
+  const r = checkReport({ project, run, report: report([null, { id: 'c1', text: '' }, { id: 'c2', text: 'x', ref: { source: 'capture', path: 'captures/home.png', sha256: sha(PNG) } }, { id: 'c2', text: 'y', ref: { source: 'capture', path: 'captures/home.png', sha256: sha(PNG) } }]) });
+  assert.deepEqual(r.retired, [{ id: '#1', reason: 'invalid claim' }, { id: 'c1', reason: 'invalid claim' }, { id: 'c2', reason: 'duplicate claim id' }]);
+});
+
+test('registeredManifestSha reads the last entry of a path and nothing else', () => {
+  const text = [`- approved \`design/approved/a/\` (manifest sha256 \`${'1'.repeat(64)}\`)`, `- approved \`design/approved/ab/\` (manifest sha256 \`${'2'.repeat(64)}\`)`, `- approved \`design/approved/a/\` (manifest sha256 \`${'3'.repeat(64)}\`)`].join('\n');
+  assert.equal(registeredManifestSha(text, 'design/approved/a'), '3'.repeat(64));
+  assert.equal(registeredManifestSha(text, 'design/approved/ab'), '2'.repeat(64));
+  assert.equal(registeredManifestSha(text, 'design/approved/b'), null);
+});
+```
+
+`tests/report-check-cli.test.mjs`:
+
+```js
+// report-check CLI (scripts/report-check.mjs) in a subprocess: 0/1/2 and report-check.json.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { makeTempDir, writeTree, runScript } from './helpers.mjs';
+
+const RUN = '.pignolo-ui/runs/r1';
+
+test('exit 0 with nothing retired, 1 with a retired claim; report-check.json is written', () => {
+  const project = writeTree(makeTempDir(), { [`${RUN}/report.json`]: JSON.stringify({ implemented: false, claims: [] }) });
+  const ok = runScript('report-check.mjs', ['--project', project, '--run', path.join(project, RUN)]);
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.deepEqual([ok.json.kept, ok.json.retired, ok.json.implements], [0, [], 'not-required']);
+  const written = JSON.parse(fs.readFileSync(path.join(project, RUN, 'report-check.json'), 'utf8'));
+  assert.match(written.reportSha256, /^[0-9a-f]{64}$/);
+  writeTree(project, { [`${RUN}/report.json`]: JSON.stringify({ implemented: false, claims: [{ id: 'c1', text: 'Todo en orden' }] }) });
+  const bad = runScript('report-check.mjs', ['--project', project, '--run', path.join(project, RUN)]);
+  assert.equal(bad.status, 1);
+  assert.deepEqual(bad.json.retired, [{ id: 'c1', reason: 'no evidence reference' }]);
+});
+
+test('errors exit 2 (not verified) with a Spanish message and no stack', async (t) => {
+  const project = writeTree(makeTempDir(), { [`${RUN}/x`]: '' });
+  const CASES = [
+    ['no --run', ['--project', project], /falta --run/],
+    ['run outside .pignolo-ui', ['--project', project, '--run', project], /--run debe estar dentro de \.pignolo-ui/],
+    ['no report.json', ['--project', project, '--run', path.join(project, RUN)], /no existe/],
+    ['unknown option', ['--project', project, '--run', path.join(project, RUN), '--all'], /opción desconocida --all/],
+  ];
+  for (const [name, args, message] of CASES) {
+    await t.test(name, () => {
+      const r = runScript('report-check.mjs', args);
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, message);
+      assert.doesNotMatch(r.stderr, /error interno|\n\s+at /);
+    });
+  }
+  writeTree(project, { [`${RUN}/report.json`]: '{' });
+  const r = runScript('report-check.mjs', ['--project', project, '--run', path.join(project, RUN)]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /no es JSON válido/);
+});
+```
+
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/report-check.test.mjs plugins/pignolo-ui/tests/report-check-cli.test.mjs` → fallan (módulos ausentes y `registeredManifestSha` sin exportar). `tests/approve.test.mjs` sigue verde antes y después del cambio en `approved.mjs`.
+- [ ] **Paso 3: implementar.**
+
+`lib/approved.mjs`:
+
+```diff
+diff --git a/plugins/pignolo-ui/lib/approved.mjs b/plugins/pignolo-ui/lib/approved.mjs
+--- a/plugins/pignolo-ui/lib/approved.mjs
++++ b/plugins/pignolo-ui/lib/approved.mjs
+@@ -97,6 +97,13 @@ export function manifestSha(projectRoot, approvedPath) {
+ 
+ export const APPROVED_PATH = /^design\/approved\/[a-z0-9][a-z0-9-]{0,63}$/;
+ 
++// sha256 of the manifest that DESIGN.md registers for approvedPath (the last entry wins), or null.
++export function registeredManifestSha(designText, approvedPath) {
++  const escaped = approvedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++  const entries = [...String(designText).matchAll(new RegExp(`\`${escaped}/\`[^\\n]*?sha256 \`([0-9a-f]{64})\``, 'g'))];
++  return entries.length ? entries[entries.length - 1][1] : null;
++}
++
+ export function verifyApproved({ projectRoot, approvedPath }) {
+   const problems = [];
+   const blocked = () => ({ status: 'BLOCKED', problems });
+@@ -109,14 +116,11 @@ export function verifyApproved({ projectRoot, approvedPath }) {
+     problems.push({ problem: 'no-design-md' });
+     return blocked();
+   }
+-  const text = fs.readFileSync(designFile, 'utf8');
+-  const escaped = approvedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+-  const entries = [...text.matchAll(new RegExp(`\`${escaped}/\`[^\\n]*?sha256 \`([0-9a-f]{64})\``, 'g'))];
+-  if (!entries.length) {
++  const expected = registeredManifestSha(fs.readFileSync(designFile, 'utf8'), approvedPath);
++  if (!expected) {
+     problems.push({ problem: 'no-entry' });
+     return blocked();
+   }
+-  const expected = entries[entries.length - 1][1];
+   const dir = path.join(projectRoot, ...approvedPath.split('/'));
+   let manifest;
+   try {
+```
+
+`lib/report-check.mjs`:
+
+```js
+// Claim <-> evidence cross-check of the final report (spec §12, PROC-02). Deterministic: a claim
+// stays only if the evidence it cites exists and says the same thing.
+//
+// checkReport({ project, run, report }) -> { kept, retired, implements, exitCode }
+//   report  parsed <run>/report.json (see REPORT_SHAPE in the plan / README)
+//   kept    [claim id]    retired [{ id, reason }]
+//   implements { status: 'ok'|'not-required'|'missing'|'mismatch'|'no-design-md', cited?, registered? }
+//   exitCode 0 nothing retired and implements ok or not required; 1 otherwise.
+// A malformed report (not an object, claims not a list, implemented not boolean) throws
+// ReportError, which the CLI turns into exit 2.
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { findDesignFile, registeredManifestSha, APPROVED_PATH } from './approved.mjs';
+
+export class ReportError extends Error {}
+
+const SOURCES = { 'ui-check': 'ui-check.json', browser: 'browser.json' };
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const HEX64 = /^[0-9a-f]{64}$/;
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+
+// Path of `rel` inside `root`, or null when it leaves it.
+function inside(root, rel) {
+  if (typeof rel !== 'string' || rel === '' || path.isAbsolute(rel) || /^[A-Za-z]:/.test(rel)) return null;
+  const abs = path.resolve(root, rel);
+  const r = path.relative(root, abs);
+  return r && !r.startsWith('..') && !path.isAbsolute(r) ? abs : null;
+}
+
+function loadSources(run, report) {
+  const out = {};
+  for (const [source, name] of Object.entries(SOURCES)) {
+    const file = path.join(run, name);
+    if (!fs.existsSync(file)) { out[source] = { error: `${name} not in the run` }; continue; }
+    const buf = fs.readFileSync(file);
+    const cited = isMap(report.evidence) ? report.evidence[name] : undefined;
+    if (typeof cited !== 'string') { out[source] = { error: `${name} is not cited by sha256 in evidence` }; continue; }
+    if (cited !== sha256(buf)) { out[source] = { error: `${name} changed since the report was written` }; continue; }
+    let json;
+    try { json = JSON.parse(buf.toString('utf8')); } catch { out[source] = { error: `${name} is not valid JSON` }; continue; }
+    out[source] = { entries: Array.isArray(json.entries) ? json.entries : [] };
+  }
+  return out;
+}
+
+function checkClaim(claim, { project, run, sources }) {
+  const ref = claim.ref;
+  if (!isMap(ref)) return 'no evidence reference';
+  if (ref.source in SOURCES) {
+    const src = sources[ref.source];
+    if (src.error) return src.error;
+    if (typeof claim.rule !== 'string' || !['pass', 'fail', 'unverified'].includes(claim.status)) return 'claim without rule and status';
+    const found = src.entries.filter((e) => e.fingerprint === ref.fingerprint && (ref.line === undefined || e.line === ref.line));
+    if (!found.length) return `no ${SOURCES[ref.source]} entry with that fingerprint`;
+    const same = found.filter((e) => e.id === claim.rule && e.status === claim.status);
+    if (!same.length) return `evidence says ${found[0].id} ${found[0].status}`;
+    if (claim.measure !== undefined) {
+      if (!isMap(claim.measure)) return 'measure must be an object';
+      const ok = same.some((e) => isMap(e.measure) && Object.entries(claim.measure).every(([k, v]) => isDeepStrictEqual(e.measure[k], v)));
+      if (!ok) return 'evidence has another measure';
+    }
+    return null;
+  }
+  if (ref.source === 'capture' || ref.source === 'file') {
+    const root = ref.source === 'capture' ? run : project;
+    const abs = inside(root, ref.path);
+    if (!abs) return `${ref.source} path outside the ${ref.source === 'capture' ? 'run' : 'project'}`;
+    if (typeof ref.sha256 !== 'string' || !HEX64.test(ref.sha256)) return `${ref.source} without sha256`;
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) return `${ref.source} does not exist`;
+    const buf = fs.readFileSync(abs);
+    if (sha256(buf) !== ref.sha256) return `${ref.source} sha256 does not match`;
+    if (ref.source === 'capture' && !buf.subarray(0, 8).equals(PNG)) return 'capture is not a PNG';
+    return null;
+  }
+  return `unknown evidence source ${JSON.stringify(ref.source)}`;
+}
+
+function checkImplements(project, report) {
+  if (report.implemented !== true) return { status: 'not-required' };
+  const imp = report.implements;
+  if (!isMap(imp) || typeof imp.path !== 'string' || !APPROVED_PATH.test(imp.path) || typeof imp.manifestSha256 !== 'string') return { status: 'missing' };
+  const designFile = findDesignFile(project);
+  if (!designFile) return { status: 'no-design-md', cited: imp.manifestSha256 };
+  const registered = registeredManifestSha(fs.readFileSync(designFile, 'utf8'), imp.path);
+  if (registered !== imp.manifestSha256) return { status: 'mismatch', cited: imp.manifestSha256, registered };
+  return { status: 'ok', cited: imp.manifestSha256, registered };
+}
+
+export function checkReport({ project, run, report }) {
+  if (!isMap(report)) throw new ReportError('report.json no es un objeto JSON');
+  if (!Array.isArray(report.claims)) throw new ReportError('report.json no tiene la lista claims');
+  if (typeof report.implemented !== 'boolean') throw new ReportError('report.json debe decir implemented: true o false');
+  const sources = loadSources(run, report);
+  const kept = [];
+  const retired = [];
+  const seen = new Set();
+  report.claims.forEach((claim, i) => {
+    const id = isMap(claim) && typeof claim.id === 'string' && claim.id ? claim.id : `#${i + 1}`;
+    let reason = null;
+    if (!isMap(claim) || typeof claim.text !== 'string' || claim.text.trim() === '') reason = 'invalid claim';
+    else if (seen.has(id)) reason = 'duplicate claim id';
+    else reason = checkClaim(claim, { project, run, sources });
+    seen.add(id);
+    if (reason) retired.push({ id, reason });
+    else kept.push(id);
+  });
+  const implementsResult = checkImplements(project, report);
+  const implOk = implementsResult.status === 'ok' || implementsResult.status === 'not-required';
+  return { kept, retired, implements: implementsResult, exitCode: retired.length === 0 && implOk ? 0 : 1 };
+}
+```
+
+`scripts/report-check.mjs`:
+
+```js
+// report-check.mjs: cross-check of the final report against its evidence (spec §12).
+//   node <root>/scripts/report-check.mjs --project <repo> --run <folder in .pignolo-ui/runs/>
+// Reads <run>/report.json, writes <run>/report-check.json ({ reportSha256, kept, retired,
+// implements, exitCode }) and prints { out, kept, retired, implements, exitCode } on stdout.
+// Exit codes: 0 no claim retired and the approved is cited when something was implemented;
+// 1 at least one claim retired or the approved citation is missing or wrong; 2 own error
+// (counts as not verified).
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { checkReport, ReportError } from '../lib/report-check.mjs';
+import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+
+class UsageError extends Error {}
+const ALLOWED = ['project', 'run'];
+
+function parseArgs(argv) {
+  const opts = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
+    const key = a.slice(2);
+    if (!ALLOWED.includes(key)) throw new UsageError(`opción desconocida ${a}; opciones válidas: --project, --run`);
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) throw new UsageError(`--${key} necesita un valor`);
+    opts[key] = next;
+    i++;
+  }
+  for (const k of ALLOWED) if (opts[k] === undefined) throw new UsageError(`falta --${k}`);
+  return opts;
+}
+
+export function main(argv, { cwd = process.cwd() } = {}) {
+  try {
+    const opts = parseArgs(argv);
+    const project = path.resolve(cwd, opts.project);
+    if (!fs.existsSync(project) || !fs.statSync(project).isDirectory()) throw new UsageError(`--project no es una carpeta existente: ${opts.project}`);
+    const run = path.resolve(cwd, opts.run);
+    if (!isInsideRunRoot(project, run)) throw new UsageError(`--run debe estar dentro de ${RUN_ROOT}/ del proyecto`);
+    const file = path.join(run, 'report.json');
+    if (!fs.existsSync(file)) throw new UsageError(`no existe ${path.join(opts.run, 'report.json')}`);
+    const buf = fs.readFileSync(file);
+    let report;
+    try { report = JSON.parse(buf.toString('utf8')); } catch { throw new ReportError('report.json no es JSON válido'); }
+    const result = checkReport({ project, run, report });
+    const out = path.join(run, 'report-check.json');
+    const body = { reportSha256: crypto.createHash('sha256').update(buf).digest('hex'), ...result };
+    fs.writeFileSync(out, `${JSON.stringify(body, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ out, kept: result.kept.length, retired: result.retired, implements: result.implements.status, exitCode: result.exitCode }, null, 2)}\n`);
+    return result.exitCode;
+  } catch (e) {
+    const known = e instanceof UsageError || e instanceof ReportError;
+    process.stderr.write(`report-check: ${known ? e.message : `error interno (${e.stack || e.message})`}\n`);
+    return 2;
+  }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main(process.argv.slice(2));
+}
+```
+
+- [ ] **Paso 4: verde** en los dos archivos, `tests/approve.test.mjs` y `tests/lint-plugin.test.mjs`.
+- [ ] **Paso 5: commit.** `feat(ui): report-check cruza cada afirmación con su evidencia y la cita del aprobado`.
+
+### Unión de la ola 0 del 2b
+
+- [ ] Unir las Tasks B1, B2 y B3 a `ui/hito-2b` (archivos disjuntos; un conflicto es un error del plan y se registra). `npm run test:quiet` una vez: todo verde salvo `rule SEO-xx has fixtures` (7).
+
+---
+
+## Ola 1 del 2b (en paralelo: Tasks B4 y B5)
+
+**Tarjeta común (fixtures de SEO).** Cada caso es `tests/fixtures/rules/<ID>/<caso>/` con los archivos literales de las tablas; cada archivo termina en `\n`; `expect.json` exactamente como en la tabla. Bloques base:
+
+`DMW` (`DESIGN.md`; algunos casos agregan líneas bajo `web:` antes del `---` de cierre):
+
+```markdown
+---
+version: alpha
+name: Fixture
+pignolo:
+  schema: 1
+  web:
+    public: true
+---
+
+## Overview
+
+Fixture.
+```
+
+`PAGE` (`index.html`; líneas: 5 `<title>`, 6 canonical, 7–10 `og:*`, 11 hoja de estilos, 13 `<body>`):
+
+```html
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pedidos</title>
+<link rel="canonical" href="https://www.example.com/">
+<meta property="og:title" content="Pedidos">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://www.example.com/og.png">
+<meta property="og:url" content="https://www.example.com/">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body><main><h1>Pedidos</h1><a href="/ayuda">Ayuda</a></main><script type="module" src="/assets/app.js"></script></body>
+</html>
+```
+
+`L(META, HEAD)` (`app/layout.tsx`; `{{META}}` son líneas de `export` que terminan en una línea vacía, `{{HEAD}}` va dentro de `<head>`; sin `{{META}}`, `<head>` queda en la línea 4 y `<body>` en la 5):
+
+```tsx
+{{META}}export default function RootLayout({ children }) {
+  return (
+    <html lang="es">
+      <head>{{HEAD}}</head>
+      <body>{children}</body>
+    </html>
+  );
+}
+```
+
+`SM` = la línea `Sitemap: https://www.example.com/sitemap.xml`. `SMX` (`sitemap.xml` válido):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.example.com/</loc></url>
+  <url><loc>https://www.example.com/ayuda</loc></url>
+</urlset>
+```
+
+En las tablas, ` / ` separa líneas de un archivo y "A → B" es un reemplazo sobre el bloque base. Todos los casos llevan `DESIGN.md` = `DMW` salvo que la tabla diga otra cosa.
+
+Pasos de la tarjeta: (1) fixtures y tests del grupo; (2) rojo contra el stub (`node --test --test-reporter=dot --test-name-pattern "rule (<ids>) " plugins/pignolo-ui/tests/rules-fixtures.test.mjs` y el archivo del grupo: los `pass-*`, `fail-*` y los `unverified-*` con `reason` fallan contra `unverified('not implemented')`); (3) implementar; (4) verde, `tests/lint-plugin.test.mjs` y búsqueda de U+FEFF literal; (5) commit.
+
+### Task B4 (sonnet): SEO de sitio (SEO-01, SEO-05) y `xml-check`
+
+**Files:** create `lib/xml-check.mjs`; replace `lib/rules/seo-site.mjs`; create `tests/xml-check.test.mjs`, `tests/rules-seo-site.test.mjs`, `tests/fixtures/rules/{SEO-01,SEO-05}/`.
+
+**Consumes:** `seoGate`, `seoPages`, `indexable`, `staticAttr` (`seo-common`), `parseRobots`, `isAllowed`, `findSiteFile`, `generatedBy`, `pctx.site` (Task B1). **Produces:** `checkXml(text)`, `checkSitemap(text)`, `parseXml(text, handlers)`; `RULES` de SEO-01 y SEO-05.
+
+| id | caso | archivos | `expect.json` |
+|---|---|---|---|
+| SEO-01 | `pass-robots` | `index.html` = `PAGE`; `robots.txt` = `User-agent: *` / `Disallow: /admin/` / `SM` | — |
+| SEO-01 | `pass-no-robots` | `index.html` = `PAGE` | `{ "reason": "no robots.txt" }` |
+| SEO-01 | `pass-not-public` | `DESIGN.md` = `DMW` con `public: false`; `index.html` = `PAGE`; `robots.txt` = `User-agent: *` / `Disallow: /` | `{ "reason": "web.public is not true" }` |
+| SEO-01 | `pass-not-indexable` | `DESIGN.md` = `DMW` + `    indexable: false`; `index.html` = `PAGE`; `robots.txt` = `User-agent: *` / `Disallow: /` | `{ "reason": "indexable is false" }` |
+| SEO-01 | `fail-blocks-root` | `index.html` = `PAGE`; `robots.txt` = `User-agent: *` / `Disallow: /` / `SM` | `{ "count": 3, "lines": [2, 2, 2], "reason": "public route /", "severity": "medio" }` (la ruta `/` y los dos *assets*) |
+| SEO-01 | `fail-blocks-assets` | `index.html` = `PAGE`; `public/robots.txt` = `User-agent: *` / `Disallow: /assets/` / `SM` | `{ "count": 2, "reason": "render asset /assets/app\\.(css\|js)" }` |
+| SEO-01 | `fail-no-sitemap` | `index.html` = `PAGE`; `robots.txt` = `User-agent: *` / `Allow: /` | `{ "count": 1, "reason": "references no sitemap" }` |
+| SEO-01 | `unverified-generated` | `app/robots.ts` = `export default function robots() {` / `  return { rules: { userAgent: '*', allow: '/' } };` / `}` | `{ "reason": "generated by app/robots.ts" }` |
+| SEO-05 | `pass-sitemap` | `robots.txt` = `User-agent: *` / `Allow: /` / `SM`; `public/sitemap.xml` = `SMX` | `{ "measure": { "kind": "urlset", "count": 2 } }` |
+| SEO-05 | `pass-index` | `robots.txt` = `User-agent: *` / `Allow: /` / `Sitemap: /sitemap-index.xml`; `sitemap-index.xml` = `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://www.example.com/sitemap-1.xml</loc></sitemap></sitemapindex>` | `{ "measure": { "kind": "sitemapindex", "count": 1 } }` |
+| SEO-05 | `fail-missing` | `robots.txt` = `User-agent: *` / `Allow: /` / `SM` | `{ "lines": [3], "reason": "not in the project" }` |
+| SEO-05 | `fail-unclosed` | `robots.txt` como `fail-missing`; `sitemap.xml` = `<urlset>` / `  <url><loc>https://www.example.com/</loc></url>` | `{ "reason": "unclosed element <urlset>" }` |
+| SEO-05 | `fail-entity` | `robots.txt` como `fail-missing`; `sitemap.xml` = `<urlset>` / `  <url><loc>https://www.example.com/?a=1&b=2</loc></url>` / `</urlset>` | `{ "lines": [2], "reason": "invalid entity reference" }` |
+| SEO-05 | `fail-shape` | `robots.txt` como `fail-missing`; `sitemap.xml` = `<rss version="2.0"><channel><title>x</title></channel></rss>` | `{ "reason": "not urlset or sitemapindex" }` |
+| SEO-05 | `unverified-no-reference` | `robots.txt` = `User-agent: *` / `Allow: /` | `{ "reason": "no sitemap referenced" }` |
+| SEO-05 | `unverified-generated` | `robots.txt` como `fail-missing`; `app/sitemap.ts` = `export default function sitemap() {` / `  return [{ url: 'https://www.example.com/' }];` / `}` | `{ "reason": "generated by app/sitemap.ts" }` |
+
+(En la celda de `fail-blocks-assets`, `\|` es la barra de la regex escapada para la tabla: el `expect.json` lleva `"render asset /assets/app\\.(css|js)"`.)
+
+- [ ] **Paso 1: fixtures de la tabla y tests.**
+
+`tests/xml-check.test.mjs`:
+
+```js
+// XML well-formedness and sitemap shape (lib/xml-check.mjs).
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { checkXml, checkSitemap } from '../lib/xml-check.mjs';
+
+const SITEMAP = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>https://www.example.com/?a=1&amp;b=2</loc><lastmod>2026-09-01</lastmod></url>\n</urlset>\n';
+
+test('checkXml: well-formed documents pass', async (t) => {
+  const CASES = [
+    ['declaration and namespace', SITEMAP],
+    ['BOM', '\uFEFF<?xml version="1.0"?><a/>'],
+    ['comments and PI', '<!-- c --><?pi x?><a><!-- d --><b x="1" y=\'2\'/></a>'],
+    ['CDATA', '<a><![CDATA[<not a tag> & raw]]></a>'],
+    ['numeric references', '<a>&#233;&#xE9;&lt;&gt;&quot;&apos;</a>'],
+    ['DOCTYPE without subset', '<!DOCTYPE a><a/>'],
+  ];
+  for (const [name, xml] of CASES) await t.test(name, () => assert.deepEqual(checkXml(xml).ok, true, JSON.stringify(checkXml(xml))));
+});
+
+test('checkXml: errors with their line', async (t) => {
+  const CASES = [
+    ['unclosed root', '<a>\n<b></b>\n', /unclosed element <a>/, 3],
+    ['crossed tags', '<a><b></a></b>', /closing <\/a> does not match <b>/, 1],
+    ['two roots', '<a/>\n<b/>', /more than one root/, 2],
+    ['text outside', 'hola<a/>', /text outside the root/, 1],
+    ['raw ampersand', '<a>\nx & y</a>', /invalid entity reference/, 2],
+    ['raw <', '<a>1 < 2</a>', /invalid tag|raw </, 1],
+    ['duplicate attribute', '<a x="1" x="2"/>', /duplicate attribute x/, 1],
+    ['unquoted attribute', '<a x=1/>', /unquoted attribute x/, 1],
+    ['empty', '', /no root element/, 1],
+    ['internal subset', '<!DOCTYPE a [<!ENTITY e "x">]><a/>', /internal subset not supported/, 1],
+    ['html', '<!doctype html><html></html>', /invalid tag/, 1],
+  ];
+  for (const [name, xml, error, line] of CASES) {
+    await t.test(name, () => {
+      const r = checkXml(xml);
+      assert.equal(r.ok, false);
+      assert.match(r.error, error);
+      assert.equal(r.line, line);
+    });
+  }
+});
+
+test('checkSitemap: urlset or sitemapindex, each item with a loc', () => {
+  assert.deepEqual(checkSitemap(SITEMAP), { ok: true, kind: 'urlset', count: 1 });
+  assert.deepEqual(checkSitemap('<sitemapindex><sitemap><loc>https://e.com/s1.xml</loc></sitemap></sitemapindex>'), { ok: true, kind: 'sitemapindex', count: 1 });
+  assert.deepEqual(checkSitemap('<s:urlset xmlns:s="x"><s:url><s:loc>u</s:loc></s:url></s:urlset>'), { ok: true, kind: 'urlset', count: 1 });
+  assert.deepEqual(checkSitemap('<urlset><url><loc><![CDATA[https://e.com/]]></loc></url></urlset>'), { ok: true, kind: 'urlset', count: 1 });
+  assert.match(checkSitemap('<urlset><url><lastmod>x</lastmod></url></urlset>').error, /<url> without <loc>/);
+  assert.match(checkSitemap('<urlset><url><loc>  </loc></url></urlset>').error, /<url> without <loc>/);
+  assert.match(checkSitemap('<rss><channel/></rss>').error, /not urlset or sitemapindex/);
+});
+
+test('linear cost: 50 000 urls and 20 000 nested elements stay fast', () => {
+  const big = `<urlset>${'<url><loc>https://example.com/p</loc></url>'.repeat(50000)}</urlset>`;
+  const deep = `${'<a>'.repeat(20000)}${'</a>'.repeat(20000)}`;
+  const start = Date.now();
+  assert.equal(checkSitemap(big).count, 50000);
+  assert.equal(checkXml(deep).ok, true);
+  assert.ok(Date.now() - start < 3000, `took ${Date.now() - start} ms`);
+});
+```
+
+`tests/rules-seo-site.test.mjs`:
+
+```js
+// SEO-01 and SEO-05 on the development URL (server on 127.0.0.1) and extra cases.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeTempDir, writeTree, serveRoutes } from './helpers.mjs';
+import { runCheck } from '../lib/ui-check.mjs';
+
+const DMW = '---\nversion: alpha\nname: Fixture\npignolo:\n  schema: 1\n  web:\n    public: true\n---\n\n## Overview\n\nFixture.\n';
+const PAGE = '<!doctype html><html lang="es"><head><title>Inicio</title><link rel="stylesheet" href="/_next/static/css/app.css"></head><body><main>x</main><script src="/_next/static/chunks/main.js"></script></body></html>';
+const html = (body) => ({ headers: { 'content-type': 'text/html; charset=utf-8' }, body });
+const text = (body, type = 'text/plain') => ({ headers: { 'content-type': type }, body });
+const of = (entries, id) => entries.filter((e) => e.id === id).map((e) => ({ ...e, file: (e.file ?? '').replace(/^http:\/\/127\.0\.0\.1:\d+/, '') }));
+
+async function withSite(routes, files = {}, urls = ['/']) {
+  const srv = await serveRoutes(routes);
+  try {
+    const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW, ...files });
+    return await runCheck({ project, files: [], design: 'DESIGN.md', urls: urls.map((u) => `${srv.base}${u}`), inject: { fetchOptions: { timeoutMs: 1000 } } });
+  } finally {
+    await srv.close();
+  }
+}
+
+test('SEO-01 on the dev URL: render assets under /_next/ blocked, sitemap path fetched on the dev origin', async () => {
+  const r = await withSite({
+    '/': html(PAGE),
+    '/robots.txt': text('User-agent: *\nDisallow: /_next/\nSitemap: https://www.example.com/sitemap.xml\n'),
+    '/sitemap.xml': text('<urlset><url><loc>https://www.example.com/</loc></url></urlset>', 'application/xml'),
+  });
+  const seo01 = of(r.entries, 'SEO-01');
+  assert.deepEqual(seo01.filter((e) => e.status === 'fail').map((e) => [e.file, e.line, e.reason]), [
+    ['/robots.txt', 2, 'robots.txt blocks the render asset /_next/static/chunks/main.js (/_next/)'],
+    ['/robots.txt', 2, 'robots.txt blocks the render asset /_next/static/css/app.css (/_next/)'],
+  ]);
+  assert.equal(seo01.some((e) => e.file === 'robots.txt'), false, 'with --url a project without robots.txt adds nothing');
+  assert.deepEqual(of(r.entries, 'SEO-05').map((e) => [e.status, e.file]), [['pass', '/sitemap.xml']]);
+  assert.equal(r.exitCode, 0); // SEO never blocks
+});
+
+test('SEO-01/SEO-05 on the dev URL: 404 robots passes, broken sitemap fails, errors are unverified', async () => {
+  const noRobots = await withSite({ '/': html(PAGE) });
+  assert.deepEqual(of(noRobots.entries, 'SEO-01').map((e) => [e.status, e.reason]), [['pass', 'no robots.txt: everything is allowed']]);
+  const broken = await withSite({ '/': html(PAGE), '/robots.txt': text('User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n'), '/sitemap.xml': text('<urlset>', 'application/xml') });
+  assert.match(of(broken.entries, 'SEO-05')[0].reason, /unclosed element <urlset>/);
+  const missing = await withSite({ '/': html(PAGE), '/robots.txt': text('User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n') });
+  assert.deepEqual(of(missing.entries, 'SEO-05').map((e) => [e.status, e.reason]), [['fail', 'sitemap /sitemap.xml referenced by robots.txt answers 404']]);
+  const failing = await withSite({ '/': html(PAGE), '/robots.txt': { status: 500 } });
+  assert.deepEqual(of(failing.entries, 'SEO-01').map((e) => [e.status, e.reason]), [['unverified', 'HTTP 500']]);
+});
+
+test('SEO-01: the public routes are / and each --url path', async () => {
+  const r = await withSite({ '/': html(PAGE), '/precios': html(PAGE.replace('Inicio', 'Precios')), '/robots.txt': text('User-agent: *\nDisallow: /precios\nSitemap: /s.xml\n') }, {}, ['/', '/precios']);
+  assert.deepEqual(of(r.entries, 'SEO-01').filter((e) => e.status === 'fail').map((e) => e.reason), ['robots.txt blocks the public route /precios (/precios)']);
+});
+
+test('SEO-01 and SEO-05 read the project files too: public/ and static/', () => {
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW, 'static/robots.txt': 'User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n', 'static/sitemap.xml': '<urlset><url><loc>https://e.com/</loc></url></urlset>\n' });
+  return runCheck({ project, files: [], design: 'DESIGN.md' }).then((r) => {
+    assert.deepEqual(of(r.entries, 'SEO-01').map((e) => [e.status, e.file]), [['pass', 'static/robots.txt']]);
+    assert.deepEqual(of(r.entries, 'SEO-05').map((e) => [e.status, e.file]), [['pass', 'static/sitemap.xml']]);
+  });
+});
+```
+
+- [ ] **Paso 2: rojo** (tarjeta común; `--test-name-pattern "rule (SEO-01|SEO-05) "`, más los dos archivos nuevos).
+- [ ] **Paso 3: implementar.**
+
+`lib/xml-check.mjs`:
+
+```js
+// Minimal XML well-formedness checker (XML 1.0 fifth edition, the subset a sitemap uses) and
+// the sitemap shape of sitemaps.org 0.9. Linear in the size of the text; never throws.
+//
+// checkXml(text) -> { ok: true, root } | { ok: false, error, line }
+//   Accepts: XML declaration, comments, processing instructions, a DOCTYPE without internal
+//   subset, CDATA, elements with quoted attributes, the five predefined entities and numeric
+//   references. Refuses: unbalanced or crossed tags, a second root, text outside the root,
+//   a raw `<` or an unknown `&name;` in text or attributes, duplicate attributes.
+// checkSitemap(text) -> { ok: true, kind: 'urlset'|'sitemapindex', count } | { ok: false, error, line }
+//   Well-formed, root urlset or sitemapindex (any prefix), and every url/sitemap child has a
+//   non-empty loc.
+
+const NAME = /^[A-Za-z_:À-￯][-A-Za-z0-9_:.·À-￯]*/;
+const REF = /&(?:lt|gt|amp|quot|apos|#[0-9]+|#x[0-9A-Fa-f]+);/y;
+
+function lineAt(text, index) {
+  let n = 1;
+  for (let i = 0; i < index && i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
+  return n;
+}
+
+// Checks `&` and `<` in character data between from and to; returns the bad index or -1.
+function badChars(text, from, to) {
+  for (let i = from; i < to; i++) {
+    const c = text[i];
+    if (c === '<') return i;
+    if (c === '&') {
+      REF.lastIndex = i;
+      if (!REF.test(text)) return i;
+      i = REF.lastIndex - 1;
+    }
+  }
+  return -1;
+}
+
+export function parseXml(text, { onOpen, onClose, onText } = {}) {
+  const src = String(text ?? '');
+  const n = src.length;
+  let i = src.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const stack = [];
+  let root = null;
+  let rootClosed = false;
+  const err = (message, at) => ({ ok: false, error: message, line: lineAt(src, at) });
+
+  while (i < n) {
+    const lt = src.indexOf('<', i);
+    const end = lt < 0 ? n : lt;
+    if (end > i) {
+      const chunk = src.slice(i, end);
+      if (!stack.length) {
+        if (chunk.trim() !== '') return err('text outside the root element', i);
+      } else {
+        const bad = badChars(src, i, end);
+        if (bad >= 0) return err(src[bad] === '&' ? 'invalid entity reference' : 'raw < in text', bad);
+        if (onText) onText(chunk, stack.length);
+      }
+    }
+    if (lt < 0) break;
+    i = lt;
+    if (src.startsWith('<!--', i)) {
+      const close = src.indexOf('-->', i + 4);
+      if (close < 0) return err('unclosed comment', i);
+      i = close + 3;
+    } else if (src.startsWith('<![CDATA[', i)) {
+      if (!stack.length) return err('CDATA outside the root element', i);
+      const close = src.indexOf(']]>', i + 9);
+      if (close < 0) return err('unclosed CDATA section', i);
+      if (onText) onText(src.slice(i + 9, close), stack.length);
+      i = close + 3;
+    } else if (src.startsWith('<?', i)) {
+      const close = src.indexOf('?>', i + 2);
+      if (close < 0) return err('unclosed processing instruction', i);
+      if (src.startsWith('<?xml', i) && /\s/.test(src[i + 5] ?? '') && i !== (src.charCodeAt(0) === 0xfeff ? 1 : 0)) {
+        return err('XML declaration not at the start', i);
+      }
+      i = close + 2;
+    } else if (src.startsWith('<!DOCTYPE', i)) {
+      if (root) return err('DOCTYPE after the root element', i);
+      const close = src.indexOf('>', i);
+      if (close < 0) return err('unclosed DOCTYPE', i);
+      if (src.slice(i, close).includes('[')) return err('DOCTYPE internal subset not supported', i);
+      i = close + 1;
+    } else if (src[i + 1] === '/') {
+      const m = NAME.exec(src.slice(i + 2, i + 2 + 256));
+      if (!m) return err('invalid closing tag', i);
+      const name = m[0];
+      let j = i + 2 + name.length;
+      while (j < n && /\s/.test(src[j])) j++;
+      if (src[j] !== '>') return err('invalid closing tag', i);
+      const open = stack.pop();
+      if (open !== name) return err(open ? `closing </${name}> does not match <${open}>` : `closing </${name}> without an open tag`, i);
+      if (onClose) onClose(name, stack.length);
+      if (!stack.length) rootClosed = true;
+      i = j + 1;
+    } else {
+      const m = NAME.exec(src.slice(i + 1, i + 1 + 256));
+      if (!m) return err('invalid tag', i);
+      const name = m[0];
+      if (!stack.length) {
+        if (rootClosed || root) return err('more than one root element', i);
+        root = name;
+      }
+      let j = i + 1 + name.length;
+      const seen = new Set();
+      let selfClosing = false;
+      for (;;) {
+        const ws = j;
+        while (j < n && /\s/.test(src[j])) j++;
+        if (j >= n) return err(`unclosed tag <${name}>`, i);
+        if (src[j] === '>') { j++; break; }
+        if (src[j] === '/' && src[j + 1] === '>') { j += 2; selfClosing = true; break; }
+        if (j === ws) return err(`missing space between attributes in <${name}>`, j);
+        const a = NAME.exec(src.slice(j, j + 256));
+        if (!a) return err(`invalid attribute in <${name}>`, j);
+        if (seen.has(a[0])) return err(`duplicate attribute ${a[0]} in <${name}>`, j);
+        seen.add(a[0]);
+        j += a[0].length;
+        while (j < n && /\s/.test(src[j])) j++;
+        if (src[j] !== '=') return err(`attribute ${a[0]} without value`, j);
+        j++;
+        while (j < n && /\s/.test(src[j])) j++;
+        const q = src[j];
+        if (q !== '"' && q !== "'") return err(`unquoted attribute ${a[0]}`, j);
+        const close = src.indexOf(q, j + 1);
+        if (close < 0) return err(`unclosed attribute ${a[0]}`, j);
+        const bad = badChars(src, j + 1, close);
+        if (bad >= 0) return err(`invalid character in attribute ${a[0]}`, bad);
+        j = close + 1;
+      }
+      if (onOpen) onOpen(name, stack.length);
+      if (selfClosing) {
+        if (onClose) onClose(name, stack.length);
+        if (!stack.length) rootClosed = true;
+      } else stack.push(name);
+      i = j;
+    }
+  }
+  if (stack.length) return err(`unclosed element <${stack[stack.length - 1]}>`, n);
+  if (!root) return err('no root element', 0);
+  return { ok: true, root };
+}
+
+export function checkXml(text) {
+  return parseXml(text);
+}
+
+const local = (name) => name.slice(name.lastIndexOf(':') + 1);
+
+export function checkSitemap(text) {
+  let kind = null;
+  let count = 0;
+  let inItem = false;
+  let locText = null;
+  let problem = null;
+  const res = parseXml(text, {
+    onOpen(name, depth) {
+      const l = local(name);
+      if (depth === 0) kind = l;
+      else if (depth === 1 && (l === 'url' || l === 'sitemap')) { inItem = true; locText = null; count++; }
+      else if (depth === 2 && inItem && l === 'loc') locText = '';
+    },
+    onText(chunk, depth) {
+      if (depth === 3 && locText !== null) locText += chunk;
+    },
+    onClose(name, depth) {
+      const l = local(name);
+      if (depth === 1 && (l === 'url' || l === 'sitemap')) {
+        if (!problem && (locText === null || locText.trim() === '')) problem = `a <${l}> without <loc>`;
+        inItem = false;
+      }
+    },
+  });
+  if (!res.ok) return res;
+  if (kind !== 'urlset' && kind !== 'sitemapindex') return { ok: false, error: `root <${res.root}> is not urlset or sitemapindex`, line: 1 };
+  if (problem) return { ok: false, error: problem, line: 1 };
+  return { ok: true, kind, count };
+}
+```
+
+`lib/rules/seo-site.mjs`:
+
+```js
+// Static SEO of the site files (spec §5.4, A-06): SEO-01 robots.txt, SEO-05 sitemap.
+// Sources: the robots.txt of the project (root, public/ or static/) and, with --url, the
+// one served by the development URL. Each source gives its own findings.
+import fs from 'node:fs';
+import path from 'node:path';
+import { pass, fail, unverified } from './api.mjs';
+import { parseRobots, isAllowed } from '../robots.mjs';
+import { checkSitemap } from '../xml-check.mjs';
+import { findSiteFile, generatedBy } from '../site-files.mjs';
+import { seoGate, seoPages, indexable, staticAttr } from './seo-common.mjs';
+
+const MAX_SITEMAP_BYTES = 10 * 1024 * 1024;
+
+// One source per robots.txt: { file, origin, text } when there is a text to read, else
+// { file, origin, none } (none = why it cannot be read, or null for "absent: everything allowed").
+// With --url the served robots.txt is the truth: a project without the file adds nothing.
+function robotsSources(pctx) {
+  const out = [];
+  const rel = findSiteFile(pctx.project, 'robots.txt');
+  const gen = rel ? null : generatedBy(pctx.project, 'robots');
+  if (rel) out.push({ file: rel, origin: 'file', text: fs.readFileSync(path.join(pctx.project, ...rel.split('/')), 'utf8') });
+  else if (gen) out.push({ file: gen, origin: 'file', none: `robots.txt is generated by ${gen}` });
+  else if (!pctx.site) out.push({ file: 'robots.txt', origin: 'file', none: null });
+  const r = pctx.site?.robots;
+  if (r) {
+    if (r.error) out.push({ file: r.url, origin: 'url', none: r.error });
+    else if (r.status === 404) out.push({ file: r.url, origin: 'url', none: null });
+    else if (r.status !== 200) out.push({ file: r.url, origin: 'url', none: `HTTP ${r.status}` });
+    else out.push({ file: r.url, origin: 'url', text: r.text });
+  }
+  return out;
+}
+
+// Same-origin paths of the stylesheets and scripts the checked pages load.
+function renderAssets(pctx) {
+  const paths = new Set();
+  for (const page of seoPages(pctx)) {
+    if (page.skip) continue;
+    for (const el of page.markup.elements) {
+      if (el.component) continue;
+      let ref = null;
+      if (el.tag === 'script') ref = staticAttr(el, 'src');
+      else if (el.tag === 'link' && (staticAttr(el, 'rel') ?? '').toLowerCase().split(/\s+/).includes('stylesheet')) ref = staticAttr(el, 'href');
+      if (ref && ref.startsWith('/') && !ref.startsWith('//')) paths.add(ref.split(/[?#]/)[0]);
+    }
+  }
+  return [...paths].sort();
+}
+
+function publicRoutes(pctx) {
+  const routes = new Set(['/']);
+  for (const p of pctx.site?.pages ?? []) if (!p.error) routes.add(p.path);
+  return [...routes].sort();
+}
+
+function seo01(pctx) {
+  const gate = seoGate(pctx);
+  if (gate) return gate;
+  const out = [];
+  for (const src of robotsSources(pctx)) {
+    const where = { file: src.file };
+    if (src.text === undefined) {
+      if (src.none) out.push(unverified(src.none, where));
+      else out.push(pass('no robots.txt', { ...where, reason: 'no robots.txt: everything is allowed' }));
+      continue;
+    }
+    if (!indexable(pctx)) { out.push(pass('not indexable', { ...where, reason: 'web.indexable is false: blocking crawlers is declared' })); continue; }
+    const robots = parseRobots(src.text);
+    const found = [];
+    for (const route of publicRoutes(pctx)) {
+      const r = isAllowed(robots, route);
+      if (!r.allowed) found.push(fail(`blocks ${route}`, { ...where, line: r.rule.line, reason: `robots.txt blocks the public route ${route} (${r.rule.pattern})` }));
+    }
+    for (const asset of renderAssets(pctx)) {
+      const r = isAllowed(robots, asset);
+      if (!r.allowed) found.push(fail(`blocks ${asset}`, { ...where, line: r.rule.line, reason: `robots.txt blocks the render asset ${asset} (${r.rule.pattern})` }));
+    }
+    if (!robots.sitemaps.length) found.push(fail('no sitemap', { ...where, reason: 'robots.txt references no sitemap' }));
+    out.push(...(found.length ? found : [pass('robots', where)]));
+  }
+  return out;
+}
+
+function sitemapPath(declared) {
+  try { return new URL(declared, 'http://x.invalid').pathname; } catch { return null; }
+}
+
+function seo05(pctx) {
+  const gate = seoGate(pctx);
+  if (gate) return gate;
+  const out = [];
+  for (const src of robotsSources(pctx)) {
+    if (src.text === undefined) continue;
+    const declared = parseRobots(src.text).sitemaps;
+    if (!declared.length) { out.push(unverified('no sitemap referenced (see SEO-01)', { file: src.file })); continue; }
+    for (const s of declared) {
+      const p = sitemapPath(s.url);
+      if (!p) { out.push(fail(`sitemap ${s.url}`, { file: src.file, line: s.line, reason: `invalid sitemap URL ${s.url}` })); continue; }
+      if (src.origin === 'url') {
+        const got = (pctx.site.sitemaps ?? []).find((x) => x.declared === s.url);
+        if (!got) out.push(unverified(`sitemap ${p} not fetched`, { file: src.file }));
+        else if (got.error) out.push(unverified(got.error, { file: got.url }));
+        else if (got.status === 404) out.push(fail(`sitemap ${p} missing`, { file: got.url, reason: `sitemap ${p} referenced by robots.txt answers 404` }));
+        else if (got.status !== 200) out.push(unverified(`HTTP ${got.status}`, { file: got.url }));
+        else out.push(verdict(checkSitemap(got.text), got.url, p));
+        continue;
+      }
+      const rel = findSiteFile(pctx.project, p);
+      if (!rel) {
+        const gen = generatedBy(pctx.project, 'sitemap');
+        out.push(gen ? unverified(`sitemap is generated by ${gen}`, { file: gen })
+          : fail(`sitemap ${p} missing`, { file: src.file, line: s.line, reason: `sitemap ${p} referenced by robots.txt is not in the project` }));
+        continue;
+      }
+      const abs = path.join(pctx.project, ...rel.split('/'));
+      if (fs.statSync(abs).size > MAX_SITEMAP_BYTES) { out.push(unverified('sitemap larger than 10 MB', { file: rel })); continue; }
+      out.push(verdict(checkSitemap(fs.readFileSync(abs, 'utf8')), rel, p));
+    }
+  }
+  if (!out.length) out.push(unverified('no robots.txt, so no sitemap is referenced', {}));
+  return out;
+}
+
+function verdict(res, file, p) {
+  return res.ok
+    ? pass(`sitemap ${p}`, { file, measure: { kind: res.kind, count: res.count } })
+    : fail(`sitemap ${p} invalid`, { file, line: res.line, reason: `sitemap ${p} is not valid: ${res.error}` });
+}
+
+export const RULES = [
+  { id: 'SEO-01', checkProject: seo01 },
+  { id: 'SEO-05', checkProject: seo05 },
+];
+```
+
+- [ ] **Pasos 4–5.** Commit: `feat(ui): SEO de sitio en ui-check (SEO-01 robots.txt, SEO-05 sitemap)`.
+
+### Task B5 (sonnet): SEO de página (SEO-02, SEO-04, SEO-06, SEO-09, SEO-18)
+
+**Files:** replace `lib/rules/seo-page.mjs`; create `tests/rules-seo-page.test.mjs`, `tests/fixtures/rules/{SEO-02,SEO-04,SEO-06,SEO-09,SEO-18}/`.
+
+**Consumes:** `seoGate`, `seoPages`, `indexable`, `staticAttr`, `metadataObject`, `prop` (`seo-common`), `staticText` (`markup`), `el.inExpression` (Task B1). **Produces:** `RULES` de los cinco ids.
+
+| id | caso | archivos | `expect.json` |
+|---|---|---|---|
+| SEO-02 | `pass-html` | `index.html` = `PAGE` | — |
+| SEO-02 | `pass-index-follow` | `PAGE` con `<title>` → `<meta name="robots" content="index, follow">` / `<title>` | — |
+| SEO-02 | `pass-not-indexable` | `DESIGN.md` = `DMW` + `    indexable: false`; `PAGE` con `<title>` → `<meta name="robots" content="noindex">` / `<title>` | `{ "reason": "indexable is false" }` |
+| SEO-02 | `fail-meta` | `PAGE` con `<title>` → `<meta name="robots" content="noindex, nofollow">` / `<title>` | `{ "severity": "alto", "lines": [5], "exitCode": 0 }` |
+| SEO-02 | `fail-googlebot` | `PAGE` con `<title>` → `<meta name="googlebot" content="none">` / `<title>` | — |
+| SEO-02 | `fail-next-metadata` | `app/layout.tsx` = `L` con `{{META}}` = `export const metadata = { title: 'Pedidos', robots: { index: false, follow: true } };` / (vacía) | `{ "severity": "alto", "reason": "index: false" }` |
+| SEO-02 | `unverified-conditional` | `app/layout.tsx` = `L` sin `{{META}}`, `{ children }` → `{ children, preview }` y `{{HEAD}}` = `{preview && <meta name="robots" content="noindex" />}` | `{ "reason": "conditional", "lines": [4] }` |
+| SEO-02 | `unverified-env-metadata` | `app/layout.tsx` = `L` con `{{META}}` = `export const metadata = {` / `  title: 'Pedidos',` / `  robots: process.env.VERCEL_ENV === 'preview' ? { index: false } : undefined,` / `};` / (vacía) | `{ "reason": "dynamic robots metadata" }` |
+| SEO-04 | `pass-html` | `index.html` = `PAGE` | — |
+| SEO-04 | `fail-missing` | `PAGE` sin la línea 6 | `{ "severity": "medio", "reason": "no link rel=canonical" }` |
+| SEO-04 | `fail-relative` | `PAGE` con `href="https://www.example.com/">` (línea 6) → `href="/">` | `{ "lines": [6], "reason": "not absolute" }` |
+| SEO-04 | `fail-two` | `PAGE` con `<link rel="canonical" href="https://www.example.com/pedidos">` insertada antes de `og:title` | `{ "count": 1, "lines": [7], "measure": { "count": 2 } }` |
+| SEO-04 | `pass-next-metadata-base` | `L` con `{{META}}` = `export const metadata = {` / `  metadataBase: new URL('https://www.example.com'),` / `  alternates: { canonical: '/' },` / `};` / (vacía) | — |
+| SEO-04 | `pass-next-absolute` | `L` con `{{META}}` = `export const metadata = { alternates: { canonical: 'https://www.example.com/' } };` / (vacía) | — |
+| SEO-04 | `unverified-next-relative` | `L` con `{{META}}` = `export const metadata = { alternates: { canonical: '/' } };` / (vacía) | `{ "reason": "metadataBase" }` |
+| SEO-04 | `unverified-next-none` | `L` con `{{META}}` = `export const metadata = { title: 'Pedidos' };` / (vacía) | `{ "reason": "framework metadata" }` |
+| SEO-06 | `pass-two-pages` | `index.html` = `PAGE`; `ayuda.html` = `PAGE` con `<title>Pedidos</title>` → `<title>Ayuda</title>` | `{ "count": 2 }` |
+| SEO-06 | `pass-next-template` | `L` con `{{META}}` = `export const metadata = { title: { template: '%s \| Tienda', default: 'Tienda' } };` / (vacía) | — |
+| SEO-06 | `pass-jsx-not-compared` | `index.html` = `PAGE`; `app/layout.tsx` = `L` con `{{META}}` = `export const metadata = { title: 'Pedidos' };` / (vacía) | `{ "count": 2 }` |
+| SEO-06 | `fail-duplicate` | `index.html` = `PAGE`; `ayuda.html` = `PAGE` | `{ "count": 2, "reason": "repeated in 2 pages", "measure": { "count": 2 } }` |
+| SEO-06 | `fail-empty` | `PAGE` con `<title>Pedidos</title>` → `<title>   </title>` | `{ "lines": [5], "reason": "empty title" }` |
+| SEO-06 | `fail-missing` | `PAGE` sin la línea 5 | `{ "reason": "no <title>" }` |
+| SEO-06 | `unverified-next-none` | `L` sin `{{META}}` | `{ "reason": "framework metadata" }` |
+| SEO-06 | `unverified-generate` | `L` con `{{META}}` = `export async function generateMetadata({ params }) {` / `  return { title: params.slug };` / `}` / (vacía) | `{ "reason": "generated at run time" }` |
+| SEO-09 | `pass-links` | `PAGE` con `<a href="/ayuda">Ayuda</a>` → `<a href="/ayuda">Ayuda</a><a>Sin destino</a>` | — |
+| SEO-09 | `pass-jsx-literal` | `L` sin `{{META}}` con `<body>{children}</body>` → `<body><nav><a href={'/productos'}>Productos</a><Link href="/x">X</Link></nav>{children}</body>` | — |
+| SEO-09 | `fail-javascript` | `PAGE` con `<a href="/ayuda">` → `<a href="javascript:void(0)">` | `{ "lines": [13], "reason": "javascript:" }` |
+| SEO-09 | `fail-onclick` | `PAGE` con `<a href="/ayuda">` → `<a onclick="abrir()">` | `{ "reason": "without href" }` |
+| SEO-09 | `fail-jsx-onclick` | `L` sin `{{META}}` con `<body>{children}</body>` → `<body><a onClick={open}>Abrir</a>{children}</body>` | `{ "lines": [5] }` |
+| SEO-09 | `unverified-dynamic` | `L` sin `{{META}}` con `<body>{children}</body>` → `<body>{links.map((l) => <a key={l.href} href={l.href}>{l.label}</a>)}{children}</body>` | `{ "reason": "dynamic href" }` |
+| SEO-18 | `pass-html` | `index.html` = `PAGE` | — |
+| SEO-18 | `fail-missing` | `PAGE` sin las líneas 7–10 | `{ "severity": "detalle", "measure": { "missing": ["og:title", "og:type", "og:image", "og:url"] } }` |
+| SEO-18 | `fail-no-image` | `PAGE` sin la línea 9 | `{ "measure": { "missing": ["og:image"] } }` |
+| SEO-18 | `pass-next-opengraph` | `L` con `{{META}}` = `export const metadata = {` / `  openGraph: { title: 'Tienda', type: 'website', url: 'https://www.example.com/', images: ['/og.png'] },` / `};` / (vacía) | — |
+| SEO-18 | `unverified-next-partial` | `L` con `{{META}}` = `export const metadata = { openGraph: { title: 'Tienda', type: 'website' } };` / (vacía) | `{ "reason": "openGraph without og:image, og:url" }` |
+| SEO-18 | `unverified-next-none` | `L` con `{{META}}` = `export const metadata = { title: 'Pedidos' };` / (vacía) | `{ "reason": "framework metadata" }` |
+
+(En `pass-next-template`, `\|` es la barra literal `|` escapada para la tabla.)
+
+- [ ] **Paso 1: fixtures de la tabla y tests.**
+
+`tests/rules-seo-page.test.mjs`:
+
+```js
+// SEO-02, SEO-04, SEO-06, SEO-09 and SEO-18 on the development URL (server on 127.0.0.1),
+// on --dom documents, and the cost on deep trees.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeTempDir, writeTree, serveRoutes } from './helpers.mjs';
+import { runCheck } from '../lib/ui-check.mjs';
+
+const DMW = '---\nversion: alpha\nname: Fixture\npignolo:\n  schema: 1\n  web:\n    public: true\n---\n\n## Overview\n\nFixture.\n';
+const page = (title, head = '') => `<!doctype html><html lang="es"><head><title>${title}</title><link rel="canonical" href="https://www.example.com/">${head}</head><body><main><a href="/x">x</a></main></body></html>`;
+const html = (body, headers = {}) => ({ headers: { 'content-type': 'text/html; charset=utf-8', ...headers }, body });
+const strip = (e) => ({ ...e, file: (e.file ?? '').replace(/^http:\/\/127\.0\.0\.1:\d+/, '') });
+const of = (entries, id) => entries.filter((e) => e.id === id).map(strip);
+
+async function withSite(routes, urls) {
+  const srv = await serveRoutes(routes);
+  try {
+    const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW });
+    return await runCheck({ project, files: [], design: 'DESIGN.md', urls: urls.map((u) => `${srv.base}${u}`), inject: { fetchOptions: { timeoutMs: 1000 } } });
+  } finally {
+    await srv.close();
+  }
+}
+
+test('dev URL: noindex seen only there is detalle; titles repeated across routes fail; redirects to login are unverified', async () => {
+  const r = await withSite({
+    '/': html(page('Inicio'), { 'x-robots-tag': 'noindex' }),
+    '/productos': html(page('Inicio', '<meta name="robots" content="noindex">')),
+    '/cuenta': { status: 307, headers: { location: '/login' } },
+    '/login': html(page('Entrar')),
+  }, ['/', '/productos', '/cuenta']);
+  assert.deepEqual(of(r.entries, 'SEO-02').map((e) => [e.file, e.status, e.severity]), [
+    ['/', 'fail', 'detalle'], ['/cuenta', 'unverified', 'alto'], ['/productos', 'fail', 'detalle'],
+  ]);
+  assert.deepEqual(of(r.entries, 'SEO-06').filter((e) => e.status === 'fail').map((e) => e.file), ['/', '/productos']);
+  assert.match(of(r.entries, 'SEO-04').find((e) => e.file === '/cuenta').reason, /redirected to \/login/);
+  assert.equal(r.exitCode, 0);
+});
+
+test('a --dom document is checked like a page of the dev URL (noindex -> detalle)', async () => {
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW, '.pignolo-ui/runs/r1/dom-1440.html': page('A', '<meta name="robots" content="noindex">') });
+  const r = await runCheck({ project, files: [], dom: ['.pignolo-ui/runs/r1/dom-1440.html'], design: 'DESIGN.md' });
+  assert.deepEqual(of(r.entries, 'SEO-02').map((e) => [e.status, e.severity]), [['fail', 'detalle']]);
+});
+
+test('without web.public every SEO id is one pass that says why', async () => {
+  const project = writeTree(makeTempDir(), { 'index.html': page('A', '<meta name="robots" content="noindex">') });
+  const r = await runCheck({ project, files: ['index.html'] });
+  for (const id of ['SEO-02', 'SEO-04', 'SEO-06', 'SEO-09', 'SEO-18']) {
+    assert.deepEqual(of(r.entries, id).map((e) => [e.status, e.reason]), [['pass', 'no DESIGN.md: the site is not declared public (static SEO does not apply)']], id);
+  }
+});
+
+test('only fragments among the inputs: one unverified per id, never a fail', async () => {
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW, 'Card.tsx': 'export const C = () => <a onClick={go}>x</a>;\n' });
+  const r = await runCheck({ project, files: ['Card.tsx'], design: 'DESIGN.md' });
+  for (const id of ['SEO-02', 'SEO-04', 'SEO-06', 'SEO-09', 'SEO-18']) {
+    assert.deepEqual(of(r.entries, id).map((e) => e.status), ['unverified'], id);
+  }
+});
+
+test('intentional on SEO-18 turns its fail into pass; SEO-02 and SEO-09 refuse intentional', async () => {
+  const design = DMW.replace('    public: true\n', '    public: true\n  intentional:\n    - id: SEO-18\n      why: sin vista previa social\n');
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': design, 'index.html': page('A') });
+  const r = await runCheck({ project, files: ['index.html'], design: 'DESIGN.md' });
+  assert.deepEqual(of(r.entries, 'SEO-18').map((e) => [e.status, e.reason]), [['pass', 'intentional: sin vista previa social']]);
+});
+
+test('linear cost: 2000 nested elements with links and metas stay fast', async () => {
+  const deep = `<!doctype html><html lang="es"><head><title>A</title></head><body>${'<div><a href="/x">x</a>'.repeat(2000)}${'</div>'.repeat(2000)}</body></html>`;
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW, 'index.html': deep });
+  const start = Date.now();
+  await runCheck({ project, files: ['index.html'], design: 'DESIGN.md' });
+  assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`);
+});
+```
+
+- [ ] **Paso 2: rojo** (tarjeta común; `--test-name-pattern "rule (SEO-02|SEO-04|SEO-06|SEO-09|SEO-18) "`, más `tests/rules-seo-page.test.mjs`).
+- [ ] **Paso 3: implementar.**
+
+`lib/rules/seo-page.mjs`:
+
+```js
+// Static SEO on pages (spec §5.4, A-06): SEO-02 noindex, SEO-04 canonical, SEO-06 title,
+// SEO-09 crawlable links, SEO-18 Open Graph. Project rules: they read every page at once
+// (documents among the inputs and pages fetched from the development URL). Never floor.
+import { pass, fail, unverified } from './api.mjs';
+import { staticText } from '../markup.mjs';
+import { seoGate, seoPages, indexable, staticAttr, metadataObject, prop } from './seo-common.mjs';
+
+const isTag = (el, tag) => el.tag === tag && !el.component;
+const inSvg = (markup, el) => {
+  for (let p = el.parent; p !== null && p !== undefined; p = markup.elements[p].parent) if (markup.elements[p].tag === 'svg') return true;
+  return false;
+};
+const at = (page, extra = {}) => ({ file: page.file, ...extra });
+const NOINDEX = /(?:^|[\s,])(noindex|none)(?:$|[\s,])/i;
+
+// Runs fn over each page; a skipped page gives one unverified; no page gives one unverified.
+function perPage(pctx, fn) {
+  const gate = seoGate(pctx);
+  if (gate) return gate;
+  const pages = seoPages(pctx);
+  if (!pages.length) return [unverified('no page among the inputs (static SEO checks documents and the development URL)')];
+  return pages.flatMap((page) => (page.skip ? [unverified(page.skip, at(page))] : fn(page, pctx)));
+}
+
+// ---- SEO-02: accidental noindex ------------------------------------------------------------
+function seo02(page, pctx) {
+  const sev = page.origin === 'file' ? {} : { severity: 'detalle' }; // seen only on the dev URL
+  if (!indexable(pctx)) return [pass('indexable false', at(page, { reason: 'web.indexable is false: noindex is declared' }))];
+  const out = [];
+  for (const el of page.markup.elements) {
+    if (!isTag(el, 'meta')) continue;
+    const name = (staticAttr(el, 'name') ?? '').toLowerCase();
+    if (name !== 'robots' && name !== 'googlebot') continue;
+    const c = el.attrs.get('content');
+    if (!c || c.dynamic) { out.push(unverified('dynamic robots meta', at(page, { line: el.line }))); continue; }
+    if (!NOINDEX.test(c.value ?? '')) continue;
+    if (el.inExpression) { out.push(unverified('conditional robots meta', at(page, { line: el.line }))); continue; }
+    out.push(fail(`noindex meta ${name}`, at(page, { line: el.line, selector: `meta[name=${name}]`, reason: `meta ${name} "${c.value}" keeps a public page out of search`, ...sev })));
+  }
+  const header = page.headers?.['x-robots-tag'] ?? '';
+  if (NOINDEX.test(header)) out.push(fail('noindex header', at(page, { reason: `X-Robots-Tag "${header}" on the development URL`, severity: 'detalle' })));
+  const meta = metadataObject(page);
+  if (meta && meta.dynamic) out.push(unverified('metadata is generated at run time', at(page)));
+  else if (meta) {
+    const robots = prop(meta.text, 'robots');
+    if (robots && robots.kind === 'dynamic') out.push(unverified('dynamic robots metadata', at(page)));
+    else if (robots && robots.kind === 'string' && NOINDEX.test(robots.value)) out.push(fail('noindex metadata', at(page, { reason: `metadata.robots "${robots.value}"` })));
+    else if (robots && robots.kind === 'object' && /\bindex\s*:\s*false\b/.test(robots.text)) out.push(fail('noindex metadata', at(page, { reason: 'metadata.robots has index: false' })));
+  }
+  return out.length ? out : [pass('no noindex', at(page))];
+}
+
+// ---- SEO-04: one absolute canonical -------------------------------------------------------
+const ABSOLUTE = /^https?:\/\/[^/\s]+/i;
+function seo04(page) {
+  const links = page.markup.elements.filter((e) => isTag(e, 'link') && (staticAttr(e, 'rel') ?? '').toLowerCase().split(/\s+/).includes('canonical'));
+  if (links.some((e) => e.inExpression)) return [unverified('conditional canonical link', at(page, { line: links[0].line }))];
+  if (links.length > 1) return [fail(`canonical x${links.length}`, at(page, { line: links[1].line, reason: `${links.length} canonical links (one expected)`, measure: { count: links.length } }))];
+  if (links.length === 1) {
+    const el = links[0];
+    const href = el.attrs.get('href');
+    if (!href || href.dynamic) return [unverified('dynamic canonical href', at(page, { line: el.line }))];
+    if (!ABSOLUTE.test((href.value ?? '').trim())) return [fail('canonical relative', at(page, { line: el.line, selector: 'link[rel=canonical]', reason: `canonical "${href.value}" is not absolute` }))];
+    return [pass('canonical', at(page, { line: el.line }))];
+  }
+  if (page.syntax !== 'jsx') return [fail('canonical missing', at(page, { reason: 'no link rel=canonical' }))];
+  const meta = metadataObject(page);
+  if (!meta) return [unverified('canonical may come from framework metadata in another file', at(page))];
+  if (meta.dynamic) return [unverified('metadata is generated at run time', at(page))];
+  const alt = prop(meta.text, 'alternates');
+  const canonical = alt && alt.kind === 'object' ? prop(alt.text, 'canonical') : alt;
+  if (!alt || !canonical) return [unverified('canonical may come from framework metadata in another file', at(page))];
+  if (canonical.kind !== 'string') return [unverified('dynamic canonical metadata', at(page))];
+  if (ABSOLUTE.test(canonical.value.trim())) return [pass('canonical metadata', at(page))];
+  if (prop(meta.text, 'metadataBase')) return [pass('canonical metadata with metadataBase', at(page))];
+  return [unverified('relative canonical: metadataBase may be set in another layout', at(page))];
+}
+
+// ---- SEO-06: title present, not empty, not duplicated ----------------------------------------
+function titleOf(page) {
+  const el = page.markup.elements.find((e) => isTag(e, 'title') && !inSvg(page.markup, e));
+  if (el) {
+    const t = staticText(page.markup, el);
+    return t.dynamic ? { dynamic: true, line: el.line } : { text: t.text.replace(/\s+/g, ' ').trim(), line: el.line };
+  }
+  if (page.syntax !== 'jsx') return { missing: true };
+  const meta = metadataObject(page);
+  if (!meta) return { framework: true };
+  if (meta.dynamic) return { generated: true };
+  const t = prop(meta.text, 'title');
+  if (!t) return { framework: true };
+  if (t.kind === 'string') return { text: t.value.trim() };
+  if (t.kind === 'object') {
+    const d = prop(t.text, 'absolute') ?? prop(t.text, 'default');
+    if (d && d.kind === 'string') return { text: d.value.trim() };
+  }
+  return { dynamic: true };
+}
+
+function seo06All(pctx) {
+  const gate = seoGate(pctx);
+  if (gate) return gate;
+  const pages = seoPages(pctx);
+  if (!pages.length) return [unverified('no page among the inputs (static SEO checks documents and the development URL)')];
+  const out = [];
+  const byTitle = new Map();
+  for (const page of pages) {
+    if (page.skip) { out.push(unverified(page.skip, at(page))); continue; }
+    const t = titleOf(page);
+    if (t.missing) out.push(fail('title missing', at(page, { reason: 'no <title>' })));
+    else if (t.framework) out.push(unverified('title may come from framework metadata in another file', at(page)));
+    else if (t.generated) out.push(unverified('metadata is generated at run time', at(page)));
+    else if (t.dynamic) out.push(unverified('dynamic title', at(page, { line: t.line })));
+    else if (t.text === '') out.push(fail('title empty', at(page, { line: t.line, reason: 'empty title' })));
+    else if (page.syntax === 'jsx') out.push(pass('title', at(page, { line: t.line }))); // layouts give defaults: never compared
+    else {
+      const k = t.text.toLowerCase();
+      if (!byTitle.has(k)) byTitle.set(k, []);
+      byTitle.get(k).push({ page, t });
+    }
+  }
+  for (const group of byTitle.values()) {
+    for (const { page, t } of group) {
+      if (group.length === 1) out.push(pass('title', at(page, { line: t.line })));
+      else out.push(fail(`title duplicate ${t.text.slice(0, 40)}`, at(page, { line: t.line, reason: `title "${t.text}" repeated in ${group.length} pages`, measure: { count: group.length } })));
+    }
+  }
+  return out;
+}
+
+// ---- SEO-09: crawlable links --------------------------------------------------------------
+function seo09(page) {
+  const out = [];
+  for (const el of page.markup.elements) {
+    if (!isTag(el, 'a')) continue;
+    if (el.spread) { out.push(unverified('spread attributes on a link', at(page, { line: el.line }))); continue; }
+    const href = el.attrs.get('href');
+    if (!href) {
+      const used = ['onclick', 'role', 'tabindex'].some((n) => el.attrs.has(n));
+      if (used) out.push(fail('a without href', at(page, { line: el.line, selector: 'a', reason: 'a without href used as a link (not crawlable)' })));
+      continue;
+    }
+    if (href.dynamic) { out.push(unverified('dynamic href', at(page, { line: el.line }))); continue; }
+    if (/^\s*javascript:/i.test(href.value ?? '')) out.push(fail('a href javascript', at(page, { line: el.line, selector: 'a', reason: 'href="javascript:..." is not a crawlable link' })));
+  }
+  return out.some((f) => f.status === 'fail') ? out : [...out, pass('links', at(page))];
+}
+
+// ---- SEO-18: Open Graph -------------------------------------------------------------------
+const OG = ['og:title', 'og:type', 'og:image', 'og:url'];
+const OG_KEYS = { 'og:title': 'title', 'og:type': 'type', 'og:image': 'images', 'og:url': 'url' };
+function seo18(page) {
+  const found = new Map();
+  for (const el of page.markup.elements) {
+    if (!isTag(el, 'meta')) continue;
+    const p = (staticAttr(el, 'property') ?? staticAttr(el, 'name') ?? '').toLowerCase();
+    if (!OG.includes(p)) continue;
+    const c = el.attrs.get('content');
+    found.set(p, !c || c.dynamic || el.inExpression ? 'dynamic' : (c.value ?? '').trim() ? 'ok' : 'empty');
+  }
+  if (page.syntax === 'jsx' && found.size === 0) {
+    const meta = metadataObject(page);
+    if (!meta) return [unverified('Open Graph may come from framework metadata in another file', at(page))];
+    if (meta.dynamic) return [unverified('metadata is generated at run time', at(page))];
+    const og = prop(meta.text, 'openGraph');
+    if (!og) return [unverified('Open Graph may come from framework metadata in another file', at(page))];
+    if (og.kind !== 'object') return [unverified('dynamic openGraph metadata', at(page))];
+    const missing = OG.filter((k) => !prop(og.text, OG_KEYS[k]));
+    return missing.length
+      ? [unverified(`openGraph without ${missing.join(', ')} (may come from other layouts or file conventions)`, at(page))]
+      : [pass('openGraph metadata', at(page))];
+  }
+  if ([...found.values()].includes('dynamic')) return [unverified('dynamic or conditional Open Graph meta', at(page))];
+  const missing = OG.filter((k) => found.get(k) !== 'ok');
+  return missing.length
+    ? [fail('og missing', at(page, { reason: `missing ${missing.join(', ')}`, measure: { missing } }))]
+    : [pass('og', at(page))];
+}
+
+export const RULES = [
+  { id: 'SEO-02', checkProject: (pctx) => perPage(pctx, seo02) },
+  { id: 'SEO-04', checkProject: (pctx) => perPage(pctx, seo04) },
+  { id: 'SEO-06', checkProject: seo06All },
+  { id: 'SEO-09', checkProject: (pctx) => perPage(pctx, seo09) },
+  { id: 'SEO-18', checkProject: (pctx) => perPage(pctx, seo18) },
+];
+```
+
+- [ ] **Pasos 4–5.** Commit: `feat(ui): SEO de página en ui-check (SEO-02, SEO-04, SEO-06, SEO-09, SEO-18)`.
+
+---
+
+## Ola 2 del 2b
+
+### Unión de la ola 1 del 2b
+
+- [ ] Unir las Tasks B4 y B5 a `ui/hito-2b`. `npm run test:quiet` una vez: verde completo, incluido el arnés para los 32 ids con checker `ui-check`.
+
+### Task B6 (sonnet): pruebas transversales, documentación y cierre
+
+**Files:**
+- Create: `plugins/pignolo-ui/tests/hito-2b-acceptance.test.mjs`
+- Modify: `README.md` (secciones, sin tocar el bloque del catálogo), `CHANGELOG.md`, `CREDITS.md`, `.claude-plugin/plugin.json`, `docs/specs/2026-09-28-pignolo-ui-v1-design.md` (§5.9 nueva y una línea en §9 y §12), `docs/STATE.md`
+
+- [ ] **Paso 1: tests transversales** (por las CLIs, en repos temporales).
+
+`tests/hito-2b-acceptance.test.mjs`:
+
+```js
+// Cross tests of hito 2b through the CLIs, in temporary git repos: a realistic public Next.js
+// site (SEO never blocks, no false fail on common patterns) and one batch of §9 + §12 end to end.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { execFileSync, spawn } from 'node:child_process';
+import { makeTempDir, writeTree, runScript, serveRoutes, PLUGIN_ROOT } from './helpers.mjs';
+
+const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
+function repo(tree) {
+  const dir = writeTree(makeTempDir(), tree);
+  const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe', timeout: 10000 });
+  git('init', '-q');
+  git('config', 'user.email', 'test@example.com');
+  git('config', 'user.name', 'Test');
+  git('config', 'core.autocrlf', 'false');
+  git('add', '-A');
+  git('commit', '-q', '-m', 'init');
+  return dir;
+}
+const porcelain = (dir) => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: dir, encoding: 'utf8' });
+
+// Async subprocess: the dev server of the test lives in this process.
+function runAsync(script, args, cwd) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', script), ...args], { cwd });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => { stdout += d; });
+    child.stderr.on('data', (d) => { stderr += d; });
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+const DESIGN = '---\nversion: alpha\nname: Tienda\npignolo:\n  schema: 1\n  web:\n    public: true\n---\n\n## Overview\n\nTienda.\n';
+const LAYOUT = `import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  metadataBase: new URL('https://www.example.com'),
+  title: { template: '%s | Tienda', default: 'Tienda' },
+  alternates: { canonical: '/' },
+  openGraph: { title: 'Tienda', type: 'website', url: '/', images: ['/og.png'] },
+  robots: process.env.VERCEL_ENV === 'preview' ? { index: false } : undefined,
+};
+
+export default function RootLayout({ children, preview }: { children: React.ReactNode; preview: boolean }) {
+  return (
+    <html lang="es">
+      <head>{preview && <meta name="robots" content="noindex" />}</head>
+      <body>
+        <nav><a href="/">Inicio</a><a href={'/productos'}>Productos</a><Link href="/ayuda">Ayuda</Link></nav>
+        <main>{children}</main>
+        <footer>{links.map((l) => <a key={l.href} href={l.href}>{l.label}</a>)}</footer>
+      </body>
+    </html>
+  );
+}
+`;
+
+test('realistic public Next.js site: no SEO fail from common patterns; the dev URL adds detalle only', async () => {
+  const dir = repo({
+    'DESIGN.md': DESIGN, 'app/layout.tsx': LAYOUT, 'app/page.tsx': 'export default function Page() { return <section><h1>Hola</h1></section>; }\n',
+    'public/robots.txt': 'User-agent: *\nDisallow: /api/\n\nSitemap: https://www.example.com/sitemap.xml\n',
+    'public/sitemap.xml': '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://www.example.com/</loc></url></urlset>\n',
+  });
+  const run = path.join(dir, '.pignolo-ui', 'runs', 'r1');
+  const files = runScript('ui-check.mjs', ['--project', dir, '--run', run, '--design', 'DESIGN.md', '--files', 'app/layout.tsx', '--files', 'app/page.tsx'], { cwd: dir });
+  assert.equal(files.status, 0, files.stderr);
+  const seo = (report) => report.entries.filter((e) => e.id.startsWith('SEO-'));
+  const report = JSON.parse(fs.readFileSync(path.join(run, 'ui-check.json'), 'utf8'));
+  assert.deepEqual(seo(report).filter((e) => e.status === 'fail'), [], JSON.stringify(seo(report), null, 1));
+  assert.ok(seo(report).some((e) => e.id === 'SEO-02' && e.status === 'unverified'), 'conditional/env robots are unverified');
+
+  const page = '<!doctype html><html lang="es"><head><title>Tienda</title><link rel="canonical" href="https://www.example.com/"></head><body><main>x</main></body></html>';
+  const srv = await serveRoutes({ '/': { headers: { 'content-type': 'text/html', 'x-robots-tag': 'noindex' }, body: page } });
+  try {
+    const r = await runAsync('ui-check.mjs', ['--project', dir, '--run', run, '--design', 'DESIGN.md', '--url', `${srv.base}/`], dir);
+    assert.equal(r.status, 0, r.stderr);
+    const withUrl = JSON.parse(fs.readFileSync(path.join(run, 'ui-check.json'), 'utf8'));
+    const noindex = seo(withUrl).filter((e) => e.id === 'SEO-02' && e.status === 'fail');
+    assert.deepEqual(noindex.map((e) => e.severity), ['detalle']);
+  } finally {
+    await srv.close();
+  }
+  assert.equal(porcelain(dir), '');
+});
+
+test('one batch end to end: save, edit, verify, ui-check, report-check (0, then 1), restore', () => {
+  const dir = repo({ 'DESIGN.md': DESIGN, 'src/Save.tsx': 'export const S = () => <button><svg /></button>;\n' });
+  const run = path.join(dir, '.pignolo-ui', 'runs', 'r1');
+  writeTree(run, { 'expected.json': JSON.stringify([{ path: 'src/Save.tsx', exists: true, change: 'structure' }]) });
+  const batch = path.join(run, 'batch-1');
+  assert.equal(runScript('files.mjs', ['save', '--project', dir, '--batch', batch, '--expected', path.join(run, 'expected.json')]).status, 0);
+  writeTree(dir, { 'src/Save.tsx': 'export const S = () => <button aria-label="Guardar"><svg /></button>;\n' });
+  assert.equal(runScript('files.mjs', ['verify', '--project', dir, '--batch', batch]).status, 0);
+  const check = runScript('ui-check.mjs', ['--project', dir, '--run', run, '--design', 'DESIGN.md', '--files', 'src/Save.tsx'], { cwd: dir });
+  assert.equal(check.status, 0, check.stderr);
+  const uiBuf = fs.readFileSync(path.join(run, 'ui-check.json'));
+  const entry = JSON.parse(uiBuf).entries.find((e) => e.id === 'A11Y-04' && e.status === 'pass');
+  const claim = { id: 'c1', text: 'El botón Guardar tiene nombre accesible', rule: 'A11Y-04', status: 'pass', ref: { source: 'ui-check', fingerprint: entry.fingerprint } };
+  const edited = { id: 'c2', text: 'Se editó Save.tsx', ref: { source: 'file', path: 'src/Save.tsx', sha256: sha(fs.readFileSync(path.join(dir, 'src/Save.tsx'))) } };
+  writeTree(run, { 'report.json': JSON.stringify({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [claim, edited] }) });
+  const ok = runScript('report-check.mjs', ['--project', dir, '--run', run]);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  writeTree(run, { 'report.json': JSON.stringify({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [{ ...claim, status: 'fail' }] }) });
+  assert.equal(runScript('report-check.mjs', ['--project', dir, '--run', run]).status, 1);
+  assert.equal(runScript('files.mjs', ['restore', '--project', dir, '--batch', batch]).status, 0);
+  assert.equal(porcelain(dir), '');
+});
+```
+
+- [ ] **Paso 2: correr.** Estos tests describen el comportamiento que las Tasks B1–B5 ya construyeron: su rojo se demuestra una vez rompiendo lo que protegen y restaurando con el editor: (a) en `seo-page.mjs`, quitar el `if (el.inExpression)` de SEO-02 → el caso realista falla con un `fail` de SEO-02; (b) en `restoreBatch`, saltear la restauración de los esperados → el caso de punta a punta falla en `git status`. Un hueco real se arregla en la tarea dueña, en esta ola, con un commit `fix(ui): …` que nombra el test.
+- [ ] **Paso 3: docs y versión.**
+  - `plugin.json` → `0.3.0`. CHANGELOG, entrada nueva arriba de 0.2.0:
+    - "Hito 2b: SEO estático en `ui-check` (SEO-01, 02, 04, 05, 06, 09, 18; solo con `web.public: true`, nunca bloquean; `--url` para la URL de desarrollo local), `files.mjs` (`save | verify | restore`, §9) y `report-check.mjs` (§12)."
+    - "Motivo de subir a 0.3.0: interfaces nuevas (`files`, `report-check`, `--url`, `report.json`) y 7 reglas más en el catálogo (`catalogVersion` 0.3.0)."
+    - Los rulings que cambian lo que ve el usuario: SEO-01 sin `robots.txt` pasa; un cambio inesperado en un archivo con seguimiento queda `BLOCKED` en lugar de revertirse; archivos ignorados por git no se vigilan.
+  - README:
+    - en "Checker (`ui-check`)": `--url` (solo local, un origen, hasta 20, necesita `--design`), qué hace `web.public`/`web.indexable` y que el SEO nunca bloquea;
+    - sección nueva "Aplicar sin romper (`files`)": los tres subcomandos con un ejemplo de `expected.json`, los códigos 0/1/2, qué se restaura, qué queda `BLOCKED` y por qué, y que los archivos ignorados no se vigilan;
+    - sección nueva "Informe verificado (`report-check`)": el formato de `report.json` (el bloque de los Rulings), las cuatro fuentes de evidencia, los códigos y qué significa "retirada";
+  - CREDITS: las fuentes de SEO (RFC 9309, RFC 6596, sitemaps.org 0.9, HTML Living Standard, Open Graph protocol, Google Search Central) como enlaces con su fecha de consulta, sin texto copiado; completar la fecha que alguna tarea no pudo verificar (misma fecha en `rules.json`, y regenerar el bloque del README con el comando de la Task B1 si cambió).
+  - Spec: §5.9 "Aclaraciones técnicas del hito 2b" con los rulings de compuerta, SEO como reglas de proyecto, páginas y `--url` local, SEO-01/04/06/18 en JSX, `ui-check.json` con URLs, `files.json` y `BLOCKED` para cambios inesperados con seguimiento, `report.json` y `browser.json`; en §9 y §12, una línea que remite a §5.9. Sin tocar ninguna decisión del autor.
+- [ ] **Paso 4: suite y revisión final.** `npm run test:quiet` completo y `claude plugin validate plugins/pignolo-ui`. Después, **una revisión final opus** de `main..ui/hito-2b` (con el Review Focus del 2b), una pasada de arreglos y una confirmación acotada; lo que quede se clasifica.
+- [ ] **Paso 5: estado.** `docs/STATE.md`: hito 2b terminado, hito 2 de pignolo-ui cerrado, qué quedó para el hito 3 (`browser.json` con el contrato de `report-check`) y el 4 (skills que escriben `report.json` y corren `files`; las ~125 reglas de guía).
+- [ ] **Paso 6: unión y push** a `main` solo con el OK del autor.
+
+## Decisiones que necesita el autor (hito 2b)
+
+**Ninguna nueva.** Revisado contra lo reservado: sin dependencias ni binarios; sin costo nuevo (el método ya aprobado para el 2a, con opus solo en 2 de 6 tareas); sin datos ni texto de terceros (las fuentes de SEO van como enlaces fechados, sin copiar texto); ningún contrato que consuma el núcleo cambia (`--url` es opcional y aditivo, y la compuerta del hito 5 sigue con la invocación de §5.5; `report.json` y `browser.json` son internos de pignolo-ui). Dos rulings acotan al spec a favor de la seguridad y quedan anotados abajo para que el autor los vea en la revisión: `--url` solo local y `BLOCKED` en lugar de revertir cambios inesperados con seguimiento.
+
+**Fuera de este plan:** la pregunta de las ~125 reglas de guía del auditor es del plan del hito 4.
+
+## Contradicciones y huecos del spec encontrados (hito 2b)
+
+1. **§5.2 dice que todas las SEO son de documento**, pero SEO-01 y SEO-05 leen archivos de sitio y SEO-06 compara rutas. Ruling: `level: document` en el catálogo, implementadas como reglas de proyecto sobre las páginas.
+2. **SEO-01 "(o da 404, que equivale a todo permitido) … y referencia un sitemap"** no dice si la falta de `robots.txt` falla por no referenciar un sitemap. Ruling: no falla; SEO-05 queda `unverified`.
+3. **§5.4 "sobre lo que devuelve `fetch`" frente a §0 "nada remoto".** Ruling: solo direcciones de loopback; el sitemap de producción se busca por su ruta.
+4. **§9 "si no, se revierte"** no se puede cumplir sin git destructivo para un archivo con seguimiento que el lote no copió. Ruling: se revierte lo que tiene prueba (copias y archivos creados con sha256 registrado); lo demás, `BLOCKED` al usuario.
+5. **§12 no define `report.json`** ni la forma de `browser.json`. Ruling: los contratos de arriba; el hito 3 hereda el de `browser.json`.
+6. **§9 paso 5** (correr `typecheck`/`build`/`lint`) no es de `files.mjs`: lo hace la skill del hito 4.
+7. **Mockups y SEO:** §3.3 dice que `design/approved/**` nunca entra al alcance de una implementación; el SEO tampoco los mira (títulos repetidos entre pantallas de un flujo no son un problema del sitio).
