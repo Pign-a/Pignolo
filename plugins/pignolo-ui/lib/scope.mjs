@@ -23,8 +23,6 @@ export class BaseRefError extends Error {
     super(`--base no es una ref válida: ${ref}`);
     this.name = 'BaseRefError';
     this.ref = ref;
-    // The CLI prints e.stack for errors it does not know: keep it to the message, no frames.
-    this.stack = this.message;
   }
 }
 

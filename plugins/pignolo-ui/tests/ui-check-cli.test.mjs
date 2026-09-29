@@ -105,3 +105,13 @@ test('--gate prints nothing on stdout and one summary line on stderr', () => {
   assert.match(r.stderr, /^ui-check: /);
   assert.ok(fs.existsSync(path.join(run, 'ui-check.json')));
 });
+
+test('an invalid --base prints its Spanish message without "error interno" or a stack', () => {
+  const repo = makeRepo();
+  const run = path.join(repo, '.pignolo-ui', 'runs', 'r1');
+  const r = runScript('ui-check.mjs', ['--project', repo, '--run', run, '--files', 'src/a.css', '--base', 'nope'], { cwd: repo });
+  assert.equal(r.status, 2, r.stderr);
+  assert.match(r.stderr, /^ui-check: --base no es una ref válida: nope\n$/);
+  assert.equal(r.stdout, '');
+  assert.equal(fs.existsSync(path.join(run, 'ui-check.json')), false);
+});
