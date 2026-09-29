@@ -26,3 +26,14 @@ test('--explain without a command prints the usage and exits 2', () => {
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /uso: node git-guard\.js --explain/);
 });
+
+test('one canary per family of spec §8.4, and each is blocked through the real launcher', () => {
+  assert.deepStrictEqual(CANARIES.map((c) => c.family),
+    ['catastrophic', 'git-destructive', 'non-literal', 'powershell-ast', 'protected-write']);
+  const cwd = makeRepo();
+  for (const c of CANARIES) {
+    const r = runLauncher(c.handler, { hook_event_name: 'PreToolUse', cwd, ...c.payload }, { PIGNOLO_CANARY: '1' });
+    assert.strictEqual(r.status, 2, `${c.family}: ${r.stderr}`);
+    assert.match(r.stderr, /pignolo bloqueó/, c.family);
+  }
+});

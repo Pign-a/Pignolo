@@ -20,7 +20,7 @@ test('healthy guard: no canary warning; startup backs up refs', () => {
   const r = ss.run({ source: 'startup', cwd: repo }, { env: { PIGNOLO_HOME: makeTempDir() } });
   assert.strictEqual(r.exit, 0);
   const out = JSON.parse(r.stdout);
-  assert.doesNotMatch(out.systemMessage, /guardia de git NO/);
+  assert.doesNotMatch(out.systemMessage, /guardia NO bloqueó/);
   assert.doesNotMatch(out.systemMessage, /respaldo de/);
   assert.ok(backups(repo).length > 0);
 });
@@ -45,20 +45,43 @@ test('fork also backs up refs (H17)', () => {
 test('a handler that exits 0 is reported by the canary', () => {
   withTempHandler('_tmp-open-guard', 'exports.run = () => ({ exit: 0 });', () => {
     const r = ss.run({ source: 'resume', cwd: makeTempDir() }, { env: { PIGNOLO_HOME: makeTempDir() }, canaryHandler: '_tmp-open-guard' });
-    assert.match(JSON.parse(r.stdout).systemMessage, /guardia de git NO bloqueó/);
+    assert.match(JSON.parse(r.stdout).systemMessage, /guardia NO bloqueó/);
   });
 });
 
 // H8: el launcher sale con 2 si no encuentra el handler; eso NO es una guardia sana.
 test('a missing guard handler is reported by the canary', () => {
   const r = ss.run({ source: 'resume', cwd: makeTempDir() }, { env: { PIGNOLO_HOME: makeTempDir() }, canaryHandler: 'no-existe' });
-  assert.match(JSON.parse(r.stdout).systemMessage, /guardia de git NO bloqueó/);
+  assert.match(JSON.parse(r.stdout).systemMessage, /guardia NO bloqueó/);
 });
 
 test('a handler that exits 2 without the guard message is reported by the canary', () => {
   withTempHandler('_tmp-mute-guard', 'exports.run = () => ({ exit: 2, stderr: "otra cosa" });', () => {
     const r = ss.run({ source: 'resume', cwd: makeTempDir() }, { env: { PIGNOLO_HOME: makeTempDir() }, canaryHandler: '_tmp-mute-guard' });
-    assert.match(JSON.parse(r.stdout).systemMessage, /guardia de git NO bloqueó/);
+    assert.match(JSON.parse(r.stdout).systemMessage, /guardia NO bloqueó/);
+  });
+});
+
+// Protects: canario §8.4, una prueba por familia · Breaks if: SessionStart prueba solo git reset --hard
+// o no dice qué familia está caída.
+test('the canary runs one planted command per family and names the family that is down (spec §8.4)', () => {
+  withTempHandler('_tmp-open-paths', 'exports.run = () => ({ exit: 0 });', () => {
+    const r = ss.run({ source: 'status', cwd: makeTempDir() },
+      { env: { PIGNOLO_HOME: makeTempDir() }, canaryHandlers: { 'protect-paths': '_tmp-open-paths' } });
+    const msg = JSON.parse(r.stdout).systemMessage;
+    assert.match(msg, /^⚠ pignolo: la guardia NO bloqueó el comando de prueba de: Edit\/Write protegido\./m);
+    assert.match(msg, /canario FALLÓ \(Edit\/Write protegido\)/);
+  });
+});
+
+// Protects: canario §8.4 · Breaks if: una familia de la guardia (no solo git) cae sin aviso.
+test('each family of CANARIES is exercised: a guard that only blocks git reset is reported', () => {
+  withTempHandler('_tmp-git-only-guard', "exports.run = (i) => (/git reset/.test(i.tool_input.command) ? { exit: 2, stderr: 'pignolo bloqueó el comando: x' } : { exit: 0 });", () => {
+    const r = ss.run({ source: 'resume', cwd: makeTempDir() },
+      { env: { PIGNOLO_HOME: makeTempDir() }, canaryHandler: '_tmp-git-only-guard' });
+    const msg = JSON.parse(r.stdout).systemMessage;
+    assert.match(msg, /NO bloqueó el comando de prueba de: catastrófico, ejecución no literal, PowerShell por AST\./);
+    assert.doesNotMatch(msg, /git destructivo|Edit\/Write/);
   });
 });
 
