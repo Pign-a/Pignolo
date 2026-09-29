@@ -109,6 +109,8 @@ La genera el `spec-reviewer` (sin contexto de la sesión) a partir del **pedido 
 
 ### 4.6 Presentación visual (tarjetas, decisiones y resúmenes)
 
+**Dos capas en todo texto al humano** (decisión del autor, 2026-09-29, tras la primera corrida real de `/pignolo:setup`): cada paso o sección va primero "en pocas palabras" (1 a 3 líneas sin jerga, sin rutas ni conteos: qué significa para el humano y qué tiene que decidir) y debajo el "detalle técnico" (comandos, archivos, conteos, reglas agrupadas por propósito). Un paso por mensaje, con a lo sumo una pregunta. Vale para `setup`, `init`, las preguntas de §4.4 y los resúmenes de cierre.
+
 Todo lo que pignolo le presenta al humano para decidir (scope-card, preguntas de §4.4, `needs-review-batch`, resumen de cierre) puede mostrarse como **texto** o como **artifact** (página publicada con la herramienta Artifact de Claude Code). Gasta más tokens que el texto, pero se usa cuando hace la decisión más clara.
 
 - **Elección del humano en cada situación**: antes de armar la presentación, pignolo ofrece `1) artifact` / `2) texto`, con una línea sobre qué mostraría el artifact y su costo relativo. Preferencia por defecto en `~/.pignolo/config.json` → `presentation: ask | artifact | text` (default `ask` en `max` y `balanced`, `text` en `economy`), sobrescribible por proyecto. Nunca se elige artifact sin que el humano lo haya habilitado.

@@ -3,6 +3,7 @@
 ## 0.2.1 — 2026-09-29
 
 - `/pignolo:setup`: los conteos de reglas salen del JSON del script (en la primera corrida real el modelo contó 97 en vez de 96) y el resumen nombra la ruta de la config y cómo se resolvió cada conflicto de reglas. Hallado en el checklist manual del hito 2.
+- `/pignolo:setup` reordenado: un paso por mensaje, cada uno con una parte "en pocas palabras" y el "detalle técnico" debajo (decisión del autor: la primera corrida tenía demasiado texto y sin orden). La regla queda en el spec §4.6 para todo texto al humano.
 
 ## 0.2.0 — 2026-09-29
 
