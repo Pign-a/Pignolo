@@ -39,7 +39,9 @@ function probeMergeTree(git) {
   try {
     const opts = { cwd: dir };
     if (!exec(git, ['init', '-q'], opts).ok) return false;
-    const cfg = ['-c', 'user.name=pignolo', '-c', 'user.email=pignolo@example.invalid', '-c', 'commit.gpgsign=false'];
+    // Repo temporal propio: sin los hooks de un core.hooksPath global del usuario.
+    const cfg = ['-c', 'user.name=pignolo', '-c', 'user.email=pignolo@example.invalid', '-c', 'commit.gpgsign=false',
+      '-c', `core.hooksPath=${path.join(dir, 'sin-hooks')}`];
     if (!exec(git, [...cfg, 'commit', '-q', '--allow-empty', '-m', 'x'], opts).ok) return false;
     return exec(git, ['merge-tree', '--write-tree', 'HEAD', 'HEAD'], opts).ok;
   } finally {
@@ -59,9 +61,21 @@ function hasSuperpowers(env) {
   return false;
 }
 
+// El ~/.claude que lee Claude Code: el de os.homedir(), que en Windows es USERPROFILE
+// (no HOME, que puede diferir en Git Bash).
 function userClaudeDir(env) {
   if (env.CLAUDE_CONFIG_DIR && env.CLAUDE_CONFIG_DIR.trim()) return env.CLAUDE_CONFIG_DIR;
+  if (process.platform === 'win32') {
+    const home = env.USERPROFILE && env.USERPROFILE.trim() ? env.USERPROFILE : os.homedir();
+    return path.join(home, '.claude');
+  }
   return path.join(userHomes(env)[0], '.claude');
+}
+
+// PowerShell 5.1 escribe UTF-8 con BOM: se quita antes de parsear.
+function readText(file) {
+  const raw = fs.readFileSync(file, 'utf8');
+  return raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
 }
 
 // Del más fuerte al más débil: local, proyecto, usuario. Un JSON ilegible se ignora.
@@ -73,7 +87,7 @@ function settingsChain(env, cwd) {
   ];
   return files.map((f) => {
     try {
-      const d = JSON.parse(fs.readFileSync(f, 'utf8'));
+      const d = JSON.parse(readText(f));
       return d && typeof d === 'object' && !Array.isArray(d) ? d : {};
     } catch (_) { return {}; }
   });
@@ -90,8 +104,7 @@ function envValue(chain, key) {
 function check(env, cwd) {
   const chain = settingsChain(env, cwd);
   const teams = envValue(chain, 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS') ?? env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
-  const force = env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE === '1'
-    || chain.some((s) => s.env && String(s.env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE) === '1');
+  const force = envValue(chain, 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE') ?? env.CLAUDE_CODE_SUBAGENT_MODEL_FORCE;
   const models = chain.map((s) => s.availableModels).find((m) => Array.isArray(m));
   return {
     node: process.version,
@@ -101,7 +114,7 @@ function check(env, cwd) {
       ['-NoProfile', '-Command', '$PSVersionTable.PSVersion']).ok,
     superpowers: hasSuperpowers(env),
     agentTeams: teams === '1',
-    subagentModelForce: force,
+    subagentModelForce: force === '1',
     availableModels: models ?? null,
     config: readConfig({ env }),
   };
@@ -115,7 +128,7 @@ function permissions(args, env, cwd) {
 
   let settings = {};
   const exists = fs.existsSync(file);
-  const raw = exists ? fs.readFileSync(file, 'utf8') : null;
+  const raw = exists ? readText(file) : null;
   if (exists) {
     try {
       settings = JSON.parse(raw);

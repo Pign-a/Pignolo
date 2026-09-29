@@ -69,3 +69,12 @@ test('readConfig with invalid JSON throws config inválida', () => {
   fs.writeFileSync(configPath(env), '{nope');
   assert.throws(() => readConfig({ env }), (e) => e.message === `config inválida: ${configPath(env)}`);
 });
+
+// Revisión final del hito 2: lo leído del disco se valida igual que lo que se escribe.
+test('readConfig with an unknown profile or bad field on disk throws config inválida', () => {
+  for (const bad of [{ profile: 'turbo' }, { presentation: 'x' }, { models: { implementer: 'haiku' } }]) {
+    const env = envOf();
+    fs.writeFileSync(configPath(env), JSON.stringify(bad));
+    assert.throws(() => readConfig({ env }), (e) => e.message === `config inválida: ${configPath(env)}`, JSON.stringify(bad));
+  }
+});

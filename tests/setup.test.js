@@ -235,3 +235,57 @@ test('SKILL.md: solo humano y nombra scripts/setup.js', () => {
   assert.match(front, /^description: .+$/m);
   assert.match(text, /scripts\/setup\.js/);
 });
+
+// Hallazgos de la revisión final del hito 2 (I2 y menores).
+
+// I2: Claude Code en Windows lee ~/.claude de os.homedir() (USERPROFILE), no de HOME.
+test('permissions --target user y check usan el home de Claude Code cuando HOME y USERPROFILE difieren', () => {
+  const sb = sandbox();
+  const other = makeTempDir('pignolo-setup-home2-');
+  const env = { ...withGit(sb, '2.45.0'), HOME: other, USERPROFILE: sb.home };
+  const claudeHome = process.platform === 'win32' ? sb.home : other;
+  const r = run(['permissions', '--target', 'user'], { env, cwd: sb.cwd });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.json.file, path.join(claudeHome, '.claude', 'settings.json'));
+  writeJson(path.join(claudeHome, '.claude', 'settings.json'), { env: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' } });
+  assert.equal(run(['check'], { env, cwd: sb.cwd }).json.agentTeams, true);
+});
+
+test('check: subagentModelForce sigue la misma precedencia que agentTeams', () => {
+  const sb = sandbox();
+  writeJson(path.join(sb.cwd, '.claude', 'settings.json'), { env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '0' } });
+  const env = { ...withGit(sb, '2.45.0'), CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' };
+  assert.equal(run(['check'], { env, cwd: sb.cwd }).json.subagentModelForce, false);
+  writeJson(path.join(sb.cwd, '.claude', 'settings.local.json'), { env: { CLAUDE_CODE_SUBAGENT_MODEL_FORCE: '1' } });
+  assert.equal(run(['check'], { env, cwd: sb.cwd }).json.subagentModelForce, true);
+});
+
+// PowerShell 5.1 escribe UTF-8 con BOM.
+test('un settings con BOM se lee en check y se acepta en permissions (se reescribe sin BOM)', () => {
+  const sb = sandbox();
+  const file = userSettings(sb);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, '\ufeff' + JSON.stringify({ env: { CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: '1' }, permissions: { deny: ['Bash(mio)'] } }));
+  assert.equal(run(['check'], { env: withGit(sb, '2.45.0'), cwd: sb.cwd }).json.agentTeams, true);
+  const r = run(['permissions', '--target', 'user', '--apply'], { env: sb.env, cwd: sb.cwd });
+  assert.equal(r.status, 0, r.stderr);
+  const text = fs.readFileSync(file, 'utf8');
+  assert.notEqual(text.charCodeAt(0), 0xfeff);
+  assert.equal(JSON.parse(text).permissions.deny[0], 'Bash(mio)');
+});
+
+// El commit de prueba del probe de merge-tree no corre hooks de un core.hooksPath global.
+test('check: el probe de merge-tree no corre los hooks globales del usuario', () => {
+  const sb = sandbox();
+  const hooks = makeTempDir('pignolo-setup-hooks-');
+  const marker = path.join(sb.home, 'hook-corrio');
+  for (const h of ['pre-commit', 'post-commit']) {
+    fs.writeFileSync(path.join(hooks, h), `#!/bin/sh\necho x > "${marker.split(path.sep).join('/')}"\nexit 1\n`, { mode: 0o755 });
+  }
+  const cfg = path.join(sb.home, 'gitconfig-global');
+  fs.writeFileSync(cfg, `[core]\n\thooksPath = ${hooks.split(path.sep).join('/')}\n`);
+  const r = run(['check'], { env: { ...sb.env, GIT_CONFIG_GLOBAL: cfg }, cwd: sb.cwd });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.json.git.mergeTree, true);
+  assert.equal(fs.existsSync(marker), false);
+});

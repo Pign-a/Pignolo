@@ -35,8 +35,12 @@ function withDefaults(raw) {
   };
 }
 
+// Lo leído del disco se valida como lo que se escribe; un valor desconocido es el
+// mismo error que un JSON inválido. writeConfig sigue pudiendo reparar el archivo.
 function readConfig({ env = process.env } = {}) {
-  return withDefaults(load(env));
+  const raw = load(env);
+  try { validate(raw); } catch (_) { throw new Error(`config inválida: ${configPath(env)}`); }
+  return withDefaults(raw);
 }
 
 function validate(partial) {
