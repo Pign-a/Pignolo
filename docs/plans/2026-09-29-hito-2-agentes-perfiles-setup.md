@@ -15,7 +15,12 @@
 - Node ≥ 20, **sin dependencias npm**. Tests con `node:test`; la suite completa corre con `npm test`, nunca con `node --test tests/`.
 - Nombres de elementos en inglés. El texto interno de agentes y skills va en inglés; los mensajes al humano, commits y docs, en español. Commits en Conventional Commits, escritos con `git commit -F <archivo>`.
 - Cada agente lleva `tools` explícito, **sin `Agent`** y **sin `memory:`**, y un `effort:` fijo según la tabla de §7 (valores válidos: `low`, `medium`, `high`, `xhigh`, `max`; doc oficial sub-agents). Ningún agente usa `xhigh` ni `max`.
-- Campos del frontmatter de un agente de plugin: `name`, `description`, `tools`, `model` y `effort`. Claude Code ignora `hooks`, `mcpServers` y `permissionMode` en los plugins (doc oficial), así que no se usan. El nombre de invocación es `pignolo:<rol>`, y `name` no lleva `:`.
+- Campos del frontmatter de un agente de plugin: `name`, `description`, `tools`, `model` y `effort`. `researcher` suma `omitClaudeMd: true`: no usa el repo y así no recibe el CLAUDE.md del usuario (requiere v2.1.271; en versiones anteriores se ignora sin error). Claude Code ignora `hooks`, `mcpServers` y `permissionMode` en los plugins (doc oficial), así que no se usan. El nombre de invocación es `pignolo:<rol>`, y `name` no lleva `:`.
+- **Un frontmatter que no parsea carga igual** (doc oficial: "still loads, under its filename"), y en ese caso hereda todas las herramientas, incluida `Agent`. Por eso:
+  - `description` es una sola línea de ≤ 200 caracteres, sin `:` y sin comillas al principio;
+  - toda tarea que toque `agents/` corre `claude plugin validate plugins/pignolo` (v2.1.233+) antes de su commit;
+  - ese mismo chequeo corre al unir cada ola.
+- **Delegación automática** (doc oficial: Claude delega "based on ... the `description` field"): cada `description` empieza con `Dispatched only by pignolo skills with a task-card; never use directly.` y después dice en una frase qué hace. Así Claude no despacha por su cuenta a un revisor opus en un proyecto cualquiera.
 - Hook sobre `Agent`: el matcher es `Agent`. El campo es `tool_input.subagent_type`, que llega exactamente como lo pidió el modelo (payload real capturado en el spike de pignolo-ui; `tool_input = {description, prompt, subagent_type, run_in_background}`). La comparación es por **igualdad exacta**.
 - Los hooks **callan en el éxito**: sin `additionalContext` ni `systemMessage` si todo sale bien. Cada bloqueo nombra una alternativa que funciona.
 - `/pignolo:off` apaga la allowlist, pero no los respaldos. `PIGNOLO_DISABLED=1` apaga también los respaldos. Con el canario activo (`PIGNOLO_CANARY=1`) no se toman respaldos.
@@ -27,6 +32,11 @@
 Decisión técnica (2026-09-29, pedido del autor: "lo más rápido, en paralelo, sin gastar tokens de más"):
 
 - **Olas.** Ola 0 es serial: Task 1, que produce el contrato. La ola 1 corre **5 tareas en paralelo**, cada una en su worktree y con archivos disjuntos. La ola 2 tiene las evals y el cierre. Al terminar cada ola se une a `core/hito-2` y la suite completa corre **una vez**.
+- **Worktrees creados a mano, no con `isolation: worktree`.** La doc oficial dice que las worktrees de subagentes nacen de la rama por defecto ("branch from your repository's default branch unless `worktree.baseRef` is set to `head`"), así que no tendrían el commit de la Task 1.
+  - El orquestador crea cada worktree con `git worktree add -b task/hito-2/<NN> <scratchpad>/wt-<NN> core/hito-2` y le pasa la ruta al implementador en el brief.
+  - El implementador edita con rutas absolutas dentro de esa worktree y corre cada comando como `cd <ruta> && <comando>`, que es el mecanismo B de §11.2.
+  - El primer paso de cada tarea es `git merge-base --is-ancestor <sha de la Task 1> HEAD`. Si falla, responde `BLOCKED`.
+- **Despacho paralelo con subagentes en background**, 5 a la vez, cada uno con un brief en archivo y el informe en un archivo aparte, así los informes no inflan el contexto del orquestador. Los workflows dinámicos (doc oficial) serían una alternativa y dejarían los resultados en variables del script, pero piden aprobación por corrida y no resuelven la base de las worktrees. Se registran como opción para las olas de los hitos 3 y 7.
 - **Modelos.** Los implementadores van en sonnet, porque las tarjetas traen interfaces y casos literales. **No hay revisión por tarea.** Hay una sola revisión final opus de toda la rama, una pasada de arreglos y una confirmación acotada; después se clasifica (el tope es el del hito 1).
 - **Tests que valen lo que cuestan:**
   - Cada test protege un comportamiento del spec: nada de tests sobre el texto libre de las cartas, snapshots de prompts ni getters.
@@ -38,11 +48,21 @@ Decisión técnica (2026-09-29, pedido del autor: "lo más rápido, en paralelo,
 
 ## Review Focus
 
-1. **Un proyecto sin pignolo configurado no se rompe.** Con el plugin instalado a nivel usuario y sin `.pignolo/project.md`, despachar `Explore` o `general-purpose` debe pasar: el uso normal de Claude Code sigue igual. Lo prueba la Task 4.
-2. **Cientos de despachos por sesión.** El respaldo de refs antes de cada despacho no puede crear un juego nuevo si las refs no cambiaron. Lo prueba la Task 4.
-3. **Payload raro en un proyecto activo.** Un `subagent_type` ausente, que no es texto o vacío se niega, con la alternativa de usar `pignolo:<rol>`, porque falla cerrado. Lo prueba la Task 4.
-4. **`setup` sobre un settings real.** Un JSON con reglas propias del usuario conserva todas sus reglas y su orden. Solo se agregan las que faltan, y antes se escribe un respaldo. Un JSON inválido aborta sin escribir. Lo prueba la Task 5.
-5. **Las dos formas de apagar.** Con `/pignolo:off`, la allowlist se apaga y el respaldo sigue. Con `PIGNOLO_DISABLED=1`, se apagan los dos. Lo prueba la Task 4.
+1. **Un proyecto sin pignolo configurado no se rompe.** Con el plugin instalado a nivel usuario y sin `.pignolo/project.md`, despachar `Explore` o `general-purpose` debe pasar: el uso normal de Claude Code sigue igual. Lo prueba la Task 5.
+2. **Cientos de despachos por sesión, algunos en paralelo.**
+   - El respaldo de refs antes de cada despacho no crea un juego nuevo si las refs no cambiaron.
+   - Dos despachos en el mismo milisegundo (por ejemplo, los 5 lentes a la vez) no rompen "callados en el éxito": una ref que ya existe con el mismo sha cuenta como éxito.
+
+   Lo prueba la Task 5.
+3. **Payload raro en un proyecto activo.** Se niega, con la alternativa de usar `pignolo:<rol>`, un `subagent_type`:
+   - ausente;
+   - que no es texto;
+   - vacío;
+   - igual a `fork` (el modo fork está activo por defecto en las sesiones interactivas).
+
+   Con el modo fork, un despacho sin tipo cae en `general-purpose`. El hook ve el payload crudo, así que lo niega igual, y eso es a propósito. Lo prueba la Task 5.
+4. **`setup` sobre un settings real.** Un JSON con reglas propias del usuario conserva todas sus reglas y su orden. Solo se agregan las que faltan, y antes se escribe un respaldo. Un JSON inválido aborta sin escribir. Lo prueba la Task 6.
+5. **Las dos formas de apagar.** Con `/pignolo:off`, la allowlist se apaga y el respaldo sigue. Con `PIGNOLO_DISABLED=1`, se apagan los dos. Lo prueba la Task 5.
 
 ## Rulings del plan (técnicos, registrados)
 
@@ -52,6 +72,10 @@ Decisión técnica (2026-09-29, pedido del autor: "lo más rápido, en paralelo,
 - **`setup` solo agrega permisos**: nunca quita ni reordena reglas del usuario, y respalda el archivo antes de escribir. Un agente que lo corra sin confirmación solo puede endurecer permisos, nunca aflojarlos.
 - **Engram**: `setup` escribe `engram: false` y avisa que llega en el hito 6, que es cuando se verifica contra su documentación (§10.5).
 - **Conflictos de reglas** (§1.7): los detecta el modelo dentro de la skill `setup`, que lee `~/.claude/CLAUDE.md`, el `CLAUDE.md` y `.claude/rules/` del proyecto y los compara con `rules/core.md`, y los lista para que el humano confirme cómo se resuelven. No hay script para esto, porque comparar texto libre por regex daría ruido.
+- **`pignolo:*` fuera de un proyecto activo pasa.** No se niega, porque §3.2 prevé un "modo conservador" sin `project.md` en el que las skills de pignolo siguen despachando. Contra la delegación espontánea alcanza la frase fija de `description`. Riesgo residual declarado: Claude puede delegar igual en un agente pignolo. Se revisa si las métricas del hito 6 lo muestran.
+- **El deny nativo `Agent(Explore)` / `Agent(fork)` no va en la plantilla de permisos.** La doc oficial lo ofrece como capa determinista, pero un deny nativo no se apaga con `/pignolo:off`, y eso contradice §3.3. Queda como opción futura de `setup --target project`, que decide el humano.
+- **`maxTurns` no se fija todavía.** Un tope mal elegido corta el trabajo y lo devuelve como parcial. Se fija por rol cuando las evals midan los turnos reales.
+- **`SubagentStart` usa el nombre con prefijo.** La doc oficial lo confirma: el matcher es "the plugin-scoped identifier such as `my-plugin:db-agent` ... anchor it with ^ and $". El hito 6 usa `^pignolo:`.
 - **Plan en tarjetas, no en código final** (§5.2). Los bloques de código son hipótesis hasta ejecutarlos. Lo que sí fija el plan son las interfaces, los casos de test y los valores literales.
 
 ---
@@ -66,7 +90,7 @@ Decisión técnica (2026-09-29, pedido del autor: "lo más rápido, en paralelo,
 - Modify: `package.json` (script `test:quiet`)
 
 **Interfaces que produce:**
-- `roles.js` exporta `ROLES`: un objeto congelado `{ [rol]: { tools: string[], effort: 'low'|'medium'|'high', models: { max, balanced, economy }, vocabulary: 'writer'|'reviewer'|'researcher'|'reader' } }`, con los 19 roles de §6: `explorer`, `researcher`, `spec-reviewer`, `plan-auditor`, `test-writer`, `implementer`, `review-risk`, `review-resilience`, `review-readability`, `review-reliability`, `review-testability`, `refuter`, `judge-a`, `judge-b`, `fixer`, `validator`, `integrator`, `learning-validator` y `debugger`. Las herramientas son las de la tabla de §6, al pie de la letra; los effort y modelos, los de la tabla de §7. Los lentes, el refuter, los jueces y el validator están en la fila "lentes, refuter, jueces, validator".
+- `roles.js` exporta `ROLES`: un objeto congelado `{ [rol]: { tools: string[], effort: 'low'|'medium'|'high', models: { max, balanced, economy }, vocabulary: 'writer'|'reviewer'|'researcher'|'reader', omitClaudeMd?: true } }` (`omitClaudeMd` solo en `researcher`), con los 19 roles de §6: `explorer`, `researcher`, `spec-reviewer`, `plan-auditor`, `test-writer`, `implementer`, `review-risk`, `review-resilience`, `review-readability`, `review-reliability`, `review-testability`, `refuter`, `judge-a`, `judge-b`, `fixer`, `validator`, `integrator`, `learning-validator` y `debugger`. Las herramientas son las de la tabla de §6, al pie de la letra; los effort y modelos, los de la tabla de §7. Los lentes, el refuter, los jueces y el validator están en la fila "lentes, refuter, jueces, validator".
 - `vocabulary` (§6.1): `writer` (`DONE`/`BLOCKED`/`NEEDS_CONTEXT`) para implementer, fixer, test-writer, integrator y debugger. `reviewer` (`APPROVE`/`REQUEST_CHANGES`/`ESCALATE`) para spec-reviewer, plan-auditor, los lentes, review-testability, los jueces y validator. `researcher` (`CONFIRMED`/`REFUTED`/`INCONCLUSIVE`) para researcher y refuter. `reader` (`DONE`/`BLOCKED`/`NEEDS_CONTEXT`) para explorer y learning-validator.
 - `roles.js` exporta además `VOCABULARY = { writer: [...], reviewer: [...], researcher: [...], reader: [...] }` y `PROFILE_PARAMS`, con la segunda tabla de §7: `{ max: { parallel: 3, refutersHighRisk: 3, judgmentDay: 'high-risk+plan-close', lensesHighRisk: ['risk','resilience','readability','reliability','testability'] }, balanced: {...}, economy: {...} }`.
 - `profiles.js` exporta:
@@ -94,6 +118,8 @@ Decisión técnica (2026-09-29, pedido del autor: "lo más rápido, en paralelo,
   - que no están `memory`, `hooks`, `mcpServers` ni `permissionMode`;
   - que `effort === ROLES[rol].effort` y que `model === ROLES[rol].models.balanced`;
   - que el cuerpo contiene las tres palabras de su `VOCABULARY`;
+  - que `omitClaudeMd` aparece si y solo si `ROLES[rol].omitClaudeMd`;
+  - que `description` es una sola línea de ≤ 200 caracteres, empieza con `Dispatched only by pignolo skills with a task-card; never use directly.`, no lleva otro `:` después de esa frase y no empieza con comillas;
   - que el archivo está en LF y sin BOM.
 
   Hay además un subtest `no stray agents`: todo `.md` de `agents/` es un rol de `ROLES`. Con esto, cada tarea de la ola 1 verifica lo suyo con `--test-name-pattern "agent (implementer|fixer|...)"`.
@@ -112,10 +138,11 @@ Todas parten del commit de la Task 1. Ninguna toca `lib/roles.js` ni `tests/agen
 
     ---
     name: <rol>
-    description: <cuándo lo despacha el orquestador, una o dos frases>
+    description: Dispatched only by pignolo skills with a task-card; never use directly. <qué hace, una frase, sin ":">
     tools: <lista de ROLES[rol].tools separada por comas>
     model: <ROLES[rol].models.balanced>
     effort: <ROLES[rol].effort>
+    (researcher: omitClaudeMd: true)
     ---
 
 El cuerpo va en inglés, en segunda persona, y conviene que sea breve (≤ ~60 líneas). Tiene estas secciones:
@@ -144,7 +171,7 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
 - `integrator`: solo corre `node <plugin>/scripts/queue` y resuelve solo conflictos triviales. El script llega en el hito 7; la carta lo dice.
 - `debugger`: busca la causa raíz con evidencia, sin hacer el fix.
 - [ ] **Paso 1:** escribir los 5 archivos.
-- [ ] **Paso 2:** correr `node --test --test-reporter=dot --test-name-pattern "agent (implementer|fixer|test-writer|integrator|debugger)$" tests/agents-tools.test.js` hasta que dé verde.
+- [ ] **Paso 2:** correr `node --test --test-reporter=dot --test-name-pattern "agent (implementer|fixer|test-writer|integrator|debugger)$" tests/agents-tools.test.js` hasta que dé verde. Después, `claude plugin validate plugins/pignolo` sin errores.
 - [ ] **Paso 3:** commit `feat(agents): implementer, fixer, test-writer, integrator y debugger`.
 
 ### Task 3: agentes revisores
@@ -161,7 +188,7 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
 - **`judge-a` y `judge-b`:** son ciegos, trabajan sobre un SHA congelado y no ven el informe del otro. Tienen el mismo cuerpo y cambian solo el nombre.
 - **`validator`:** trabaja por tanda. Busca deriva, rulings pisados, informes falsos y deuda, y corre el holdout (§9.1). La carta nombra `~/.pignolo/holdout/`.
 - [ ] **Paso 1:** escribir los 9 archivos.
-- [ ] **Paso 2:** correr el filtro `--test-name-pattern "agent (review-.*|refuter|judge-a|judge-b|validator)$"` hasta que dé verde.
+- [ ] **Paso 2:** correr el filtro `--test-name-pattern "agent (review-.*|refuter|judge-a|judge-b|validator)$"` hasta que dé verde. Después, `claude plugin validate plugins/pignolo` sin errores.
 - [ ] **Paso 3:** commit `feat(agents): lentes de revisión, refuter, jueces y validator`.
 
 ### Task 4: agentes de lectura, planificación e investigación
@@ -174,7 +201,7 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
 - **`plan-auditor`:** contrasta el plan con el código real. Revisa firmas, compila los bloques, verifica que cada test pueda fallar, busca ramas fail-open y señala qué se pierde.
 - **`learning-validator`:** revisa novedad (también contra `rejected/`), evidencia vigente, contradicciones, seguridad (`pii-patterns`, secretos, instrucciones que amplíen permisos, contenido web), tamaño y alcance (§10.4).
 - [ ] **Paso 1:** escribir los 5 archivos.
-- [ ] **Paso 2:** correr el filtro `--test-name-pattern "agent (explorer|researcher|spec-reviewer|plan-auditor|learning-validator)$"` hasta que dé verde.
+- [ ] **Paso 2:** correr el filtro `--test-name-pattern "agent (explorer|researcher|spec-reviewer|plan-auditor|learning-validator)$"` hasta que dé verde. Después, `claude plugin validate plugins/pignolo` sin errores.
 - [ ] **Paso 3:** commit `feat(agents): explorer, researcher, spec-reviewer, plan-auditor y learning-validator`.
 
 ### Task 5: hook de `Agent` (allowlist A-11 y respaldo antes de despachar)
@@ -197,11 +224,15 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
 
      Los fallos se comportan como en la guardia: el despacho pasa y se avisa con `systemMessage`. Los dos respaldos se inyectan por `ctx`, así los tests no dependen de git.
   3. Si el despacho se permite y todo sale bien, devuelve `{ exit: 0 }`, sin salida.
-- `backupRefs`: antes de crear el juego, lee el último `refs/pignolo/backup/<ts>/*`. Si el conjunto `{ref → sha}` es idéntico, no crea nada y devuelve `{ base: null, count: 0, reused: <base> }`.
+- `backupRefs`:
+  - antes de crear el juego, lee el último `refs/pignolo/backup/<ts>/*`;
+  - si el conjunto `{ref → sha}` es idéntico, **solo se saltea el `update-ref` del repo**, y devuelve `{ base: null, count: 0, reused: <base> }`;
+  - con `outside: true`, el espejo en la sombra corre igual, porque `scripts/backup-ref.js` depende de eso;
+  - si un `create` falla porque la ref ya existe con el mismo sha (dos despachos en el mismo milisegundo), cuenta como éxito.
 
 - [ ] **Paso 1: tests primero, en proceso y de tabla.** `tests/agent-allowlist.test.js`, con proyecto activo (repo temporal con `.pignolo/project.md`):
   - se permiten `pignolo:implementer`, `pignolo:review-risk`, `pignolo-ui:ui-option` y `pignolo-ui:ui-auditor`;
-  - se niegan `general-purpose`, `Explore`, `Plan`, `ui-option`, `pignolo-ui-x:ui-option`, `pignolo-ui:other`, `pignolo:`, `PIGNOLO:implementer`, `other:implementer`, `''`, un valor ausente y `42`.
+  - se niegan `general-purpose`, `Explore`, `Plan`, `ui-option`, `pignolo-ui-x:ui-option`, `pignolo-ui:other`, `pignolo:`, `PIGNOLO:implementer`, `other:implementer`, `fork`, `''`, un valor ausente y `42`.
   - Cada negación trae `Alternativa:` en el `stderr`.
 - [ ] **Paso 2: tests del Review Focus**, en el mismo archivo:
   - sin `project.md`, `Explore` y `general-purpose` pasan, sin salida;
@@ -210,7 +241,11 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
   - si el respaldo inyectado lanza un error, el despacho permitido pasa con `systemMessage`;
   - un despacho permitido y sano no escribe nada en `stdout`.
 - [ ] **Paso 3: un solo test de humo por el launcher.** `runLauncher('agent-gate', { tool_name:'Agent', tool_input:{ subagent_type:'Explore' }, cwd:<repo activo> })` da `exit 2`.
-- [ ] **Paso 4: test de deduplicación.** En `tests/git-backup.test.js`, dos `backupRefs` seguidos sin cambios dejan un solo juego. Si después se hace un commit, el siguiente `backupRefs` crea uno nuevo.
+- [ ] **Paso 4: tests de deduplicación**, en `tests/git-backup.test.js`:
+  - dos `backupRefs` seguidos sin cambios dejan un solo juego;
+  - si después se hace un commit, el siguiente `backupRefs` crea uno nuevo;
+  - con `outside: true` y una sombra sembrada, la segunda llamada sin cambios igual espeja en la sombra;
+  - una ref que ya existe con el mismo sha no lanza.
 - [ ] **Paso 5: rojo.** Se corren solo los dos archivos y se anota el resumen.
 - [ ] **Paso 6: implementar.** Verde en esos dos archivos, más `tests/hooks-json.test.js` (que valida la forma de `hooks.json`).
 - [ ] **Paso 7: commit.** `feat(hooks): allowlist de agentes (A-11) y respaldo antes de cada despacho`.
@@ -228,7 +263,9 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
     - `mergeTree` = `git merge-tree --write-tree` responde. Se prueba contra un repo temporal y queda como hipótesis de §14 a verificar en el hito 7;
     - `gh` y `powershell` = arrancan (`--version` / `-NoProfile -Command $PSVersionTable.PSVersion`, con plazo);
     - `superpowers` = existe un directorio `superpowers` bajo `<claudeDir>/plugins/cache/*/`;
-    - `agentTeams` = `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS === '1'` en el entorno, o `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS === '1'` en `~/.claude/settings.json`, `<cwd>/.claude/settings.json` o `<cwd>/.claude/settings.local.json` (doc oficial agent-teams);
+    - `agentTeams`: se toma el primer valor definido, en este orden: `<cwd>/.claude/settings.local.json` → `<cwd>/.claude/settings.json` → `~/.claude/settings.json` (siempre en `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) → el entorno del proceso. El resultado es `valor === '1'`. La doc oficial dice que un `0` en el settings del usuario pisa el export de la shell, y que el proyecto y el local pueden volver a prenderlo;
+    - `subagentModelForce`: `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` es `'1'` en el entorno o en el `env` de alguno de los tres settings. La doc oficial dice que ignora el `model` de cada agente y el del despacho, así que los perfiles no rigen;
+    - `availableModels`: la lista `availableModels` de los settings, si existe. Si no incluye `opus` o `sonnet`, Claude Code sustituye el modelo y el perfil no rige tal cual;
     - `config` = `readConfig`.
   - Todos los ejecutables se inyectan por `env` o por argumento para los tests: `PIGNOLO_SETUP_BIN_<NAME>`.
 - `permissions --target user|project [--apply]`:
@@ -245,7 +282,8 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
    - git menor a 2.31 → sin respaldos (§11.6);
    - sin `powershell.exe` → PowerShell queda no verificable;
    - superpowers presente → se superpone y se recomienda desinstalarlo después de probar;
-   - agent teams → no soportado.
+   - agent teams → no soportado;
+   - `subagentModelForce` o un `availableModels` que excluye `opus`/`sonnet` → el perfil no rige, y se nombra la variable o el setting que hay que cambiar.
 2. Perfil: explicar `max`, `balanced` y `economy` según la tabla de §7, con el aviso de que los revisores van en opus también en `economy` (§7, decisión del autor). Preguntar y escribir con `config`.
 3. Permisos: correr `permissions` sin `--apply`, mostrar la lista que se agregaría y preguntar user/project/ninguno. Solo con un sí explícito del humano, en su turno, correr `--apply`.
 4. Conflictos de reglas: leer `~/.claude/CLAUDE.md`, el `CLAUDE.md` del proyecto y `.claude/rules/*.md`, compararlos con `${CLAUDE_PLUGIN_ROOT}/rules/core.md` y listar cada conflicto con la cita de las dos partes y la precedencia de §1.7 (en seguridad gana el humano; en proceso, pignolo). El humano confirma. No se edita ninguna regla del usuario.
@@ -258,6 +296,9 @@ Las 6 reglas de `rules/core.md` **no se copian**: se inyectan en el hito 6 (§6.
   - un `powershell` que no existe → `powershell:false`;
   - con `~/.claude/plugins/cache/x/superpowers/` → `superpowers:true`;
   - un settings con `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: "1"` → `agentTeams:true`;
+  - el mismo `"1"` en el entorno, pero `"0"` en el settings del usuario → `agentTeams:false`;
+  - `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` en el entorno → `subagentModelForce:true`;
+  - `availableModels: ["sonnet"]` → aparece en `check`;
   - `permissions --target user` sobre un settings con 2 reglas propias y 1 del template → `add` no incluye esa, y `already: 1`;
   - con `--apply`: las 2 reglas propias quedan primeras y en su orden, el respaldo existe con el contenido original y las claves ajenas a `permissions` quedan intactas;
   - un settings inválido → exit 1, `settings inválido` y el archivo sin cambios (se compara byte a byte);
@@ -308,7 +349,7 @@ Cada eval se corre así: `claude plugin eval plugins/pignolo --eval-dir tests/ev
   - `/pignolo:setup` en una sesión real;
   - un despacho `Explore` negado en un proyecto activo y permitido en uno sin `project.md`;
   - `pignolo:explorer` despachado con el modelo del perfil;
-  - `agent_type` de `SubagentStart` = `pignolo:explorer` (afirmación a verificar: la doc lo implica, pero no lo dice textual).
+  - `agent_type` de `SubagentStart` = `pignolo:explorer` (la doc oficial lo confirma; se registra lo observado).
 - [ ] **Suite y revisión final:** `npm run test:quiet` completo. Después, **una revisión final opus** de `main..core/hito-2`, una pasada de arreglos y una confirmación acotada.
 - [ ] **Estado:** actualizar `docs/STATE.md`.
 - [ ] **Unión y push:** unir a `main` y hacer push, solo con el OK del autor.
