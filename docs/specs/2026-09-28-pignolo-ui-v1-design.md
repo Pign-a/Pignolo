@@ -21,7 +21,7 @@ pignolo-ui es un plugin de Claude Code **opcional**, hermano de pignolo y en el 
 - **Cuatro piezas la sostienen:** `DESIGN.md` validado, script (`ui-check`), auditor con evidencia (`ui-auditor` + `report-check`) y memoria de rechazos. Criterio de diseño: ante la duda, lo más chico que sostenga la promesa — porque el autor pidió simplicidad.
 - **Técnico por detrás, llano por delante** (A-04): ids, umbrales y tokens viven en archivos y JSON. El usuario lee frases llanas con el id entre paréntesis al final.
 - **Sin dependencias npm, sin hooks, sin binarios y sin nada remoto en tiempo de ejecución** — porque es donde más fallan las skills de UI relevadas (R9, R17).
-- **Requisitos:** Node ≥ 22 (A-12) y Claude Code ≥ 2.1.271 — porque `omitClaudeMd` y `options` de `userConfig` existen desde esa versión, y en versiones anteriores `omitClaudeMd` se ignora sin aviso [V]. Al arrancar, cada comando corre `claude --version`. Si la versión es menor o no se puede leer, avisa y usa el camino secuencial (§7.5), porque sin `omitClaudeMd` el aislamiento de `ui-option` no rige.
+- **Requisitos:** Node ≥ 22 (A-12) y Claude Code ≥ 2.1.271. El spike solo pudo probar Node 24 (Node 22 no estaba instalado), así que Node 22 queda declarado pero **sin probar** y entra al checklist manual (§16.4). El mínimo de Claude Code sale de la documentación: el spike usó 2.1.284 y no tenía versiones anteriores para probar. Se exige 2.1.271 porque `omitClaudeMd` y `options` de `userConfig` existen desde esa versión, y en versiones anteriores `omitClaudeMd` se ignora sin aviso [V]. Al arrancar, cada comando corre `claude --version`. Si la versión es menor o no se puede leer, avisa y usa el camino secuencial (§7.5), porque sin `omitClaudeMd` el aislamiento de `ui-option` no rige.
 
 ### 0.1 Criterio de éxito de la v1
 
@@ -49,7 +49,7 @@ Las de ronda 1 y ronda 2 se tomaron tras un debate con un agente opus por opció
 | A-08 | Ninguna ley en lo que produce el agente. Solo un aviso en el README ("no es asesoría legal ni certifica cumplimiento") con enlaces oficiales fechados. |
 | A-09 | Validador de `DESIGN.md` propio y sin dependencias. El oficial corre solo si ya está instalado. Test de desarrollo contra la versión 0.4.0. |
 | A-10 | Tono por registro: `product` → contención; `brand` → identidad, con la audacia en un solo lugar. Las normas del autor mandan sobre la base. |
-| A-11 | El núcleo permite **exactamente** `pignolo-ui:ui-option` y `pignolo-ui:ui-auditor`. Con el núcleo activo, implementa su `implementer`, y el hilo principal registra en `decisions/` la elección del usuario tomada de su turno. **[spike]:** si el hook no distingue el origen del agente o la elección no se puede registrar desde un canal humano, se usa el camino secuencial y se declara. |
+| A-11 | **Definitiva, tras el spike, el debate r4 y la investigación `local/debate-ui-2026-09-28/r4-investigacion.md`:** el núcleo permite **exactamente** `pignolo-ui:ui-option` y `pignolo-ui:ui-auditor`, comparando `tool_input.subagent_type` por igualdad y **sin chequeo de instalación**. Riesgo residual declarado: suplantación por una acción humana deliberada (§14). pignolo-ui **no declara `dependencies`** hacia el núcleo (A-01). Con el núcleo activo implementa su `implementer`, y el hilo principal registra en `decisions/` la elección del usuario tomada de su turno. **[spike]**, solo para el registro: si la elección no se puede registrar desde un canal humano, el núcleo pregunta como con cualquier reservada. |
 | A-12 | Transporte al navegador: **`--remote-debugging-pipe`**, sin WebSocket ni puerto. Piso **Node ≥ 22** para pignolo-ui (el autor decidió no probar Node 20, sin soporte desde 2026-04-30; además `node --test` con globs lo exige). |
 | A-13 | **axe-core fuera de v1**: solo reglas propias. El spike mide axe en apps reales; si aporta, axe fijado en v1.1, que vuelve a ser decisión del autor (dependencia y licencia MPL-2.0). |
 | A-14 | Artifacts: solo **mockups y style tiles con datos de ejemplo**, y solo si el autor lo habilita **por proyecto**. Nunca capturas ni código. El camino principal es HTML local. **Modificada por A-20.** |
@@ -96,6 +96,7 @@ plugins/pignolo-ui/
   scripts/files.mjs            save | verify | restore (§9)
   scripts/run.mjs              carpeta del run, poda, compare.html (prototipo local navegable), apertura
   scripts/approve.mjs          guarda el aprobado (carpeta + manifest) en design/approved/ y lo verifica (§3.3)
+  scripts/leak-check.mjs       datos del usuario o de la máquina en una salida (§7.4)
   scripts/to-canvas.mjs        envuelve los HTML locales en artboards .dc.html del lienzo "Design" (§13.1)
   lib/yaml-subset.mjs  lib/color.mjs  lib/token-sources.mjs  lib/strip-comments.mjs  lib/route.mjs
   catalog/rules.json           única fuente del catálogo (§5.1)
@@ -142,15 +143,15 @@ Es del propio plugin y no usa `~/.pignolo/config.json` — porque así no depend
 | Normas del autor | `~/.pignolo/ui/norms.md` | Solo el autor, a mano; el plugin lo lee | No |
 | Aprobados (A-19, A-20) | `design/approved/<flujo>/` en la raíz del repo: un HTML por pantalla + `manifest.json` | Solo `approve.mjs`, después de la elección del usuario (§3.3) | Sí (commiteable) |
 | Datos de máquina por proyecto (URL de desarrollo, rutas confirmadas, ruta de referencia, `canvasConsent`) | `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json` | Solo los scripts | No |
-| Carpeta del run (capturas, DOM, JSON, flujos de opciones, `canvas/` con los `.dc.html`, `compare.html`, copias, informe) | `<tmp del sistema>/pignolo-ui/<repo-id>/<run-id>/` [spike] | Scripts; cada subagente, solo su archivo | No |
+| Carpeta del run (capturas, DOM, JSON, flujos de opciones, `canvas/` con los `.dc.html`, `compare.html`, copias, informe) | `<repo>/.pignolo-ui/runs/<run-id>/`, con `.pignolo-ui/.gitignore` = `*` | Scripts; cada subagente, solo su carpeta | No (se ignora a sí misma) |
 
 - `${CLAUDE_PLUGIN_DATA}` existe [V] (`~/.claude/plugins/data/<id>/`) y persiste entre actualizaciones, pero **se borra al desinstalar** el plugin. El README lo avisa: desinstalar hace perder las URLs y rutas confirmadas.
 - `repo-id` es el hash de la ruta de `git rev-parse --git-common-dir`, como en el núcleo (§8.2). `run-id` = `<fecha-hora>-<comando>-<slug>`.
-- **Poda:** al arrancar, cada comando borra los runs de más de 14 días, solo dentro de su `pignolo-ui/<repo-id>/` — porque pueden tener capturas con datos de la app, y así se alinea con los 14 días del núcleo.
-- **Carpeta del run [spike]:** el spike elige **una** de estas opciones, en este orden:
-  1. tmp, si `Write`/`Read` de un subagente fuera del proyecto no pide permiso;
-  2. `<repo>/.pignolo-ui/runs/`, con un `.pignolo-ui/.gitignore` que contiene `*`, que se ignora a sí mismo sin tocar archivos versionados;
-  3. mismo `ui-option` con `tools: []`, que devuelve el HTML en su respuesta para que lo escriba el hilo principal (~10 k tokens por opción en el contexto principal).
+- **Poda:** al arrancar, cada comando borra los runs de más de 14 días, solo dentro de `.pignolo-ui/runs/` — porque pueden tener capturas con datos de la app, y así se alinea con los 14 días del núcleo.
+- **Carpeta del run (decidida por el spike).**
+  - Vive en `<repo>/.pignolo-ui/runs/`. Antes de la primera escritura, el hilo principal crea `.pignolo-ui/.gitignore` con `*`, de modo que la carpeta se ignora a sí misma sin tocar ningún archivo versionado ni `.git/info/exclude`.
+  - Se descartó tmp porque en `acceptEdits` se deniega la escritura de subagentes fuera del proyecto a los usuarios que no configuraron `additionalDirectories`.
+  - **Declarado:** en modo `default`, cada escritura de un subagente pide permiso al usuario en la sesión principal. El README lo dice y recomienda `acceptEdits` para los comandos de pignolo-ui.
 - **`norms.md`:** frontmatter con el esquema `pignolo:` (§4.3) más la clave `symptoms`, que solo es válida acá; después, prosa. Si falta, se usan las normas base. Si no valida, se ignora entero con un aviso de una línea — porque aplicar normas a medias es peor que no aplicarlas (R-24). En v1 no hay comando `norms`: el formato está en el README. pignolo-ui nunca escribe en `~/.pignolo/**`.
 
 ### 3.3 Aprobados (A-19)
@@ -336,9 +337,9 @@ Leyenda de las columnas: **Nivel** = `d` document, `e` element, `s` style. **Int
 | STATE-04 | `outline: none/0` sin `:focus-visible` que dibuje un indicador | s | 2.4.7 AA | `bloquea` | no |
 | MOTION-03 | Hay animación o transición de `transform` sin `@media (prefers-reduced-motion: reduce)` | s | — (2.3.3 es AAA; también HIG y MDN) | `medio` | no |
 | MOTION-04 | `transition: all` | s | — | `medio` | sí |
-| COLOR-02 | Colores literales fuera de la fuente de tokens | s | — | `medio` | sí |
-| DEPTH-01 | `box-shadow` literal fuera de tokens | s | — | `medio` | sí |
-| LAYOUT-04 | `border-radius` literal fuera de tokens | s | — | `medio` | sí |
+| COLOR-02 | Colores literales fuera de la fuente de tokens, o un token de otra familia en una propiedad de color | s | — | `medio` | sí |
+| DEPTH-01 | `box-shadow` literal fuera de tokens, o un token que no es de elevación | s | — | `medio` | sí |
+| LAYOUT-04 | `border-radius` literal fuera de tokens, o un token que no es de radio (p. ej. `var(--space-2)`) | s | — | `medio` | sí |
 | DRIFT-01 | `DESIGN.md` y CSS difieren (vía `cssVars`) | s | — | `alto` | no |
 | THEME-01 | Primario, superficie, radio o fuente son los valores por defecto del framework, sin declararlos | s | — | `medio` | sí |
 | THEME-02 | shadcn: ≥ 80 % de las variables de color coinciden con un `baseColor` publicado | s | — | `medio` | sí |
@@ -476,18 +477,33 @@ name: ui-option
 description: "Generates one static HTML option (mockup or style tile) along an assigned axis. No repo access."
 tools: Write
 model: sonnet
+effort: medium
 omitClaudeMd: true
 ```
 
 - **`tools: Write` y nada más:** no puede leer el código y no hereda MCP — porque por defecto un subagente hereda MCP y los CLAUDE.md [V] (R-05).
+- **Modelo y esfuerzo** (decisión del autor, 2026-09-28): sonnet con `effort: medium`, fijos en el frontmatter.
+- **Carta: patrones visuales que hay que evitar cuando no hay dirección de diseño.** Fuente: guía oficial "Prompting Claude Opus 5.5", sección *Frontend design defaults*.
+  - Fondo crema u off-white.
+  - Palabras en itálica dentro de titulares.
+  - Rótulos numerados ("01 / 02 / 03").
+  - Rótulos en monoespaciada.
+  - Botones píldora.
+  - Las reglas de look del catálogo (THEME, COLOR-11/12/13, ICON-01, TYPE, LAYOUT-12, COPY-01).
+
+  **Prioridades:** `DESIGN.md` y sus decisiones intencionales (`intentional`) mandan sobre esta lista. Los rechazos del proyecto (`pignolo.rejections`) van en el brief de cada corrida.
 - **`omitClaudeMd: true`** — porque el CLAUDE.md del proyecto hace converger las opciones.
   - **Costo declarado:** también se pierden las reglas de seguridad globales del usuario. Se compensa porque el agente solo escribe un archivo y el brief trae tres reglas: no inventar contenido; ningún dato personal ni credencial; escribir solo en la ruta dada.
-  - **Residuo declarado [V]:** el snapshot de `git status` (nombres de archivos) llega igual a todo subagente y no se puede quitar. Se acepta porque son nombres, no contenido.
+  - **Residuo declarado [V, spike]:** aun con `omitClaudeMd`, al subagente le llegan el snapshot de `git status` (rama, usuario de git, commits recientes, nombres de archivos), el email del usuario y las rutas de `additionalDirectories`. Nada de eso se puede quitar. **No es contenido de archivos:** en el spike, los tokens trampa aparecieron 0 veces en 18 mockups. Por eso se agrega el chequeo de fuga que sigue.
 - **El brief va en el prompt,** sin rutas: brief confirmado, extracto de normas, tokens, eje asignado y, en `improve`, los hallazgos elegidos y un **resumen en texto de la captura "antes"** (orden de bloques, medidas de `browser.json`, hallazgos). El Agent tool solo recibe texto [V]; darle `Read` para ver el PNG rompería el aislamiento.
 - **Salida:** escribe `option-<X>/<pantalla>.html`, un archivo por pantalla del flujo, enlazados con `<a href="<pantalla>.html">` relativos y sin scripts (A-20). Cada subagente escribe solo su carpeta, y solo el hilo principal junta las opciones y genera el lienzo (§13.1).
-- **Verificación del hilo principal:** cada archivo existe, pesa más de 0 bytes, tiene charset, los links internos resuelven dentro de la carpeta, `ui-check` corre sobre él y `git status --porcelain` no cambió. Volver con 0 herramientas usadas o sin archivo es una **falla**, no un resultado — porque un subagente sin acceso puede inventar un resultado plausible (R3).
-- **Modelo:** sonnet (A-15), pasado explícito en cada invocación. El modelo real se lee de `tool_response.resolvedModel` del Agent [V]. Si difiere (por ejemplo por `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, que el README menciona), el informe lo dice. **[spike]:** si sonnet no pasa forma y diversidad, pasa a opus solo para `ui-option`.
-- **Respaldo 3 de §3.2:** se cambia **la misma** definición de `ui-option` a `tools: []` [V]; no se crea otro agente — porque un tercer nombre rompería la allowlist exacta de A-11. La regla de falla pasa a ser "respuesta sin un documento HTML completo".
+- **Verificación del hilo principal:** cada archivo esperado existe, pesa más de 0 bytes y tiene charset; los links internos resuelven dentro de la carpeta; `ui-check` corre sobre él (incluido el chequeo de familia de tokens de COLOR-02, DEPTH-01 y LAYOUT-04); y `git status --porcelain` no cambió. Si el archivo esperado no existe, la opción **falla**: no es un resultado. No se usa el conteo de herramientas, porque `totalToolUseCount` también cuenta la entrega del informe (R3).
+- **Chequeo de fuga (obligatorio y determinista):** antes de publicar una opción en el lienzo o de guardarla como aprobado, `leak-check.mjs` revisa cada archivo de salida.
+  - **Qué busca:** el email del usuario, el nombre y el email de git, el usuario del SO, el home y cualquier ruta absoluta local (unidad de Windows, `/Users/`, `/home/`).
+  - **De dónde salen los valores:** la skill se los pasa por argumento: el email de la sesión si lo conoce, `git config user.name`/`user.email`, y el usuario y el home del SO.
+  - **Si aparece alguno:** esa opción falla y no se publica ni se aprueba.
+- **Modelo:** sonnet (A-15), **confirmado por el spike**: 9/9 chequeos de forma tanto en sonnet como en opus y 0 pares coincidentes, sobre una muestra de 3 corridas que la eval de §16.3 completa a ≥ 5. Se pasa explícito en cada invocación. El modelo real se lee de `tool_response.resolvedModel` [V, spike]. Si difiere (por ejemplo por `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, que el README menciona), el informe lo dice. Si la eval de ≥ 5 corridas muestra que sonnet no pasa forma o diversidad, pasa a opus solo para `ui-option` (A-15).
+- Si hubiera que quitarle `Write`, se cambia **la misma** definición de `ui-option` a `tools: []` [V] y no se crea otro agente, porque un tercer nombre rompería la allowlist exacta de A-11.
 
 ### 7.5 Diversidad medible y camino secuencial
 
@@ -545,9 +561,10 @@ name: ui-auditor
 description: "Audits one web screen from a prepared run folder against DESIGN.md, the rule catalog and written criteria; every finding cites evidence."
 tools: Read, Grep, Glob
 model: opus
+effort: medium
 ```
 
-- **Opus**, por la regla del repo para revisores y auditores. **Sin Bash, sin MCP y sin Agent:** es de solo lectura por construcción, no por instrucción. Los scripts y el navegador los corre el hilo principal (principio 8).
+- **Opus en todos los perfiles**, por la regla del repo para revisores y auditores. **`effort: medium` fijo** en el frontmatter; sube a `high` si la eval de §16.3 da un recall < 80 % (decisión del autor, 2026-09-28). **Sin Bash, sin MCP y sin Agent:** es de solo lectura por construcción, no por instrucción. Los scripts y el navegador los corre el hilo principal (principio 8).
 - **Entrada:** la ruta de la carpeta del run, con `ui-check.json`, `browser.json`, `dom-*.html`, capturas con su sha256 y `DESIGN.md`. Además lee los archivos de la pantalla en el repo y el aprobado vigente, si existe.
 - **Fases fijas, todas de lectura:**
   1. **Preparación:** `DESIGN.md`, plataforma, registro, rechazos y tema oscuro.
@@ -567,7 +584,7 @@ model: opus
 
 ### 11.1 Driver CDP por pipe (`scripts/browser.mjs`)
 
-Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0` por los fd 3 y 4, sin WebSocket ni puerto. Un spike local (`local/pignolo-ui-2026-09-28/spikes/pipe-spike.mjs`) ya lo probó en Windows con Node 24, Edge y Chrome headless. Piso Node ≥ 22 (A-12). Lo corre solo el hilo principal.
+Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0` por los fd 3 y 4, sin WebSocket ni puerto. **Spike del 2026-09-28:** pasó en Windows con Node 24, Edge 154 y Chrome 153 headless, con el Edge del usuario abierto: 18 corridas, 0 procesos huérfanos, perfiles borrados. Piso Node ≥ 22 (A-12), sin probar en 22 (§0). Lo corre solo el hilo principal.
 
 - **Perfil temporal propio siempre** (`--user-data-dir` absoluto, `--headless=new`). Nunca se engancha al navegador del usuario ni trae ventanas al frente — porque el perfil del usuario no es accesible y robar el foco molesta.
 - **Descubrimiento del navegador:**
@@ -575,8 +592,10 @@ Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0
   - macOS: `/Applications`.
   - Linux: `google-chrome`, `chromium` y `microsoft-edge` en `PATH`.
   - `PIGNOLO_UI_BROWSER` fuerza la ruta (R-28).
-- **Limpieza en `finally`:** se cierra el navegador; si no sale, se mata el árbol de procesos (sin shell) y se borra el perfil; teclas y botones se liberan.
+- **Limpieza en `finally`:** se cierra el navegador con `Browser.close`. Si no termina en un plazo fijo, se mata el árbol de procesos sin shell (en el spike hizo falta 1 vez de 16) y se borra el perfil; teclas y botones se liberan.
 - **Plazos:** si vence cualquiera, "no verificado" con el motivo, y limpieza. Una política corporativa que bloquea la depuración remota también da "no verificado".
+- **Tema y anchos:** `prefers-color-scheme` se fija **siempre** de forma explícita (claro, u oscuro solo cuando se mide el oscuro) — porque el headless hereda el tema del SO. Los anchos se emulan con `mobile: false`, para que el ancho medido sea el del viewport pedido.
+- **Framing:** el buffer del pipe se arma sobre `Buffer`, no sobre cadenas, para no romper UTF-8 partido entre dos lecturas.
 - **Subcomandos:** `capture` (capturas), `measure` (B1–B4 a `browser.json`) y `dom` (DOM renderizado a `dom-<ancho>.html`, para las reglas `document`). Los argumentos de lanzamiento, los métodos CDP, los plazos exactos y el framing (con sus tests) se detallan en el plan.
 
 ### 11.2 URL, servidor, login y respaldo MCP
@@ -669,13 +688,20 @@ El estado vive en cada artboard: un flujo que comparte estado entre pasos va en 
 
 **Único cambio de contrato del núcleo.** El hook `PreToolUse` sobre `Agent` (núcleo §6 y §8.3) compara `tool_input.subagent_type` [V] por **igualdad exacta**. Hoy niega todo lo que no sea `pignolo:*`; con el cambio, niega todo lo que no sea `pignolo:*` **salvo `pignolo-ui:ui-option` y `pignolo-ui:ui-auditor`**. No hay ninguna otra regla nueva: los dos agentes no tienen Bash (principio 8), así que las restricciones de Bash por rol del núcleo no los alcanzan. Cada agente nuevo de pignolo-ui con el núcleo activo requiere otro cambio de contrato, que es decisión del autor. El cambio se aplica como tarea del spec y del plan del núcleo.
 
-- **Riesgo residual declarado:** los agentes que no son de plugin no pueden llevar `:` en el nombre desde Claude Code 2.1.218 [V], y pignolo-ui exige ≥ 2.1.271 (§0). Por eso el único riesgo que queda es que otro plugin, de otro marketplace, también se llame `pignolo-ui`. **[spike]:** qué recibe el hook en ese caso, y si el Agent tool acepta el nombre corto `ui-option`. Las skills siempre despachan con el nombre completo; si el nombre corto se resolviera al del plugin, la allowlist exacta lo negaría, y eso es aceptable.
+- **Sin chequeo de instalación y sin `dependencies`** (A-11, A-01): el hook no verifica qué plugin está instalado, y pignolo-ui anda sin el núcleo.
+- **Riesgo residual declarado** (A-11): suplantación por una **acción humana deliberada**. Casos:
+  - otro plugin llamado `pignolo-ui` desde otro marketplace (gana el último en `enabledPlugins`);
+  - `claude --agents` o el Agent SDK, que aceptan `:` y le ganan al plugin;
+  - `--plugin-dir`.
+
+  El motivo es que Claude Code no expone `plugin@marketplace` en el payload del hook (issues abiertos #97269, #95100, #95519), y que el modelo de amenaza del núcleo es un agente falible, no un atacante (núcleo §1.9). Los mismos vectores alcanzan a los agentes `pignolo:*` del núcleo (deducido, no probado). Se revisa si Claude Code empieza a mandar el origen en el payload.
+- **Verificado en el spike:** `subagent_type` llega exacto (`pignolo-ui:ui-option`). El nombre corto `ui-option` no se resuelve (`not found`). Un agente de proyecto con `:` se descarta. Las skills despachan siempre con el nombre completo.
 
 **Con el núcleo activo:**
 
 | Tema | Qué pasa |
 |---|---|
-| Subagentes | Allowlist exacta. **Respaldo si falla el spike:** no hay allowlist y se usa siempre el camino secuencial (§7.5), declarado. |
+| Subagentes | Allowlist exacta sobre `tool_input.subagent_type` (A-11, definitiva). |
 | Carril | `visible-paths` marca el cambio de UI como reservado. Carril esperado: `daily` si el proyecto declara `visible-paths`; si no, `plan` (núcleo §4.2). pignolo-ui no lo elige. |
 | Decisión humana | El hilo principal registra la elección en `.pignolo/state/decisions/` a partir del turno del usuario: cita literal, opciones presentadas (ruta + sha256), `autonomous: false`. **[spike]:** el registro tiene que poder comprobarse contra un mensaje del usuario (candidato: el prompt de `UserPromptSubmit` o los mensajes de usuario del transcript; el formato del transcript no es un contrato documentado). **Respaldo:** la elección no satisface el tripwire, el núcleo pregunta como con cualquier reservada y pignolo-ui sigue secuencial. |
 | Quién implementa | El `implementer` del núcleo recibe como entrada de la task-card la ruta del aprobado (§3.3) y la lista de archivos esperados. El núcleo hace su parte de §9: worktree, test-writer si el carril lo exige, compuertas y sellos. El gate rechaza archivos fuera de la card. pignolo-ui conserva los topes de §6, el antes/después y `report-check` sobre el resultado. |
@@ -689,15 +715,16 @@ El estado vive en cada artboard: un flujo que comparte estado entre pasos va en 
 
 ---
 
-## 15. Costo (supuestos hasta el spike)
+## 15. Costo (medido en el spike, salvo lo marcado)
 
-Las cifras son **supuestos** del borrador y se reemplazan por la medición del spike. Se expresan en tokens, porque es la medida comparable con o sin suscripción.
+Las cifras salen del spike del 2026-09-28. Lo que todavía no se midió está marcado y se mide en el hito 3. Se expresan en tokens, porque es la medida comparable con o sin suscripción.
 
 | Corrida | Entrada | Salida |
 |---|---|---|
-| Mockup (`ui-option`) | ~30 k | ~15 k |
-| Style tile | ~25 k | ~10 k |
-| Auditor (opus, ~85 % en caché, 2–4 imágenes) | ~480 k acumulados | ~10 k |
+| Mockup, sonnet (flujo de 2 pantallas) | ~13,5 k | ~4,4 k |
+| Mockup, opus (misma entrada, referencia) | ~19,1 k | ~7,7 k |
+| Auditor (opus, sin imágenes) | ~20 k | ~3,2 k |
+| Capturas en el contexto del auditor y style tile | sin medir (hito 3) | sin medir (hito 3) |
 
 **Corridas de subagente por flujo, con 3 opciones:**
 
@@ -730,9 +757,11 @@ Se separan por dónde corre cada una — porque las evals de agentes con shell n
   - **Aprobados:** `approve.mjs` no sobrescribe: crea `<flujo>-v2/`. Un archivo editado, agregado o quitado a mano → `verify` da `BLOCKED`. `ui-check` sobre `design/approved/**` con marcadores → `detalle`, nunca `bloquea`.
   - **`extract`:** si hay configuración (Tailwind v4, v3 literal, `:root`, shadcn), la lee y no cuenta frecuencias. Sin configuración → cuenta frecuencias y completa `pignolo.extracted`.
   - **Aprobado ↔ implementación:** fixtures iguales y distintos en estructura; un cambio que solo toca tokens no cuenta como diferencia; la comparación nunca cambia el código de salida.
-  - **Framing del pipe:** mensaje partido en dos lecturas, varios mensajes en una lectura, UTF-8 partido, error de CDP.
+  - **Framing del pipe (sobre `Buffer`):** mensaje partido en dos lecturas, varios mensajes en una lectura, UTF-8 partido, error de CDP. El tema se fija de forma explícita aunque el SO esté en oscuro.
+  - **Chequeo de fuga:** fixtures con email, nombre de git, usuario del SO y rutas absolutas de Windows, macOS y Linux → la opción falla; un fixture limpio pasa.
+  - **Familia de tokens:** `border-radius: var(--space-2)` → LAYOUT-04; un token de color en `box-shadow` sin ser de elevación → DEPTH-01.
   - **Linter del plugin (R9)** y **catálogo (R14)**.
-  - **Carpeta del run:** una auditoría deja `git status` limpio; la poda solo borra lo de más de 14 días y solo dentro de su carpeta.
+  - **Carpeta del run:** `.pignolo-ui/.gitignore` se crea antes de la primera escritura; una auditoría deja `git status` limpio; la poda solo borra lo de más de 14 días y solo dentro de su carpeta.
   - **Presentación:** con `local`, sin consentimiento en el proyecto o sin el tipo "Design", nunca se invoca Artifact y se genera el prototipo local.
   - **Generador del lienzo:** fixtures de entrada HTML → `.dc.html` esperado, byte a byte. Cubren tokens en `:root` dentro de `<helmet><style>`, estados por clases, la línea exacta de `support.js`, la raíz de tamaño fijo, el bloque `data-dc-script`, `is_interactive` y los links entre artboards. Además verifican que no se agregan otros scripts ni `innerHTML`, y que una entrada con script o con recurso remoto se rechaza.
   - **Flujos:** un link interno roto en una opción → falla de la opción.
@@ -745,15 +774,15 @@ Lo que se publique del spike sale sin datos de proyectos privados: solo cifras a
 
 | Qué se prueba | Si pasa | Si falla |
 |---|---|---|
-| **Nombre del agente en el hook** (A-11): (a) otro plugin llamado `pignolo-ui` desde otro marketplace; (b) versión mínima 2.1.271 comprobada; (c) nombre corto `ui-option` en el Agent tool | Allowlist exacta sobre `tool_input.subagent_type` | Sin allowlist; camino secuencial con el núcleo activo, declarado |
+| **Nombre del agente en el hook** (A-11) | **Resultado:** `subagent_type` llega exacto; el nombre corto da `not found`; un agente de proyecto con `:` se descarta. Otro plugin `pignolo-ui` de otro marketplace, `--agents`/SDK y `--plugin-dir` pueden suplantarlo, y el hook no ve el origen. **Decisión del autor:** allowlist sin chequeo de instalación, con ese riesgo declarado (§14) | — |
 | **Registro de la elección desde un canal humano** (A-11) | La elección cuenta para `visible-paths` | Pregunta normal del núcleo; camino secuencial |
-| **Pipe** con Chrome y Edge, **con Edge ya abierto** con el perfil por defecto, en Node 22 y 24; limpieza | Transporte fijo (A-12) | Si falla: la capa de navegador dice "no verificado" y la decisión vuelve al autor |
-| **Aislamiento de `ui-option`** con un archivo trampa | Ninguna opción contiene la frase y no hay lecturas | Bug de aislamiento: no hay release hasta corregirlo |
-| **`Write`/`Read` de subagentes fuera del proyecto** (los permisos se piden en la sesión principal [V]) | Carpeta del run en tmp | Respaldos 2 o 3 de §3.2 |
-| **Sonnet vs opus en `ui-option`**, ≥ 5 corridas, con `resolvedModel` leído del transcript | Sonnet (A-15) | Opus solo para `ui-option` (A-15) |
-| **axe inyectado por CDP vs reglas propias**, en apps reales (A-13) | Solo lo propio | Propuesta al autor de axe fijado en v1.1 |
+| **Pipe** con Chrome y Edge, **con Edge ya abierto** con el perfil por defecto, en Node 22 y 24; limpieza | **Resultado:** pasó en Node 24 (18 corridas, 0 huérfanos; 1/16 necesitó matar el árbol). Node 22 sin probar (no estaba instalado) → checklist manual | Si falla: la capa de navegador dice "no verificado" y la decisión vuelve al autor |
+| **Aislamiento de `ui-option`** con un archivo trampa | **Resultado:** 0 apariciones en 18 mockups. El residuo (git status, email, `additionalDirectories`) sí llega → chequeo de fuga (§7.4) | Bug de aislamiento: no hay release hasta corregirlo |
+| **`Write`/`Read` de subagentes fuera del proyecto** | **Resultado:** tmp se deniega en `acceptEdits` sin `additionalDirectories` → carpeta del run en el repo, ignorada (§3.2). En `default`, cada escritura pide permiso (declarado) | — |
+| **Sonnet vs opus en `ui-option`**, con `resolvedModel` | **Resultado:** 9/9 chequeos de forma en los dos, 0 pares coincidentes, en una muestra de 3 corridas → sonnet (A-15). Se completa a ≥ 5 en §16.3 | Opus solo para `ui-option` si la eval lo contradice (A-15) |
+| **axe inyectado por CDP vs reglas propias**, en apps reales (A-13) | **Parcial:** la inyección por `Runtime.evaluate` tarda < 0,1 s y funciona con CSP estricta. La conclusión sobre apps reales está pendiente | Si aporta: propuesta al autor de axe fijado en v1.1 |
 | **Comparación aprobado ↔ implementación** con fixtures (A-18) | Queda en v1, informativa | Con > 30 % de diferencias falsas pasa a v1.1 |
-| **Tokens medidos por flujo** | Reemplazan §15 y la línea de §7.2 | — |
+| **Tokens medidos por flujo** | **Resultado:** mockups y auditor sin imágenes medidos (§15). Capturas y style tile, en el hito 3 | — |
 
 ### 16.3 Evals de agentes (`claude plugin eval`, WSL2)
 
@@ -761,7 +790,7 @@ Lo que se publique del spike sale sin datos de proyectos privados: solo cifras a
 - **`ui-option`: solo chequeos de forma:**
   - sin errores de piso;
   - ids válidos;
-  - solo tokens de `DESIGN.md`;
+  - solo tokens de `DESIGN.md`, y de la familia que corresponde a cada propiedad;
   - `data-sample` en todo lo no provisto;
   - diferencia sobre el umbral de §7.5.
 - **Ablación:** mismo brief con y sin plugin, ≥ 5 corridas, medida con chequeos deterministas. Se informa.
@@ -778,6 +807,8 @@ Lo que se publique del spike sale sin datos de proyectos privados: solo cifras a
 - Sin navegador ni MCP → degradado en la primera línea.
 - Claude Code por debajo de la versión mínima → aviso y camino secuencial.
 - Instalación y actualización real: cambia la versión impresa (R15).
+- Pipe y `npm test` en **Node 22** real, que el spike no pudo probar.
+- En modo `default`, las escrituras de los subagentes piden permiso, y el README lo explica.
 - `node` con permiso negado → mensaje claro.
 - **Prueba con lector de pantalla (A11Y-40):** "recomendado antes de publicar". Se informa y **nunca es compuerta** — porque la hace una persona (R-11).
 
