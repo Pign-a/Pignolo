@@ -97,7 +97,7 @@ function checkDepth(depth, line) {
 }
 
 export function parseYaml(text) {
-  const raw = String(text).replace(/^﻿/, '').split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
+  const raw = String(text).replace(/^\uFEFF/, '').split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
   const errors = [];
   const index = new Map();
   try {
@@ -127,6 +127,7 @@ export function parseYaml(text) {
   }
 }
 
+const isFlowStart = (content) => content[0] === '[' || content[0] === '{';
 const isItem = (content) => content === '-' || content.startsWith('- ');
 
 class Parser {
@@ -195,7 +196,18 @@ class Parser {
       lastKey = key;
       if (rest === '') {
         const next = this.lines[this.pos];
-        if (next && next.indent > indent) {
+        if (next && next.indent > indent && isFlowStart(next.content)) {
+          this.pos++;
+          try {
+            obj[key] = this.inline(next.content, next, indent, childPath, depth + 1);
+            this.index.set(keyOf(childPath), { line: ln.no, endLine: next.no, indent, style: 'flow' });
+          } catch (e) {
+            if (!(e instanceof KeyError)) throw e;
+            delete obj[key];
+            this.error(next.no, childPath, e.message);
+            this.skipDeeper(indent);
+          }
+        } else if (next && next.indent > indent) {
           obj[key] = this.node(next.indent, childPath, depth + 1);
           this.index.set(keyOf(childPath), { line: ln.no, endLine: this.lastNo(), indent, style: 'block' });
         } else if (next && next.indent === indent && isItem(next.content)) {
@@ -238,7 +250,17 @@ class Parser {
       if (rest === '') {
         this.pos++;
         const next = this.lines[this.pos];
-        if (next && next.indent > indent) {
+        if (next && next.indent > indent && isFlowStart(next.content)) {
+          this.pos++;
+          try {
+            arr.push(this.inline(next.content, next, indent, itemPath, depth + 1));
+            this.index.set(keyOf(itemPath), { line: ln.no, endLine: next.no, indent, style: 'flow' });
+          } catch (e) {
+            if (!(e instanceof KeyError)) throw e;
+            this.error(next.no, itemPath, e.message);
+            this.skipDeeper(indent);
+          }
+        } else if (next && next.indent > indent) {
           arr.push(this.node(next.indent, itemPath, depth + 1));
           this.index.set(keyOf(itemPath), { line: ln.no, endLine: this.lastNo(), indent, style: 'block' });
         } else {

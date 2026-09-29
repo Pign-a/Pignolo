@@ -129,3 +129,23 @@ test('locate returns the line span and style of each node', () => {
   assert.deepEqual(locate(r, ['pignolo', 'extracted', 0]), { line: 5, endLine: 5, indent: 4, style: 'scalar' });
   assert.equal(locate(r, ['pignolo', 'missing']), null);
 });
+
+test('a flow list that starts on its own line and spans several lines is unsupported', () => {
+  const r = parseYaml('a:\n  [1,\n  2]\n');
+  assert.equal(r.supported, false);
+  assert.match(r.reason, /flow/);
+});
+
+test('a flow map that starts on its own line and spans several lines is unsupported', () => {
+  const r = parseYaml('a:\n  { x: 1,\n    y: 2 }\n');
+  assert.equal(r.supported, false);
+  assert.match(r.reason, /flow/);
+});
+
+test('a single-line flow list on the line after its key parses', () => {
+  assert.deepEqual(ok('a:\n  [1, 2]\nb: 1\n'), { a: [1, 2], b: 1 });
+});
+
+test('a single-line flow map on the line after its key parses', () => {
+  assert.deepEqual(ok('a:\n  {x: 1}\nb: 1\n'), { a: { x: 1 }, b: 1 });
+});
