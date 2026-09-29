@@ -623,6 +623,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
     return;
   }
   if (name === 'tar' || name === 'bsdtar') { analyzeTar(args, st, ctx, out); return; }
+  if (FILE_WRITERS[name]) analyzeFileWriter(FILE_WRITERS[name], args, st, ctx, out);
   if (name === 'cmd') { analyzeCmd(args, ctx, out, depth, st); return; }
   if (!ps && name === 'eval') {
     if (args.length) code(args[0].dyn && args[0].dynAt === 0 ? dynWord() : word(args.map((w) => w.value).join(' ')), 'bash', ctx, out, depth, st);
@@ -895,6 +896,13 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   if (longIs(o, 'upload-pack') || longIs(o, 'receive-pack') || (['push', 'archive', 'send-pack'].includes(sub) && longIs(o, 'exec'))
     || (['clone', 'ls-remote'].includes(sub) && o.shorts.has('u'))) out.push(hit('git-shell'));
   for (const r of gitRules(sub, o, args, ctx, inner)) out.push(hit(r));
+  // git apply --directory=<dir> escribe los archivos del parche debajo de <dir> (M3).
+  if (sub === 'apply') {
+    args.forEach((w, k) => {
+      if (w.value === '--directory' && !w.dyn && args[k + 1]) writeOperand(args[k + 1], inner, ctx, out);
+      else if (w.value.startsWith('--directory=')) writeOperand(assignedValue(w, 12), inner, ctx, out);
+    });
+  }
   if (o.dynSlot && DESTRUCTIVE.has(sub)) out.push(hit('dynamic-argument'));
 }
 
@@ -1272,6 +1280,52 @@ function analyzeTar(args, st, ctx, out) {
     if ((v === '-C' || v === '--directory') && args[i + 1]) writeOperand(args[i + 1], st, ctx, out);
     else if (v.startsWith('--directory=')) writeOperand(assignedValue(args[i], 12), st, ctx, out);
   }
+}
+
+// Descargas, extractores y parches (M3): el archivo o la carpeta donde escriben.
+// file/dir: letras cortas cuyo valor es el archivo o la carpeta destino; val: otras
+// letras que toman valor (cortan el grupo); long*: las mismas como opción larga;
+// first: el primer posicional es el archivo que se reescribe (patch).
+const SEVEN_ZIP = { dir: 'o', joinedOnly: true };
+const FILE_WRITERS = {
+  curl: { file: 'o', val: 'dDeEFHKmPQruTUwxXYyzAbcCt', longFile: ['output'], longDir: ['output-dir'] },
+  wget: { file: 'Ooa', dir: 'P', val: 'eiBtTwlQUDIXAR', longFile: ['output-document', 'output-file', 'append-output'], longDir: ['directory-prefix'] },
+  unzip: { dir: 'd', val: 'P' },
+  '7z': SEVEN_ZIP, '7za': SEVEN_ZIP, '7zr': SEVEN_ZIP,
+  patch: { file: 'or', dir: 'd', val: 'iBDFpVzYg', longFile: ['output', 'reject-file'], longDir: ['directory'], first: true,
+    longVal: ['input', 'strip', 'prefix', 'basename-prefix', 'suffix', 'ifdef', 'fuzz', 'version-control', 'quoting-style', 'get'] },
+};
+
+function analyzeFileWriter(spec, args, st, ctx, out) {
+  const target = (w) => { if (w && !(w.value === '-' && !w.dyn)) writeOperand(w, st, ctx, out); };
+  const positionals = [];
+  for (let i = 0; i < args.length; i++) {
+    const w = args[i];
+    const v = w.value;
+    if (v === '--' && !w.dyn) { positionals.push(...args.slice(i + 1)); break; }
+    if (v.startsWith('--')) {
+      const eq = v.indexOf('=');
+      const name = v.slice(2, eq < 0 ? undefined : eq);
+      const isTarget = (spec.longFile || []).includes(name) || (spec.longDir || []).includes(name);
+      if (isTarget) target(eq < 0 ? args[i + 1] : assignedValue(w, eq + 1));
+      if (eq < 0 && (isTarget || (spec.longVal || []).includes(name))) i++;
+      continue;
+    }
+    if (v.startsWith('-') && v.length > 1) {
+      for (let k = 1; k < v.length; k++) {
+        const ch = v[k];
+        const isTarget = (spec.file || '').includes(ch) || (spec.dir || '').includes(ch);
+        if (!isTarget && !(spec.val || '').includes(ch)) { if (spec.joinedOnly) break; continue; }
+        const joined = k < v.length - 1;
+        if (isTarget) target(joined ? assignedValue(w, k + 1) : (spec.joinedOnly ? null : args[i + 1]));
+        if (!joined && !spec.joinedOnly) i++;
+        break;
+      }
+      continue;
+    }
+    positionals.push(w);
+  }
+  if (spec.first) target(positionals[0]);
 }
 
 // Operando que un programa escribe: literal, se evalúa como destino de una redirección;

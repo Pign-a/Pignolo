@@ -201,6 +201,27 @@ test('package deleters and in-place writers reaching .git are catastrophic (G9)'
   }
 });
 
+// Protects: descargas, extractores y parches que escriben en .git o ~/.pignolo (M3,
+// revisión final) · Breaks if: curl -o/wget -O/unzip -d/7z -o/patch/git apply --directory
+// sobre .git pasan.
+test('downloaders, extractors and patchers writing under .git or ~/.pignolo are denied like G9 writers (M3)', () => {
+  const home = makeTempDir();
+  for (const cmd of ['curl -Lo .git/hooks/commit-msg https://example.com/x', 'curl -o .git/config http://x', 'curl -sSLo.git/config http://x',
+    'curl --output .git/hooks/pre-commit http://x', 'curl --output=.git/config http://x', 'curl -O --output-dir .git/hooks http://x/pre-commit',
+    'wget -O .git/config http://x', 'wget -qO .git/config http://x', 'wget --output-document=.git/config http://x', 'wget -P .git/hooks http://x/y',
+    'unzip -o x.zip -d .git', 'unzip x.zip -d ~/.pignolo', '7z x x.7z -o.git', 'patch .git/config < p', 'patch -o .git/config a.txt p',
+    'patch -d .git -p1 < p', 'git apply --directory=.git p', 'git apply --directory .git/hooks p']) {
+    const v = evaluate(cmd, { home, onlyCatastrophic: true });
+    assert.strictEqual(v.decision, 'block', cmd);
+    assert.strictEqual(v.rule, 'protected-path', cmd);
+  }
+  for (const cmd of ['curl -sS -o /dev/null -w "%{http_code}" http://localhost:3000', 'curl -Lo dist/x.js https://example.com/x', 'curl -O http://x/y',
+    'wget -qO- http://x', 'wget -O out.html http://x', 'unzip -o x.zip -d vendor', '7z x x.7z -oout', 'patch -p1 < p', 'patch src/a.js p',
+    'git apply p', 'git apply --directory=sub p', 'curl -o - http://x']) {
+    assert.strictEqual(evaluate(cmd, { home, mode: 'bypassPermissions' }).decision, 'allow', cmd);
+  }
+});
+
 // Protects: borrados desde código inline (I1, revisión final) · Breaks if: node -e/python -c
 // con una API de borrado sobre .git, ~/.pignolo, ~ o la raíz pasan, o un borrado con
 // destino calculado pasa sin confirmación.
