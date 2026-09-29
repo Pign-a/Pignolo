@@ -1,0 +1,2 @@
+@keyframes pop { from { transform: scale(.9); } to { transform: scale(1); } }
+.toast { animation: pop 300ms; }
