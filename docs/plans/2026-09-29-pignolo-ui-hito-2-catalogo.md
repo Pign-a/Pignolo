@@ -635,10 +635,10 @@ No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5
 
 ### Global Constraints (además de las del 2a)
 
-- **Nada remoto en tiempo de ejecución** (§0): `--url` acepta solo `localhost`, `*.localhost`, `127.0.0.0/8` y `[::1]`, por `http`/`https`, sin usuario ni clave, un solo origen y como mucho 20. Las redirecciones se siguen a mano, hasta 5 y dentro del mismo origen. Un `Sitemap:` con dominio de producción se pide **por su ruta** en el origen de desarrollo o se busca como archivo del proyecto; nunca se pide la URL de producción.
+- **Nada remoto en tiempo de ejecución** (§0): `--url` acepta solo `localhost`, `127.0.0.0/8` y `[::1]`, sin resolver nombres (un `*.localhost` se rechaza: nada garantiza cómo lo resuelve el sistema), por `http`/`https`, sin usuario ni clave, un solo origen y como mucho 20. Las redirecciones se siguen a mano, hasta 5 y dentro del mismo origen. Plazo por pedido de 5 s y **plazo global de 60 s** para todo lo de `--url` (páginas, `robots.txt`, sitemaps): lo que no llega queda `unverified (deadline …)`. Un `Sitemap:` con dominio de producción se pide **por su ruta** en el origen de desarrollo o se busca como archivo del proyecto; nunca se pide la URL de producción.
 - **Tests sin red:** el servidor de prueba es `serveRoutes` (`tests/helpers.mjs`, en `127.0.0.1` con puerto aleatorio). Un test que corre una CLI contra un servidor del mismo proceso usa `spawn` asíncrono: `spawnSync` bloquea el event loop y el servidor no contesta.
-- **Git solo se lee** en `files.mjs` (`status`, `rev-parse`, `diff --numstat`). Nunca `checkout`, `reset`, `clean`, `stash` ni `restore`.
-- **Borrar solo con prueba:** `files.mjs restore` borra un archivo únicamente si su sha256 actual es el que `verify` registró como escrito por el lote; si no, `BLOCKED` y no toca nada.
+- **Git solo se lee** en `files.mjs` (`status`, `rev-parse`, `diff --numstat`), con plazo de 60 s por llamada; una falla o un plazo vencido es un error en español sin stack (exit 2). Nunca `checkout`, `reset`, `clean`, `stash` ni `restore`.
+- **Borrar y pisar solo con prueba:** `files.mjs restore` borra un archivo únicamente si su sha256 actual es el que `verify` registró como escrito por el lote, y reescribe un esperado desde la copia únicamente si no existe o su sha256 es el original o el que registró `verify`; si no, `BLOCKED` y no toca ese archivo. Nunca escribe ni borra a través de un enlace simbólico o *junction* que salga del proyecto (`not-in-project`), y lo que cambió después de `verify` queda `BLOCKED` (`not-verified`).
 - **U+FEFF:** la herramienta de escritura convierte el escape `\uFEFF` en el carácter literal. Después de escribir cualquier archivo, correr desde la raíz de la worktree:
 
   ```bash
@@ -661,17 +661,17 @@ No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5
 ## Review Focus (2b)
 
 1. **Falsos positivos en patrones comunes.** Un `layout.tsx` de Next.js con `metadataBase`, `title.template`, `alternates.canonical: '/'`, `openGraph`, `robots` según `process.env` y `{preview && <meta name="robots" content="noindex" />}` no da **ningún** `fail` de SEO (Task B6, caso realista). Un `index.html` sin canonical ni Open Graph da SEO-04 (`medio`) y SEO-18 (`detalle`), nunca algo que bloquee. Nada de SEO cambia el código de salida.
-2. **`files.mjs` nunca borra ni pisa sin prueba.** Los tres casos de §16.1, un archivo ya sucio que el agente tocó, rutas con espacios, `ñ` y renombres, CRLF y BOM restaurados byte a byte.
-3. **`report-check` no deja pasar teatro:** afirmación sin referencia, con estado o medida distintos, con `ui-check.json` sin citar por hash o cambiado después, captura fuera del run o que no es PNG, implementación sin cita del aprobado o con otro sha256.
-4. **Red local acotada:** URL remota o de dos orígenes rechazada antes de correr; redirección a otro origen, respuesta enorme o servidor colgado → `unverified` con motivo, nunca `pass`.
+2. **`files.mjs` nunca borra ni pisa sin prueba.** Los tres casos de §16.1, un archivo ya sucio que el agente tocó, rutas con espacios, `ñ` y renombres, CRLF y BOM restaurados byte a byte; un esperado editado a mano después de `verify`, un cambio posterior a `verify`, enlaces o *junctions* que salen del proyecto y rutas con otras mayúsculas.
+3. **`report-check` no deja pasar teatro:** afirmación sin referencia, con estado o medida distintos, con `ui-check.json` sin citar por hash, cambiado después o vencido (una entrada cambió después de correrlo), apoyada en un `pass` que no aplica, con `measure: {}`, un lote verificado con `implemented: false`, captura fuera del run o que no es PNG, implementación sin cita del aprobado o con otro sha256.
+4. **Red local acotada:** URL remota o de dos orígenes rechazada antes de correr; redirección a otro origen, respuesta enorme, servidor colgado o plazo global vencido → `unverified` con motivo, nunca `pass`; `*.localhost` rechazado.
 5. **Costo lineal:** XML de 50 000 URLs y 20 000 niveles, patrones de `robots.txt` con miles de `*`, 2000 elementos anidados con enlaces.
 
 ## Rulings del plan 2b (técnicos, registrados)
 
 - **Método y costo:** el mismo que el 2a, aprobado por el autor. 6 tareas en 3 olas; opus solo en las Tasks B1 y B2 (ver Método).
-- **Compuerta `web.public`** (A-06): sin `DESIGN.md` o con `web.public` distinto de `true`, cada id de SEO devuelve **un** `pass` con `reason` que dice por qué no aplica (`no DESIGN.md: …` o `web.public is not true: …`), como THEME-02 sin shadcn. Con un `DESIGN.md` que no se pudo leer (`design.data === null`), un `unverified`.
+- **Compuerta `web.public`** (A-06): sin `DESIGN.md` o con `web.public` distinto de `true`, cada id de SEO devuelve **un** `pass` con `reason` que dice por qué no aplica (`no DESIGN.md: …`; `DESIGN.md not given: pass --design …` si el proyecto tiene `DESIGN.md` pero no se pasó `--design`; o `web.public is not true: …`), como THEME-02 sin shadcn. Ese `pass` lleva `measure: { applicable: false }`: `report-check` retira toda afirmación que se apoye solo en entradas así (`evidence says <id> does not apply`). Con un `DESIGN.md` que no se pudo leer (`design.data === null`), un `unverified`.
 - **SEO como reglas de proyecto.** Las 7 quedan `level: document` en el catálogo (§5.2), pero se implementan con `checkProject`: comparan entre rutas (SEO-06), leen archivos de sitio (SEO-01, 05) y así un componente que no es documento no genera 7 entradas `unverified (not a document)`. Sin ninguna página entre las entradas: una entrada `unverified (no page among the inputs …)` por id de página.
-- **Páginas de SEO:** documentos de las entradas que no son mockup (`design/approved/**` y `.pignolo-ui/runs/**` nunca cuentan) y páginas de `--url`. Una página de `--url` que no se puede revisar da `unverified` con el motivo: error de red o plazo, estado HTTP distinto de 200, respuesta que no es HTML, ruta final distinta de la pedida (sin contar la barra final: `redirected to <ruta> (may require a session)`, §11.2) o un `input[type=password]` (`requires a session (password field)`).
+- **Páginas de SEO:** documentos de las entradas que no son mockup (`design/approved/**` y `.pignolo-ui/runs/**` nunca cuentan) y páginas de `--url`. Una página de `--url` que no se puede revisar da `unverified` con el motivo: error de red o plazo, estado HTTP distinto de 200, respuesta que no es HTML, ruta final distinta de la pedida (sin contar la barra final: `redirected to <ruta> (may require a session)`, §11.2) o un `input[type=password]` (`requires a session (password field)`). `seoPages` se calcula una vez por `pctx` (memo con `WeakMap`): las siete reglas comparten el mismo parseo.
 - **`--dom`** cuenta como página renderizada: su `ctx.origin` es `'dom'` y SEO-02 lo trata como la URL de desarrollo (`detalle`).
 - **Severidad de SEO-02:** `alto` en el código fuente (`origin: 'file'`); `detalle` en la URL de desarrollo o en `--dom`, incluido `X-Robots-Tag`. Con `web.indexable: false`, `pass` (el `noindex` es declarado).
 - **Condicionales y valores de entorno en JSX:** un elemento dentro de una expresión `{…}` hija (`{preview && <meta …/>}`, `{items.map(…)}`) lleva `inExpression: true` (cambio chico en `lib/markup.mjs`). Un `meta robots` o `link canonical` condicional da `unverified`. En `export const metadata`, solo cuentan valores literales: una clave cuyo valor tiene identificadores, llamadas, spreads o plantillas con `${}` es `dynamic` → `unverified`. `generateMetadata` → `unverified (metadata is generated at run time)`.
@@ -682,14 +682,14 @@ No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5
 - **SEO-09:** `a` sin `href` con `onclick`, `role` o `tabindex` → `fail`; `href` que empieza con `javascript:` → `fail`; `href` dinámico o spread → `unverified`; `a` sin `href` y sin nada de eso es un marcador de posición válido → sin hallazgo. Los componentes (`<Link>`) no se miran.
 - **SEO-18:** en HTML/`--url`/`--dom`, faltan `og:title`, `og:type`, `og:image` u `og:url` (por `property` o `name`) → `fail` `detalle` con `measure.missing`. En JSX, sin `meta og:*`: `metadata.openGraph` con `title`, `type`, `url` e `images` → `pass`; con claves faltantes o sin `openGraph` → `unverified` (pueden venir de otro layout o de `opengraph-image`).
 - **`acceptsIntentional`:** sí en SEO-01, 04, 05, 06 y 18; no en SEO-02 (para eso está `web.indexable: false`) ni en SEO-09 (un enlace no rastreable no es una elección de estilo). Ninguna es piso ni `bloquea`.
-- **Fuentes del catálogo:** RFC 9309, RFC 6596, sitemaps.org 0.9, HTML Living Standard, Open Graph protocol y Google Search Central, cada una con `(consulted AAAA-MM-DD)` reemplazado por el día en que el implementador la abre. Si no puede abrirla, lo dice en su informe y no inventa la fecha; el cierre (Task B6) lo resuelve. Solo enlaces en `CREDITS.md`, sin copiar texto.
+- **Fuentes del catálogo:** RFC 9309, RFC 6596, sitemaps.org 0.9, HTML Living Standard, Open Graph protocol y Google Search Central (dos páginas), abiertas al escribir el plan el 2026-09-29: cada `source` lleva la URL exacta y `(consulted 2026-09-29)`, así el catálogo pasa `checkCatalog` desde la ola 0 y la suite queda verde en cada ola. Solo enlaces en `CREDITS.md`, sin copiar texto.
 - **`ui-check.json`:** `inputs` suma `{ url, sha256 }` por cada recurso bajado con éxito (páginas, `robots.txt`, sitemaps), con la URL final. Es aditivo; `catalogVersion` pasa a `0.3.0`.
 - **Invocación:** se suma `[--url <URL de desarrollo>]…` a la de §5.8; `--url` necesita `--design`. La compuerta del núcleo (hito 5) no la usa: no cambia ningún contrato que consuma el núcleo.
-- **Alcance de SEO con `--base`:** `sourceFilesOf` suma `robots.txt` y `sitemap.xml` de la raíz, `public/` o `static/`, así la base ve los mismos archivos de sitio. Los hallazgos de `--url` no existen en la base: siempre `new` (nunca bloquean).
+- **Alcance de SEO con `--base`:** `sourceFilesOf` suma `robots.txt` y `sitemap.xml` de la raíz, `public/` o `static/`, así la base ve los mismos archivos de sitio. Los hallazgos de `--url` no existen en la base: siempre `new` (nunca bloquean). **Límite declarado:** la base no ve un sitemap en una ruta no estándar (por ejemplo `Sitemap: /sitemaps/main.xml` o `public/sitemap-index.xml`) ni lo que genera `app/robots.ts`/`app/sitemap.ts`; esos hallazgos de SEO-01/SEO-05 pueden salir `new` en lugar de `existing`. Como el SEO nunca bloquea, solo cambia el `scope` informado, nunca el código de salida.
 - **`files.mjs`:**
-  - `save` exige la raíz del repo como `--project`, `--batch` dentro de `.pignolo-ui/`, una lista `[{ path, exists, change: tokens|structure }]` de 1 a 5 archivos, y rechaza (exit 1, sin escribir nada): ruta fuera del proyecto o bajo `.git/`/`.pignolo-ui/`, repetida (sin distinguir mayúsculas), `exists` que no coincide con el disco, un archivo esperado con cambios sin commitear (paso 2 de §9) y un lote que ya tiene `files.json`.
+  - `save` exige la raíz del repo como `--project`, `--batch` dentro de `.pignolo-ui/`, una lista `[{ path, exists, change: tokens|structure }]` de 1 a 5 archivos, y rechaza (exit 1, sin escribir nada): ruta fuera del proyecto o bajo `.git/`/`.pignolo-ui/`, repetida (sin distinguir mayúsculas), ruta que es un enlace simbólico o cuya carpeta real (`realpath` de la carpeta existente más cercana) queda fuera de `realpath(project)` (`not-in-project`; un *junction* de Windows cuenta), ruta cuyas letras difieren del disco solo en mayúsculas (`case-mismatch`, en discos que no distinguen mayúsculas), `exists` que no coincide con el disco, un archivo esperado con cambios sin commitear (paso 2 de §9) y un lote que ya tiene `files.json`.
   - `verify` registra en `files.json` (`after`) el sha256 de cada archivo esperado y de cada cambio inesperado; exit 1 si hay cambios fuera de la lista. Informa las líneas cambiadas (`git diff --numstat` contra el `HEAD` de `save` + líneas de los archivos nuevos) y `overLineLimit` (> 200): informativo, el tope de líneas lo planifica el agente (§9 paso 1).
-  - `restore` exige `verify` previo. Restaura los esperados que existían desde la copia y comprueba el sha256; borra los creados (esperados o inesperados sin seguimiento) solo si el sha256 coincide con `after`; **un cambio inesperado sobre un archivo con seguimiento o que ya estaba sucio queda `BLOCKED`** (no hay copia y git no se escribe): se le pregunta al usuario. Las carpetas vacías que quedan no se borran (git no las ve).
+  - `restore` exige `verify` previo. Primero recalcula el delta: lo que apareció o cambió después de `verify` y `verify` no registró queda `BLOCKED` (`not-verified`) y no se toca. Antes de escribir o borrar cada ruta repite el chequeo de enlaces de `save` (`not-in-project`). Restaura los esperados que existían desde la copia solo si hoy no existen o su sha256 es el original o el de `after` (si no, `changed-after-the-batch`: alguien lo editó después) y comprueba el sha256; borra los creados (esperados o inesperados sin seguimiento) solo si el sha256 coincide con `after`, **incluidos los archivos nuevos que el agente creó fuera de la lista** (el README lo declara y la skill del hito 4 muestra `unexpected` antes de correr `restore`); **un cambio inesperado sobre un archivo con seguimiento o que ya estaba sucio queda `BLOCKED`** (no hay copia y git no se escribe): se le pregunta al usuario. Esto último es la decisión pendiente D-2b-1 (abajo); la recomendación está implementada en una sola función (`unexpectedAction`), así la alternativa es un cambio acotado. Las carpetas vacías que quedan no se borran (git no las ve).
   - Archivos ignorados por git no aparecen en `git status`: un cambio del agente en uno de ellos no se detecta (declarado en el README).
 - **`report.json`** (contrato nuevo, interno de pignolo-ui; lo escribe la skill en el hito 4):
 
@@ -708,7 +708,7 @@ No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5
   }
   ```
 
-  `implemented` es obligatorio; con `true`, `implements` también. `measure` se compara por igualdad exacta con el valor guardado (el crudo que dejó la regla). Una afirmación inválida (sin `text`, id repetido) se retira; un `report.json` que no es un objeto, sin `claims` o sin `implemented` booleano es error (exit 2).
+  `implemented` es obligatorio; con `true`, `implements` también. Si el run tiene algún `**/files.json` con `after` distinto de `null` (un lote verificado), el run implementó algo y se trata como `implemented: true` aunque diga `false`: sin `implements` da `missing` (exit 1). `measure` es un objeto no vacío (`{}` se rechaza); se comparan **las claves que trae la afirmación**, cada una por igualdad exacta (profunda) con el valor guardado (el crudo que dejó la regla); las claves que la afirmación no menciona no se miran. Una entrada con `measure.applicable: false` no respalda ninguna afirmación. `ui-check.json` está vencido si algún `inputs[].file` ya no tiene en disco el sha256 que registró: toda afirmación que lo cita se retira con `ui-check.json is stale: <file> changed after it ran`. Una afirmación inválida (sin `text`, id repetido) se retira; un `report.json` que no es un objeto, sin `claims` o sin `implemented` booleano es error (exit 2).
 - **`browser.json`** (contrato que hereda el hito 3): un objeto con `entries` de la misma forma que las de `ui-check.json` (`id`, `status`, `fingerprint`, `line?`, `measure?`). Hasta el hito 3, una afirmación que cita `browser` se retira con `browser.json not in the run`.
 - **Versión:** `plugin.json` y CHANGELOG `0.3.0` (interfaces nuevas: `files`, `report-check`, `--url`; el catálogo suma 7 reglas).
 
@@ -728,7 +728,7 @@ No se decide ahora: cómo arma el núcleo la compuerta `ui-check --gate` (hito 5
 
 **Produces (contrato de la ola 1):**
 - `runCheck({ …, urls = [], inject: { …, fetchOptions } })`; `pctx = { project, design, tokens, catalog, files, ctxs, site }` con `site` = resultado de `fetchSite` o `null` (siempre `null` en la corrida de la base); `ctx.origin` = `'file' | 'dom'`; `inputs` con `{ url, sha256 }`.
-- `fetchSite({ urls, timeoutMs = 5000, maxBytes = 2 MiB, fetchImpl })` → `{ origin, pages, robots, sitemaps }` (ver el código); `isLoopbackUrl(u)`.
+- `fetchSite({ urls, timeoutMs = 5000, deadlineMs = 60000, maxBytes = 2 MiB, fetchImpl })` → `{ origin, pages, robots, sitemaps }` (ver el código; lo que no llega antes del plazo global lleva `error: 'deadline (…)'`); `isLoopbackUrl(u)` (sin `*.localhost`).
 - `parseRobots(text)`, `isAllowed(robots, path)`, `matchPattern(pattern, path)`.
 - `findSiteFile(project, urlPath)`, `generatedBy(project, name)`, `siteFiles(project)`.
 - `seoGate(pctx)`, `seoPages(pctx)`, `indexable(pctx)`, `staticAttr(el, name)`, `metadataObject(ctx)`, `prop(objText, key)`, `webOf(design)`.
@@ -838,10 +838,10 @@ import { isLoopbackUrl, fetchSite } from '../lib/site-fetch.mjs';
 
 test('isLoopbackUrl accepts only local http(s) addresses', async (t) => {
   const CASES = [
-    ['http://localhost:3000/', true], ['http://127.0.0.1/', true], ['http://[::1]:5173/x', true], ['http://app.localhost/', true],
+    ['http://localhost:3000/', true], ['http://127.0.0.1/', true], ['http://[::1]:5173/x', true], ['http://LOCALHOST:3000/', true],
     ['http://127.1.2.3/', true], ['http://2130706433/', true], // WHATWG URL normalizes to 127.0.0.1
     ['https://example.com/', false], ['http://10.0.0.1/', false], ['http://192.168.0.10:3000/', false],
-    ['http://127.0.0.1.example.com/', false], ['file:///c:/x.html', false], ['http://u:p@localhost/', false], ['nope', false],
+    ['http://127.0.0.1.example.com/', false], ['http://app.localhost/', false], ['http://localhost.example.com/', false], ['file:///c:/x.html', false], ['http://u:p@localhost/', false], ['nope', false],
   ];
   for (const [u, ok] of CASES) await t.test(u, () => assert.equal(isLoopbackUrl(u), ok));
 });
@@ -884,6 +884,24 @@ test('fetchSite refuses a non-loopback URL and URLs of two origins', async () =>
   await assert.rejects(fetchSite({ urls: ['http://127.0.0.1:1/', 'http://localhost:2/'] }), /one origin/);
   assert.equal(await fetchSite({ urls: [] }), null);
 });
+
+test('fetchSite: one deadline for the whole fetch; what does not arrive in time is deadline', async () => {
+  const srv = await serveRoutes({
+    '/': { headers: { 'content-type': 'text/html' }, body: '<!doctype html><html><head><title>A</title></head></html>' },
+    '/hang': () => {},
+  });
+  try {
+    const u = (p) => `${srv.base}${p}`;
+    const site = await fetchSite({ urls: [u('/'), u('/hang'), u('/b')], timeoutMs: 5000, deadlineMs: 300 });
+    const [root, hang, b] = site.pages;
+    assert.equal(root.status, 200);
+    assert.equal(hang.error, 'deadline (300 ms for the whole --url fetch)');
+    assert.equal(b.error, 'deadline (300 ms for the whole --url fetch)');
+    assert.match(site.robots.error, /^deadline/);
+  } finally {
+    await srv.close();
+  }
+});
 ```
 
 `tests/seo-common.test.mjs`:
@@ -919,6 +937,14 @@ test('seoGate: runs only when DESIGN.md declares web.public: true', () => {
   assert.equal(seoGate({ design: design({ public: true }) }), null);
 });
 
+test('seoGate: a DESIGN.md that exists but was not given says so; not-applicable passes are marked', () => {
+  const withFile = writeTree(makeTempDir(), { 'DESIGN.md': '---\npignolo:\n  schema: 1\n---\n' });
+  const given = seoGate({ design: null, project: withFile })[0];
+  assert.deepEqual([given.status, given.reason, given.measure], ['pass', 'DESIGN.md not given: pass --design to check static SEO', { applicable: false }]);
+  assert.match(seoGate({ design: null, project: makeTempDir() })[0].reason, /^no DESIGN\.md/);
+  assert.deepEqual(seoGate({ design: design({ public: false }) })[0].measure, { applicable: false });
+});
+
 const ctx = (file, text, extra = {}) => {
   const syntax = file.endsWith('.tsx') ? 'jsx' : 'html';
   const markup = parseMarkup(text, { syntax });
@@ -941,6 +967,14 @@ test('seoPages: documents among the inputs, never mockups or fragments; fetched 
     ['/cuenta', 'url', 'redirected to /login (may require a session)'], ['/b', 'url', 'HTTP 500'], ['/c', 'url', 'not an HTML response'],
     ['/d', 'url', 'requires a session (password field)'], ['/e', 'url', 'no response in 5000 ms'],
   ]);
+});
+
+test('seoPages is computed once per pctx: the seven rules share one parse', () => {
+  const doc = '<!doctype html><html><head><title>A</title></head><body></body></html>';
+  const pctx = { ctxs: [ctx('index.html', doc)], site: { pages: [{ url: 'http://127.0.0.1:1/', path: '/', finalUrl: 'http://127.0.0.1:1/', status: 200, headers: { 'content-type': 'text/html' }, text: doc }] } };
+  const first = seoPages(pctx);
+  assert.equal(seoPages(pctx), first);
+  assert.notEqual(seoPages({ ...pctx }), first);
 });
 
 test('prop reads first-level literals of a metadata object and marks the rest dynamic', () => {
@@ -1124,7 +1158,7 @@ diff --git a/plugins/pignolo-ui/tests/ui-check-runner.test.mjs b/plugins/pignolo
 +});
 ```
 
-- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/robots.test.mjs plugins/pignolo-ui/tests/site-fetch.test.mjs plugins/pignolo-ui/tests/seo-common.test.mjs plugins/pignolo-ui/tests/markup.test.mjs plugins/pignolo-ui/tests/ui-check-runner.test.mjs plugins/pignolo-ui/tests/ui-check-cli.test.mjs plugins/pignolo-ui/tests/catalog.test.mjs` → fallan los tres archivos nuevos (módulos ausentes), el caso `inExpression`, el de `pctx.ctxs`, el de `--url` y los tres del catálogo; anotar el resumen.
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/robots.test.mjs plugins/pignolo-ui/tests/site-fetch.test.mjs plugins/pignolo-ui/tests/seo-common.test.mjs plugins/pignolo-ui/tests/markup.test.mjs plugins/pignolo-ui/tests/ui-check-runner.test.mjs plugins/pignolo-ui/tests/ui-check-cli.test.mjs plugins/pignolo-ui/tests/catalog.test.mjs` → fallan los tres archivos nuevos (módulos ausentes), el caso `inExpression`, el de `pctx.ctxs`, el de `--url` y los tres del catálogo; anotar el resumen. Después del verde, demostrar una vez el rojo de tres arreglos de la revisión y restaurar con el editor: (a) volver a aceptar `h.endsWith('.localhost')` en `isLoopbackUrl` → falla `http://app.localhost/`; (b) quitar `const ms = Math.min(timeoutMs, budget)` (usar `timeoutMs`) → falla el caso del plazo global; (c) quitar `PAGES.set(pctx, out)` → falla "seoPages is computed once per pctx".
 - [ ] **Paso 3: implementar.**
 
 `lib/robots.mjs`:
@@ -1206,14 +1240,17 @@ export function isAllowed(robots, path) {
 // Fetch of the development URL for the static SEO checks (spec §5.4, A-06). Local only: the
 // plugin never reaches anything remote at run time (spec §0), so every URL must be loopback.
 //
-// isLoopbackUrl(u) -> boolean      http(s) on localhost, *.localhost, 127.0.0.0/8 or [::1]
-// fetchSite({ urls, timeoutMs = 5000, maxBytes = 2 MiB, fetchImpl = fetch })
+// isLoopbackUrl(u) -> boolean      http(s) on localhost, 127.0.0.0/8 or [::1], without resolving
+//   names (a *.localhost name is refused: nothing guarantees how the system resolves it)
+// fetchSite({ urls, timeoutMs = 5000, deadlineMs = 60000, maxBytes = 2 MiB, fetchImpl = fetch })
 //   -> { origin, pages: [resource], robots: resource, sitemaps: [resource & { declared }] } or null without urls
 //   page/resource = { url, path, finalUrl, status, headers: { 'content-type', 'x-robots-tag' },
 //                     text, sha256 } | { url, path, error }
 // Redirects are followed by hand, up to 5 hops, and only inside the same origin; a hop to
 // another origin stops with error 'redirected outside the development origin'. Never throws
-// for network problems: they become `error` (the rules turn it into unverified).
+// for network problems: they become `error` (the rules turn it into unverified). deadlineMs
+// bounds the whole fetch (pages, robots.txt, sitemaps): what has not arrived by then gets
+// error 'deadline (<n> ms for the whole --url fetch)'.
 import crypto from 'node:crypto';
 import { parseRobots } from './robots.mjs';
 
@@ -1226,7 +1263,7 @@ export function isLoopbackUrl(u) {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
   if (url.username || url.password) return false;
   const h = url.hostname.toLowerCase();
-  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h === 'localhost') return true;
   if (h === '[::1]') return true;
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
   return Boolean(m) && Number(m[1]) === 127 && m.slice(2).every((x) => Number(x) <= 255);
@@ -1247,10 +1284,14 @@ async function readCapped(res, maxBytes) {
   return { buf: Buffer.concat(chunks.map((c) => Buffer.from(c))), tooLarge: false };
 }
 
-async function fetchOne(url, { origin, timeoutMs, maxBytes, fetchImpl }) {
+async function fetchOne(url, { origin, timeoutMs, deadlineAt, deadlineMs, maxBytes, fetchImpl }) {
   const path = new URL(url).pathname;
+  const late = { url, path, error: `deadline (${deadlineMs} ms for the whole --url fetch)` };
+  const budget = deadlineAt - Date.now();
+  if (budget <= 0) return late;
+  const ms = Math.min(timeoutMs, budget);
   let current = url;
-  const signal = AbortSignal.timeout(timeoutMs);
+  const signal = AbortSignal.timeout(ms);
   try {
     for (let hop = 0; hop <= MAX_HOPS; hop++) {
       const res = await fetchImpl(current, { redirect: 'manual', signal, headers: { accept: 'text/html,application/xml,text/plain;q=0.9,*/*;q=0.5' } });
@@ -1275,17 +1316,19 @@ async function fetchOne(url, { origin, timeoutMs, maxBytes, fetchImpl }) {
     }
     return { url, path, error: 'too many redirects' };
   } catch (e) {
-    const why = e && (e.name === 'TimeoutError' || e.name === 'AbortError') ? `no response in ${timeoutMs} ms` : `request failed (${e && e.cause && e.cause.code ? e.cause.code : e && e.message})`;
+    const timedOut = e && (e.name === 'TimeoutError' || e.name === 'AbortError');
+    if (timedOut && ms < timeoutMs) return late;
+    const why = timedOut ? `no response in ${timeoutMs} ms` : `request failed (${e && e.cause && e.cause.code ? e.cause.code : e && e.message})`;
     return { url, path, error: why };
   }
 }
 
-export async function fetchSite({ urls, timeoutMs = 5000, maxBytes = 2 * 1024 * 1024, fetchImpl = globalThis.fetch } = {}) {
+export async function fetchSite({ urls, timeoutMs = 5000, deadlineMs = 60000, maxBytes = 2 * 1024 * 1024, fetchImpl = globalThis.fetch } = {}) {
   if (!Array.isArray(urls) || urls.length === 0) return null;
   for (const u of urls) if (!isLoopbackUrl(u)) throw new Error(`not a loopback URL: ${u}`);
   const origin = new URL(urls[0]).origin;
   for (const u of urls) if (new URL(u).origin !== origin) throw new Error(`all --url must share one origin: ${u}`);
-  const opts = { origin, timeoutMs, maxBytes, fetchImpl };
+  const opts = { origin, timeoutMs, deadlineAt: Date.now() + deadlineMs, deadlineMs, maxBytes, fetchImpl };
   const pages = [];
   for (const u of urls) pages.push(await fetchOne(u, opts));
   const robots = await fetchOne(new URL('/robots.txt', origin).href, opts);
@@ -1356,13 +1399,16 @@ export function siteFiles(project) {
 // check (documents among the inputs and pages fetched from the development URL) and a reader
 // of literal values in a Next.js `export const metadata = { ... }` object.
 //
-// seoGate(pctx) -> null when the rules run, else the one finding each SEO rule returns
+// seoGate(pctx) -> null when the rules run, else the one finding each SEO rule returns; its
+//   pass carries measure { applicable: false }, so report-check never accepts a claim based on it
 // seoPages(pctx) -> [{ file, origin: 'file'|'dom'|'url', syntax, markup, text, headers, skip }]
 //   skip = reason (string) when the page cannot be checked; mockups never count (spec §3.3).
+//   Computed once per pctx (the seven rules share it); callers must not change it.
 // metadataObject(ctx) -> { dynamic: true } | { text } | null   (JSX files only)
 // prop(objText, key) -> { kind: 'string'|'literal'|'object'|'array'|'dynamic', value?, text? } | null
 //   Only keys at the first level of objText (which starts with `{`) are found.
 // staticAttr(el, name) -> string | null (null when absent, dynamic or boolean)
+import fs from 'node:fs';
 import { pass, unverified } from './api.mjs';
 import { parseMarkup } from '../markup.mjs';
 import { stripComments } from '../strip-comments.mjs';
@@ -1374,11 +1420,20 @@ export function webOf(design) {
   return pig && isMap(pig.web) ? pig.web : null;
 }
 
+const hasDesignFile = (project) => {
+  try { return fs.readdirSync(project).some((n) => n.toLowerCase() === 'design.md'); } catch { return false; }
+};
+
 export function seoGate(pctx) {
-  if (!pctx.design) return [pass('not public', { reason: 'no DESIGN.md: the site is not declared public (static SEO does not apply)' })];
+  if (!pctx.design) {
+    const reason = pctx.project && hasDesignFile(pctx.project)
+      ? 'DESIGN.md not given: pass --design to check static SEO'
+      : 'no DESIGN.md: the site is not declared public (static SEO does not apply)';
+    return [pass('not public', { reason, measure: { applicable: false } })];
+  }
   if (!isMap(pctx.design.data)) return [unverified('DESIGN.md not validated: cannot tell whether the site is public')];
   const web = webOf(pctx.design);
-  if (!web || web.public !== true) return [pass('not public', { reason: 'web.public is not true: static SEO does not apply' })];
+  if (!web || web.public !== true) return [pass('not public', { reason: 'web.public is not true: static SEO does not apply', measure: { applicable: false } })];
   return null;
 }
 
@@ -1391,7 +1446,9 @@ export function staticAttr(el, name) {
 
 const samePath = (a, b) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
 
+const PAGES = new WeakMap();
 export function seoPages(pctx) {
+  if (PAGES.has(pctx)) return PAGES.get(pctx);
   const out = [];
   for (const ctx of pctx.ctxs ?? []) {
     if (!ctx.isDocument || ctx.mockup || !ctx.markup) continue;
@@ -1411,6 +1468,7 @@ export function seoPages(pctx) {
     }
     out.push(doc);
   }
+  PAGES.set(pctx, out);
   return out;
 }
 
@@ -1701,7 +1759,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
      fs.mkdirSync(runDir, { recursive: true });
 ```
 
-`catalog/rules.json`: `catalogVersion` → `"0.3.0"` y estas 7 reglas al final. `AAAA-MM-DD` se reemplaza por el día en que se abre cada fuente (ver Rulings); con el marcador, `checkCatalog` falla a propósito ("source has no version or date"):
+`catalog/rules.json`: `catalogVersion` → `"0.3.0"` y estas 7 reglas al final, tal cual (fuentes con URL y fecha de consulta, ver Rulings):
 
 ```json
 [
@@ -1714,7 +1772,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "medio",
     "floor": false,
     "acceptsIntentional": true,
-    "source": "RFC 9309 Robots Exclusion Protocol (consulted AAAA-MM-DD)",
+    "source": "RFC 9309 Robots Exclusion Protocol, https://www.rfc-editor.org/rfc/rfc9309 (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1728,7 +1786,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "alto",
     "floor": false,
     "acceptsIntentional": false,
-    "source": "Google Search Central, robots meta tag and X-Robots-Tag (consulted AAAA-MM-DD)",
+    "source": "Google Search Central, robots meta tag and X-Robots-Tag, https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1742,7 +1800,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "medio",
     "floor": false,
     "acceptsIntentional": true,
-    "source": "RFC 6596 The Canonical Link Relation (consulted AAAA-MM-DD)",
+    "source": "RFC 6596 The Canonical Link Relation, https://www.rfc-editor.org/rfc/rfc6596 (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1756,7 +1814,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "medio",
     "floor": false,
     "acceptsIntentional": true,
-    "source": "sitemaps.org protocol 0.9",
+    "source": "sitemaps.org protocol 0.9, https://www.sitemaps.org/protocol.html (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1770,7 +1828,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "medio",
     "floor": false,
     "acceptsIntentional": true,
-    "source": "HTML Living Standard, the title element (consulted AAAA-MM-DD)",
+    "source": "HTML Living Standard, the title element, https://html.spec.whatwg.org/multipage/semantics.html#the-title-element (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1784,7 +1842,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "medio",
     "floor": false,
     "acceptsIntentional": false,
-    "source": "Google Search Central, crawlable links (consulted AAAA-MM-DD)",
+    "source": "Google Search Central, link best practices (crawlable links), https://developers.google.com/search/docs/crawling-indexing/links-crawlable (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1798,7 +1856,7 @@ diff --git a/plugins/pignolo-ui/scripts/ui-check.mjs b/plugins/pignolo-ui/script
     "severity": "detalle",
     "floor": false,
     "acceptsIntentional": true,
-    "source": "The Open Graph protocol, ogp.me (consulted AAAA-MM-DD)",
+    "source": "The Open Graph protocol, https://ogp.me/ (consulted 2026-09-29)",
     "checker": "ui-check",
     "related": [],
     "conflicts": []
@@ -1823,7 +1881,7 @@ node -e "import('./plugins/pignolo-ui/lib/catalog.mjs').then(({loadCatalog,rende
 
 **Consumes:** `ensureRunRoot`, `isInsideRunRoot`, `RUN_ROOT` (`lib/run-folder.mjs`); `makeTempDir`, `writeTree`, `runScript` (`tests/helpers.mjs`, sin cambios).
 
-**Produces:** `saveBatch`, `verifyBatch`, `restoreBatch`, `parsePorcelainZ`, `cleanRel`, `BatchError`, `MAX_FILES = 5`, `MAX_LINES = 200`; la CLI `files.mjs save|verify|restore` con salida JSON y códigos 0/1/2; el formato de `<batch>/files.json` (`{ version: 1, head, files: [{ path, existed, change, sha256, copy }], initial: [{ code, path, from?, sha256 }], after: null | { files: { <path>: sha256|null }, unexpected: [{ path, code, sha256, wasDirty }] } }`).
+**Produces:** `saveBatch`, `verifyBatch`, `restoreBatch` (las tres aceptan `gitTimeoutMs`, por defecto `GIT_TIMEOUT_MS = 60000`), `parsePorcelainZ`, `cleanRel`, `BatchError`, `MAX_FILES = 5`, `MAX_LINES = 200`; problemas nuevos de `save`: `not-in-project`, `case-mismatch`; de `restore`: `not-in-project`, `not-verified`, `changed-after-the-batch` (también para esperados que existían), `not-a-file`; la CLI `files.mjs save|verify|restore` con salida JSON y códigos 0/1/2; el formato de `<batch>/files.json` (`{ version: 1, head, files: [{ path, existed, change, sha256, copy }], initial: [{ code, path, from?, sha256 }], after: null | { files: { <path>: sha256|null }, unexpected: [{ path, code, sha256, wasDirty }] } }`).
 
 - [ ] **Paso 1: tests primero.**
 
@@ -1980,6 +2038,97 @@ test('more than 200 changed lines is reported, not refused', () => {
   assert.equal(v.ok, true);
   assert.equal(v.overLineLimit, true);
 });
+
+test('§16.1: an expected file edited by hand after verify is BLOCKED and never overwritten', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'src/page.tsx', 'agent\n');
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  write(dir, 'src/page.tsx', 'agent, then edited by hand\n');
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.blocked, [{ path: 'src/page.tsx', problem: 'changed-after-the-batch' }]);
+  assert.equal(read(dir, 'src/page.tsx'), 'agent, then edited by hand\n');
+});
+
+test('restore recomputes the delta: a change that appeared after verify is BLOCKED, not touched', () => {
+  const dir = repo();
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'src/page.tsx', 'z\n');
+  assert.equal(verifyBatch({ project: dir, batch: batchOf(dir) }).ok, true);
+  write(dir, 'src/late.tsx', 'written after verify\n');
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.restored, ['src/page.tsx']);
+  assert.deepEqual(r.blocked, [{ path: 'src/late.tsx', problem: 'not-verified' }]);
+  assert.equal(read(dir, 'src/late.tsx'), 'written after verify\n');
+});
+
+// A junction needs no privilege on Windows; elsewhere it is a directory symlink.
+const linkDir = (target, at) => fs.symlinkSync(target, at, 'junction');
+
+test('save refuses a path whose folder is a link that leaves the project', () => {
+  const dir = repo();
+  const outside = writeTree(makeTempDir(), { 'x.tsx': 'outside\n' });
+  linkDir(outside, path.join(dir, 'src', 'out'));
+  for (const item of [{ path: 'src/out/x.tsx', exists: true, change: 'tokens' }, { path: 'src/out/new/y.tsx', exists: false, change: 'tokens' }]) {
+    const s = saveBatch({ project: dir, batch: batchOf(dir), expected: [item] });
+    assert.deepEqual(s.problems, [{ path: item.path, problem: 'not-in-project' }]);
+  }
+  assert.equal(fs.existsSync(path.join(batchOf(dir), 'files.json')), false);
+});
+
+test('restore never writes through a folder swapped for a link after save', () => {
+  const dir = repo({ 'src/sub/page.tsx': 'p\n' });
+  const outside = writeTree(makeTempDir(), { 'page.tsx': 'outside\n' });
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [{ path: 'src/sub/page.tsx', exists: true, change: 'tokens' }] });
+  fs.renameSync(path.join(dir, 'src', 'sub'), path.join(dir, 'src', 'sub-old'));
+  linkDir(outside, path.join(dir, 'src', 'sub'));
+  verifyBatch({ project: dir, batch: batchOf(dir) }); // records the outside file as what the batch left
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.ok(r.blocked.some((b) => b.path === 'src/sub/page.tsx' && b.problem === 'not-in-project'), JSON.stringify(r.blocked));
+  assert.equal(fs.readFileSync(path.join(outside, 'page.tsx'), 'utf8'), 'outside\n');
+});
+
+test('restore never writes through a file swapped for a symlink after save', (t) => {
+  const dir = repo();
+  const outside = writeTree(makeTempDir(), { 'page.tsx': 'outside\n' });
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  fs.rmSync(path.join(dir, 'src', 'page.tsx'));
+  try {
+    fs.symlinkSync(path.join(outside, 'page.tsx'), path.join(dir, 'src', 'page.tsx'), 'file');
+  } catch (e) {
+    if (e.code === 'EPERM') return t.skip('file symlinks need a privilege on this system');
+    throw e;
+  }
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.ok(r.blocked.some((b) => b.path === 'src/page.tsx' && b.problem === 'not-in-project'), JSON.stringify(r.blocked));
+  assert.equal(fs.readFileSync(path.join(outside, 'page.tsx'), 'utf8'), 'outside\n');
+  return undefined;
+});
+
+const caseInsensitive = (() => {
+  const d = writeTree(makeTempDir(), { 'a.txt': '' });
+  return fs.existsSync(path.join(d, 'A.TXT'));
+})();
+
+test('a path whose letters differ from the disk only in case is refused', { skip: !caseInsensitive && 'case-sensitive file system' }, () => {
+  const dir = repo();
+  for (const item of [{ path: 'src/Page.tsx', exists: true, change: 'tokens' }, { path: 'SRC/New.tsx', exists: false, change: 'tokens' }]) {
+    const s = saveBatch({ project: dir, batch: batchOf(dir), expected: [item] });
+    assert.deepEqual(s.problems, [{ path: item.path, problem: 'case-mismatch' }]);
+  }
+});
+
+test('git that fails or takes too long is a BatchError with a Spanish message', () => {
+  const plain = makeTempDir();
+  assert.throws(() => saveBatch({ project: plain, batch: path.join(plain, '.pignolo-ui', 'runs', 'r1', 'b'), expected: [NEW] }), (e) => e instanceof BatchError && /^git status falló: /.test(e.message));
+  const dir = repo();
+  assert.throws(() => saveBatch({ project: dir, batch: batchOf(dir), expected: [NEW], gitTimeoutMs: 1 }), (e) => e instanceof BatchError && /git status no terminó en 0\.001 s/.test(e.message));
+});
 ```
 
 `tests/files-cli.test.mjs`:
@@ -2048,7 +2197,7 @@ test('usage errors exit 2 with a Spanish message and no stack', async (t) => {
 });
 ```
 
-- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/batch-files.test.mjs plugins/pignolo-ui/tests/files-cli.test.mjs` → los dos archivos fallan (módulo y script ausentes). Después del verde, demostrar una vez el rojo de lo que protege la regla de borrado: cambiar en `restoreBatch` la condición `wrote && now === wrote` por `wrote !== undefined` → el caso "created file edited by hand" tiene que fallar (borra un archivo editado a mano); restaurar con el editor.
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/batch-files.test.mjs plugins/pignolo-ui/tests/files-cli.test.mjs` → los dos archivos fallan (módulo y script ausentes). Después del verde, demostrar una vez el rojo de lo que protege cada guarda y restaurar con el editor: (a) regla de borrado: cambiar en `restoreBatch` la condición `wrote && now === wrote` por `wrote !== undefined` → falla "created file edited by hand"; (b) pisar con prueba: quitar el `if (now !== null && now !== f.sha256 && …)` → falla "an expected file edited by hand after verify"; (c) enlaces: hacer que `linkProblem` devuelva siempre `null` → fallan los tres casos de enlaces (el de *junction* de `restore` escribe fuera del proyecto); (d) quitar el bucle de `not-verified` → falla "restore recomputes the delta"; (e) quitar la llamada a `caseMismatch` → falla el caso de mayúsculas (se saltea en discos que distinguen mayúsculas); (f) volver a `execFileSync` sin `try` en `git` → falla "git that fails or takes too long". El caso de *symlink* de archivo se saltea si el sistema no da permiso para crearlo (`EPERM`); el de *junction* corre sin privilegios en Windows.
 - [ ] **Paso 3: implementar.**
 
 `lib/batch-files.mjs`:
@@ -2058,19 +2207,26 @@ test('usage errors exit 2 with a Spanish message and no stack', async (t) => {
 // initial state after editing, and a restore that never deletes what it cannot prove it wrote.
 // No destructive git: git is only read (status, rev-parse, diff --numstat).
 //
-// saveBatch({ project, batch, expected })  -> { ok, problems, record }
+// saveBatch({ project, batch, expected, gitTimeoutMs })  -> { ok, problems, record }
 //   expected = [{ path, exists, change: 'tokens'|'structure' }] (at most 5). Refuses (ok false)
-//   a bad or repeated path, a path under .git/ or .pignolo-ui/, a declared state that does not
+//   a bad or repeated path, a path under .git/ or .pignolo-ui/, a path that is a symbolic link
+//   or goes through a folder whose real path leaves the project (not-in-project), a path whose
+//   letters differ from the disk only in case (case-mismatch), a declared state that does not
 //   match the disk, an expected file with uncommitted changes, more than 5 files, or a batch
 //   folder that already has files.json. Copies each existing file to <batch>/copies/<n>.
-// verifyBatch({ project, batch })          -> { ok, unexpected, files, lines, overLineLimit }
+// verifyBatch({ project, batch, gitTimeoutMs })   -> { ok, unexpected, files, lines, overLineLimit }
 //   Delta of the current status against the initial one: every new or changed entry outside
 //   the expected list is `unexpected`. Records what the batch left (sha256 of each file) in
 //   files.json (`after`), which restore needs.
-// restoreBatch({ project, batch })         -> { ok, restored, deleted, blocked }
-//   Expected files that existed: rewritten from the copy and checked by sha256. Created files
-//   (expected new or unexpected untracked): deleted only if their sha256 is the one verify
-//   recorded; otherwise BLOCKED and left alone. Anything else unexpected: BLOCKED.
+// restoreBatch({ project, batch, gitTimeoutMs })  -> { ok, restored, deleted, blocked }
+//   Recomputes the delta first: a change that verify did not record is BLOCKED (not-verified).
+//   Nothing is written or deleted through a link that leaves the project (not-in-project).
+//   Expected files that existed: rewritten from the copy only when they are missing or their
+//   sha256 is the original or the one verify recorded (else changed-after-the-batch), then
+//   checked by sha256. Created files (expected new or unexpected untracked): deleted only if
+//   their sha256 is the one verify recorded; otherwise BLOCKED and left alone. Anything else
+//   unexpected: BLOCKED (unexpectedAction, decision D-2b-1).
+// Git runs with a deadline (GIT_TIMEOUT_MS); a failure or a timeout is a BatchError.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -2078,12 +2234,21 @@ import { execFileSync } from 'node:child_process';
 
 export const MAX_FILES = 5;
 export const MAX_LINES = 200;
+export const GIT_TIMEOUT_MS = 60000;
 const RECORD = 'files.json';
 
 export class BatchError extends Error {}
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
-const git = (project, args) => execFileSync('git', args, { cwd: project, encoding: 'utf8', timeout: 10000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'] });
+function git(project, args, timeoutMs = GIT_TIMEOUT_MS) {
+  try {
+    return execFileSync('git', args, { cwd: project, encoding: 'utf8', timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    if (e.code === 'ETIMEDOUT') throw Object.assign(new BatchError(`git ${args[0]} no terminó en ${timeoutMs / 1000} s: probá de nuevo sin otra operación de git en curso`), { timeout: true });
+    const why = String(e.stderr ?? '').trim().split('\n')[0] || e.code || `código ${e.status}`;
+    throw new BatchError(`git ${args[0]} falló: ${why}`);
+  }
+}
 
 function fileSha(project, rel) {
   try {
@@ -2109,8 +2274,8 @@ export function parsePorcelainZ(out) {
   return entries;
 }
 
-function statusOf(project) {
-  return parsePorcelainZ(git(project, ['status', '--porcelain=v1', '-z', '--untracked-files=all']))
+function statusOf(project, timeoutMs) {
+  return parsePorcelainZ(git(project, ['status', '--porcelain=v1', '-z', '--untracked-files=all'], timeoutMs))
     .map((e) => ({ ...e, sha256: fileSha(project, e.path) }));
 }
 
@@ -2124,6 +2289,46 @@ export function cleanRel(p) {
   return rel;
 }
 
+// null when writing `rel` lands inside the project; 'not-in-project' when `rel` is a symbolic
+// link (or junction) or the real path of its nearest existing folder leaves the project: save
+// would copy, and restore would write or delete, somewhere else.
+function linkProblem(project, rel) {
+  const abs = path.join(project, ...rel.split('/'));
+  try { if (fs.lstatSync(abs).isSymbolicLink()) return 'not-in-project'; } catch { /* absent */ }
+  let dir = path.dirname(abs);
+  while (!fs.existsSync(dir) && path.dirname(dir) !== dir) dir = path.dirname(dir);
+  try {
+    const r = path.relative(fs.realpathSync.native(project), fs.realpathSync.native(dir));
+    return r === '' || (r.split(path.sep)[0] !== '..' && !path.isAbsolute(r)) ? null : 'not-in-project';
+  } catch {
+    return 'not-in-project';
+  }
+}
+
+// On a case-insensitive disk (Windows, macOS) `src/Page.tsx` opens `src/page.tsx`, while git
+// and files.json would track another name: every existing segment must match the disk exactly.
+function caseMismatch(project, rel) {
+  let dir = project;
+  for (const seg of rel.split('/')) {
+    const next = path.join(dir, seg);
+    if (!fs.existsSync(next)) return false;
+    let names;
+    try { names = fs.readdirSync(dir); } catch { return false; }
+    if (!names.includes(seg)) return true;
+    dir = next;
+  }
+  return false;
+}
+
+// What restore does with an unexpected change (spec §9 "si no, se revierte"; decision D-2b-1,
+// pending with the author). Only an untracked file that did not exist before the batch has
+// proof (verify recorded its sha256); the rest has no copy and git is only read, so it is
+// BLOCKED and the user is asked. The alternative (revert a tracked file that was clean with
+// `git checkout -- <file>`) changes only this function and the "git is only read" constraint.
+function unexpectedAction(u) {
+  return u.code === '??' && !u.wasDirty ? 'delete-if-ours' : 'block';
+}
+
 const readRecord = (batch) => {
   const file = path.join(batch, RECORD);
   if (!fs.existsSync(file)) throw new BatchError(`no hay ${RECORD} en el lote: corré save primero`);
@@ -2131,12 +2336,12 @@ const readRecord = (batch) => {
 };
 const writeRecord = (batch, record) => fs.writeFileSync(path.join(batch, RECORD), `${JSON.stringify(record, null, 2)}\n`);
 
-export function saveBatch({ project, batch, expected }) {
+export function saveBatch({ project, batch, expected, gitTimeoutMs = GIT_TIMEOUT_MS }) {
   const problems = [];
   if (!Array.isArray(expected) || expected.length === 0) problems.push({ problem: 'empty-list' });
   else if (expected.length > MAX_FILES) problems.push({ problem: 'too-many-files', max: MAX_FILES, count: expected.length });
   if (fs.existsSync(path.join(batch, RECORD))) problems.push({ problem: 'batch-exists' });
-  const initial = statusOf(project);
+  const initial = statusOf(project, gitTimeoutMs);
   const dirty = new Set(initial.flatMap((e) => (e.from ? [e.path, e.from] : [e.path])));
   const seen = new Set();
   const files = [];
@@ -2147,6 +2352,9 @@ export function saveBatch({ project, batch, expected }) {
     seen.add(rel.toLowerCase());
     if (typeof item.exists !== 'boolean') { problems.push({ path: rel, problem: 'exists-not-boolean' }); continue; }
     if (item.change !== 'tokens' && item.change !== 'structure') { problems.push({ path: rel, problem: 'bad-change' }); continue; }
+    const link = linkProblem(project, rel);
+    if (link) { problems.push({ path: rel, problem: link }); continue; }
+    if (caseMismatch(project, rel)) { problems.push({ path: rel, problem: 'case-mismatch' }); continue; }
     const abs = path.join(project, ...rel.split('/'));
     const onDisk = fs.existsSync(abs);
     if (onDisk !== item.exists) { problems.push({ path: rel, problem: item.exists ? 'declared-existing-but-missing' : 'declared-new-but-exists' }); continue; }
@@ -2165,17 +2373,17 @@ export function saveBatch({ project, batch, expected }) {
     return { path: f.path, existed: true, change: f.change, sha256: sha256(buf), copy };
   });
   let head = null;
-  try { head = git(project, ['rev-parse', '--verify', '--quiet', 'HEAD']).trim() || null; } catch { head = null; }
+  try { head = git(project, ['rev-parse', '--verify', '--quiet', 'HEAD'], gitTimeoutMs).trim() || null; } catch (e) { if (e.timeout) throw e; head = null; } // no commit yet
   const record = { version: 1, head, files: recorded, initial, after: null };
   fs.writeFileSync(path.join(batch, RECORD), `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
   return { ok: true, problems: [], record };
 }
 
-function changedLines(project, head, files) {
+function changedLines(project, head, files, timeoutMs) {
   let lines = 0;
   const tracked = files.filter((f) => f.existed).map((f) => f.path);
   if (head && tracked.length) {
-    for (const row of git(project, ['diff', '--numstat', head, '--', ...tracked]).split('\n')) {
+    for (const row of git(project, ['diff', '--numstat', head, '--', ...tracked], timeoutMs).split('\n')) {
       const m = /^(\d+)\t(\d+)\t/.exec(row);
       if (m) lines += Number(m[1]) + Number(m[2]);
     }
@@ -2188,11 +2396,11 @@ function changedLines(project, head, files) {
   return lines;
 }
 
-export function verifyBatch({ project, batch }) {
-  const record = readRecord(batch);
+// Entries of the current status outside the expected list that differ from the initial state.
+function deltaOf(project, record, timeoutMs) {
   const expected = new Set(record.files.map((f) => f.path));
   const before = new Map(record.initial.map((e) => [e.path, e]));
-  const current = statusOf(project);
+  const current = statusOf(project, timeoutMs);
   const unexpected = [];
   const nowPaths = new Set();
   for (const e of current) {
@@ -2207,24 +2415,37 @@ export function verifyBatch({ project, batch }) {
   for (const b of record.initial) {
     if (!nowPaths.has(b.path) && !expected.has(b.path)) unexpected.push({ path: b.path, code: 'clean-now', sha256: fileSha(project, b.path), wasDirty: true });
   }
+  return unexpected;
+}
+
+export function verifyBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) {
+  const record = readRecord(batch);
+  const unexpected = deltaOf(project, record, gitTimeoutMs);
   const files = record.files.map((f) => {
     const now = fileSha(project, f.path);
     return { path: f.path, existed: f.existed, exists: now !== null, changed: now !== f.sha256, sha256: now };
   });
-  const lines = changedLines(project, record.head, record.files);
+  const lines = changedLines(project, record.head, record.files, gitTimeoutMs);
   record.after = { files: Object.fromEntries(files.map((f) => [f.path, f.sha256])), unexpected };
   writeRecord(batch, record);
   return { ok: unexpected.length === 0, unexpected, files, lines, overLineLimit: lines > MAX_LINES };
 }
 
-export function restoreBatch({ project, batch }) {
+export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) {
   const record = readRecord(batch);
   if (!record.after) throw new BatchError('el lote no tiene verificación: corré verify antes de restore');
   const restored = [];
   const deleted = [];
   const blocked = [];
   const abs = (rel) => path.join(project, ...rel.split('/'));
+  // before touching anything: a change that verify did not record is not the batch's to undo
+  const verified = new Set(record.after.unexpected.map((u) => u.path));
+  for (const u of deltaOf(project, record, gitTimeoutMs)) {
+    if (!verified.has(u.path)) blocked.push({ path: u.path, problem: 'not-verified' });
+  }
   const deleteIfOurs = (rel, wrote) => {
+    const link = linkProblem(project, rel);
+    if (link) { blocked.push({ path: rel, problem: link }); return; }
     const now = fileSha(project, rel);
     if (now === null) return; // already gone
     if (wrote && now === wrote) {
@@ -2235,6 +2456,12 @@ export function restoreBatch({ project, batch }) {
   };
   for (const f of record.files) {
     if (f.existed) {
+      const link = linkProblem(project, f.path);
+      if (link) { blocked.push({ path: f.path, problem: link }); continue; }
+      const now = fileSha(project, f.path);
+      if (now === null && fs.existsSync(abs(f.path))) { blocked.push({ path: f.path, problem: 'not-a-file' }); continue; }
+      // overwrite only with proof: missing, still the original, or what verify recorded
+      if (now !== null && now !== f.sha256 && now !== record.after.files[f.path]) { blocked.push({ path: f.path, problem: 'changed-after-the-batch' }); continue; }
       const buf = fs.readFileSync(path.join(batch, f.copy));
       fs.mkdirSync(path.dirname(abs(f.path)), { recursive: true });
       fs.writeFileSync(abs(f.path), buf);
@@ -2245,7 +2472,7 @@ export function restoreBatch({ project, batch }) {
     }
   }
   for (const u of record.after.unexpected) {
-    if (u.code === '??' && !u.wasDirty) deleteIfOurs(u.path, u.sha256);
+    if (unexpectedAction(u) === 'delete-if-ours') deleteIfOurs(u.path, u.sha256);
     else blocked.push({ path: u.path, problem: 'unexpected-change-not-restorable' });
   }
   return { ok: blocked.length === 0, restored, deleted, blocked };
@@ -2473,6 +2700,49 @@ test('registeredManifestSha reads the last entry of a path and nothing else', ()
   assert.equal(registeredManifestSha(text, 'design/approved/ab'), '2'.repeat(64));
   assert.equal(registeredManifestSha(text, 'design/approved/b'), null);
 });
+
+// Rewrites ui-check.json and returns a report that cites it by its sha256.
+const withUi = (run, ui, claims, extra = {}) => {
+  const text = JSON.stringify(ui);
+  fs.writeFileSync(path.join(run, 'ui-check.json'), text);
+  return { version: 1, implemented: false, evidence: { 'ui-check.json': sha(text) }, claims, ...extra };
+};
+
+test('ui-check.json is stale when one of its inputs changed after it ran', () => {
+  const { project, run } = setup();
+  const file = path.join(project, 'src/Save.tsx');
+  const ui = { ...JSON.parse(UI), inputs: [{ file: 'src/Save.tsx', sha256: sha(fs.readFileSync(file)) }, { url: 'http://127.0.0.1:1/', sha256: 'c'.repeat(64) }] };
+  const claim = { id: 'c1', text: 'x', rule: 'A11Y-04', status: 'pass', ref: uiRef('A11Y-04|src/Save.tsx|button') };
+  assert.deepEqual(checkReport({ project, run, report: withUi(run, ui, [claim]) }).kept, ['c1']);
+  fs.appendFileSync(file, '// edited after ui-check\n');
+  assert.deepEqual(checkReport({ project, run, report: withUi(run, ui, [claim]) }).retired, [{ id: 'c1', reason: 'ui-check.json is stale: src/Save.tsx changed after it ran' }]);
+});
+
+test('a pass that says the rule does not apply supports no claim; measure {} is refused', () => {
+  const { project, run } = setup();
+  const gate = { id: 'SEO-01', status: 'pass', severity: 'medio', scope: 'new', reason: 'web.public is not true: static SEO does not apply', fingerprint: 'SEO-01||not public', measure: { applicable: false } };
+  const ui = { ...JSON.parse(UI), entries: [...JSON.parse(UI).entries, gate] };
+  const r = checkReport({ project, run, report: withUi(run, ui, [
+    { id: 'c1', text: 'robots.txt está bien', rule: 'SEO-01', status: 'pass', ref: uiRef('SEO-01||not public') },
+    { id: 'c2', text: 'x', rule: 'COLOR-03', status: 'fail', measure: {}, ref: uiRef('COLOR-03||on-surface/surface/light') },
+  ]) });
+  assert.deepEqual(r.retired, [
+    { id: 'c1', reason: 'evidence says SEO-01 does not apply (web.public is not true: static SEO does not apply)' },
+    { id: 'c2', reason: 'measure must be a non-empty object' },
+  ]);
+});
+
+test('a run with a verified batch implemented something: implemented false gives missing', () => {
+  const { project, run } = setup();
+  writeTree(run, { 'batch-1/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: null }) });
+  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'not-required'); // saved, not verified
+  writeTree(run, { 'batch-2/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: { files: {}, unexpected: [] } }) });
+  const r = checkReport({ project, run, report: report([]) });
+  assert.deepEqual([r.exitCode, r.implements.status], [1, 'missing']);
+  assert.match(r.implements.reason, /verified batch/);
+  const cited = checkReport({ project, run, report: report([], { implements: { path: 'design/approved/checkout', manifestSha256: MANIFEST } }) });
+  assert.deepEqual([cited.exitCode, cited.implements.status], [0, 'ok']);
+});
 ```
 
 `tests/report-check-cli.test.mjs`:
@@ -2523,7 +2793,7 @@ test('errors exit 2 (not verified) with a Spanish message and no stack', async (
 });
 ```
 
-- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/report-check.test.mjs plugins/pignolo-ui/tests/report-check-cli.test.mjs` → fallan (módulos ausentes y `registeredManifestSha` sin exportar). `tests/approve.test.mjs` sigue verde antes y después del cambio en `approved.mjs`.
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot plugins/pignolo-ui/tests/report-check.test.mjs plugins/pignolo-ui/tests/report-check-cli.test.mjs` → fallan (módulos ausentes y `registeredManifestSha` sin exportar). `tests/approve.test.mjs` sigue verde antes y después del cambio en `approved.mjs`. Después del verde, demostrar una vez el rojo y restaurar con el editor: (a) quitar el chequeo `stale` de `loadSources` → falla "ui-check.json is stale"; (b) quitar la línea de `applicable === false` → falla "a pass that says the rule does not apply"; (c) hacer que `runApplied` devuelva `false` → falla "a run with a verified batch".
 - [ ] **Paso 3: implementar.**
 
 `lib/approved.mjs`:
@@ -2574,8 +2844,14 @@ diff --git a/plugins/pignolo-ui/lib/approved.mjs b/plugins/pignolo-ui/lib/approv
 // checkReport({ project, run, report }) -> { kept, retired, implements, exitCode }
 //   report  parsed <run>/report.json (see REPORT_SHAPE in the plan / README)
 //   kept    [claim id]    retired [{ id, reason }]
-//   implements { status: 'ok'|'not-required'|'missing'|'mismatch'|'no-design-md', cited?, registered? }
+//   implements { status: 'ok'|'not-required'|'missing'|'mismatch'|'no-design-md', cited?, registered?, reason? }
 //   exitCode 0 nothing retired and implements ok or not required; 1 otherwise.
+// A run with a verified batch (any **/files.json whose `after` is not null) implemented
+// something, whatever report.json says: `implemented: false` there gives implements missing.
+// ui-check.json is stale (every claim citing it is retired) when a file in its `inputs` no
+// longer has the sha256 it had when ui-check ran. An entry whose measure says
+// `applicable: false` (a rule that did not apply) supports no claim. `measure` in a claim is a
+// non-empty object; each of its keys must equal (deep, exact) the value the entry stored.
 // A malformed report (not an object, claims not a list, implemented not boolean) throws
 // ReportError, which the CLI turns into exit 2.
 import fs from 'node:fs';
@@ -2600,7 +2876,9 @@ function inside(root, rel) {
   return r && !r.startsWith('..') && !path.isAbsolute(r) ? abs : null;
 }
 
-function loadSources(run, report) {
+const fileSha = (abs) => { try { return sha256(fs.readFileSync(abs)); } catch { return null; } };
+
+function loadSources(project, run, report) {
   const out = {};
   for (const [source, name] of Object.entries(SOURCES)) {
     const file = path.join(run, name);
@@ -2611,6 +2889,9 @@ function loadSources(run, report) {
     if (cited !== sha256(buf)) { out[source] = { error: `${name} changed since the report was written` }; continue; }
     let json;
     try { json = JSON.parse(buf.toString('utf8')); } catch { out[source] = { error: `${name} is not valid JSON` }; continue; }
+    const stale = (Array.isArray(json.inputs) ? json.inputs : [])
+      .find((i) => isMap(i) && typeof i.file === 'string' && fileSha(path.join(project, ...i.file.split('/'))) !== i.sha256);
+    if (stale) { out[source] = { error: `${name} is stale: ${stale.file} changed after it ran` }; continue; }
     out[source] = { entries: Array.isArray(json.entries) ? json.entries : [] };
   }
   return out;
@@ -2627,8 +2908,9 @@ function checkClaim(claim, { project, run, sources }) {
     if (!found.length) return `no ${SOURCES[ref.source]} entry with that fingerprint`;
     const same = found.filter((e) => e.id === claim.rule && e.status === claim.status);
     if (!same.length) return `evidence says ${found[0].id} ${found[0].status}`;
+    if (same.every((e) => isMap(e.measure) && e.measure.applicable === false)) return `evidence says ${claim.rule} does not apply (${same[0].reason ?? 'not applicable'})`;
     if (claim.measure !== undefined) {
-      if (!isMap(claim.measure)) return 'measure must be an object';
+      if (!isMap(claim.measure) || Object.keys(claim.measure).length === 0) return 'measure must be a non-empty object';
       const ok = same.some((e) => isMap(e.measure) && Object.entries(claim.measure).every(([k, v]) => isDeepStrictEqual(e.measure[k], v)));
       if (!ok) return 'evidence has another measure';
     }
@@ -2648,10 +2930,28 @@ function checkClaim(claim, { project, run, sources }) {
   return `unknown evidence source ${JSON.stringify(ref.source)}`;
 }
 
-function checkImplements(project, report) {
-  if (report.implemented !== true) return { status: 'not-required' };
+// true when some batch of the run was verified (files.json with `after`): the run edited files.
+function runApplied(run) {
+  let names;
+  try { names = fs.readdirSync(run, { recursive: true }); } catch { return false; }
+  return names.some((n) => {
+    if (path.basename(String(n)) !== 'files.json') return false;
+    try {
+      const rec = JSON.parse(fs.readFileSync(path.join(run, String(n)), 'utf8'));
+      return !isMap(rec) || rec.after != null;
+    } catch {
+      return true; // unreadable: count it as applied, never as proof of nothing done
+    }
+  });
+}
+
+function checkImplements(project, run, report) {
+  const forced = report.implemented !== true && runApplied(run);
+  if (report.implemented !== true && !forced) return { status: 'not-required' };
   const imp = report.implements;
-  if (!isMap(imp) || typeof imp.path !== 'string' || !APPROVED_PATH.test(imp.path) || typeof imp.manifestSha256 !== 'string') return { status: 'missing' };
+  if (!isMap(imp) || typeof imp.path !== 'string' || !APPROVED_PATH.test(imp.path) || typeof imp.manifestSha256 !== 'string') {
+    return forced ? { status: 'missing', reason: 'the run has a verified batch (files.json) but report.json says implemented: false' } : { status: 'missing' };
+  }
   const designFile = findDesignFile(project);
   if (!designFile) return { status: 'no-design-md', cited: imp.manifestSha256 };
   const registered = registeredManifestSha(fs.readFileSync(designFile, 'utf8'), imp.path);
@@ -2663,7 +2963,7 @@ export function checkReport({ project, run, report }) {
   if (!isMap(report)) throw new ReportError('report.json no es un objeto JSON');
   if (!Array.isArray(report.claims)) throw new ReportError('report.json no tiene la lista claims');
   if (typeof report.implemented !== 'boolean') throw new ReportError('report.json debe decir implemented: true o false');
-  const sources = loadSources(run, report);
+  const sources = loadSources(project, run, report);
   const kept = [];
   const retired = [];
   const seen = new Set();
@@ -2677,7 +2977,7 @@ export function checkReport({ project, run, report }) {
     if (reason) retired.push({ id, reason });
     else kept.push(id);
   });
-  const implementsResult = checkImplements(project, report);
+  const implementsResult = checkImplements(project, run, report);
   const implOk = implementsResult.status === 'ok' || implementsResult.status === 'not-required';
   return { kept, retired, implements: implementsResult, exitCode: retired.length === 0 && implOk ? 0 : 1 };
 }
@@ -3744,7 +4044,10 @@ test('realistic public Next.js site: no SEO fail from common patterns; the dev U
 });
 
 test('one batch end to end: save, edit, verify, ui-check, report-check (0, then 1), restore', () => {
-  const dir = repo({ 'DESIGN.md': DESIGN, 'src/Save.tsx': 'export const S = () => <button><svg /></button>;\n' });
+  const MANIFEST = 'a'.repeat(64);
+  const approved = `${DESIGN}\n## Decisions\n\n- 2026-09-29 — approved \`design/approved/tienda/\` (manifest sha256 \`${MANIFEST}\`): "A"\n`;
+  const implemented = { implemented: true, implements: { path: 'design/approved/tienda', manifestSha256: MANIFEST } };
+  const dir = repo({ 'DESIGN.md': approved, 'src/Save.tsx': 'export const S = () => <button><svg /></button>;\n' });
   const run = path.join(dir, '.pignolo-ui', 'runs', 'r1');
   writeTree(run, { 'expected.json': JSON.stringify([{ path: 'src/Save.tsx', exists: true, change: 'structure' }]) });
   const batch = path.join(run, 'batch-1');
@@ -3757,35 +4060,46 @@ test('one batch end to end: save, edit, verify, ui-check, report-check (0, then 
   const entry = JSON.parse(uiBuf).entries.find((e) => e.id === 'A11Y-04' && e.status === 'pass');
   const claim = { id: 'c1', text: 'El botón Guardar tiene nombre accesible', rule: 'A11Y-04', status: 'pass', ref: { source: 'ui-check', fingerprint: entry.fingerprint } };
   const edited = { id: 'c2', text: 'Se editó Save.tsx', ref: { source: 'file', path: 'src/Save.tsx', sha256: sha(fs.readFileSync(path.join(dir, 'src/Save.tsx'))) } };
-  writeTree(run, { 'report.json': JSON.stringify({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [claim, edited] }) });
+  writeTree(run, { 'report.json': JSON.stringify({ version: 1, ...implemented, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [claim, edited] }) });
   const ok = runScript('report-check.mjs', ['--project', dir, '--run', run]);
   assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-  writeTree(run, { 'report.json': JSON.stringify({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [{ ...claim, status: 'fail' }] }) });
+  writeTree(run, { 'report.json': JSON.stringify({ version: 1, ...implemented, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [{ ...claim, status: 'fail' }] }) });
   assert.equal(runScript('report-check.mjs', ['--project', dir, '--run', run]).status, 1);
+  // the verified batch says something was implemented: declaring the opposite is not accepted
+  writeTree(run, { 'report.json': JSON.stringify({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [claim] }) });
+  const denied = runScript('report-check.mjs', ['--project', dir, '--run', run]);
+  assert.deepEqual([denied.status, denied.json.implements], [1, 'missing']);
   assert.equal(runScript('files.mjs', ['restore', '--project', dir, '--batch', batch]).status, 0);
   assert.equal(porcelain(dir), '');
 });
 ```
 
-- [ ] **Paso 2: correr.** Estos tests describen el comportamiento que las Tasks B1–B5 ya construyeron: su rojo se demuestra una vez rompiendo lo que protegen y restaurando con el editor: (a) en `seo-page.mjs`, quitar el `if (el.inExpression)` de SEO-02 → el caso realista falla con un `fail` de SEO-02; (b) en `restoreBatch`, saltear la restauración de los esperados → el caso de punta a punta falla en `git status`. Un hueco real se arregla en la tarea dueña, en esta ola, con un commit `fix(ui): …` que nombra el test.
+- [ ] **Paso 2: correr.** Estos tests describen el comportamiento que las Tasks B1–B5 ya construyeron: su rojo se demuestra una vez rompiendo lo que protegen y restaurando con el editor: (a) en `seo-page.mjs`, quitar el `if (el.inExpression)` de SEO-02 → el caso realista falla con un `fail` de SEO-02; (b) en `restoreBatch`, saltear la restauración de los esperados → el caso de punta a punta falla en `git status`; (c) en `report-check.mjs`, hacer que `runApplied` devuelva `false` → el caso de punta a punta falla en el `report.json` con `implemented: false`. Un hueco real se arregla en la tarea dueña, en esta ola, con un commit `fix(ui): …` que nombra el test.
 - [ ] **Paso 3: docs y versión.**
   - `plugin.json` → `0.3.0`. CHANGELOG, entrada nueva arriba de 0.2.0:
     - "Hito 2b: SEO estático en `ui-check` (SEO-01, 02, 04, 05, 06, 09, 18; solo con `web.public: true`, nunca bloquean; `--url` para la URL de desarrollo local), `files.mjs` (`save | verify | restore`, §9) y `report-check.mjs` (§12)."
     - "Motivo de subir a 0.3.0: interfaces nuevas (`files`, `report-check`, `--url`, `report.json`) y 7 reglas más en el catálogo (`catalogVersion` 0.3.0)."
-    - Los rulings que cambian lo que ve el usuario: SEO-01 sin `robots.txt` pasa; un cambio inesperado en un archivo con seguimiento queda `BLOCKED` en lugar de revertirse; archivos ignorados por git no se vigilan.
+    - Los rulings que cambian lo que ve el usuario: SEO-01 sin `robots.txt` pasa; un cambio inesperado en un archivo con seguimiento queda `BLOCKED` en lugar de revertirse (lo que haya decidido el autor en D-2b-1); `restore` borra los archivos nuevos que se crearon durante el lote, también los que quedaron fuera de la lista, si nadie los tocó después de `verify`; archivos ignorados por git no se vigilan.
   - README:
     - en "Checker (`ui-check`)": `--url` (solo local, un origen, hasta 20, necesita `--design`), qué hace `web.public`/`web.indexable` y que el SEO nunca bloquea;
-    - sección nueva "Aplicar sin romper (`files`)": los tres subcomandos con un ejemplo de `expected.json`, los códigos 0/1/2, qué se restaura, qué queda `BLOCKED` y por qué, y que los archivos ignorados no se vigilan;
+    - sección nueva "Aplicar sin romper (`files`)": los tres subcomandos con un ejemplo de `expected.json`, los códigos 0/1/2, qué se restaura, qué queda `BLOCKED` y por qué (`changed-after-the-batch`, `not-verified`, `not-in-project`, cambios inesperados con seguimiento), que los archivos ignorados no se vigilan y, dicho explícitamente, que **`restore` borra los archivos nuevos creados durante el lote**, incluidos los que no estaban en `expected.json` (por eso conviene mirar `unexpected` de `verify` antes de correrlo);
     - sección nueva "Informe verificado (`report-check`)": el formato de `report.json` (el bloque de los Rulings), las cuatro fuentes de evidencia, los códigos y qué significa "retirada";
-  - CREDITS: las fuentes de SEO (RFC 9309, RFC 6596, sitemaps.org 0.9, HTML Living Standard, Open Graph protocol, Google Search Central) como enlaces con su fecha de consulta, sin texto copiado; completar la fecha que alguna tarea no pudo verificar (misma fecha en `rules.json`, y regenerar el bloque del README con el comando de la Task B1 si cambió).
-  - Spec: §5.9 "Aclaraciones técnicas del hito 2b" con los rulings de compuerta, SEO como reglas de proyecto, páginas y `--url` local, SEO-01/04/06/18 en JSX, `ui-check.json` con URLs, `files.json` y `BLOCKED` para cambios inesperados con seguimiento, `report.json` y `browser.json`; en §9 y §12, una línea que remite a §5.9. Sin tocar ninguna decisión del autor.
+  - CREDITS: las fuentes de SEO como enlaces con su fecha de consulta, sin texto copiado, en una línea cada una: RFC 9309 Robots Exclusion Protocol (https://www.rfc-editor.org/rfc/rfc9309), RFC 6596 The Canonical Link Relation (https://www.rfc-editor.org/rfc/rfc6596), sitemaps.org 0.9 (https://www.sitemaps.org/protocol.html), HTML Living Standard, el elemento `title` (https://html.spec.whatwg.org/multipage/semantics.html#the-title-element), The Open Graph protocol (https://ogp.me/), Google Search Central: robots meta tag y X-Robots-Tag (https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag) y link best practices (https://developers.google.com/search/docs/crawling-indexing/links-crawlable); todas consultadas el 2026-09-29, la misma fecha que `rules.json`.
+  - Spec: §5.9 "Aclaraciones técnicas del hito 2b" con los rulings de compuerta, SEO como reglas de proyecto, páginas y `--url` local, SEO-01/04/06/18 en JSX, `ui-check.json` con URLs, `files.json`, `report.json` y `browser.json`; en §12, una línea que remite a §5.9. La línea de §9 sobre cambios inesperados con seguimiento ("se revierte" frente a `BLOCKED`) se escribe **solo con lo que el autor haya decidido en D-2b-1**; sin esa decisión, la Task B6 deja §9 sin tocar y lo anota en `docs/STATE.md`. Sin tocar ninguna otra decisión del autor.
 - [ ] **Paso 4: suite y revisión final.** `npm run test:quiet` completo y `claude plugin validate plugins/pignolo-ui`. Después, **una revisión final opus** de `main..ui/hito-2b` (con el Review Focus del 2b), una pasada de arreglos y una confirmación acotada; lo que quede se clasifica.
-- [ ] **Paso 5: estado.** `docs/STATE.md`: hito 2b terminado, hito 2 de pignolo-ui cerrado, qué quedó para el hito 3 (`browser.json` con el contrato de `report-check`) y el 4 (skills que escriben `report.json` y corren `files`; las ~125 reglas de guía).
+- [ ] **Paso 5: estado.** `docs/STATE.md`: hito 2b terminado, hito 2 de pignolo-ui cerrado, qué quedó para el hito 3 (`browser.json` con el contrato de `report-check`) y el 4 (skills que escriben `report.json` y corren `files`, y **muestran al usuario la lista `unexpected` de `verify` antes de correr `restore`**, porque `restore` borra los archivos nuevos que el agente creó fuera de la lista; las ~125 reglas de guía).
 - [ ] **Paso 6: unión y push** a `main` solo con el OK del autor.
 
 ## Decisiones que necesita el autor (hito 2b)
 
-**Ninguna nueva.** Revisado contra lo reservado: sin dependencias ni binarios; sin costo nuevo (el método ya aprobado para el 2a, con opus solo en 2 de 6 tareas); sin datos ni texto de terceros (las fuentes de SEO van como enlaces fechados, sin copiar texto); ningún contrato que consuma el núcleo cambia (`--url` es opcional y aditivo, y la compuerta del hito 5 sigue con la invocación de §5.5; `report.json` y `browser.json` son internos de pignolo-ui). Dos rulings acotan al spec a favor de la seguridad y quedan anotados abajo para que el autor los vea en la revisión: `--url` solo local y `BLOCKED` en lugar de revertir cambios inesperados con seguimiento.
+**Decisión del autor D-2b-1 (2026-09-29): BLOCKED y se le pregunta al usuario (opción recomendada).** Pregunta original: qué hace `restore` con un cambio inesperado sobre un archivo con seguimiento (o que ya estaba sucio).** §9 dice "si no, se revierte"; revertir un archivo con seguimiento que el lote no copió exige escribir con git, y cambia lo que dice el spec.
+- **Recomendación (implementada en el plan):** `BLOCKED` y se le pregunta al usuario. Motivo: nunca perder trabajo del usuario; el lote no tiene copia de ese archivo y `HEAD` puede no ser lo que el usuario tenía (un archivo sucio antes del lote se perdería entero).
+- **Alternativa:** revertir con `git checkout -- <archivo>` el archivo con seguimiento que estaba limpio antes del lote (el sucio seguiría `BLOCKED`). Cambio acotado si el autor la elige: la función `unexpectedAction` de `lib/batch-files.mjs` devuelve `'checkout'` para `!u.wasDirty && u.code !== '??'` y `restoreBatch` corre ese `checkout` tras comprobar que el sha256 actual es el de `after`; se ajustan el test "unexpected changes to tracked or previously dirty files are BLOCKED" y la Global Constraint "Git solo se lee".
+- Se decide antes de la ola 0 (la Task B2 lo implementa). La línea de §9 del spec la escribe la Task B6 según esta decisión.
+
+**Método y costo (sin decisión nueva, con su motivo):** 6 tareas en 3 olas con sonnet y opus solo en lo delicado, que es el método que el autor aprobó para el 2a. Las Tasks B1 y B2 **siguen en opus** por esa regla: la B2 borra y reescribe archivos del usuario (`restore`) y la B1 abre la red local (`--url`: plazos, redirecciones, tope de bytes). No es un costo nuevo sino la aplicación del método aprobado; bajarlas a sonnet ahorraría poco y pondría en riesgo justo las dos piezas que pueden romper algo fuera del plan.
+
+**Revisado contra lo reservado (sin otra decisión):** sin dependencias ni binarios; sin datos ni texto de terceros (las fuentes de SEO van como enlaces fechados, sin copiar texto); ningún contrato que consuma el núcleo cambia (`--url` es opcional y aditivo, y la compuerta del hito 5 sigue con la invocación de §5.5; `report.json` y `browser.json` son internos de pignolo-ui). Un ruling técnico acota al spec a favor de la seguridad y queda anotado abajo para que el autor lo vea en la revisión: `--url` solo local.
 
 **Fuera de este plan:** la pregunta de las ~125 reglas de guía del auditor es del plan del hito 4.
 
@@ -3794,7 +4108,7 @@ test('one batch end to end: save, edit, verify, ui-check, report-check (0, then 
 1. **§5.2 dice que todas las SEO son de documento**, pero SEO-01 y SEO-05 leen archivos de sitio y SEO-06 compara rutas. Ruling: `level: document` en el catálogo, implementadas como reglas de proyecto sobre las páginas.
 2. **SEO-01 "(o da 404, que equivale a todo permitido) … y referencia un sitemap"** no dice si la falta de `robots.txt` falla por no referenciar un sitemap. Ruling: no falla; SEO-05 queda `unverified`.
 3. **§5.4 "sobre lo que devuelve `fetch`" frente a §0 "nada remoto".** Ruling: solo direcciones de loopback; el sitemap de producción se busca por su ruta.
-4. **§9 "si no, se revierte"** no se puede cumplir sin git destructivo para un archivo con seguimiento que el lote no copió. Ruling: se revierte lo que tiene prueba (copias y archivos creados con sha256 registrado); lo demás, `BLOCKED` al usuario.
+4. **§9 "si no, se revierte"** no se puede cumplir sin git destructivo para un archivo con seguimiento que el lote no copió. Se revierte lo que tiene prueba (copias y archivos creados con sha256 registrado). Lo demás es la decisión pendiente D-2b-1 (arriba); la recomendación, implementada, es `BLOCKED` al usuario.
 5. **§12 no define `report.json`** ni la forma de `browser.json`. Ruling: los contratos de arriba; el hito 3 hereda el de `browser.json`.
 6. **§9 paso 5** (correr `typecheck`/`build`/`lint`) no es de `files.mjs`: lo hace la skill del hito 4.
 7. **Mockups y SEO:** §3.3 dice que `design/approved/**` nunca entra al alcance de una implementación; el SEO tampoco los mira (títulos repetidos entre pantallas de un flujo no son un problema del sitio).
