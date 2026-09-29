@@ -16,6 +16,7 @@ Plugin de Claude Code con una metodología de desarrollo con agentes: autonomía
 
 - Nombres de elementos del plugin en inglés (`review`, `project.md`, `implementer`...). Texto interno de skills, agentes y reglas en inglés. Mensajes al autor, commits y docs en español.
 - Commits en español, Conventional Commits.
+- Todo cambio publicado de un plugin sube su `version` en `plugin.json` y suma su entrada al CHANGELOG: sin eso, `/plugin update` no lo toma.
 - Node ≥ 20, sin dependencias npm; tests con `node:test` vía `npm test` (no `node --test tests/`).
 - Todo bloque de código de un plan es una hipótesis hasta ejecutarlo en una copia; todo test nuevo se demuestra en rojo rompiendo lo que protege.
 - Revisores y auditores siempre en opus.
