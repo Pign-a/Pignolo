@@ -224,7 +224,9 @@ function loadConflicts(env) {
   return { file, entries: data.entries };
 }
 
-const sameHashes = (a, b) => a.sha256?.source === b.sha256.source && a.sha256?.pignolo === b.sha256.pignolo;
+// El mismo conflicto: mismo proyecto (o ninguno), misma fuente y las mismas citas.
+const sameHashes = (a, b) => a.sha256?.source === b.sha256.source && a.sha256?.pignolo === b.sha256.pignolo
+  && (a.project ?? null) === (b.project ?? null) && a.source?.path === b.source.path;
 
 // Resoluciones de conflictos de reglas (~/.pignolo/rule-conflicts.json). Si cambia una cita, vuelve a preguntarse.
 function conflicts(args, env, cwd) {

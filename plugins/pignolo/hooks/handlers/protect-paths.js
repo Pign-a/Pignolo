@@ -16,7 +16,7 @@ const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude
 
 const RUN_BLOCKED = 'pignolo bloqueó la escritura: .pignolo/run.json lo escriben solo las skills de pignolo desde la conversación principal. Alternativa: devolvé BLOCKED y nombrá lo que haga falta cambiar.\n';
 
-exports.run =(input, ctx = {}) => {
+exports.run = (input, ctx = {}) => {
   const env = ctx.env || process.env;
   const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : process.cwd();
   const ti = input.tool_input || {};

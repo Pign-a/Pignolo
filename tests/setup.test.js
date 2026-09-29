@@ -341,6 +341,17 @@ test('conflicts --check: una cita cambiada en un carácter queda pendiente; las 
   assert.equal(r.json.pending[0].source.quote, changed.source.quote);
 });
 
+test('conflicts --check: la resolución de un proyecto (o de otra fuente) no silencia otra (M7)', () => {
+  const sb = sandbox();
+  run(['conflicts', '--record', candidates(sb, [conflictEntry(1, { project: '/proyectos/uno' })])], sb);
+  const other = run(['conflicts', '--check', candidates(sb, [conflictEntry(1, { project: '/proyectos/dos' })])], sb);
+  assert.equal(other.json.pending.length, 1);
+  const moved = conflictEntry(1, { project: '/proyectos/uno' });
+  moved.source.path = 'otro/CLAUDE.md';
+  assert.equal(run(['conflicts', '--check', candidates(sb, [moved])], sb).json.pending.length, 1);
+  assert.deepEqual(run(['conflicts', '--check', candidates(sb, [conflictEntry(1, { project: '/proyectos/uno' })])], sb).json.pending, []);
+});
+
 test('conflicts --record: una entrada inválida sale con exit 1 y deja el archivo intacto', () => {
   const bad = [
     ['rule 7', conflictEntry(1, { pignolo: { rule: 7, quote: 'x' } })],
