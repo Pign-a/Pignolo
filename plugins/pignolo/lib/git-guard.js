@@ -56,6 +56,7 @@ const RULES = {
   'git-C': ['deny', 'con git -C / --git-dir / --work-tree la guardia no ve el otro directorio: `checkout <x>` puede ser un archivo', 'usá `cd <ruta> && git checkout <x>`'],
   'protected-flag': ['deny', 'los flags del interruptor solo los escribe /pignolo:off y /pignolo:on', 'pedile al humano que escriba /pignolo:off o /pignolo:on'],
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
+  'pignolo-run': ['deny', 'un subagente no opera el flujo de pignolo (scripts/run.js): solo el hilo principal lo registra, lo renueva o lo cierra', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el flujo'],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
   push: ['ask', 'pignolo pide confirmación: push al remoto'],
@@ -293,6 +294,7 @@ function evaluate(command, opts = {}) {
     psTimeoutMs: opts.psTimeoutMs, // solo tests: plazo holgado para el parseo con la máquina cargada
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
     onlyCatastrophic: Boolean(opts.onlyCatastrophic),
+    subagent: Boolean(opts.subagent), // el payload trae agent_id
     trace: [],
   };
   const found = [];
@@ -605,6 +607,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
     for (const w of pipedPaths(cmd)) checkWriteTarget(w, st, ctx, out);
   }
   checkLauncher(name, words, st, ctx, out);
+  checkRunScript(name, words, st, ctx, out);
   if ((name === 'claude' || name === 'claude-code') && claudePluginOff(args)) out.push(hit('protected-flag'));
   checkPathArgs(name, args, st, ctx, out);
   if (name === 'robocopy' && args.some((w) => /^\/(mir|purge|move|mov)$/i.test(w.value))) {
@@ -826,6 +829,28 @@ function checkLauncher(name, words, st, ctx, out) {
     const statusForm = name === 'node' && words.length === 3 && w === words[1] && words[2].value === 'session-start' && !words[2].dyn;
     if (!statusForm) out.push(hit('pignolo-launcher'));
     return;
+  }
+}
+
+// Un subagente no ejecuta scripts/run.js de pignolo (end, task --test-authorization o
+// start --replace apagarían el handback-gate): solo el hilo principal opera el flujo.
+// Se reconoce el run.js de este plugin o uno bajo un directorio `pignolo` (copias del caché);
+// el run.js de un proyecto cualquiera no. Solo cuando se ejecuta, no cuando se lee.
+const PIGNOLO_RUN_JS = `${cleanPath(path.join(__dirname, '..'))}/scripts/run.js`;
+const RUN_JS_RE = /(^|\/)pignolo\/(?:[^/]+\/)*scripts\/run\.js$/;
+function checkRunScript(name, words, st, ctx, out) {
+  if (!ctx.subagent) return;
+  const executes = (w) => w === words[0] || INTERP.has(name);
+  for (const w of words) {
+    if (!executes(w)) continue;
+    let is;
+    if (w.dyn) is = /(^|[\\/])scripts[\\/]run\.js$/i.test(w.value);
+    else {
+      const p = resolveAt(w.value, st, ctx);
+      const c = p === null ? cleanPath(w.value) : p;
+      is = c === PIGNOLO_RUN_JS || RUN_JS_RE.test(c);
+    }
+    if (is) { out.push(hit('pignolo-run')); return; }
   }
 }
 

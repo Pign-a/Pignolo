@@ -28,6 +28,7 @@ exports.run = (input, ctx = {}) => {
     ? (currentBranch(cwd, { timeout: BRANCH_TIMEOUT_MS }) || UNKNOWN_BRANCH) : null;
   const v = evaluate(command, {
     shell, branch, cwd, mode: input.permission_mode, home: userHomes(env)[0], claudeDirs: claudeDirs(env), pignoloHome: pignoloHome(env), onlyCatastrophic: guardOff,
+    subagent: Boolean(input.agent_id),
   });
   if (v.decision === 'block') {
     return { exit: 2, stderr: `pignolo bloqueó el comando: ${v.reason}. Alternativa: ${v.alternative}.\n` };
