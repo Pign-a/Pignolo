@@ -15,6 +15,8 @@ const { readProjectConfig } = require('../lib/project-config');
 
 const FLOWS = ['trivial', 'daily', 'review', 'plan'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+// Contador de los DONE rechazados con run.json ilegible (handback-gate).
+const MALFORMED = '_malformed';
 const VERBS = {
   start: { value: ['flow', 'ttl-min', 'cwd'], bool: ['replace'] },
   task: { value: ['id', 'worktree', 'base', 'test-ref', 'cwd'], multi: ['file', 'agent'], bool: ['test-authorization'] },
@@ -81,6 +83,7 @@ function start(o, main, env) {
     if (st.running) throw new Fail(`ya hay un flujo en curso (${st.run.flow}) hasta ${st.run.expires}`);
   }
   if (st.run && st.run.task) clearCounter(env, main, st.run.task.id);
+  clearCounter(env, main, MALFORMED);
   const now = Date.now();
   const run = { v: 1, flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
   ensureIgnored(main, ['run.json', '.disabled']);
@@ -135,6 +138,7 @@ function task(o, main, env) {
   if (st.run.task && st.run.task.id !== o.id) clearCounter(env, main, st.run.task.id);
   writeRun(st.file, run);
   clearCounter(env, main, o.id);
+  clearCounter(env, main, MALFORMED);
   out({ ok: true, run });
 }
 
@@ -150,12 +154,17 @@ function renew(o, main) {
 function status(o, main, env) {
   const st = readRun(main);
   const run = st.run || null;
-  out({ running: st.running, malformed: Boolean(st.malformed), run, handback: run && run.task ? readCounter(env, main, run.task.id) : null });
+  out({
+    running: st.running, malformed: Boolean(st.malformed), run,
+    handback: run && run.task ? readCounter(env, main, run.task.id) : null,
+    malformedHandback: readCounter(env, main, MALFORMED),
+  });
 }
 
 function end(o, main, env) {
   const st = readRun(main);
   if (st.run && st.run.task) clearCounter(env, main, st.run.task.id);
+  clearCounter(env, main, MALFORMED);
   const existed = fs.existsSync(st.file);
   fs.rmSync(st.file, { force: true });
   out({ ok: true, ended: existed });

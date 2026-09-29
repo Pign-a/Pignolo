@@ -210,3 +210,25 @@ test('renew moves expires forward; end removes run.json and the counter, and is 
   const none = run(repo, ['status']).out;
   assert.deepStrictEqual([none.running, none.run, none.handback], [false, null, null]);
 });
+
+test('I1: the _malformed counter shows in status and start, task and end clear it', () => {
+  const repo = makeRepo();
+  const base = commitProjectMd(repo);
+  const wt = addWorktree(repo);
+  const bump = () => writeCounter(process.env, repo, '_malformed', { count: 3, accepted: false, acceptedAgentId: null, blocked: false, lastReason: 'x', stopHookActive: [] });
+  const gone = () => !fs.existsSync(counterPath(process.env, repo, '_malformed'));
+  fs.mkdirSync(path.join(repo, '.pignolo'), { recursive: true });
+  fs.writeFileSync(runFile(repo), '{roto');
+  bump();
+  const st = run(repo, ['status']).out;
+  assert.strictEqual(st.malformed, true);
+  assert.strictEqual(st.malformedHandback.count, 3);
+  assert.strictEqual(run(repo, ['start', '--flow', 'daily', '--replace']).status, 0);
+  assert.ok(gone(), 'start');
+  bump();
+  assert.strictEqual(run(repo, ['task', '--id', 'x', '--worktree', wt, '--base', base]).status, 0);
+  assert.ok(gone(), 'task');
+  bump();
+  assert.strictEqual(run(repo, ['end']).status, 0);
+  assert.ok(gone(), 'end');
+});

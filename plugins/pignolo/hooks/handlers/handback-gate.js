@@ -3,7 +3,8 @@
 // SubagentHandback: un DONE pasa solo con un sello on-done PASS (o NO_TESTS con razón) del
 // árbol de trabajo de la worktree de la tarea y la integridad de tests en verde. Nunca corre
 // la suite. BLOCKED y NEEDS_CONTEXT pasan siempre. El intento cuenta (y se persiste) antes
-// de tocar git; a los 8 rechazos la tarea queda BLOCKED y se deja pasar. PostToolUse sobre
+// de tocar git; desde el intento 8 se verifica igual y, si no pasa, la tarea queda BLOCKED y
+// se deja pasar (sin bucle). Los cierres sin palabra cuentan en la tarea. PostToolUse sobre
 // Agent le avisa al hilo principal si la tarea no pasó. Callado en el éxito.
 // Los módulos de git se cargan solo después de filtrar evento y agente (carga perezosa):
 // en un despacho suelto este hook no cuesta más que el arranque.
@@ -17,6 +18,7 @@ const LAUNCHER_DEADLINE_MS = 3000; // sin ctx.deadline (llamada en proceso), el 
 const MARGIN_MS = 400;
 const PROJECT_MD = '.pignolo/project.md';
 const PLUGIN_ROOT = require('node:path').join(__dirname, '..', '..');
+const MALFORMED = '_malformed';
 
 // Última línea no vacía, sin `*` ni `` ` `` y sin puntuación final.
 function lastWord(message) {
@@ -37,6 +39,13 @@ function postToolUse(input, env) {
     const { main, active } = projectState({ cwd, env });
     if (!active) return silent();
     const r = readRun(main);
+    if (r.malformed) {
+      // run.json ilegible: el contador _malformed (lo borran run.js start, task y end).
+      const m = readCounter(env, cwd, MALFORMED);
+      if (!(m.blocked || (m.count > 0 && !m.accepted))) return silent();
+      const additionalContext = `pignolo: el marcador del flujo (${r.file}) está ilegible y el handback-gate rechazó el DONE del escritor; tratá la tarea como BLOCKED y limpialo con run.js end o start --replace.`;
+      return { exit: 0, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext } }) };
+    }
     const task = r.run && r.run.task;
     if (!task) return silent();
     const c = readCounter(env, cwd, task.id);
@@ -80,9 +89,9 @@ exports.run = (input, ctx = {}) => {
   let task = null;
   let preReason = null;
   if (state.malformed) {
-    key = '_malformed';
-    taskId = '_malformed';
-    preReason = `el marcador del flujo (${state.file}) no se puede leer, así que no se puede verificar este DONE. Alternativa: respondé BLOCKED con este motivo y pedile al orquestador node "${PLUGIN_ROOT}/scripts/run.js" end (o start --replace).`;
+    key = MALFORMED;
+    taskId = MALFORMED;
+    preReason = `el marcador del flujo (${state.file}) no se puede leer, así que no se puede verificar este DONE. Alternativa: respondé BLOCKED con este motivo; el hilo principal lo limpia con run.js end (o start --replace).`;
   } else {
     task = state.run && state.run.task;
     if (!task) return silent(); // sin run.json o sin tarea de escritura (vencido o no)
@@ -92,11 +101,13 @@ exports.run = (input, ctx = {}) => {
       const prev = readCounter(env, cwd, task.id);
       if (prev.accepted && prev.acceptedAgentId === input.agent_id) return silent();
     }
+    // El cierre sin palabra cuenta en la tarea: lo reinician la aceptación y run.js task,
+    // y PostToolUse lo ve.
+    key = task.id;
     if (!word) {
-      key = '_noword';
       preReason = 'el mensaje no termina con una palabra de cierre. Alternativa: terminá con DONE, BLOCKED o NEEDS_CONTEXT en la última línea.';
-    } else {
-      key = task.id;
+    } else if (!require('node:fs').existsSync(task.worktree)) {
+      preReason = `la worktree de la tarea (${task.worktree}) no existe. Alternativa: respondé BLOCKED con este motivo; el orquestador tiene que registrar la tarea de nuevo (run.js task) o cerrar el flujo.`;
     }
   }
 
@@ -106,17 +117,16 @@ exports.run = (input, ctx = {}) => {
   c.stopHookActive = [...(Array.isArray(c.stopHookActive) ? c.stopHookActive : []), input.stop_hook_active === true];
   c.accepted = false;
   writeCounter(env, cwd, key, c);
-  if (c.count >= CAP) {
-    c.blocked = true;
-    writeCounter(env, cwd, key, c);
-    const systemMessage = `pignolo: la tarea ${taskId} quedó BLOCKED tras ${CAP} intentos rechazados del handback-gate (${c.lastReason || 'sin motivo registrado'}). Revisala antes de seguir.`;
-    return { exit: 0, stdout: JSON.stringify({ systemMessage }) };
-  }
 
-  // 12. Bloqueo: motivo guardado y exit 2.
+  // 12. Bloqueo: motivo guardado y exit 2. Desde el tope (8), BLOCKED y exit 0: sin bucle.
   const block = (reason) => {
     c.lastReason = reason;
+    if (c.count >= CAP) c.blocked = true;
     try { writeCounter(env, cwd, key, c); } catch (_) { /* el intento ya contó en el paso 7 */ }
+    if (c.blocked) {
+      const systemMessage = `pignolo: la tarea ${taskId} quedó BLOCKED tras ${c.count} intentos rechazados del handback-gate (${reason}). Revisala antes de seguir.`;
+      return { exit: 0, stdout: JSON.stringify({ systemMessage }) };
+    }
     return { exit: 2, stderr: `pignolo: handback-gate rechazó el DONE: ${reason}\n` };
   };
   if (preReason) return block(preReason);
@@ -158,6 +168,9 @@ function verify({ input, ctx, env, now, task }) {
     if (!seal) {
       return `no hay un sello de on-done para el árbol actual de ${wt}. Alternativa: corré node "${PLUGIN_ROOT}/scripts/gate.js" --level on-done --task y, si falla, arreglalo o respondé BLOCKED con el motivo.`;
     }
+    if (seal.task !== task.id) {
+      return `el sello de on-done del árbol actual de ${wt} no es de la tarea ${task.id} (es de ${seal.task || 'ninguna tarea'}), así que no midió su alcance. Alternativa: corré node "${PLUGIN_ROOT}/scripts/gate.js" --level on-done --task ${task.id} y, si falla, arreglalo o respondé BLOCKED con el motivo.`;
+    }
     const noTestsOk = seal.status === 'NO_TESTS' && typeof seal.noTestsReason === 'string' && seal.noTestsReason.trim() !== '';
     if (seal.status !== 'PASS' && !noTestsOk) {
       const why = seal.status === 'NO_TESTS' ? 'NO_TESTS sin razón registrada' : seal.status;
@@ -177,9 +190,11 @@ function verify({ input, ctx, env, now, task }) {
   const isProtected = (p) => p === PROJECT_MD || matchAny(config.protectedTestConfig, p);
 
   if (input.agent_type === 'pignolo:test-writer') {
-    const bad = changed.filter((p) => !isTest(p) || isProtected(p));
+    const files = Array.isArray(task.files) ? task.files : [];
+    const inCard = (p) => files.includes(p) || matchAny(files, p);
+    const bad = changed.filter((p) => !isTest(p) || isProtected(p) || !inCard(p));
     if (bad.length) {
-      return `el test-writer solo puede cambiar archivos de test-paths y ninguno de protected-test-config; cambió: ${bad.join(', ')}. Alternativa: deshacé esos cambios o respondé BLOCKED con el motivo.`;
+      return `el test-writer solo puede cambiar archivos de su tarjeta (--file) que estén en test-paths, y ninguno de protected-test-config; cambió: ${bad.join(', ')}. Alternativa: deshacé esos cambios o respondé BLOCKED con el motivo.`;
     }
     return null;
   }

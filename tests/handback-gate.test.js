@@ -8,7 +8,7 @@ const { makeRepo, makeTempDir, runLauncher, git } = require('./helpers');
 const gate = require('../plugins/pignolo/hooks/handlers/handback-gate');
 const { workingTree } = require('../plugins/pignolo/lib/changes');
 const { repoIdFor, writeSeal } = require('../plugins/pignolo/lib/seals');
-const { readCounter } = require('../plugins/pignolo/lib/handback-counter');
+const { readCounter, clearCounter } = require('../plugins/pignolo/lib/handback-counter');
 const { withDeadline } = require('../plugins/pignolo/lib/git');
 
 const LAZY = path.join(__dirname, 'fixtures', 'handback-lazy.js');
@@ -251,7 +251,7 @@ test('malformed run.json', async (t) => {
   }
 });
 
-test('no valid final word 8 times: 7 rejections, the 8th passes as BLOCKED, counted in _noword', () => {
+test('no valid final word 8 times: 7 rejections, the 8th passes as BLOCKED, counted on the task', () => {
   const fx = flow();
   const exits = [];
   let last;
@@ -261,7 +261,66 @@ test('no valid final word 8 times: 7 rejections, the 8th passes as BLOCKED, coun
   }
   assert.deepStrictEqual(exits, [2, 2, 2, 2, 2, 2, 2, 0]);
   assert.match(JSON.parse(last.stdout).systemMessage, /BLOCKED/);
-  assert.strictEqual(counter(fx, '_noword').count, 8);
+  assert.strictEqual(counter(fx).count, 8);
+  assert.strictEqual(counter(fx).blocked, true);
+});
+
+test('I1: closes without a final word count on the task: run.js task resets them and PostToolUse sees them', () => {
+  const fx = flow();
+  for (let i = 0; i < 7; i += 1) assert.strictEqual(call(fx, { msg: 'sigo trabajando' }).exit, 2);
+  clearCounter(fx.env, fx.main, 't1'); // lo que hace run.js task al registrar de nuevo la tarea
+  assert.strictEqual(call(fx, { msg: 'Todo listo. Task DONE' }).exit, 2);
+  assert.match(JSON.parse(post(fx, 'pignolo:implementer').stdout).hookSpecificOutput.additionalContext, /t1.*BLOCKED/);
+  seal(fx);
+  assert.strictEqual(call(fx).exit, 0);
+  assert.strictEqual(call(fx, { msg: 'sigo trabajando', id: 'a2' }).exit, 2);
+});
+
+test('M1: at the cap a DONE is still verified: a sealed one is accepted, an unsealed one ends blocked', async (t) => {
+  await t.test('sealed 8th -> 0 accepted', () => {
+    const fx = flow();
+    for (let i = 0; i < 7; i += 1) assert.strictEqual(call(fx).exit, 2);
+    seal(fx);
+    assert.deepStrictEqual(call(fx), { exit: 0, stdout: '', stderr: '' });
+    assert.deepStrictEqual([counter(fx).accepted, counter(fx).blocked, counter(fx).count], [true, false, 0]);
+  });
+  await t.test('9th after the cap without a seal -> 0 blocked again, no loop', () => {
+    const fx = flow();
+    for (let i = 0; i < 8; i += 1) call(fx);
+    const r = call(fx);
+    assert.strictEqual(r.exit, 0);
+    assert.match(JSON.parse(r.stdout).systemMessage, /BLOCKED/);
+    assert.strictEqual(counter(fx).blocked, true);
+  });
+});
+
+test('I2: a seal of another task (or of gate.js without --task) is not accepted', () => {
+  const fx = flow();
+  seal(fx, 'PASS', { task: null });
+  const r = call(fx);
+  assert.strictEqual(r.exit, 2);
+  assert.match(r.stderr, /--task t1/);
+  assert.match(r.stderr, /Alternativa:/);
+});
+
+test('M4: a task worktree that no longer exists is rejected with a specific reason', () => {
+  const fx = flow();
+  fs.rmSync(fx.wt, { recursive: true, force: true });
+  const r = call({ ...fx, wt: fx.main });
+  assert.strictEqual(r.exit, 2);
+  assert.match(r.stderr, /no existe/);
+  assert.match(r.stderr, /BLOCKED/);
+});
+
+test('malformed run.json: PostToolUse warns the main thread; the reason does not print the full command', () => {
+  const fx = flow();
+  fs.writeFileSync(path.join(fx.main, '.pignolo', 'run.json'), '{roto');
+  const r = call(fx);
+  assert.strictEqual(r.exit, 2);
+  assert.doesNotMatch(r.stderr, /node "/);
+  const p = post(fx, 'pignolo:implementer');
+  assert.match(JSON.parse(p.stdout).hookSpecificOutput.additionalContext, /run.json/);
+  assert.deepStrictEqual(post(fx, 'Explore'), { exit: 0, stdout: '', stderr: '' });
 });
 
 test('expired run.json with run.task still verifies DONE', () => {
@@ -271,9 +330,16 @@ test('expired run.json with run.task still verifies DONE', () => {
 
 test('test-writer DONE', async (t) => {
   await t.test('only tests/ changed -> 0', () => {
-    const fx = flow();
+    const fx = flow({ taskOver: { files: ['tests/a.test.js'] } });
     edit(fx, 'tests/a.test.js', "require('../src/a'); // nuevo caso\n");
     assert.strictEqual(call(fx, { agent: 'pignolo:test-writer' }).exit, 0);
+  });
+  await t.test('I4: an existing test outside its card -> 2', () => {
+    const fx = flow({ files: { 'tests/b.test.js': "require('../src/a');\n" }, taskOver: { files: ['tests/a.test.js'] } });
+    edit(fx, 'tests/b.test.js', '// vaciado\n');
+    const r = call(fx, { agent: 'pignolo:test-writer' });
+    assert.strictEqual(r.exit, 2);
+    assert.match(r.stderr, /tests\/b\.test\.js/);
   });
   await t.test('src/ changed -> 2', () => {
     const fx = flow();
