@@ -46,6 +46,7 @@ const RULES = {
   'fetch-force-head': ['deny', 'git fetch --update-head-ok con un refspec forzado pisa la rama activa', 'usá `git fetch` sin forzar y después `git merge --ff-only`'],
   'config-write': ['deny', 'git config solo escribe claves de una lista corta (user.*, color.*, core.autocrlf, ...)', 'los cambios de configuración de git los hace el humano'],
   'git-config-override': ['deny', 'git -c con una clave que ejecuta programas o toca la protección (alias, hooks, editor, gc, ...)', 'escribí el comando sin -c'],
+  'git-config-unknown': ['unverifiable', 'git -c con una clave fuera de la lista corta: muchas claves de git ejecutan programas y la guardia no las puede verificar todas', 'escribí el comando sin -c, o con una clave de la lista (user.*, color.*, core.autocrlf, core.safecrlf, ...)'],
   'git-env-config': ['deny', 'GIT_CONFIG_* o GIT_EXEC_PATH inyectan configuración que la guardia no ve', 'quitá esas variables del comando'],
   'pignolo-ref': ['deny', 'las refs refs/pignolo/* son los respaldos de pignolo', 'no se tocan; si sobran, lo decide el humano'],
   'update-ref-stdin': ['deny', 'git update-ref --stdin puede borrar o pisar cualquier ref, respaldos incluidos', 'usá `git branch` o `git tag`, o `git update-ref <ref> <valor>` de a una'],
@@ -114,6 +115,9 @@ const UNKNOWN_BRANCH = '(desconocida)';
 
 const PROTECTED_CONFIG = /^(alias\..+|core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass|gitproxy|logallrefupdates|worktree)|sequence\.editor|diff\.external|diff\..+\.(textconv|command)|merge\..+\.driver|pager\..+|filter\..+|credential(\..+)?\.helper|gpg(\..+)?\.program|uploadpack\.packobjectshook|protocol\..+\.allow|include\.path|includeif\..+\.path|gc\..+|clean\.requireforce|remote\..+\.(mirror|receivepack|uploadpack|vcs|push)|interactive\.difffilter|protocol\.allow|(difftool|mergetool|browser|man)\..+\.(cmd|path)|gpg\..+\.[a-z]*command)$/;
 const CONFIG_ALLOW = /^(user\.(name|email|signingkey)|color\..+|core\.(autocrlf|eol|filemode|ignorecase|quotepath|longpaths|safecrlf|whitespace|symlinks)|init\.defaultbranch|pull\.(rebase|ff)|push\.(default|autosetupremote)|fetch\.prune|merge\.conflictstyle|rerere\.enabled|diff\.(algorithm|renames|colormoved)|log\.[a-z]+|format\.[a-z]+|branch\.[^.]+\.(remote|merge|rebase|description)|remote\.[^.]+\.url|advice\..+|help\.autocorrect|safe\.directory|commit\.gpgsign|tag\.gpgsign)$/;
+// git -c solo pasa con claves de CONFIG_ALLOW o de esta lista (inofensivas para una sola
+// corrida); cualquier otra es no verificable (M1): hay decenas de claves que ejecutan programas.
+const OVERRIDE_ALLOW = /^(i18n..+|diff.(noprefix|mnemonicprefix|renamelimit|context|interhunkcontext|indentheuristic)|merge.(ff|renames|renamelimit|verbosity)|status.[a-z]+|grep.[a-z]+|pack.threads|core.(abbrev|precomposeunicode|preloadindex|untrackedcache))$/;
 const CONFIG_READ_FLAGS = ['get', 'get-all', 'get-regexp', 'get-urlmatch', 'list', 'get-color', 'get-colorbool', 'show-origin', 'show-scope'];
 const CONFIG_WRITE_FLAGS = ['unset', 'unset-all', 'add', 'replace-all', 'rename-section', 'remove-section'];
 
@@ -862,6 +866,8 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   let sub;
   let redirected = Boolean(cmd.gitRedirect);
   const cfg = [];
+  let cfgUnknown = false;
+  const done = () => { if (cfgUnknown) out.push(hit('git-config-unknown')); };
   if (name !== 'git') {
     sub = name.slice(4); // forma con guion: git-stash
   } else {
@@ -894,12 +900,15 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       out.push(hit('git-unknown-option'));
       return;
     }
-    if (cfg.some((kv) => PROTECTED_CONFIG.test(kv.split('=')[0].trim().toLowerCase()))) { out.push(hit('git-config-override')); return; }
-    if (i >= words.length) return;
-    if (words[i].dyn) { out.push(hit('dynamic-argument')); return; }
+    const keys = cfg.map((kv) => kv.split('=')[0].trim().toLowerCase());
+    if (keys.some((k) => PROTECTED_CONFIG.test(k))) { out.push(hit('git-config-override')); return; }
+    // Después de las reglas del subcomando: si una más específica niega, esa se informa.
+    if (keys.some((k) => !CONFIG_ALLOW.test(k) && !OVERRIDE_ALLOW.test(k))) cfgUnknown = true;
+    if (i >= words.length) { done(); return; }
+    if (words[i].dyn) { out.push(hit('dynamic-argument')); done(); return; }
     sub = words[i].value;
   }
-  if (!GIT_BUILTINS.has(sub)) { out.push(hit('unknown-git-subcommand')); return; }
+  if (!GIT_BUILTINS.has(sub)) { out.push(hit('unknown-git-subcommand')); done(); return; }
   const args = words.slice(i + 1);
   const o = parseOpts(args, SPECS[sub]);
   // Con -C / --git-dir / --work-tree todo se evalúa con sus reglas; lo que depende
@@ -922,6 +931,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     });
   }
   if (o.dynSlot && DESTRUCTIVE.has(sub)) out.push(hit('dynamic-argument'));
+  done();
 }
 
 function gitRules(sub, o, args, ctx, st) {

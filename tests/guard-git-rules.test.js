@@ -109,3 +109,20 @@ test('git runs programs from -c keys, environment variables and pack options; re
     check(cmd, 'allow');
   }
 });
+
+// Protects: git -c con claves que ejecutan programas fuera de la lista negra (M1, revisión
+// final) · Breaks if: `git -c submodule.x.update='!…'` o `-c core.alternateRefsCommand=…`
+// pasan: fuera de la lista corta, la clave es no verificable.
+test('git -c with a key outside the short allow list is unverifiable (M1)', () => {
+  for (const cmd of ["git -c submodule.x.update='!git reset --hard' submodule update", "git -c sendemail.sendmailcmd='git reset --hard' send-email x",
+    "git -c core.alternateRefsCommand='rm -rf .git' fetch", 'git --config-env=core.alternateRefsCommand=X fetch', 'git -c x=y status']) {
+    check(cmd, 'ask', 'git-config-unknown', { mode: 'default' });
+    check(cmd, 'block', 'git-config-unknown');
+  }
+  for (const cmd of ['git -c core.autocrlf=false checkout feature', 'git -c user.name=x -c user.email=y commit -m z', 'git -c color.ui=never log',
+    'git -c core.safecrlf=false add .', 'git -c core.quotepath=off status', 'git -c commit.gpgsign=false commit -m x']) {
+    check(cmd, 'allow');
+  }
+  check('git -c alias.x=y x', 'block', 'git-config-override'); // la lista negra sigue siendo deny
+  check('git -c x=y reset --hard', 'block', 'reset-hard', { mode: 'default' });
+});
