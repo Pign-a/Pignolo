@@ -57,3 +57,17 @@ test('rule COLOR-03 alias text on bg is measured as on-surface on background and
   assert.match(e.reason, /bg \(background\)/);
   assert.match(e.fingerprint, /on-surface\/background/);
 });
+
+test('rule COLOR-03 compares the raw ratio: #008580 on #FFFFFF (4.49995) fails', async () => {
+  const cases = [
+    ['#008580', 'fail', 4.49],
+    ['#1A1A1A', 'pass', 17.4],
+  ];
+  for (const [fg, status, ratio] of cases) {
+    const colors = `  primary: "#0B6BCB"\n  ink: "${fg}"\n  paper: "#FFFFFF"`;
+    const entries = await color03(design({ colors, body: '{colors.ink} sobre {colors.paper}' }));
+    const e = entries.find((x) => x.reason.includes('(prose)'));
+    assert.equal(e.status, status, fg);
+    assert.equal(e.measure.ratio, ratio, fg);
+  }
+});

@@ -98,18 +98,26 @@ function ratioOf(fgStr, bgStr) {
   const bg = parseColor(bgStr);
   if (!fg.ok) return { error: `${fgStr}: ${fg.reason}` };
   if (!bg.ok) return { error: `${bgStr}: ${bg.reason}` };
-  return { ratio: round2(contrastRatio(fg.rgba, bg.rgba)) };
+  return { ratio: contrastRatio(fg.rgba, bg.rgba) };
+}
+
+// The raw ratio decides; only the number shown is rounded. A failing ratio never shows as the
+// requirement (4.49995 -> 4.49, not 4.5).
+function shownRatio(raw, required) {
+  const r = round2(raw);
+  return raw < required && r >= required ? Math.floor(raw * 100) / 100 : r;
 }
 
 // One measured pair -> finding. `names` is the text shown in the reason.
 function pairFinding({ key, names, fgStr, bgStr, required, theme, file, line, extra = {} }) {
   const r = ratioOf(fgStr, bgStr);
   if (r.error) return unverified(`color not supported (${r.error})`, { file });
-  const measure = { ratio: r.ratio, required, fg: fgStr, bg: bgStr, theme };
+  const ratio = shownRatio(r.ratio, required);
+  const measure = { ratio, required, fg: fgStr, bg: bgStr, theme };
   const base = { file, line, measure, ...extra };
   return r.ratio >= required
-    ? pass(key, { ...base, reason: `${names} is ${r.ratio}:1 (${theme})` })
-    : fail(key, { ...base, reason: `${names} is ${r.ratio}:1, needs ${required}:1 (${theme})` });
+    ? pass(key, { ...base, reason: `${names} is ${ratio}:1 (${theme})` })
+    : fail(key, { ...base, reason: `${names} is ${ratio}:1, needs ${required}:1 (${theme})` });
 }
 
 // Themes worth measuring for a pair: light always; dark when it changes something.
@@ -421,10 +429,11 @@ function gradientContrast({ stops, ctx, file, line, key, selector }) {
     let worst = null;
     for (const p of parsed) {
       if (!p.c.ok) continue;
-      const ratio = round2(contrastRatio(p.c.rgba, bgc.rgba));
+      const ratio = contrastRatio(p.c.rgba, bgc.rgba);
       if (worst === null || ratio < worst.ratio) worst = { ratio, s: p.s };
     }
     if (worst && worst.ratio < TEXT) {
+      worst.ratio = shownRatio(worst.ratio, TEXT);
       out.push(fail(`${key}/${theme}`, {
         id: 'COLOR-03',
         severity: 'bloquea',
