@@ -1,6 +1,6 @@
 # Pignolo
 
-Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.2 en construcción (hito 2 de 8).
+Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.3 en construcción (hito 3a de 8: compuertas y revisión; las skills de los carriles llegan con el 3b).
 
 Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
 
@@ -31,6 +31,17 @@ El plugin trae 19 agentes con herramientas, esfuerzo y modelo fijados por rol (`
 **Configurar.** Dentro de Claude Code, una vez por máquina: `/pignolo:setup`. Solo lo dispara el humano. Verifica el entorno (node, git ≥ 2.31, `gh`, PowerShell, superpowers, agent teams, y si `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` o `availableModels` anulan el perfil), pide el perfil de modelos (`max`, `balanced` o `economy`; se guarda en `~/.pignolo/config.json`), propone la plantilla de permisos con el detalle de lo que suma y, solo con tu sí, la aplica. Nunca quita ni reordena reglas tuyas y respalda el archivo (`.pignolo-bak-<fecha>`) antes de escribir. Los revisores corren en opus en todos los perfiles, `economy` incluido.
 
 **Activar pignolo en un proyecto.** Hasta que exista `/pignolo:init` (hito 8), se activa a mano: crear `.pignolo/project.md` en la raíz del repo (puede tener solo una línea de notas). Con ese archivo, el hook de `Agent` respalda el trabajo antes de cada despacho. Mientras corre un flujo de pignolo (`.pignolo/run.json` vigente, que escriben las skills de los flujos desde el hito 3) y no escribiste `/pignolo:off`, además niega cualquier subagente que no sea `pignolo:*` (también `fork` y el despacho sin tipo). En los pedidos sueltos, Claude usa sus agentes normales. Para desactivar: borrar el archivo, o `/pignolo:off` (apaga la restricción, no los respaldos).
+
+## Compuertas y revisión (hito 3a)
+
+Tres scripts que todavía no usa ningún comando tuyo: los usarán las skills de los carriles (hito 3b). Todo actúa solo durante un flujo de pignolo (`.pignolo/run.json` vigente); en un pedido suelto no cambia nada.
+
+- `scripts/risk.js`: mira qué archivos o qué diff se van a tocar y da un piso de riesgo y de carril (`trivial`, `daily`, `plan`), con la categoría de decisión reservada cuando salta un tripwire. El modelo puede subir el piso, nunca bajarlo.
+- `scripts/gate.js`: corre las compuertas de `project.md` (`on-done`, `pre-merge`) fuera de los hooks y deja un sello del árbol de trabajo en `~/.pignolo/seals/`. Si el árbol cambia después, el sello ya no vale.
+- `scripts/run.js`: abre y cierra el flujo (`start`, `renew`, `end`), registra la tarea del escritor (`task`) y muestra el estado (`status`).
+- Un hook nuevo, el handback-gate, frena el `DONE` de `implementer`, `fixer` y `test-writer` si no hay sello o si tocaron tests que no eran suyos; tras 8 rechazos deja pasar y marca la tarea como `BLOCKED`.
+- `scripts/ledger.js` lleva el ledger de hallazgos de la revisión y el Judgment Day.
+- Checklist manual: `tests/manual/hito-3a.md`.
 
 ## Guardia de shell
 
