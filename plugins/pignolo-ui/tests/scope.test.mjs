@@ -3,7 +3,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { makeTempDir, writeTree, runScript } from './helpers.mjs';
@@ -203,7 +202,8 @@ test('materializeBase: files at the ref, missing ones listed, invalid ref throws
   try {
     assert.equal(fs.readFileSync(path.join(dir, 'a', 'x.css'), 'utf8'), 'x\n');
     assert.deepEqual([...missing].sort(), ['../escape.css', 'nope.css']);
-    assert.ok(path.resolve(dir).startsWith(path.resolve(os.tmpdir())) || fs.realpathSync(dir).startsWith(fs.realpathSync(os.tmpdir())));
+    const tmpRoot = path.dirname(makeTempDir());
+    assert.ok(path.resolve(dir).startsWith(path.resolve(tmpRoot)) || fs.realpathSync(dir).startsWith(fs.realpathSync(tmpRoot)));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
