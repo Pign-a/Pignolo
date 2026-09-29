@@ -186,3 +186,13 @@ test('mockup: design/approved and .pignolo-ui/runs files, not src', async () => 
     { inject: { rules: [spy] } });
   assert.deepEqual(mock, { 'design/approved/home/index.html': true, '.pignolo-ui/runs/r1/option-a/home.html': true, 'src/home.html': false });
 });
+
+test('project rules receive the file contexts and the fetched site; each ctx says its origin', async () => {
+  let seen = null;
+  const spy = { id: 'SEO-06', checkProject: (pctx) => { seen = pctx; return [pass('k')]; } };
+  const r = await run({ 'index.html': '<html><head><title>A</title></head></html>\n', 'dom.html': '<html></html>\n' },
+    { files: ['index.html'], dom: ['dom.html'], inject: { rules: [spy] } });
+  assert.equal(r.exitCode, 0);
+  assert.deepEqual(seen.ctxs.map((c) => [c.file, c.origin, c.isDocument]), [['index.html', 'file', true], ['dom.html', 'dom', true]]);
+  assert.equal(seen.site, null);
+});

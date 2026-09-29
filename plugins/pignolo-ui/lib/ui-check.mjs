@@ -33,8 +33,12 @@ import { RULES as CONTRAST } from './rules/contrast.mjs';
 import { RULES as DEFAULTS } from './rules/defaults.mjs';
 import { RULES as REJECTIONS, applyRejections as diskApplyRejections } from './rules/rejections.mjs';
 import { scopeRun as diskScopeRun, classifyScope as diskClassifyScope } from './scope.mjs';
+import { RULES as SEO_SITE } from './rules/seo-site.mjs';
+import { RULES as SEO_PAGE } from './rules/seo-page.mjs';
+import { fetchSite } from './site-fetch.mjs';
+import { siteFiles } from './site-files.mjs';
 
-const DISK_RULES = [...DOCUMENT, ...A11Y_ELEMENT, ...CONTENT, ...STYLE, ...CONTRAST, ...DEFAULTS, ...REJECTIONS];
+const DISK_RULES = [...DOCUMENT, ...A11Y_ELEMENT, ...CONTENT, ...STYLE, ...CONTRAST, ...DEFAULTS, ...SEO_SITE, ...SEO_PAGE, ...REJECTIONS];
 const SYNTAX = { html: 'html', htm: 'html', jsx: 'jsx', tsx: 'jsx', css: 'css', vue: 'vue', svelte: 'svelte' };
 const TAILWIND_CONFIGS = ['tailwind.config.js', 'tailwind.config.cjs', 'tailwind.config.mjs', 'tailwind.config.ts'];
 const STATUSES = new Set(['pass', 'fail', 'unverified']);
@@ -94,6 +98,7 @@ function buildCtx({ dir, rel, isDom, design, tokens, catalog }) {
   else if (route.utilities === 'sfc') classLists = extractClassListsFromSfc(text);
   return {
     file: rel,
+    origin: isDom ? 'dom' : 'file',
     text,
     syntax,
     route,
@@ -154,7 +159,7 @@ function withRuleResults(findings, found, ruleId, catRule, file) {
 
 // Steps 1-3 over `dir` (the project or a materialized base), plus the base severity and the
 // fingerprint, so both runs are compared the same way. Files missing in `dir` are skipped.
-function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, applyRejections }) {
+function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, applyRejections, site = null }) {
   const byId = new Map(catalog.rules.map((r) => [r.id, r]));
   const tokens = readTokenSources(dir);
   const designFile = designRel ? path.join(dir, designRel) : null;
@@ -179,7 +184,7 @@ function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, 
       withRuleResults(findings, callRule(rule.checkFile, ctx, rule.id), rule.id, catRule, ctx.file);
     }
   }
-  const pctx = { project: dir, design, tokens, catalog, files: ctxs.map((c) => c.file) };
+  const pctx = { project: dir, design, tokens, catalog, files: ctxs.map((c) => c.file), ctxs, site };
   for (const rule of rules) {
     if (typeof rule.checkProject !== 'function') continue;
     withRuleResults(findings, callRule(rule.checkProject, pctx, rule.id), rule.id, byId.get(rule.id), undefined);
@@ -261,13 +266,14 @@ function sourceFilesOf(project, relFiles, designRel) {
   if (designRel) list.push(designRel);
   const tokens = readTokenSources(project);
   for (const s of [...tokens.sources, ...tokens.unverified]) if (s.file && s.file !== '.') list.push(s.file);
+  list.push(...siteFiles(project));
   for (const name of ['components.json', 'package.json', ...TAILWIND_CONFIGS]) {
     if (fs.existsSync(path.join(project, name))) list.push(name);
   }
   return [...new Set(list)];
 }
 
-export async function runCheck({ project, files = [], design = null, base = null, dom = [], inject = {} } = {}) {
+export async function runCheck({ project, files = [], design = null, base = null, dom = [], urls = [], inject = {} } = {}) {
   const root = path.resolve(project);
   const rules = inject.rules ?? DISK_RULES;
   const catalog = inject.catalog ?? loadCatalog();
@@ -281,7 +287,8 @@ export async function runCheck({ project, files = [], design = null, base = null
   const designRel = design ? relTo(root, design) : null;
   const evaluate = (dir, rels) => evaluateDir({ dir, relFiles: rels, designRel, rules, catalog, applyRejections });
 
-  const current = evaluateDir({ dir: root, relFiles, domFiles, designRel, rules, catalog, applyRejections });
+  const site = urls.length ? await fetchSite({ urls, ...(inject.fetchOptions ?? {}) }) : null;
+  const current = evaluateDir({ dir: root, relFiles, domFiles, designRel, rules, catalog, applyRejections, site });
   // (4) scope
   const baseFindings = base
     ? await scopeRun({ project: root, base, relFiles, sourceFiles: sourceFilesOf(root, relFiles, designRel), designRel, evaluate })
@@ -294,6 +301,9 @@ export async function runCheck({ project, files = [], design = null, base = null
 
   const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : [])]
     .map((rel) => ({ file: rel, sha256: sha256(path.join(root, rel)) }));
+  if (site) {
+    for (const r of [...site.pages, site.robots, ...site.sitemaps]) if (r.sha256) inputs.push({ url: r.finalUrl, sha256: r.sha256 });
+  }
   const exitCode = entries.some((e) => e.status === 'fail' && e.severity === 'bloquea' && e.scope === 'new') ? 1 : 0;
   return { entries, inputs, exitCode };
 }

@@ -90,6 +90,13 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 | LAYOUT-10 | Side margin of at least 16 px; edge-to-edge bars (for example the mobile nav) do not count (browser check B3) | document | no | alto | no | pignolo-ui spec 2026-09-28 §5.4 (16 px side margin) | browser |
 | LAYOUT-11 | No text with scrollWidth > clientWidth + 1 without text-overflow and no horizontal scroll at 320 px (browser check B3) | document | sí | bloquea | no | WCAG 2.2 SC 1.4.10 (AA); floor | browser |
 | MOTION-07 | With prefers-reduced-motion: reduce and no scroll, all text of the first two viewports has opacity > 0 (browser check B4) | document | no | alto | no | pignolo-ui spec 2026-09-28 §5.4 (B4) | browser |
+| SEO-01 | robots.txt exists or answers 404 (everything allowed), does not block the public routes or the render assets of the checked pages, and references a sitemap | document | no | medio | sí | RFC 9309 Robots Exclusion Protocol, https://www.rfc-editor.org/rfc/rfc9309 (consulted 2026-09-29) | ui-check |
+| SEO-02 | No accidental noindex: meta robots/googlebot, Next.js metadata.robots or X-Robots-Tag; in the source of a public page alto, seen only on the development URL detalle | document | no | alto | no | Google Search Central, robots meta tag and X-Robots-Tag, https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag (consulted 2026-09-29) | ui-check |
+| SEO-04 | Exactly one link rel=canonical, with an absolute URL | document | no | medio | sí | RFC 6596 The Canonical Link Relation, https://www.rfc-editor.org/rfc/rfc6596 (consulted 2026-09-29) | ui-check |
+| SEO-05 | The sitemap referenced by robots.txt exists and is well-formed XML with the sitemaps.org shape | document | no | medio | sí | sitemaps.org protocol 0.9, https://www.sitemaps.org/protocol.html (consulted 2026-09-29) | ui-check |
+| SEO-06 | Title present, not empty and not repeated across the checked pages | document | no | medio | sí | HTML Living Standard, the title element, https://html.spec.whatwg.org/multipage/semantics.html#the-title-element (consulted 2026-09-29) | ui-check |
+| SEO-09 | No a without href used as a link; no href="javascript:..." | document | no | medio | no | Google Search Central, link best practices (crawlable links), https://developers.google.com/search/docs/crawling-indexing/links-crawlable (consulted 2026-09-29) | ui-check |
+| SEO-18 | og:title, og:type, og:image and og:url present | document | no | detalle | sí | The Open Graph protocol, https://ogp.me/ (consulted 2026-09-29) | ui-check |
 <!-- catalog:end -->
 
 ## Instalar (desarrollo)

@@ -41,7 +41,7 @@ function createBuilder(src) {
   const elements = [];
   const styles = [];
   const el = (tag, component, offset, parent) => {
-    const e = { index: elements.length, tag, component, attrs: new Map(), spread: false, line: lineAt(offset), parent: parent ? parent.index : null, children: [], textParts: [], selfClosing: false };
+    const e = { index: elements.length, tag, component, attrs: new Map(), spread: false, line: lineAt(offset), parent: parent ? parent.index : null, children: [], textParts: [], selfClosing: false, inExpression: false };
     hidden(e, 'offset', offset);
     elements.push(e);
     if (parent) parent.children.push(e.index);
@@ -186,6 +186,7 @@ function normalizeJsxAttr(name) {
 function parseJsx(src, b) {
   const n = src.length;
   let i = 0;
+  let exprDepth = 0; // > 0 while parsing a {…} child expression: its elements are conditional
 
   function skipQuote() {
     const q = src[i++];
@@ -284,6 +285,7 @@ function parseJsx(src, b) {
     const name = src.slice(ns, i);
     const component = /^[A-Z]/.test(name) || name.includes('.');
     const e = b.el(component ? name : name.toLowerCase(), component, start, parent);
+    e.inExpression = exprDepth > 0;
     while (i < n) {
       while (i < n && /\s/.test(src[i])) i++;
       const c = src[i];
@@ -342,7 +344,10 @@ function parseJsx(src, b) {
       }
       if (c === '{') {
         i++;
-        const { expr, start } = expression(parent);
+        exprDepth++;
+        let expr;
+        let start;
+        try { ({ expr, start } = expression(parent)); } finally { exprDepth--; }
         const lead = expr.length - expr.trimStart().length;
         if (!expr.trim() || !parent) continue;
         const cls = classifyExpr(expr);

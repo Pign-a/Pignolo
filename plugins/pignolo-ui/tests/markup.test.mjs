@@ -190,3 +190,21 @@ test('markup jsx literal expressions are static; bare aria-* is "true"', () => {
     assert.deepEqual([a.value, a.dynamic], [value, dynamic], src);
   }
 });
+
+test('JSX elements inside a {…} child expression are marked inExpression, with their subtree', () => {
+  const src = [
+    'export default function L({ children, preview, items }) {',
+    '  return (',
+    '    <html lang="es">',
+    '      <head><meta name="description" content="x" />{preview && <meta name="robots" content="noindex" />}</head>',
+    '      <body><main>{children}{items.map((i) => <a key={i} href={i}><span>x</span></a>)}</main></body>',
+    '    </html>',
+    '  );',
+    '}',
+  ].join('\n');
+  const m = parseMarkup(src, { syntax: 'jsx' });
+  assert.deepEqual(m.elements.map((e) => [e.tag, e.inExpression]), [
+    ['html', false], ['head', false], ['meta', false], ['meta', true], ['body', false], ['main', false], ['a', true], ['span', true],
+  ]);
+  assert.equal(parseMarkup('<p><b>x</b></p>', { syntax: 'html' }).elements.every((e) => e.inExpression === false), true);
+});

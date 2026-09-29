@@ -4,8 +4,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { execFileSync, spawn } from 'node:child_process';
+import { makeTempDir, writeTree, runScript, serveRoutes, PLUGIN_ROOT } from './helpers.mjs';
+import { loadCatalog } from '../lib/catalog.mjs';
 
 const CSS = '.a { display: block; }\n';
 const DESIGN = '---\npignolo:\n  schema: 1\n---\n';
@@ -58,7 +59,7 @@ test('a healthy run writes ui-check.json inside an ignored run folder', () => {
   assert.deepEqual(Object.keys(r.json.counts).sort(), ['blockingNew', 'fail', 'pass', 'unverified']);
   const report = JSON.parse(fs.readFileSync(out, 'utf8'));
   assert.deepEqual(Object.keys(report).sort(), ['base', 'catalogVersion', 'entries', 'inputs']);
-  assert.equal(report.catalogVersion, '0.2.0');
+  assert.equal(report.catalogVersion, loadCatalog().catalogVersion);
   assert.equal(report.base, null);
   assert.deepEqual(report.inputs[0], { file: 'src/a.css', sha256: crypto.createHash('sha256').update(CSS).digest('hex') });
   assert.ok(report.entries.length > 0);
@@ -136,4 +137,39 @@ test('an invalid --base is a usage error checked before any rule runs', async ()
   assert.equal(code, 2);
   assert.equal(checked, 0, 'runCheck must not run with an invalid --base');
   assert.deepEqual(errors, ['ui-check: --base no es una ref válida: nope\n']);
+});
+
+test('--url: loopback only, one origin, at most 20, needs --design; fetched pages go to inputs', async (t) => {
+  const repo = makeRepo();
+  const run = path.join(repo, '.pignolo-ui', 'runs', 'r1');
+  const base = ['--project', repo, '--run', run, '--design', 'DESIGN.md'];
+  const many = Array.from({ length: 21 }, (_, i) => ['--url', `http://127.0.0.1:1/${i}`]).flat();
+  const CASES = [
+    ['remote URL', [...base, '--url', 'https://example.com/'], /--url solo acepta direcciones locales/],
+    ['two origins', [...base, '--url', 'http://127.0.0.1:1/', '--url', 'http://localhost:2/'], /mismo origen/],
+    ['more than 20', [...base, ...many], /como mucho 20/],
+    ['without --design', ['--project', repo, '--run', run, '--url', 'http://127.0.0.1:1/'], /--url necesita --design/],
+  ];
+  for (const [name, args, message] of CASES) {
+    await t.test(name, () => {
+      const r = runScript('ui-check.mjs', args, { cwd: repo });
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, message);
+      assert.doesNotMatch(r.stderr, /\n\s+at /);
+    });
+  }
+  const srv = await serveRoutes({ '/': { headers: { 'content-type': 'text/html' }, body: '<!doctype html><html lang="es"><head><title>A</title></head><body></body></html>' } });
+  try {
+    const r = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', 'ui-check.mjs'), ...base, '--url', `${srv.base}/`], { cwd: repo });
+      let out = '';
+      child.stdout.on('data', (d) => { out += d; });
+      child.on('close', (status) => resolve({ status, out }));
+    });
+    assert.equal(r.status, 0, r.out);
+    const report = JSON.parse(fs.readFileSync(path.join(run, 'ui-check.json'), 'utf8'));
+    assert.ok(report.inputs.some((i) => i.url === `${srv.base}/` && /^[0-9a-f]{64}$/.test(i.sha256)), JSON.stringify(report.inputs));
+  } finally {
+    await srv.close();
+  }
 });

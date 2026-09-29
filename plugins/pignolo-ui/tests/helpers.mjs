@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import http from 'node:http';
 
 export const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = path.join(TESTS_DIR, '..');
@@ -44,4 +45,21 @@ export function runScript(script, args, opts = {}) {
   let json = null;
   try { json = JSON.parse(res.stdout); } catch { /* not JSON */ }
   return { status: res.status, stdout: res.stdout, stderr: res.stderr, json };
+}
+
+// Serves routes on 127.0.0.1 (random port) for the tests of the development URL; never the
+// network. routes = { '/path': { status, headers, body } | (req, res) => void }; others 404.
+export async function serveRoutes(routes) {
+  const server = http.createServer((req, res) => {
+    const r = routes[req.url];
+    if (typeof r === 'function') return r(req, res);
+    if (!r) { res.writeHead(404); res.end(); return undefined; }
+    res.writeHead(r.status ?? 200, r.headers ?? {});
+    res.end(r.body ?? '');
+    return undefined;
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const close = () => new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); });
+  return { base, close };
 }
