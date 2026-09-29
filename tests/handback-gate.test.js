@@ -299,7 +299,8 @@ test('I2: a seal of another task (or of gate.js without --task) is not accepted'
   seal(fx, 'PASS', { task: null });
   const r = call(fx);
   assert.strictEqual(r.exit, 2);
-  assert.match(r.stderr, /--task t1/);
+  assert.match(r.stderr, /--task y/);
+  assert.doesNotMatch(r.stderr, /--task t1/);
   assert.match(r.stderr, /Alternativa:/);
 });
 

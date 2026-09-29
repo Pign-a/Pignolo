@@ -169,7 +169,7 @@ function verify({ input, ctx, env, now, task }) {
       return `no hay un sello de on-done para el árbol actual de ${wt}. Alternativa: corré node "${PLUGIN_ROOT}/scripts/gate.js" --level on-done --task y, si falla, arreglalo o respondé BLOCKED con el motivo.`;
     }
     if (seal.task !== task.id) {
-      return `el sello de on-done del árbol actual de ${wt} no es de la tarea ${task.id} (es de ${seal.task || 'ninguna tarea'}), así que no midió su alcance. Alternativa: corré node "${PLUGIN_ROOT}/scripts/gate.js" --level on-done --task ${task.id} y, si falla, arreglalo o respondé BLOCKED con el motivo.`;
+      return `el sello de on-done del árbol actual de ${wt} no es de la tarea ${task.id} (es de ${seal.task || 'ninguna tarea'}), así que no midió su alcance. Alternativa: corré node "${PLUGIN_ROOT}/scripts/gate.js" --level on-done --task y, si falla, arreglalo o respondé BLOCKED con el motivo.`;
     }
     const noTestsOk = seal.status === 'NO_TESTS' && typeof seal.noTestsReason === 'string' && seal.noTestsReason.trim() !== '';
     if (seal.status !== 'PASS' && !noTestsOk) {
