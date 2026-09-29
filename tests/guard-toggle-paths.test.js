@@ -51,3 +51,21 @@ test('relative paths resolve against the cwd of the payload', () => {
   assert.strictEqual(runLauncher('guard', payload('touch .disabled', path.join(repo, '.pignolo'))).status, 2);
   assert.strictEqual(runLauncher('guard', payload('touch .disabled', repo)).status, 0);
 });
+
+// Protects: apagar pignolo desde la shell (M8, revisión final) · Breaks if: `claude plugin
+// disable|uninstall|remove pignolo` pasa; el interruptor lo maneja el humano.
+test('claude plugin disable|uninstall|remove targeting pignolo is protected-flag (M8)', () => {
+  for (const cmd of ['claude plugin disable pignolo', 'claude plugin uninstall pignolo@pignolo', 'claude plugin remove pignolo',
+    'claude plugins disable --scope project pignolo', 'claude.exe plugin uninstall pignolo', 'claude plugin disable "$P"',
+    'claude plugin marketplace remove pignolo']) {
+    for (const mode of ['default', 'bypassPermissions']) {
+      const v = evaluate(cmd, { mode });
+      assert.deepStrictEqual([v.decision, v.rule], ['block', 'protected-flag'], `${mode}: ${cmd}`);
+    }
+  }
+  assert.strictEqual(evaluate('claude plugin disable pignolo', { shell: 'powershell', mode: 'default', psTimeoutMs: 30000 }).rule, 'protected-flag');
+  for (const cmd of ['claude plugin list', 'claude plugin install pignolo', 'claude plugin disable pignolo-ui', 'claude plugin enable pignolo',
+    'claude plugin marketplace add Pign-a/Pignolo', 'claude --version']) {
+    assert.strictEqual(rule(cmd), null, cmd);
+  }
+});

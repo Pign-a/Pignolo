@@ -601,6 +601,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
     for (const w of pipedPaths(cmd)) checkWriteTarget(w, st, ctx, out);
   }
   checkLauncher(name, words, st, ctx, out);
+  if ((name === 'claude' || name === 'claude-code') && claudePluginOff(args)) out.push(hit('protected-flag'));
   checkPathArgs(name, args, st, ctx, out);
   if (name === 'robocopy' && args.some((w) => /^\/(mir|purge|move|mov)$/i.test(w.value))) {
     checkDeleteOperands(args.filter((w) => !w.value.startsWith('/') || w.dyn), st, ctx, out);
@@ -822,6 +823,17 @@ function checkLauncher(name, words, st, ctx, out) {
     if (!statusForm) out.push(hit('pignolo-launcher'));
     return;
   }
+}
+
+// `claude plugin disable|uninstall|remove pignolo` (y `plugin marketplace remove pignolo`)
+// apaga pignolo en las sesiones siguientes: es cosa del humano, como el interruptor (M8).
+function claudePluginOff(args) {
+  const pos = args.filter((w) => w.dyn || !w.value.startsWith('-'));
+  if (!pos[0] || pos[0].dyn || !/^plugins?$/.test(pos[0].value)) return false;
+  let k = 1;
+  if (pos[k] && !pos[k].dyn && pos[k].value === 'marketplace') k++;
+  if (!pos[k] || pos[k].dyn || !/^(disable|uninstall|remove|rm)$/.test(pos[k].value)) return false;
+  return pos.slice(k + 1).some((w) => w.dyn || /^pignolo(@|$)/i.test(w.value));
 }
 
 function changeDir(name, args, st, ctx, negated) {
