@@ -5,7 +5,8 @@
   "description": "Crear y mejorar interfaces web con decisiones de diseño explícitas y verificadas: DESIGN.md validado, checker por script y auditor con evidencia",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",
-  "license": "MIT",  "keywords": ["ui", "design", "design-md", "accessibility", "web"],
+  "license": "MIT",
+  "keywords": ["ui", "design", "design-md", "accessibility", "web"],
   "userConfig": {
     "optionsPerDecision": {
       "type": "string",
