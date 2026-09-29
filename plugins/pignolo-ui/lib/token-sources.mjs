@@ -327,7 +327,7 @@ function listCss(root, max) {
 
 function readJson(file) {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
+    return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
   } catch {
     return null;
   }
@@ -347,7 +347,7 @@ export function readTokenSources(root, { maxFiles = 2000 } = {}) {
   const { files, truncated } = listCss(root, maxFiles);
   if (truncated) unverified.push({ kind: 'css', file: '.', reason: `more than ${maxFiles} CSS files; scan truncated` });
   for (const file of files) {
-    const text = fs.readFileSync(path.join(root, file), 'utf8').replace(/^﻿/, '');
+    const text = fs.readFileSync(path.join(root, file), 'utf8').replace(/^\uFEFF/, '');
     const scan = scanCss(text);
     darkDetected ||= scan.dark;
     const theme = scan.blocks.filter((b) => THEME_AT_RULE.test(b.selector));
