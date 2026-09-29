@@ -170,3 +170,23 @@ test('markup never throws on garbage', () => {
     }
   }
 });
+
+test('markup jsx literal expressions are static; bare aria-* is "true"', () => {
+  const cases = [
+    ['tabIndex={-1}', 'tabindex', '-1', false],
+    ['tabIndex={0}', 'tabindex', '0', false],
+    ['data-n={1.5}', 'data-n', '1.5', false],
+    ['aria-hidden={true}', 'aria-hidden', 'true', false],
+    ['aria-hidden={ false }', 'aria-hidden', 'false', false],
+    ['aria-hidden', 'aria-hidden', 'true', false],
+    ['hidden', 'hidden', null, false],
+    ['tabIndex={n}', 'tabindex', 'n', true],
+    ['tabIndex={-n}', 'tabindex', '-n', true],
+    ['aria-hidden={open}', 'aria-hidden', 'open', true],
+  ];
+  for (const [src, name, value, dynamic] of cases) {
+    const [el] = jsx(`<div ${src}></div>`).elements;
+    const a = el.attrs.get(name);
+    assert.deepEqual([a.value, a.dynamic], [value, dynamic], src);
+  }
+});

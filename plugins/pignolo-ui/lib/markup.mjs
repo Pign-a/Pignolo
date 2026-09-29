@@ -163,9 +163,13 @@ function parseHtml(src, b) {
 const STRING_LITERAL = /^(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)")$/s;
 const TEMPLATE_LITERAL = /^`((?:[^`$\\]|\\.|\$(?!\{))*)`$/s;
 
-// Static when the expression is one string literal (or a template without ${}).
+const LITERAL = /^(?:-?\d+(?:\.\d+)?|true|false)$/;
+
+// Static when the expression is one string literal (or a template without ${}), a number
+// literal or true/false (the value is kept as text: {-1} -> '-1', {true} -> 'true').
 function classifyExpr(expr) {
   const t = expr.trim();
+  if (LITERAL.test(t)) return { value: t, dynamic: false };
   const s = STRING_LITERAL.exec(t);
   if (s) return { value: s[1] ?? s[2], dynamic: false };
   const tpl = TEMPLATE_LITERAL.exec(t);
@@ -297,7 +301,9 @@ function parseJsx(src, b) {
       if (i === as) { i++; continue; }
       const key = normalizeJsxAttr(src.slice(as, i));
       while (i < n && /\s/.test(src[i])) i++;
-      let value = null;
+      // a bare JSX attribute is {true}; only aria-* take it as the text 'true' (React renders
+      // aria-hidden as aria-hidden="true"), the rest keep null like HTML boolean attributes
+      let value = key.startsWith('aria-') ? 'true' : null;
       let dynamic = false;
       if (src[i] === '=') {
         i++;
