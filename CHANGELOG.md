@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 — 2026-09-29
+
+- Hito 2: los 19 agentes (`agents/`), la tabla de roles y los perfiles de modelo (`max`, `balanced`, `economy`) con la config de usuario `~/.pignolo/config.json`, `/pignolo:setup` y el hook `PreToolUse` sobre `Agent`. Motivo: sin agentes propios, la delegación caía en `Explore`/`general-purpose`, que no llevan las herramientas ni el modelo del rol.
+- Hook de `Agent`: con pignolo activo en el proyecto (existe `.pignolo/project.md` y no está apagado) solo se despachan `pignolo:*`, `pignolo-ui:ui-option` y `pignolo-ui:ui-auditor`; se niegan también `fork` y el despacho sin `subagent_type`. Fuera de un proyecto activo no se niega nada. Antes de cada despacho permitido toma la instantánea WIP y el respaldo de las ramas dentro del plazo del hook; si no alcanza, avisa y deja pasar. El proyecto activo se busca subiendo desde el `cwd` sin usar git.
+- El respaldo de refs no crea un juego nuevo si el último `refs/pignolo/backup/*` es idéntico (ahora se respalda antes de cada despacho); no corta el espejo a la sombra. El último juego se busca sin listar todos (cientos de juegos daban ENOBUFS).
+- `/pignolo:setup` (solo humano): chequeo de entorno, perfil, plantilla de permisos que solo agrega reglas y respalda el archivo antes de escribir, conflictos de reglas, y detección de `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, `availableModels` y agent teams. Engram queda para el hito 6. `setup` escribe y lee el settings del usuario en el `~/.claude` de Claude Code (en Windows, `USERPROFILE` aunque `HOME` difiera), acepta settings con BOM y su commit de prueba no corre hooks globales; `subagentModelForce` sigue la precedencia de los settings; una config con valores desconocidos es `config inválida`.
+- Hasta que exista `/pignolo:init` (hito 8), pignolo se activa en un proyecto creando a mano `.pignolo/project.md`.
+
 ## 0.1.1 — 2026-09-29
 
 - El launcher acepta la entrada con BOM que antepone el pipe de PowerShell 5.1 (antes negaba con "entrada JSON inválida"). Hallado en el checklist manual del hito 1.
