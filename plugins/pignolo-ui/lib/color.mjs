@@ -180,7 +180,8 @@ function substituteVars(s, vars, stack = []) {
 }
 
 function finish(rgb, a, format) {
-  const clipped = rgb.some((v) => v < -1e-6 || v > 1 + 1e-6);
+  // Half an 8-bit step: rounding in formatColor(…, 'oklch') must not read back as out of gamut.
+  const clipped = rgb.some((v) => v < -1 / 510 || v > 1 + 1 / 510);
   const [r, g, b] = rgb.map(clamp01);
   return { ok: true, rgba: { r, g, b, a }, format, clipped };
 }
@@ -274,7 +275,8 @@ function parseResolved(s, vars) {
       format = 'hsl';
       break;
     case 'hwb':
-      rgb = hwbToSrgb(hue(p[0]), numOrPct(p[1], 1), numOrPct(p[2], 1));
+      // Bare numbers are percentages (0-100), as in hsl().
+      rgb = hwbToSrgb(hue(p[0]), numOrPct(p[1].endsWith('%') ? p[1] : `${p[1]}%`, 1), numOrPct(p[2].endsWith('%') ? p[2] : `${p[2]}%`, 1));
       break;
     case 'oklab':
       rgb = oklabToSrgb(numOrPct(p[0], 1), numOrPct(p[1], 0.4), numOrPct(p[2], 0.4));

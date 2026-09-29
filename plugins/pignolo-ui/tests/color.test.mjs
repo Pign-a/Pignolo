@@ -36,6 +36,7 @@ test('rgb and hsl in comma and space syntax, with alpha', () => {
   near('hsla(0.5turn 100% 50% / 0.25)', [0, 1, 1], 0.25);
   near('hwb(0 0% 0%)', RED);
   near('hwb(0 50% 50%)', [0.5, 0.5, 0.5]);
+  near('hwb(0 20 30)', [0.7, 0.2, 0.2]);
 });
 
 test('oklch, oklab, lab and lch (CSS Color 4, D50 for lab/lch)', () => {
@@ -111,6 +112,10 @@ test('formatColor writes hex, rgb, hsl, bare hsl and oklch that parse back', () 
   assert.equal(formatColor(rgbOf('#ffffff'), 'hsl-bare'), '0 0% 100%');
   assert.equal(formatColor(rgbOf('#ff0000'), 'rgb'), 'rgb(255 0 0)');
   assert.match(formatColor(c, 'oklch'), /^oklch\(0\.\d+ 0\.\d+ \d+(\.\d+)?\)$/);
+  for (const hex of ['#ff0000', '#0b6bcb', '#00ff00', '#0000ff', '#ffffff', '#000000', '#020617', '#0a0524', '#123456', '#abcdef']) {
+    const col = rgbOf(hex);
+    assert.equal(parseColor(formatColor(col, 'oklch')).clipped, false, `${hex} oklch round-trip`);
+  }
   for (const f of ['hex', 'rgb', 'hsl', 'hsl-bare', 'oklch']) {
     const back = rgbOf(formatColor(c, f));
     for (const k of ['r', 'g', 'b']) assert.ok(Math.abs(back[k] - c[k]) < 0.004, `${f} ${k}`);
