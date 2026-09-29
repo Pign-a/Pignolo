@@ -12,14 +12,15 @@
 // '|', '&' o null); `scopes`, la cadena de subshells que lo contienen (cada ( … ) y
 // cada sustitución abre uno; el primero es la shell del comando); `pipeOut` y
 // `async`, que lo sigue un '|' o un '&' (corre en un subshell propio).
-// Cada palabra es { value (sin comillas), quoted, startsQuoted, dyn, dynAt, glob, kind }:
+// Cada palabra es { value (sin comillas), quoted, startsQuoted, dyn, dynAt, glob, kind, dqSub }:
 // `dyn` indica que parte del valor sale de una variable o sustitución, a partir
-// de la posición `dynAt`. Ante algo que no puede parsear, lanza ParseError.
+// de la posición `dynAt`; `dqSub`, que tiene una sustitución de comandos dentro de
+// comillas dobles. Ante algo que no puede parsear, lanza ParseError.
 
 class ParseError extends Error {}
 
 function newWord() {
-  return { value: '', quoted: false, startsQuoted: false, dyn: false, dynAt: -1, glob: false, unq: '', kind: null };
+  return { value: '', quoted: false, startsQuoted: false, dyn: false, dynAt: -1, glob: false, unq: '', kind: null, dqSub: false };
 }
 
 function newCmd(sub) {
@@ -228,12 +229,26 @@ function bashDq(st, wd, out, closing) {
       st.i++;
       continue;
     }
+    // Sustitución de comandos dentro de comillas dobles (no la aritmética $(( ))),
+    // salvo `$(cat <<'X' … X)`: heredoc con delimitador entre comillas, texto literal.
+    if (c === '$' && s[st.i + 1] === '(' && s[st.i + 2] !== '(') {
+      const before = out.length;
+      bashDollar(st, wd, out, true);
+      if (!literalHeredoc(out.slice(before))) wd.dqSub = true;
+      continue;
+    }
     if (c === '$' && bashDollar(st, wd, out, true)) continue;
-    if (c === '`') { bashBacktick(st, wd, out); continue; }
+    if (c === '`') { wd.dqSub = true; bashBacktick(st, wd, out); continue; }
     wd.value += c;
     st.i++;
   }
   if (closing) throw new ParseError('comilla doble sin cerrar');
+}
+
+// La sustitución es solo `cat` leyendo un heredoc con delimitador entre comillas.
+function literalHeredoc(cmds) {
+  return cmds.length === 1 && cmds[0].words.length === 1 && cmds[0].words[0].value === 'cat'
+    && !cmds[0].words[0].dyn && !cmds[0].redirects.length && cmds[0].stdin === 'heredoc' && cmds[0].stdinQuoted === true;
 }
 
 function bashDollar(st, wd, out, inDq) {
@@ -361,6 +376,7 @@ function readHeredocs(st, list, out) {
       body += `${line}\n`;
     }
     hd.cmd.stdinBody = body;
+    hd.cmd.stdinQuoted = hd.quoted;
     // Con delimitador sin comillas, bash expande $(...) y `...` dentro del cuerpo.
     if (!hd.quoted) bashDq({ s: body, i: 0, sep: hd.cmd.sep, scopes: hd.cmd.scopes }, newWord(), out, false);
   }

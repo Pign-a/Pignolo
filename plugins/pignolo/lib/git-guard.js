@@ -73,6 +73,7 @@ const RULES = {
   'dynamic-argument': ['unverifiable', 'un argumento de git que puede ser una opción o una ruta sale de una variable y no se puede verificar', 'escribí los argumentos literales'],
   'hidden-code': ['unverifiable', 'el código a ejecutar sale de una variable, una sustitución, un pipe o Invoke-Expression y no se puede verificar', DIRECT],
   'inline-code': ['unverifiable', 'código inline (node -e, python -c, perl -e, awk, sed e, ...) que lanza procesos o invoca git no se puede verificar', 'guardá el script en un archivo o ejecutá el comando directamente'],
+  'quoted-substitution': ['unverifiable', 'una sustitución de comandos (`...` o $(...)) dentro de un argumento entre comillas dobles de -c/-e/-m/--message se ejecuta antes que el comando: si era texto, corre como comando', 'escribí el archivo o el mensaje con Write o con `-F archivo`; no pases texto con backticks por la shell'],
   'git-shell': ['unverifiable', 'ese subcomando u opción de git ejecuta comandos de shell (rebase -x, submodule foreach, bisect run, difftool -x, mergetool, filter-branch, --upload-pack, --receive-pack, --exec)', 'ejecutá cada comando directamente'],
   'unknown-with-git': ['unverifiable', 'un programa desconocido recibe `git` como argumento y puede ejecutarlo', DIRECT],
   'unknown-git-subcommand': ['unverifiable', 'subcomando de git desconocido: puede ser un alias', 'usá el subcomando nativo de git'],
@@ -401,12 +402,23 @@ function settle(st, sep) {
   setPossible(st, all);
 }
 
+// Argumento de -c/-e/-m/--message (también en grupos como -am, -lc, -ne) con una
+// sustitución de comandos dentro de comillas dobles (#81273, #84429, codex #12288).
+const TEXT_FLAG = /^-[A-Za-z]*[cem]$|^--message$/;
+const TEXT_JOINED = /^(--message=|-m.)/;
+function quotedSubstitution(words) {
+  return words.some((w, i) => w.dqSub && ((i > 0 && TEXT_FLAG.test(words[i - 1].value) && !words[i - 1].quoted)
+    || TEXT_JOINED.test(w.value)));
+}
+
 function analyze(cmd, shell, ctx, out, depth, st) {
   const ps = shell === 'powershell';
   for (const r of cmd.redirects) if (r.op.includes('>') && !isDescriptorDup(r)) checkWriteTarget(subst(r.target, st, ps), st, ctx, out);
   const words = cmd.words.map((w) => subst(w, st, ps));
   if (!ps) recordAssignments(words, st);
   runWords(words, cmd, shell, ctx, out, depth, st);
+  // Después de las demás reglas: si una más específica encontró algo, esa se informa.
+  if (!ps && quotedSubstitution(cmd.words)) out.push(hit('quoted-substitution'));
 }
 
 // ------------------------------------------------------------ variables
