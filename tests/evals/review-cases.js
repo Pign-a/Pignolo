@@ -129,14 +129,7 @@ const SUB = '^(?=[^\\n]*"type":"assistant")(?=[^\\n]*"parent_tool_use_id":"[^"]+
 const SEP = '(?:,|\\s|\\\\[rn])*';
 const key = (k, v) => `\\\\"${k}\\\\":\\s*\\\\"${v}\\\\"`;
 const trace = (name, pattern, match = 'contains') => ({ name, type: 'regex', target: 'trace', flags: 'm', pattern: SUB + pattern, match });
-// Ubicación aceptada: `archivo:N` con N en `lines` (ventana de ±3 líneas) o un rango `archivo:A-B`
-// que contiene la línea plantada `at` (B acotado a at + 30 para no aceptar un archivo entero).
-const rangesAround = (at) => {
-  const out = [];
-  for (let a = 1; a <= at; a += 1) for (let b = Math.max(at, a + 1); b <= at + 30; b += 1) out.push(`${a}-${b}`);
-  return out.join('|');
-};
-const finding = (file, lines, sev, at) => `${key('location', `${file.replace(/\./g, '\\.')}:(${lines}|${rangesAround(at)})`)}${SEP}${key('severity', `(${sev})`)}`;
+const finding = (file, lines, sev) => `${key('location', `${file.replace(/\./g, '\\.')}:(${lines})`)}${SEP}${key('severity', `(${sev})`)}`;
 const verdict = (word) => trace(`verdict-${word.toLowerCase()}`, `\\\\n${word}(\\\\n)*"`);
 const dispatched = (agent, model) => [
   { name: 'dispatched', type: 'tool_used', tool: 'Agent', input_match: `"subagent_type":"pignolo:${agent}"` },
@@ -169,7 +162,7 @@ function lensCases() {
     out.push({
       name: `${agent}-defect`, agent, tags: ['agents', 'review', 'defect'], reviewer: true,
       files: { [c.file]: c.bug }, brief: reviewBrief(c.goal, c.file, c.base, c.bug),
-      graders: [trace('finds-planted-defect', finding(c.file, c.lines, c.sev, c.sample))],
+      graders: [trace('finds-planted-defect', finding(c.file, c.lines, c.sev))],
       samples: {
         pass: report([f(c.lens, `${c.file}:${c.sample}`, c.lens === 'readability' ? 'WARNING' : 'CRITICAL')], 'REQUEST_CHANGES'),
         fail: report([f(c.lens, `src/other.js:7`, 'CRITICAL')], 'REQUEST_CHANGES'),
@@ -194,7 +187,7 @@ function judgeCases() {
     out.push({
       name: `${j}-defect`, agent: j, tags: ['agents', 'judges', 'defect'], reviewer: true,
       files: { 'src/pages.js': PAGES_BUG }, brief: reviewBrief(LENS_CASES[0].goal, 'src/pages.js', PAGES, PAGES_BUG),
-      graders: [trace('finds-planted-defect', finding('src/pages.js', '[4-9]|10', 'BLOCKER|CRITICAL', LENS_CASES[0].sample)), verdict('REQUEST_CHANGES')],
+      graders: [trace('finds-planted-defect', finding('src/pages.js', '[4-9]|10', 'BLOCKER|CRITICAL')), verdict('REQUEST_CHANGES')],
       samples: { pass: report([f(j, 'src/pages.js:7', 'BLOCKER')], 'REQUEST_CHANGES'), fail: report([], 'APPROVE') },
     });
     out.push({
