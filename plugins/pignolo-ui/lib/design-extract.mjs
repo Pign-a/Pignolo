@@ -20,6 +20,8 @@ const GENERIC_FONTS = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'f
 const DIMENSION = /^\d*\.?\d+(px|rem|em)$/;
 const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b|(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\([^)]*\)/g;
 const MAX_FREQUENT_COLORS = 8;
+const NOT_A_FAMILY_NAME = /size|weight|line-height|leading|tracking|letter-spacing|stretch|variant|feature|style/;
+const NOT_A_FAMILY_VALUE = /^[-+]?\.?\d/;
 
 function today() {
   const d = new Date();
@@ -37,7 +39,7 @@ function colorName(raw) {
 
 function firstFamily(value) {
   const first = String(value).split(',')[0].trim().replace(/^["']|["']$/g, '');
-  return first && !GENERIC_FONTS.has(first.toLowerCase()) ? first : null;
+  return first && !GENERIC_FONTS.has(first.toLowerCase()) && !NOT_A_FAMILY_VALUE.test(first) ? first : null;
 }
 
 function colorValue(value, vars) {
@@ -79,7 +81,7 @@ function fromCssSources(sources, t) {
             t.cssVars[`rounded.${key}`] = v.name;
             note(t, s.file);
           }
-        } else if (font && !/^weight-/.test(font[1])) {
+        } else if (font && !NOT_A_FAMILY_NAME.test(font[1])) {
           const family = firstFamily(v.value);
           const key = Object.keys(t.typography).length ? `font-${font[1]}` : 'body-md';
           if (family && !Object.values(t.typography).some((x) => x.fontFamily === family)) {
@@ -264,15 +266,25 @@ export function extractDesign(root, { date = today() } = {}) {
   let extracted = [];
   if (!Object.keys(t.colors).length) {
     if (found.unverified.length || found.unsupported.length) return { ...base, mode: 'unverified', text: null };
-    Object.assign(t, newTokens());
-    fromFrequency(root, t);
-    if (!Object.keys(t.colors).length) return { ...base, mode: 'none', text: null };
-    mode = 'frequency';
-    extracted = [
-      ...Object.keys(t.colors).map((k) => `colors.${k}`),
-      ...Object.keys(t.typography).map((k) => `typography.${k}`),
-      ...Object.keys(t.rounded).map((k) => `rounded.${k}`),
-    ];
+    const hasConfig = ['typography', 'rounded', 'spacing'].some((k) => Object.keys(t[k]).length);
+    // Configuration wins (spec §4.5): declared radii, fonts and spacing are kept; frequency only
+    // fills the missing colors, and only those are marked as extracted.
+    const f = newTokens();
+    fromFrequency(root, f);
+    if (!Object.keys(f.colors).length) return { ...base, mode: 'none', text: null };
+    if (hasConfig) {
+      t.colors = f.colors;
+      for (const file of f.from) note(t, file);
+      extracted = Object.keys(t.colors).map((k) => `colors.${k}`);
+    } else {
+      Object.assign(t, f);
+      mode = 'frequency';
+      extracted = [
+        ...Object.keys(t.colors).map((k) => `colors.${k}`),
+        ...Object.keys(t.typography).map((k) => `typography.${k}`),
+        ...Object.keys(t.rounded).map((k) => `rounded.${k}`),
+      ];
+    }
   }
   const text = render(t, { name: projectName(root), date, extracted });
   return { ...base, mode, text, from: t.from, extracted, renamed };

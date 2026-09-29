@@ -147,3 +147,26 @@ test('CLI extract: writes only the proposal, never over a file, never when DESIG
   assert.equal(res.status, 1);
   assert.equal(res.json.mode, 'none');
 });
+
+test('font-size/weight/line-height variables never become font families', () => {
+  const root = writeTree(makeTempDir(), {
+    'a.css': ':root { --font-size-base: 1rem; --font-weight: 400; --font-line-height: 1.5; --font-letter-spacing: 0.02em; --font-mono: 12px; --font-body: Inter, sans-serif; --primary: #0b6bcb; }',
+  });
+  const r = extractDesign(root, { date: DATE });
+  const data = parseYaml(splitFrontmatter(r.text).yaml).value;
+  assert.deepEqual(data.typography, { 'body-md': { fontFamily: 'Inter' } });
+});
+
+test('config without colors keeps its radii and fonts; only colors come from frequency, marked extracted', () => {
+  const root = writeTree(makeTempDir(), {
+    'a.css': ':root { --radius: 4px; --font-body: Inter; }\n.x { color: #123456; border-radius: 9px; font-family: Georgia; }\n',
+  });
+  const r = extractDesign(root, { date: DATE });
+  assert.equal(r.mode, 'config');
+  const data = parseYaml(splitFrontmatter(r.text).yaml).value;
+  assert.deepEqual(data.rounded, { md: '4px' });
+  assert.deepEqual(data.typography, { 'body-md': { fontFamily: 'Inter' } });
+  assert.equal(data.colors.primary, '#123456');
+  assert.deepEqual(data.pignolo.extracted, ['colors.primary']);
+  assert.deepEqual(r.extracted, ['colors.primary']);
+});
