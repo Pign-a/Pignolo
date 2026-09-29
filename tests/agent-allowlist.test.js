@@ -33,6 +33,15 @@ for (const t of ['pignolo:implementer', 'pignolo:review-risk', 'pignolo-ui:ui-op
   });
 }
 
+// Checklist manual del hito 2: negar general-purpose sugiriendo pignolo:explorer no servía.
+for (const [t, alt] of [['Explore', /pignolo:explorer/], ['Plan', /pignolo:explorer/], ['general-purpose', /conversación principal.*\/pignolo:off/], ['fork', /conversación principal.*\/pignolo:off/]]) {
+  test(`the alternative for ${t} fits the request`, () => {
+    const { r } = call(repo, t);
+    assert.match(r.stderr, alt);
+    if (t === 'general-purpose' || t === 'fork') assert.doesNotMatch(r.stderr, /pignolo:explorer/);
+  });
+}
+
 for (const t of ['general-purpose', 'Explore', 'Plan', 'ui-option', 'pignolo-ui-x:ui-option', 'pignolo-ui:other', 'pignolo:', 'PIGNOLO:implementer', 'other:implementer', 'fork', '', undefined, 42]) {
   test(`denies ${JSON.stringify(t)}`, () => {
     const { r, calls } = call(repo, t);

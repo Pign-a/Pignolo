@@ -28,9 +28,14 @@ exports.run = (input, ctx = {}) => {
   const { root, active } = projectState({ cwd, env });
   if (active && !allowed(type)) {
     const shown = String(type);
+    // Explore y Plan son de lectura: su equivalente es pignolo:explorer. Para el resto
+    // no hay un agente pignolo que haga lo mismo.
+    const alternative = type === 'Explore' || type === 'Plan'
+      ? 'usá pignolo:explorer, que también lee el repo y devuelve rutas y líneas'
+      : 'hacé la tarea en la conversación principal, o pedile al humano /pignolo:off si necesita ese agente';
     return {
       exit: 2,
-      stderr: `pignolo bloqueó el despacho de "${shown}": en este proyecto solo se despachan agentes pignolo:* (y pignolo-ui:ui-option, pignolo-ui:ui-auditor). Alternativa: usá el agente pignolo equivalente (p. ej. pignolo:explorer en lugar de Explore).\n`,
+      stderr: `pignolo bloqueó el despacho de "${shown}": en este proyecto solo se despachan agentes pignolo:* (y pignolo-ui:ui-option, pignolo-ui:ui-auditor). Alternativa: ${alternative}.\n`,
     };
   }
 

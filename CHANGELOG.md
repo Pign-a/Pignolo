@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 — 2026-09-29
+
+- `/pignolo:off` y `/pignolo:on` guardan el flag en la raíz del proyecto (la primera carpeta hacia arriba con `.pignolo/project.md` o `.git`) aunque el cwd de la sesión esté en un subdirectorio. Antes, con el cwd en `.claude/`, el flag quedaba en `.claude/.pignolo/.disabled` y la allowlist de agentes lo ignoraba. La allowlist y el interruptor usan ahora la misma función de raíz.
+- Al negar un despacho, la alternativa depende del agente: `Explore` y `Plan` sugieren `pignolo:explorer`; el resto, hacer la tarea en la conversación principal o `/pignolo:off`. Hallados en el checklist manual del hito 2.
+
 ## 0.2.1 — 2026-09-29
 
 - `/pignolo:setup`: los conteos de reglas salen del JSON del script (en la primera corrida real el modelo contó 97 en vez de 96) y el resumen nombra la ruta de la config y cómo se resolvió cada conflicto de reglas. Hallado en el checklist manual del hito 2.

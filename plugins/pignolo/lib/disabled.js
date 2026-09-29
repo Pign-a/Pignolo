@@ -3,10 +3,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pignoloHome } = require('./home');
 
+// Raíz del proyecto sin git (no gasta plazo): sube desde el cwd hasta el primer
+// directorio con .pignolo/project.md o con .git; si no hay ninguno, el cwd. El cwd de
+// la sesión persiste entre comandos, así que puede estar en un subdirectorio.
+function projectRoot(cwd = process.cwd()) {
+  const start = path.resolve(cwd);
+  for (let dir = start; ; dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.pignolo', 'project.md')) || fs.existsSync(path.join(dir, '.git'))) return dir;
+    if (path.dirname(dir) === dir) return start;
+  }
+}
+
 function flagPaths({ env = process.env, cwd = process.cwd() } = {}) {
   return {
     global: path.join(pignoloHome(env), 'disabled'),
-    project: path.join(cwd, '.pignolo', '.disabled'),
+    project: path.join(projectRoot(cwd), '.pignolo', '.disabled'),
   };
 }
 
@@ -20,4 +31,4 @@ function readState({ env = process.env, cwd = process.cwd() } = {}) {
   return { guardOff, hooksOff: guardOff || globalFlag || projectFlag, globalFlag, projectFlag };
 }
 
-module.exports = { readState, flagPaths };
+module.exports = { readState, flagPaths, projectRoot };

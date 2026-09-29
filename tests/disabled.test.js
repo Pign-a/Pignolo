@@ -41,3 +41,27 @@ test('PIGNOLO_DISABLED with any other value does not turn the guard off', () => 
   const env = { PIGNOLO_HOME: makeTempDir(), PIGNOLO_DISABLED: 'true' };
   assert.strictEqual(readState({ env, cwd: makeTempDir() }).guardOff, false);
 });
+
+// Checklist manual del hito 2: /pignolo:off con el cwd de la sesión en un subdirectorio
+// (el cd persiste) dejó el flag en <sub>/.pignolo/.disabled y la allowlist lo ignoró.
+test('the project flag resolves to the project root from a subdirectory', () => {
+  const env = { PIGNOLO_HOME: makeTempDir() };
+  const root = makeTempDir();
+  fs.mkdirSync(path.join(root, '.git'));
+  const sub = path.join(root, '.claude', 'deep');
+  fs.mkdirSync(sub, { recursive: true });
+  assert.strictEqual(flagPaths({ env, cwd: sub }).project, path.join(root, '.pignolo', '.disabled'));
+  fs.mkdirSync(path.join(root, '.pignolo'));
+  fs.writeFileSync(path.join(root, '.pignolo', '.disabled'), 'x');
+  assert.strictEqual(readState({ env, cwd: sub }).hooksOff, true);
+});
+
+test('a directory with .pignolo/project.md is the root even without git', () => {
+  const env = { PIGNOLO_HOME: makeTempDir() };
+  const root = makeTempDir();
+  fs.mkdirSync(path.join(root, '.pignolo'));
+  fs.writeFileSync(path.join(root, '.pignolo', 'project.md'), '# p\n');
+  const sub = path.join(root, 'src');
+  fs.mkdirSync(sub);
+  assert.strictEqual(flagPaths({ env, cwd: sub }).project, path.join(root, '.pignolo', '.disabled'));
+});
