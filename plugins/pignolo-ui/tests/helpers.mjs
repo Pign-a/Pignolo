@@ -9,8 +9,19 @@ export const PLUGIN_ROOT = path.join(TESTS_DIR, '..');
 export const REPO_ROOT = path.join(PLUGIN_ROOT, '..', '..');
 export const FIXTURES = path.join(TESTS_DIR, 'fixtures');
 
+// Every temporary directory is registered and removed when the test process exits
+// (node --test runs one process per file).
+const CREATED = [];
+process.on('exit', () => {
+  for (const dir of CREATED.splice(0).reverse()) {
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 50 }); } catch { /* best effort */ }
+  }
+});
+
 export function makeTempDir(prefix = 'pignolo-ui-test-') {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  CREATED.push(dir);
+  return dir;
 }
 
 // Writes a tree { 'a/b.css': 'text' } under dir and returns dir.
