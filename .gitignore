@@ -1,2 +1,4 @@
 local/
 .playwright-mcp/
+tests/evals/generated/
+tests/evals/**/results/
