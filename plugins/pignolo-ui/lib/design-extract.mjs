@@ -28,12 +28,11 @@ function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Only normalizes the spelling. Project names (foreground, primary-foreground, card...) become
+// MD3 names in toMd3Names, through the same alias table the validator reads (DEFAULT_ALIASES).
 function colorName(raw) {
   let n = raw.toLowerCase();
   if (n.startsWith('color-')) n = n.slice(6);
-  if (n === 'foreground') return 'on-background';
-  const fg = /^(.*)-foreground$/.exec(n);
-  if (fg) return `on-${fg[1]}`;
   return n.replace(/[^a-z0-9-]/g, '-');
 }
 
@@ -121,13 +120,10 @@ function fromTailwindV3(source, t) {
     const [section, ...rest] = p;
     if (section === 'colors' && typeof leaf.value === 'string') {
       const parts = rest.map(String);
-      let name;
-      if (parts[parts.length - 1] === 'DEFAULT') name = parts.slice(0, -1).join('-');
-      else if (parts[parts.length - 1] === 'foreground') name = `on-${parts.slice(0, -1).join('-')}`;
-      else name = parts.join('-');
+      const name = colorName((parts[parts.length - 1] === 'DEFAULT' ? parts.slice(0, -1) : parts).join('-'));
       const value = colorValue(leaf.value, {});
       if (name && value && !(name in t.colors)) {
-        t.colors[colorName(name)] = value;
+        t.colors[name] = value;
         note(t, source.file);
       }
     } else if (section === 'borderRadius' && typeof leaf.value === 'string' && DIMENSION.test(leaf.value)) {

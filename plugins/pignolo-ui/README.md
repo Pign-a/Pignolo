@@ -15,7 +15,8 @@ Lo que genera pignolo-ui usa los nombres semánticos de Material 3 (`primary`, `
 
 - `accent` → `primary`, `brand` → `primary`
 - `on-accent` → `on-primary`, `accent-foreground` → `on-primary`, `primary-foreground` → `on-primary`
-- `text` → `on-surface`, `label` → `on-surface`, `foreground` → `on-surface`, `fg` → `on-surface`, `card-foreground` → `on-surface`
+- `text` → `on-surface`, `label` → `on-surface`, `foreground` → `on-surface`, `fg` → `on-surface`, `card-foreground` → `on-surface`, `surface-foreground` → `on-surface`
+- `secondary-foreground` → `on-secondary`
 - `bg` → `background`, `card` → `surface`
 - `muted-foreground` → `on-surface-variant`, `text-muted` → `on-surface-variant`
 - `border` → `outline-variant`

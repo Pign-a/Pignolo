@@ -48,6 +48,8 @@ export const DEFAULT_ALIASES = Object.freeze({
   bg: 'background',
   card: 'surface',
   'card-foreground': 'on-surface',
+  'surface-foreground': 'on-surface',
+  'secondary-foreground': 'on-secondary',
   'muted-foreground': 'on-surface-variant',
   'text-muted': 'on-surface-variant',
   border: 'outline-variant',
@@ -57,6 +59,8 @@ export const DEFAULT_ALIASES = Object.freeze({
   'destructive-foreground': 'on-error',
 });
 
+// The same table serves the extraction (design-extract renames with resolveAliases): one map,
+// so a name read here is renamed there the same way.
 // name -> { as, source } for the colors read through an alias. An alias is taken only when
 // its MD3 target is not defined itself and no earlier name took it.
 export function resolveAliases(colors, custom) {

@@ -62,15 +62,18 @@ test(':root and .dark: the dark theme goes to pignolo.themes.dark in OKLCH; othe
   assert.deepEqual(data.typography, { 'body-md': { fontFamily: 'Source Sans 3' } });
 });
 
-test('shadcn: bare HSL becomes hex, foreground becomes on-background', () => {
+test('shadcn: bare HSL becomes hex; foreground, primary-foreground and card follow the shared alias table', () => {
   const { r, data } = extract('shadcn');
   assert.equal(r.mode, 'config');
   assert.deepEqual(r.from, ['app/globals.css']);
-  assert.deepEqual(data.colors, { background: '#ffffff', 'on-background': '#020817', primary: '#0f172a', 'on-primary': '#f8fafc' });
-  assert.deepEqual(Object.keys(data.pignolo.themes.dark), ['background', 'on-background', 'primary', 'on-primary']);
+  assert.deepEqual(data.colors, { background: '#ffffff', 'on-surface': '#020817', primary: '#0f172a', 'on-primary': '#f8fafc', surface: '#ffffff' });
+  assert.deepEqual(Object.keys(data.pignolo.themes.dark), ['background', 'on-surface', 'primary', 'on-primary', 'surface']);
   assert.deepEqual(data.rounded, { md: '0.5rem' });
   assert.deepEqual(data.typography, { 'body-md': { fontFamily: 'Geist' } });
-  assert.equal(data.pignolo.cssVars['colors.on-background'], '--foreground');
+  assert.equal(data.pignolo.cssVars['colors.on-surface'], '--foreground');
+  assert.deepEqual(r.renamed, [{ from: 'foreground', to: 'on-surface' }, { from: 'primary-foreground', to: 'on-primary' }, { from: 'card', to: 'surface' }]);
+  const v = validateDesign(r.text, { catalog });
+  assert.deepEqual(v.findings.filter((f) => f.severity === 'alto' && /^colors./.test(f.path)), []);
 });
 
 test('without any config: most frequent colors, font and radii, all marked extracted', () => {
@@ -169,4 +172,20 @@ test('config without colors keeps its radii and fonts; only colors come from fre
   assert.equal(data.colors.primary, '#123456');
   assert.deepEqual(data.pignolo.extracted, ['colors.primary']);
   assert.deepEqual(r.extracted, ['colors.primary']);
+});
+
+test('Tailwind v3: a top-level foreground is on-surface (not "on-"), and first-wins compares the stored name', () => {
+  const config = [
+    'module.exports = { theme: { extend: { colors: {',
+    "  foreground: '#111111',",
+    "  primary: { DEFAULT: '#0b6bcb', foreground: '#ffffff' },",
+    "  'Card Text': '#222222',",
+    "  'card-text': '#333333',",
+    '} } } };',
+    '',
+  ].join(String.fromCharCode(10));
+  const r = extractDesign(writeTree(makeTempDir(), { 'tailwind.config.js': config }), { date: DATE });
+  const data = parseYaml(splitFrontmatter(r.text).yaml).value;
+  assert.ok(!Object.keys(data.colors).includes('on-'), JSON.stringify(data.colors));
+  assert.deepEqual(data.colors, { 'on-surface': '#111111', primary: '#0b6bcb', 'on-primary': '#ffffff', 'card-text': '#222222' });
 });
