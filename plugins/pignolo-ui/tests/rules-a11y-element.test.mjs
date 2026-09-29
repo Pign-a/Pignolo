@@ -26,6 +26,13 @@ test('A11Y-04: a disabled icon-only button still fails', async () => {
   assert.deepEqual(statuses(r), ['fail']);
 });
 
+test('A11Y-39: disabled={false} does not make the element unfocusable', async () => {
+  const on = await run('a.tsx', 'export const A = () => <div aria-hidden="true"><button disabled={false}>x</button></div>;\n', 'A11Y-39');
+  assert.deepEqual(statuses(on).filter((s) => s === 'fail'), ['fail']);
+  const off = await run('a.tsx', 'export const A = () => <div aria-hidden="true"><button disabled>x</button></div>;\n', 'A11Y-39');
+  assert.deepEqual(statuses(off).filter((s) => s === 'fail'), []);
+});
+
 test('the same markup in .tsx with className gives the same results', async () => {
   const html = '<button class="x"><svg viewBox="0 0 1 1"></svg></button>\n<img src="/a.png">\n<div aria-hidden="true"><a href="/x">x</a></div>\n<input type="search" placeholder="Buscar">\n';
   const tsx = 'export const A = () => (<>\n<button className="x"><svg viewBox="0 0 1 1"></svg></button>\n<img src="/a.png" />\n<div aria-hidden="true"><a href="/x">x</a></div>\n<input type="search" placeholder="Buscar" />\n</>);\n';

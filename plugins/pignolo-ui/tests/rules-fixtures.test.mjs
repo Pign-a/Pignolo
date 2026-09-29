@@ -65,6 +65,8 @@ async function runCase(id, name) {
   const emitted = mine.filter((e) => e.status === 'pass' && !synthetic(e));
   if (name.startsWith('pass-')) {
     if (own.noFindingsPass === true) {
+      // the runner's pass proves nothing unless a fail-* sibling shows the rule speaks here
+      assert.ok(caseDirs(id).some((c) => c.startsWith('fail-')), `${id} ${name}: noFindingsPass needs a fail-* sibling case`);
       assert.equal(emitted.length, 0, `${id} ${name}: noFindingsPass set but the rule emitted its own pass\n${show(emitted)}`);
       assert.ok(count('pass') > 0, `${id} ${name}: expected the runner's 'no findings' pass\n${show(mine)}`);
     } else {

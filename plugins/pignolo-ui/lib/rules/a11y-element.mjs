@@ -242,7 +242,9 @@ function check26(ctx) {
 
 function focusable(el) {
   if (el.component) return false;
-  if (attr(el, 'disabled')) return false;
+  // disabled={false} (static 'false') leaves the element enabled
+  const dis = attr(el, 'disabled');
+  if (dis && !(isStatic(dis) && value(dis).toLowerCase() === 'false')) return false;
   const ti = attr(el, 'tabindex');
   if (ti && isStatic(ti) && Number.isFinite(Number(value(ti))) && Number(value(ti)) < 0) return false;
   if (el.tag === 'a') return !!attr(el, 'href');
