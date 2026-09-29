@@ -1122,11 +1122,51 @@ function pwshScript(rest, cmd, ctx, out, depth, st) {
   code(rest[0].dyn && rest[0].dynAt === 0 ? dynWord() : word(rest.map((w) => w.value).join(' ')), 'powershell', ctx, out, depth, st);
 }
 
-function inlineCheck(name, out) {
+function inlineCheck(name, out, st, ctx) {
   const perlish = name === 'perl' || name === 'ruby' || name === 'php';
   return (text) => {
     if (mentionsGit(text) || SPAWN_RE.test(text) || (perlish && SPAWN_PERL_RUBY.test(text))) out.push(hit('inline-code'));
+    if (st && ctx) inlineDeletes(text, st, ctx, out);
   };
+}
+
+// APIs de borrado o movimiento en código inline (I1): fs.rmSync, shutil.rmtree, os.remove,
+// Path(...).unlink, FileUtils.rm_rf, unlink de perl/php, Deno.remove, Remove-Item...
+const DELETE_API = new RegExp([
+  String.raw`\b(rmSync|rmdirSync|unlinkSync|renameSync|removeSync|moveSync|emptyDirSync|rmtree|rimraf|remove_tree|removedirs)\b`,
+  String.raw`\b(fs|fsp|fsPromises|promises|fse)\.(rm|rmdir|unlink|rename|remove|move|emptyDir)\b`,
+  String.raw`\bshutil\.(rmtree|move)\b`, String.raw`\bos\.(remove|unlink|rmdir|rename|replace)\b`,
+  String.raw`\.(unlink|rmdir)\s*\(`, String.raw`\bFileUtils\.(rm\w*|remove\w*|mv|move)\b`,
+  String.raw`\b(File|Dir|FileUtils)\.(delete|unlink|rename|rmdir)\b`, String.raw`\bDeno\.(remove|rename)(Sync)?\b`,
+  String.raw`(^|[^.\w$])(unlink|rmdir|rename)\b(?=\s*\(?\s*['"])`, String.raw`\bRemove-Item\b`,
+].join('|'), 'g');
+const HOME_EXPR = /^(os\.homedir\(\)|require\(\s*['"](node:)?os['"]\s*\)\.homedir\(\)|Path\.home\(\)|Dir\.home|process\.env\.(HOME|USERPROFILE)|os\.environ\[\s*['"]HOME['"]\s*\]|ENV\[\s*['"]HOME['"]\s*\]|\$ENV\{HOME\}|\$HOME|getenv\(\s*['"]HOME['"]\s*\))/;
+const STRING_LIT = /(['"`])((?:\\.|(?!\1)[^\\])*)\1/g;
+
+// Protegido por nombre, esté donde esté en el código: .git, .pignolo, ~ o $HOME solos.
+function namesProtected(lit) {
+  const c = cleanPath(lit);
+  return GIT_DIR_RE.test(c) || /(^|\/)\.pignolo(\/|$)/.test(c) || /^(~|\$HOME|\$\{HOME\})\/?$/.test(lit);
+}
+
+function inlineDeletes(text, st, ctx, out) {
+  const calls = [...text.matchAll(DELETE_API)];
+  if (!calls.length) return;
+  const lits = [...text.matchAll(STRING_LIT)].map((m) => m[2]).filter((s) => !/\$\{|#\{/.test(s));
+  if (lits.some(namesProtected)) { out.push(hit('catastrophic-delete')); return; }
+  let unknown = false;
+  for (const m of calls) {
+    // Destino: el primer argumento de la llamada, o el receptor de .unlink()/.rmdir().
+    const after = text.slice(m.index + m[0].length).replace(/^\s*\(?\s*/, '');
+    const before = text.slice(0, m.index);
+    const recv = /\.(unlink|rmdir)\s*\($/.test(m[0]) ? /\(\s*(['"])((?:\\.|(?!\1)[^\\])*)\1\s*\)\s*$/.exec(before) : null;
+    const first = recv || /^(['"`])((?:\\.|(?!\1)[^\\])*)\1/.exec(after);
+    if (HOME_EXPR.test(after)) { out.push(hit('catastrophic-delete')); return; }
+    if (!first || /\$\{|#\{/.test(first[2])) { unknown = true; continue; }
+    const w = word(first[2].replace(/^\$\{?HOME\}?(?=\/|$)/, '~'), { glob: /[*?[]/.test(first[2]) });
+    if (isCatastrophicOperand(w, st, ctx)) { out.push(hit('catastrophic-delete')); return; }
+  }
+  if (unknown) out.push(hit('inline-code'));
 }
 
 function analyzeInterp(name, args, cmd, out, st, ctx) {
@@ -1166,7 +1206,7 @@ function analyzeInterp(name, args, cmd, out, st, ctx) {
     break;
   }
   if (inPlace) for (const w of files) writeOperand(w, st, ctx, out);
-  const check = inlineCheck(name, out);
+  const check = inlineCheck(name, out, st, ctx);
   for (const c of codes) {
     if (!c || (c.dyn && c.dynAt === 0)) { out.push(hit('hidden-code')); return; }
     check(c.value);

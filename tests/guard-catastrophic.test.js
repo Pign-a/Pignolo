@@ -190,6 +190,31 @@ test('package deleters and in-place writers reaching .git are catastrophic (G9)'
   }
 });
 
+// Protects: borrados desde código inline (I1, revisión final) · Breaks if: node -e/python -c
+// con una API de borrado sobre .git, ~/.pignolo, ~ o la raíz pasan, o un borrado con
+// destino calculado pasa sin confirmación.
+test('inline interpreter code with a delete API on a protected target is catastrophic (I1)', () => {
+  for (const cmd of [`node -e "require('fs').rmSync('.git',{recursive:true})"`, `python -c "import shutil; shutil.rmtree('.git')"`,
+    `node -p "require('fs').rmSync('.', {recursive: true, force: true})"`, `python3 -c "import os; os.rename('.git', 'x')"`,
+    `python -c "from pathlib import Path; Path('.git/index').unlink()"`, `ruby -e "FileUtils.rm_rf('.git')"`,
+    `perl -e "unlink '.git/index'"`, `php -r "rmdir('.git');"`, `deno eval "Deno.removeSync('.git', {recursive: true})"`,
+    `bun -e "require('fs').rmSync('~/.pignolo', {recursive: true})"`, `node -e "require('fs').rmSync(require('os').homedir(), {recursive: true})"`,
+    `node -e "require('fs').rmSync('*')"`, `python -c "import shutil; shutil.rmtree('./')"`]) {
+    for (const mode of MODES) assert.strictEqual(evaluate(cmd, { mode }).rule, 'catastrophic-delete', `${mode}: ${cmd}`);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'block', `apagada: ${cmd}`);
+  }
+  // Destino calculado: no verificable (ask en interactivo, deny en los modos autónomos).
+  for (const cmd of [`node -e "require('fs').rmSync(process.argv[1], {recursive: true})" x`, `python -c "import shutil,sys; shutil.rmtree(sys.argv[1])" x`]) {
+    assert.deepStrictEqual([evaluate(cmd).decision, evaluate(cmd).rule], ['ask', 'inline-code'], cmd);
+    assert.strictEqual(evaluate(cmd, { mode: 'bypassPermissions' }).decision, 'block', cmd);
+    assert.strictEqual(evaluate(cmd, { onlyCatastrophic: true }).decision, 'allow', cmd);
+  }
+  for (const cmd of ['node -e "console.log(1)"', `node -e "require('fs').rmSync('dist', {recursive: true, force: true})"`,
+    `python -c "import os; os.remove('build/out.txt')"`, `python -c "print(1)"`, `node -e "console.log('.git')"`]) {
+    assert.strictEqual(evaluate(cmd, { mode: 'bypassPermissions' }).decision, 'allow', cmd);
+  }
+});
+
 const bash = (command, cwd) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd });
 
 test('PIGNOLO_DISABLED=1 turns the guard off but not the catastrophic set', () => {
