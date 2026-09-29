@@ -24,6 +24,17 @@ test('a new variable is inserted in the existing block with its indentation and 
   assert.equal(noSemi.text, ':root {\n  --last: #fff;\n  --b: 2px;\n}\n');
 });
 
+test('the semicolon is decided by the last declaration, not the last custom property', () => {
+  const r = setCssVar(':root {\n  --a: 1px;\n  color: red\n}\n', { selector: ':root', name: '--b', value: '2px' });
+  assert.equal(r.text, ':root {\n  --a: 1px;\n  color: red;\n  --b: 2px;\n}\n');
+  const d = setCssVar('.dark {\n  color-scheme: dark\n}\n', { selector: '.dark', name: '--b', value: '2px' });
+  assert.equal(d.text, '.dark {\n  color-scheme: dark;\n  --b: 2px;\n}\n');
+  const c = setCssVar(':root {\n  color: red /* x */\n}\n', { selector: ':root', name: '--b', value: '2px' });
+  assert.equal(c.text, ':root {\n  color: red; /* x */\n  --b: 2px;\n}\n');
+  const ok = setCssVar(':root {\n  color: red;\n}\n', { selector: ':root', name: '--b', value: '2px' });
+  assert.equal(ok.text, ':root {\n  color: red;\n  --b: 2px;\n}\n');
+});
+
 test('single-line blocks get the declaration before the closing brace', () => {
   const r = setCssVar(':root { --a: 1px }\n', { selector: ':root', name: '--b', value: '2px' });
   assert.equal(r.text, ':root { --a: 1px; --b: 2px; }\n');
@@ -38,7 +49,7 @@ test('a missing block is never created: the write is refused', () => {
 });
 
 test('values that could break the block are refused', () => {
-  for (const value of ['red; --x: 1', 'a { b', 'a }', 'a\nb', '']) {
+  for (const value of ['red; --x: 1', 'a { b', 'a }', 'a\nb', '', 'red /*', 'a */ b', '"x', "'x", 'a\\b']) {
     assert.deepEqual(setCssVar(CSS, { selector: ':root', name: '--primary', value }), { ok: false, reason: 'invalid-value' }, value);
   }
   assert.deepEqual(setCssVar(CSS, { selector: ':root', name: 'primary', value: 'red' }), { ok: false, reason: 'invalid-name' });
@@ -64,6 +75,9 @@ test('Tailwind v3: only an existing literal value is replaced, with its quote st
   assert.equal(replaceTailwindLiteral(text, ['extend', 'colors', 'primary'], "a'b").text, text.replace("'#0b6bcb'", "'a\\'b'"));
   assert.equal(replaceTailwindLiteral(text, ['extend', 'zIndex', 'top'], 60).text, text.replace('top: 50', 'top: 60'));
   assert.deepEqual(replaceTailwindLiteral(text, ['extend', 'colors', 'secondary'], '#000'), { ok: false, reason: 'not-a-literal-value' });
+  for (const v of ['a\nb', 'a\rb', 'a\u2028b', 'a\u2029b']) {
+    assert.deepEqual(replaceTailwindLiteral(text, ['extend', 'colors', 'primary'], v), { ok: false, reason: 'invalid-value' }, JSON.stringify(v));
+  }
   const bad = replaceTailwindLiteral('module.exports = { theme: { colors: base } };', ['colors', 'primary'], '#000');
   assert.equal(bad.ok, false);
   assert.match(bad.reason, /^unverified: /);

@@ -388,12 +388,29 @@ export function readTokenSources(root, { maxFiles = 2000 } = {}) {
 
 // ---- writes ------------------------------------------------------------------------------
 
+// True when a quote opened in `s` is never closed (a CSS string would swallow the block).
+function hasOpenQuote(s) {
+  let q = null;
+  for (const c of s) {
+    if (q) { if (c === q) q = null; } else if (c === '"' || c === "'") q = c;
+  }
+  return q !== null;
+}
+
+// Offset just after the last declaration's last character in text[from, to) when a ';' must
+// be added before appending (comments and whitespace ignored); null when it is not needed.
+function semicolonPos(text, from, to) {
+  const masked = text.slice(from, to).replace(/\/\*[\s\S]*?\*\//g, (m) => ' '.repeat(m.length)).trimEnd();
+  if (!masked || masked.endsWith(';') || masked.endsWith('}')) return null;
+  return from + masked.length;
+}
+
 // Sets `name: value` inside the first token block whose selector equals `selector`
 // (':root', '.dark', '@theme', '@theme inline'...). Only the value span or one new line
 // changes; a missing block is refused (never a second source).
 export function setCssVar(text, { selector, name, value }) {
   if (!/^--[A-Za-z0-9_-]+$/.test(name || '')) return { ok: false, reason: 'invalid-name' };
-  if (typeof value !== 'string' || !value.trim() || /[;{}\r\n]/.test(value)) return { ok: false, reason: 'invalid-value' };
+  if (typeof value !== 'string' || !value.trim() || /[;{}\r\n\\]|\/\*|\*\//.test(value) || hasOpenQuote(value)) return { ok: false, reason: 'invalid-value' };
   const want = String(selector).replace(/\s+/g, ' ').trim();
   const block = scanCss(text).blocks.find((b) => b.selector === want);
   if (!block) return { ok: false, reason: 'block-not-found' };
@@ -413,14 +430,15 @@ export function setCssVar(text, { selector, name, value }) {
       const ls = text.lastIndexOf('\n', last.valueStart) + 1;
       indent = /^[ \t]*/.exec(text.slice(ls))[0];
     }
-    let out = `${text.slice(0, closeLineStart)}${indent}${name}: ${value};${eol}${text.slice(closeLineStart)}`;
-    if (last && !/^\s*;/.test(text.slice(last.valueEnd))) out = `${out.slice(0, last.valueEnd)};${out.slice(last.valueEnd)}`;
+    const semi = semicolonPos(text, block.open + 1, closeLineStart);
+    const head = semi === null ? text.slice(0, closeLineStart) : `${text.slice(0, semi)};${text.slice(semi, closeLineStart)}`;
+    const out = `${head}${indent}${name}: ${value};${eol}${text.slice(closeLineStart)}`;
     return { ok: true, text: out, line: lineAt(closeLineStart), before: null, after: value };
   }
-  const trimmed = text.slice(block.open + 1, block.close).trimEnd();
-  const needsSemi = trimmed.trim() !== '' && !trimmed.endsWith(';');
-  const at = block.open + 1 + trimmed.length;
-  const out = `${text.slice(0, at)}${needsSemi ? ';' : ''} ${name}: ${value}; ${text.slice(block.close)}`;
+  const semi = semicolonPos(text, block.open + 1, block.close);
+  const at = block.open + 1 + text.slice(block.open + 1, block.close).trimEnd().length;
+  const head = semi === null ? text.slice(0, at) : `${text.slice(0, semi)};${text.slice(semi, at)}`;
+  const out = `${head} ${name}: ${value}; ${text.slice(block.close)}`;
   return { ok: true, text: out, line: lineAt(block.open), before: null, after: value };
 }
 
@@ -443,6 +461,7 @@ function quoteJs(s, q) {
 export function replaceTailwindLiteral(text, keyPath, newValue) {
   const r = parseTailwindConfig(text);
   if (!r.ok) return { ok: false, reason: `unverified: ${r.reason}` };
+  if (/[\r\n\u2028\u2029]/.test(String(newValue))) return { ok: false, reason: 'invalid-value' };
   const leaf = r.leaves.find((l) => l.path.length === keyPath.length && l.path.every((p, i) => String(p) === String(keyPath[i])));
   if (!leaf) return { ok: false, reason: 'not-a-literal-value' };
   const lit = typeof newValue === 'number' && !leaf.quote ? String(newValue) : quoteJs(String(newValue), leaf.quote || "'");
