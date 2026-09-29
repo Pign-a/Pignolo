@@ -1,0 +1,7 @@
+{
+  "severity": "alto",
+  "measure": {
+    "design": "#0B6BCB",
+    "css": "#0a5fb4"
+  }
+}
