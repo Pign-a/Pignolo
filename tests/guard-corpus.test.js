@@ -44,8 +44,11 @@ test('the residual-risk register names every audit command that still passes', (
     `echo '{}' | node "$(find . -name launcher.js)" toggle`, `echo '{}' | node plugins/pignolo/hooks/launch*.js toggle`, 'git mv -f a.txt b.txt',
     "vim -es -c '!git reset --hard' -c q", "sqlite3 :memory: '.shell git reset --hard'", "script --command='git reset --hard' /dev/null",
     "flock --command='git reset --hard' /tmp/l", "su -c 'git reset --hard'", "sg staff -c 'git reset --hard'", "busybox sh -c 'git reset --hard'",
-    'busybox rm -rf .git', 'rsync -a --delete vacio/ .git/']) {
+    'busybox rm -rf .git', 'rsync -a --delete vacio/ .git/',
+    // revisión final (M7, M8, M9)
+    "cd /tmp && eval 'cd -' && rm -rf .g*", 'f() { cd "$1"; }; cd /tmp && f /ruta/al/repo && rm -rf .g*', 'CDPATH=.. cd repo && rm -rf .g*',
+    `echo '{"disableAllHooks":true}' > .claude/settings.local.json`, 'rm -rf GIT~1', 'Remove-Item -LiteralPath GIT~1 -Recurse -Force']) {
     assert.ok(reg.includes(cmd.replace(/\|/g, '\\|')), cmd); // en la tabla, | va escapado
-    assert.strictEqual(evaluate(cmd, { shell: cmd.startsWith('[IO') ? 'powershell' : 'bash', mode: MODE, psTimeoutMs: PS_T }).decision, 'allow', cmd);
+    assert.strictEqual(evaluate(cmd, { shell: /^(\[IO|Remove-Item)/.test(cmd) ? 'powershell' : 'bash', mode: MODE, psTimeoutMs: PS_T }).decision, 'allow', cmd);
   }
 });

@@ -1582,5 +1582,131 @@
   "command": "rm -rf *",
   "expect": "block",
   "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "! cd /nope && rm -rf .g*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c submodule.x.update='!git reset --hard' submodule update",
+  "expect": "block",
+  "rule": "git-config-unknown"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c sendemail.sendmailcmd='git reset --hard' send-email x",
+  "expect": "block",
+  "rule": "git-config-unknown"
+ },
+ {
+  "shell": "bash",
+  "command": "git -c core.alternateRefsCommand='rm -rf .git' fetch",
+  "expect": "block",
+  "rule": "git-config-unknown"
+ },
+ {
+  "shell": "bash",
+  "command": "claude plugin disable pignolo",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "claude plugin uninstall pignolo@pignolo",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "env -iS'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "env -vS'git reset --hard'",
+  "expect": "block",
+  "rule": "reset-hard"
+ },
+ {
+  "shell": "bash",
+  "command": "unzip -o x.zip -d .git",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "7z x x.7z -o.git",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "patch .git/config < p",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "git apply --directory=.git p",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "curl -o .git/config http://x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "curl -Lo .git/hooks/commit-msg https://example.com/x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "wget -O .git/config http://x",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require('fs').rmSync('.git',{recursive:true})\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "python -c \"import shutil; shutil.rmtree('.git')\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "gci -Force | % Delete",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "gci -Force -Recurse | ForEach-Object -MemberName Delete",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory(\"$PWD\\.git\", 'DeleteAllContents')",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "powershell",
+  "command": "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('.git', 'OnlyErrorDialogs', 'SendToRecycleBin')",
+  "expect": "block",
+  "rule": "catastrophic-delete"
  }
 ]

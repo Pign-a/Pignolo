@@ -50,6 +50,8 @@ La sombra de cada repo es `~/.pignolo/shadow/<repo-id>.git`; su archivo `pignolo
     git --git-dir "$S" for-each-ref --sort=-refname refs/pignolo/refs/        # juegos de refs, el más nuevo arriba
     git --git-dir "$S" show <ref>:<archivo>                                   # ver un archivo
 
+**Atención:** el `checkout … -- .` de la receta sobrescribe los archivos que hay ahora en la carpeta con los de la instantánea. Si en la carpeta hay trabajo más nuevo que la instantánea, guardalo antes: copiá la carpeta a otro lado, o commitealo justo después del `git init` (`git add -A` y `git commit -m "estado actual"`: queda en la rama `pignolo-rescate`). Sin `.git` no hay stash; con un repo sano, commiteá o usá `git stash push -m "<etiqueta>"` antes de tocar nada.
+
 Si se borró `.git`, se rearma el repo desde la sombra, parado en la carpeta del repo (`<rama>` es la rama en la que estabas):
 
     git init -b pignolo-rescate
