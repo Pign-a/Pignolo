@@ -78,3 +78,14 @@ test('readConfig with an unknown profile or bad field on disk throws config inv�
     assert.throws(() => readConfig({ env }), (e) => e.message === `config inválida: ${configPath(env)}`, JSON.stringify(bad));
   }
 });
+
+test('writeConfig sobre un config.json inválido: respalda el archivo y escribe defaults con partial', () => {
+  const env = envOf();
+  fs.writeFileSync(configPath(env), '{roto');
+  const cfg = writeConfig({ env }, { profile: 'max' });
+  assert.strictEqual(cfg.profile, 'max');
+  const baks = fs.readdirSync(env.PIGNOLO_HOME).filter((f) => f.startsWith('config.json.pignolo-bak-'));
+  assert.strictEqual(baks.length, 1);
+  assert.strictEqual(fs.readFileSync(path.join(env.PIGNOLO_HOME, baks[0]), 'utf8'), '{roto');
+  assert.strictEqual(readConfig({ env }).profile, 'max');
+});
