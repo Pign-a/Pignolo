@@ -15,7 +15,7 @@
 El hito 3 de §18 junta dos cosas de naturaleza distinta: código determinista (capa 2 y capa 3) y skills de texto con evals de agentes que cuestan dinero. En un solo plan serían ~16 tareas, dos tipos de revisión y una corrida de evals que necesita el OK de costo del autor en el medio. Se parte en:
 
 - **3a (este plan):** todo lo determinista. Termina con los tests `risk` y `gates` de §15 en verde, sin evals y sin costo de tokens de agentes.
-- **3b (plan siguiente, no escrito acá):** ver "Qué cubre la parte 3b" al final. Carriles `trivial`/`daily`, skill de revisión, Judgment Day como flujo, lazo del `fixer` y las evals `agents` (lentes, refuter, jueces, fixer).
+- **3b (en este mismo archivo, después de la parte 3a):** carriles `trivial`/`daily`, skill de revisión, Judgment Day como flujo, lazo del `fixer` y las evals `agents` (lentes, refuter, jueces, fixer).
 
 Motivo del orden: §1.2 ("lo que se ejecuta manda") y el pedido de preferir la capa 2 antes que el texto. Las skills de 3b consumen interfaces fijas de 3a (JSON de `risk`, `gate`, `run`, `ledger`), así que 3b no puede empezar antes.
 
@@ -501,24 +501,1902 @@ Con el código real unido, sin inyecciones, por los scripts y el launcher (un su
 - [ ] **Estado:** actualizar `docs/STATE.md` (qué quedó, decisiones del autor pendientes, siguiente: plan 3b).
 - [ ] **Unión y push:** unir a `main` y hacer push **solo con el OK del autor**.
 
+## Decisiones que necesita el autor (parte 3a)
+
+**D1. Unión y push de 3a a `main`** (irreversible, §4.1.5). Opciones: unir y pushear al terminar la revisión final; unir en local sin push; dejar la rama. **Recomendación:** unir en local tras la revisión final; el push lo hace el orquestador solo con el OK del autor (junto con el hito 2, que también espera el push). Estado al escribir 3b: unida a `main` en local (`edb7d41`); el push sigue esperando el OK del autor.
+
 ---
 
-## Qué cubre la parte 3b (plan siguiente)
+# Hito 3 del núcleo, parte 3b: carriles `trivial` y `daily`, revisión, Judgment Day y evals. Plan de implementación
 
-Se escribe cuando 3a esté unido, sobre sus interfaces reales:
+> **Para quien ejecute:** usar superpowers:subagent-driven-development con el método de ejecución de abajo (olas en paralelo con worktrees a mano, sin revisión por tarea, una revisión final opus). Los pasos usan casillas (`- [ ]`). Parte de `main` con la parte 3a unida (`edb7d41`, plugin 0.3.0).
 
-1. **Skill `entry`** (§5.1): ¿autoriza un cambio? → `scripts/risk.js --files-from` → carril. Un hallazgo nunca amplía la autorización.
-2. **Skill `trivial`** (§5.2): `run.js start --flow trivial` → cambio → `gate.js --level on-done` → `risk.js --diff` (`maxRisk`; si sube, se frena y se cambia de carril) → commit → `run.js end`.
-3. **Skill `daily`** (§5.2, §11.1): rama `task/daily/<fecha>-<slug>`; explorar inline (1–3 archivos) o `pignolo:explorer` (4+); **orden fijo de 3a**: `run.js task --id X --base <B> --file <tests…> --agent pignolo:test-writer` **antes** del `test-writer` → `test-writer` → el orquestador demuestra el rojo (el `test-writer` no tiene Bash) y commitea (T) → `run.js task --id X --test-ref T --file <src…> --agent pignolo:implementer` → `implementer` (con el handback-gate de 3a); **después de cada escritor, `run.js status`**: si el contador de la tarea está `blocked` o sin aceptar, la tarea es `BLOCKED` aunque el informe diga `DONE`; `run.js renew` antes de cada despacho; revisión según riesgo; commit por unidad de trabajo; merge a la rama de origen confirmado en lote, a `main` uno por uno (§4.4). Continuación automática como máximo 2 veces (§6.1).
-4. **Skill `review`** (§12): candidato congelado (SHA), `ledger.js plan`, lentes en paralelo según perfil, `test-writer` convierte `repro-spec` en test y `applyRepro`, refuter(s) con `refutation`, lazo del `fixer` (máx. 2 rondas, re-revisión sobre ledger + delta), persistencia del ledger aunque quede vacío, refutados listados en el resumen.
-5. **Skill `judgment`** (Judgment Day, §12, §7): dos jueces ciegos en paralelo sobre el mismo SHA; `ledger.js judgment`; `judge-conflict` como pregunta; `APPROVED | ESCALATED`.
-6. **Plantillas** `templates/task-card.md` y `templates/review-ledger.md` (§2), y el formato de preguntas de §4.4 con las **dos capas** de §4.6 en todo texto al humano (pregunta, resumen de cierre, `needs-review-batch`).
-7. **Decisiones autónomas** a `.pignolo/state/decisions/` (§4.3) en su forma mínima, si el hito 6 no la adelanta.
-8. **Evals `agents`** de §15 para lentes (diff con defecto y diff limpio), refuter (hallazgo falso), jueces y fixer, con graders deterministas, `--ablation none`, ≥ 5 corridas por caso, y la corrida de revisores también en sonnet `high` (§7, §15). El `fixer` tiene Bash: su suite requiere WSL2 (§15). **Cada corrida necesita el OK de costo del autor.**
-9. Checklist manual de los carriles en una sesión real.
+**Objetivo:** que un pedido en un proyecto con pignolo activo recorra un carril real: la skill `entry` decide si hay autorización y el carril con `scripts/risk.js`; `trivial` cambia, sella y commitea; `daily` registra la tarea, despacha `test-writer` e `implementer` con el handback-gate de 3a, demuestra el rojo, revisa según el riesgo y mergea con confirmación; `review` y `judgment` llevan el ledger de §12 hasta `APPROVED | ESCALATED`. Las evals `agents` de §15 para lentes, refuter, jueces y fixer quedan escritas, baratas y con veredicto sobre lo que hizo el subagente; **correrlas espera la decisión de costo del autor**.
 
-**Pregunta al autor al escribir 3b (costo de las evals, no se decide en este plan).** Casos mínimos de §15: 4 lentes × (diff con defecto + diff limpio) = 8, refuter 1, jueces 2, fixer 1 → 12 casos × 5 corridas = 60 corridas; más la corrida de revisores en sonnet `high` (lentes, refuter y jueces: 11 casos × 5 = 55). Estimación gruesa (hipótesis, sin medir: el hito 2 costó 1,83 USD por 10 corridas de agentes livianos, y los revisores opus leen más): 20–40 USD en opus más 8–15 USD la comparación en sonnet. Opciones a presentar: A) todo, con tope de 60 USD; B) solo opus (tope 40 USD) y la comparación en sonnet cuando se quiera bajar `economy`; C) una corrida por caso primero (~10 USD) para calibrar y decidir el resto con la cifra real. Recomendación tentativa: C y después B.
+**Arquitectura:** poca lógica nueva y toda determinista: verbos nuevos de `scripts/ledger.js` (`build`, `repro`, `refute --ledger`, `round`, `next`, `frozen`, `save`), dos endurecimientos de `scripts/run.js task` (rutas `--file` normalizadas y archivos validados por rol), `.pignolo/.gitignore` que se ignora a sí mismo y cubre `tmp/` y `worktrees/`, y `scripts/setup.js models`. Los revisores entregan un bloque `json` que `ledger.js build` copia tal cual. Encima, texto: cinco skills (`entry`, `trivial`, `daily`, `review`, `judgment`) y tres plantillas (`question`, `task-card`, `review-summary`). Las evals salen de una sola tabla (`tests/evals/review-cases.js`) que genera los casos de `claude plugin eval`.
 
-## Decisiones que necesita el autor
+**Stack:** el de 3a (Node ≥ 20 sin dependencias npm, `node:test`, git ≥ 2.31) y `claude plugin eval` para las evals.
 
-**D1. Unión y push de 3a a `main`** (irreversible, §4.1.5). Opciones: unir y pushear al terminar la revisión final; unir en local sin push; dejar la rama. **Recomendación:** unir en local tras la revisión final; el push lo hace el orquestador solo con el OK del autor (junto con el hito 2, que también espera el push).
+**Spec:** §1 (principios 1, 2 y 5), §2 (skills y plantillas), §3.2, §4.1–§4.4, §4.6 (dos capas), §5.1–§5.2 (entrada y carriles), §6 y §6.1 (agentes, marca `run.json`, cierre de turno, continuación máx. 2), §7 (modelo explícito por despacho), §8.2–§8.3, §9.1–§9.3, §11.1–§11.2 (nombres y mecanismo B), §12 (revisión, ledger, refuter, fixer, Judgment Day), §15 (`agents`: lentes, refuter, jueces, fixer), §18 hito 3.
+
+## Qué se verificó al escribir este plan
+
+Todo el código determinista de este plan (Tasks 11, 12, 13, 17 y 18, y las pruebas de forma de las Tasks 14 a 16) se ejecutó en una copia del repo (`git clone` de `main` en el scratchpad, nunca en `D:\pignolo`): cada test nuevo se vio **en rojo contra el código de `main`** y en verde con el código de su tarjeta; la suite completa de la copia quedó en **1180 tests, 1178 pasan y 2 saltados** (hoy en `main`: 1109, 1107 y 2 saltados; esta parte suma 71). `claude plugin validate plugins/pignolo` pasó con las skills nuevas. Las skills (texto) se validaron solo por forma: su comportamiento con agentes lo miden el checklist manual y, para los revisores, las evals.
+
+Tres hallazgos de esa ejecución que cambiaron el diseño:
+
+1. **Ningún cambio podía ser trivial.** `run.js start` crea `.pignolo/.gitignore` sin commitear; `risk.js --diff HEAD` lo cuenta como un segundo archivo y el piso sube a `medium`/`daily` siempre. Arreglo: el `.gitignore` de `.pignolo` se ignora a sí mismo (Task 12; `tests/flow-lanes.test.js` lo protege y se vio rojo sin la línea).
+2. **Un `node --test` hijo lanzado desde la suite sale 0 aunque falle**, porque hereda `NODE_TEST_CONTEXT` y le reporta al runner padre. Todo test que lance una compuerta o un rojo con `node --test` borra esa variable del entorno del hijo (Task 18).
+3. **`claude plugin eval` sí ve a los subagentes** (lectura del runner de Claude Code 2.1.285, no de su documentación): el grader `regex` con `target: trace` recorre los eventos stream-json uno por línea, y la lista de herramientas se arma sin filtrar por `parent_tool_use_id`. Por eso los graders de 3b exigen un evento `assistant` con `parent_tool_use_id` no nulo: la salida de la sesión principal no los aprueba. *Hipótesis — verificar en la sonda de la calibración (Task 19):* que el stream de una corrida no interactiva incluye los eventos del subagente.
+
+## Global Constraints
+
+Las de 3a (arriba) siguen todas. Además:
+
+- **Solo el hilo principal opera `scripts/run.js`** (la regla `pignolo-run` de la guardia frena a los subagentes). Las skills registran la tarea **antes de cada despacho de un escritor** (`run.js task`), renuevan el flujo antes de cada despacho (`run.js renew`) y corren **`run.js status` después de cada escritor**: el escritor queda aceptado solo si `handback.accepted` es verdadero; si no, la tarea es `BLOCKED` aunque el informe diga `DONE`.
+- **`--file` siempre relativo a la raíz de la worktree y con `/`.** El script normaliza `\` y `./`, rechaza rutas absolutas y `..`, y rechaza al registrar lo que el gate o el handback-gate rechazarían después (test-writer fuera de `test-paths`; implementer o fixer sobre tests sin `--test-authorization`).
+- **Continuación automática como máximo 2 veces por escritor** (§6.1): antes de cada re-despacho se vuelve a correr el mismo `run.js task` (reinicia el contador del handback-gate).
+- **Todo texto al humano en dos capas** (§4.6): "en pocas palabras" (1 a 3 líneas, sin jerga, rutas ni conteos) y abajo el detalle técnico; un paso por mensaje, a lo sumo una pregunta, siempre con una categoría de la lista cerrada de §4.4. La forma vive en `templates/question.md` y `templates/review-summary.md`; toda cifra sale de la salida JSON de un script.
+- **El orquestador no califica hallazgos** (§12): copia el bloque `json` de cada revisor tal cual a un archivo y decide `ledger.js`.
+- **Temporales de las skills en `<main>/.pignolo/tmp/`** (ignorado) y escritos con Write; mensajes de commit y de merge con `git commit -F` / `git merge -F`. Staging por ruta, nunca `git add -A` ni `git add .`.
+- **Modelo explícito en cada despacho** (§7): `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" models` una vez por flujo.
+- Texto interno de skills, agentes y plantillas en inglés; plan, commits y docs en español. Fixtures y evals con datos sintéticos.
+
+## Método de ejecución y economía de tests
+
+Aprobado por el autor y repetido de 3a:
+
+- **Rama de integración** `core/hito-3b` desde `main`. **Olas** con archivos disjuntos dentro de cada ola: ola 0 (Tasks 11, 12 y 13, contratos) → unión, `npm run test:quiet` una vez, tag `contract/hito-3b/v1` → ola 1 (Tasks 14 a 18) → unión, suite una vez → ola 2 (Task 19, cierre).
+- **Worktrees a mano**, no `isolation: worktree` (motivo en 3a): `git worktree add -b task/hito-3b/<NN>-<slug> <scratchpad>/wt-<NN> <core/hito-3b | contract/hito-3b/v1>`. El implementador trabaja con rutas absolutas dentro de su worktree y corre cada comando como `cd <ruta> && <comando>`. Primer paso de cada tarea de la ola 1: `git merge-base --is-ancestor contract/hito-3b/v1 HEAD`; si falla, `BLOCKED`.
+- **Modelos:** sonnet en las Tasks 11, 12, 13, 14 y 18 (tarjetas con código completo); **opus en las Tasks 15 (`daily`), 16 (`review` y `judgment`) y 17 (evals)**, que son orquestación y graders donde un error no se ve en un test de forma. Revisión final en opus.
+- **Sin revisión por tarea.** Una revisión final opus de `main..core/hito-3b` con el Review Focus de abajo, una pasada de arreglos y una confirmación acotada; lo que quede se clasifica (tope del hito 1).
+- **Tests:** los de 3a (tests primero, de tabla, rojo una vez; solo los propios con `node --test --test-reporter=dot <archivos>`). Los tests de forma de las skills miran estructura (frontmatter, orden de pasos, que cada script, verbo y plantilla nombrados existan), nunca redacción.
+- **Sin evals en la ejecución de las tareas.** La Task 17 escribe las evals y un test determinista de sus graders (costo 0); correrlas es la Decisión pendiente del autor.
+
+## Review Focus
+
+1. **La skill le cree al informe y no al hook.** Si `daily` o `review` toman el `DONE` del texto del escritor sin `run.js status`, el handback-gate de 3a queda decorativo en el camino real (un despacho en segundo plano ni siquiera dispara el aviso de `PostToolUse`). Dueñas: **Tasks 15 y 16** (texto) y la revisión final (leer cada paso "Accept").
+2. **El orquestador reescribe o descarta hallazgos.** Resumir el informe de una lente en vez de copiar su bloque rompe §12 ("no califica ni descarta"). `ledger.js build` copia y valida; los refutados siempre van al resumen. Dueñas: **Tasks 11, 13 y 16**.
+3. **Candidato no congelado.** Un commit de repro, un fix o un archivo sin commitear cambian el SHA revisado; `ledger.js frozen` antes de despachar y antes de aceptar, y `round` con el SHA nuevo. Dueñas: **Tasks 11 y 16**.
+4. **Evals que miden la sesión principal** (defecto de las del hito 2). Cada grader de contenido exige un evento del subagente; `tests/eval-cases.test.js` prueba que la misma salida buena desde la sesión principal **no** aprueba. Dueña: **Task 17**.
+5. **Flujo que queda abierto.** Un `daily` abandonado deja `run.json` y la allowlist de `Agent` activa hasta 2 h. Las skills cierran con `run.js end` al terminar, al escalar sin continuar y al abandonar. Dueñas: **Tasks 14 y 15**.
+
+## Rulings del plan (técnicos, registrados)
+
+- **Las skills de flujo (`entry`, `trivial`, `daily`, `review`, `judgment`) son invocables por el modelo** (sin `disable-model-invocation`). §2 pide ese flag "a los que tienen efectos", pero `entry` tiene que poder despachar a `trivial`/`daily`, y `review` a `judgment`, y un skill con el flag no lo puede invocar el modelo. Se lee "efectos" como cambios en la configuración de pignolo (`setup`, `on`, `off`, `init`): esas siguen solo para el humano. Lo irreversible de los flujos (merge a `main`, push, borrados) sigue detrás de la guardia, los permisos `ask` y la pregunta `irreversible`. Costo si está mal: pignolo arranca solo ante un pedido; se nota en el checklist manual (punto 1).
+- **`entry` se dispara por su `description`** ("Use first for any request in a project where pignolo is active"). No hay hook que la fuerce: sería el primer hook que inyecta texto en cada pedido, contra "callados en el éxito" (§8.3). Riesgo residual: Claude puede no invocarla; se mide en el checklist.
+- **Worktree de `daily` en `<main>/.pignolo/worktrees/<slug>`** (mecanismo B de §11.2, sin `WorktreeCreate`, que es del hito 7), y temporales en `<main>/.pignolo/tmp/`. `run.js start` agrega `.gitignore`, `run.json`, `.disabled`, `tmp/` y `worktrees/` a `.pignolo/.gitignore`: git no ve nada de eso y `.pignolo/.gitignore` sin commitear no infla el diff (hallazgo 1). `.claude/worktrees/` se descartó: aparece sin seguimiento en `git status` del checkout principal. Costo si está mal: `/pignolo:init` (hito 8) tendrá que commitear `.pignolo/.gitignore` con `git add -f`.
+- **`trivial` trabaja en el checkout principal, sobre la rama actual**, sin tarea registrada (`gate.js` sin `--task`: no hay alcance ni integridad por tarjeta, solo la compuerta). Si el riesgo del diff real sube, la skill **deshace su propio cambio con Edit** (nunca `git restore`/`checkout -- <archivo>`/`stash`, que la guardia niega), cierra el flujo y pregunta si pasarlo a `daily`. Nunca commitea en ese caso.
+- **`run.js task` normaliza y valida `--file`** (`\` → `/`, sin `./`; absoluta o con `..` → exit 2) y valida los archivos por rol al registrar (exit 1 con `Alternativa:`). El pendiente de la confirmación de 3a ("`--file` no normaliza") se cierra así en vez de confiar solo en el texto de la skill.
+- **Salida de los revisores en un bloque `json`** con las claves del ledger en orden (`id, lens, location, severity, evidence, repro`; el refuter, `claim, verdict, reason`). `ledger.js build` pone `id` = `<lente>-<id>` (evita choques) y `status: open`, y valida; con `--judgment` arma el ledger de Judgment Day (`fix` → `open`, `suspect` → `suspect`, conflictos → `open` con `conflict`). El orden fijo de claves es además lo que hace posible un grader de eval sin parsear JSON.
+- **El refuter va antes que la reproducción.** Es más barato que escribir un test por hallazgo, y un hallazgo con rojo reproducido ya es evidencia que no se refuta. Reclamos para el refuter: los `open` BLOCKER, CRITICAL y WARNING. Veredicto por hallazgo con `refutation()` de 3a (`max` en riesgo alto: cae con ≥ 2 `REFUTED` de 3; faltantes y malformados quedan en pie).
+- **Riesgo bajo = lectura estructural del orquestador** (§12), sin lente en el ledger (`LENSES` no tiene una "estructural"). Si ve un defecto real, **sube el nivel a `medium`** y corre las lentes; si no, el ledger se guarda vacío.
+- **Al fixer solo van BLOCKER/CRITICAL confirmados con rojo** (`nextStep` de 3a). Los WARNING, los no reproducidos y los sospechosos quedan en el ledger y en el resumen. Un hallazgo dentro de un test pide `test-authorization` antes de tocarlo (§9.3).
+- **Re-revisión "ledger + delta"** (§12): solo las lentes que dieron confirmados, con los hallazgos previos y el diff `<SHA>..<SHA2>`; `ledger.js round` sube `round`, marca `fixed` los confirmados cuyo test pasó a verde y suma lo nuevo con prefijo `r<n>-`. Tercera ronda → el script la niega (exit 1) y se escala.
+- **`judge-conflict`: primero la evidencia.** Un conflicto entre jueces pasa por la reproducción como cualquier BLOCKER/CRITICAL: con rojo queda confirmado; sin rojo baja a WARNING. Se pregunta al humano solo si no se puede escribir la reproducción. Principio 1 (verificar, no creer) antes que pedirle al humano que arbitre.
+- **Ledger persistido por script en `~/.pignolo/reviews/<repo-id>/<sha>-<review|judgment>.json`** (`ledger.js save`). La skill no puede escribir ahí con Write (`protect-paths` protege `~/.pignolo/**`), y `.pignolo/state/` es del hito 6. Se guarda siempre, también vacío.
+- **La plantilla `review-ledger` de §2 es `templates/review-summary.md`**: el ledger es JSON (ruling de 3a) y lo escribe `ledger.js`; lo que necesita plantilla es su resumen al humano en dos capas. `templates/question.md` fija el formato de §4.4 para todas las skills.
+- **Decisiones autónomas (§4.3, `.pignolo/state/decisions/`) quedan para el hito 6**, que trae el estado. En 3b, lo que el humano autorizó va a la task-card y al cuerpo del commit, y el resumen de cierre lo repite.
+- **Merge de `daily` siempre con pregunta `irreversible`**, también a una rama de origen que no es `main`: la "confirmación en lote" de §4.4 es, con una sola tarea, un lote de uno. Después, `git worktree remove` sin `--force`; la rama queda (la limpieza es del hito 7).
+- **`laneFloor: plan` con el modo `plan` todavía sin construir** (hito 5): pregunta `scope` con dos opciones (seguir en `daily` con revisión de riesgo alto, o frenar).
+- **`ledger.js plan` sin `--profile` lee el perfil del usuario**, y `setup.js models` da el modelo de cada rol: las skills no leen `~/.pignolo/config.json` a mano.
+- **Evals** (§15 `agents`; decisiones técnicas, el costo es del autor):
+  - 14 casos: 4 lentes (`risk`, `resilience`, `readability`, `reliability`) × {defecto plantado, diff limpio}, `judge-a` y `judge-b` × {defecto, limpio}, `refuter` con un hallazgo falso y uno cierto, y `fixer` con un hallazgo confirmado. `review-testability` es del hito 4.
+  - **Recall:** el subagente reporta la ubicación plantada (±3 líneas, el mismo criterio que `judgment`) con severidad BLOCKER o CRITICAL (en `readability`, WARNING o más). **Falso positivo:** BLOCKER o CRITICAL en un diff limpio. Umbral de §0 d: ≥ 4 de 5 corridas por caso.
+  - La sesión principal corre en **sonnet** (solo despacha y contesta `RELAYED`; no se evalúa) y pasa `model` explícito al revisor, como hace pignolo en uso real. La comparación de revisores en sonnet `high` (§7, §15) es la misma tabla con `--reviewer-model sonnet`.
+  - Los fixtures y los diffs salen de una sola tabla (`tests/evals/review-cases.js`) que genera `tests/evals/generated/<modelo>/` (no se versiona). El fixer tiene Bash: su caso lleva la etiqueta `wsl2` y corre solo desde WSL2 (§15).
+  - Un test determinista (`tests/eval-cases.test.js`) corre cada grader contra traces sintéticos: aprueba la salida buena del subagente, reprueba la mala y reprueba la buena **si viene de la sesión principal**.
+- **Plan en tarjetas con código verificado**: los bloques de las Tasks 11 a 18 son los que corrieron en la copia; siguen siendo hipótesis para el implementador, que los vuelve a correr (rojo y verde) en su worktree.
+
+---
+
+## Ola 0 (contratos; Tasks 11, 12 y 13 en paralelo, archivos disjuntos)
+
+Parten de `core/hito-3b` (= `main`). Al terminar las tres: unir a `core/hito-3b`, `npm run test:quiet` una vez, tag `contract/hito-3b/v1`.
+
+### Task 11: verbos del ledger para las skills de revisión (sonnet)
+
+**Files:**
+- Modify: `plugins/pignolo/lib/ledger.js` (agrega `buildLedger` y `nextRound`), `plugins/pignolo/scripts/ledger.js` (reescrito, compatible con los verbos de 3a)
+- Test: `tests/ledger-cli.test.js` (nuevo; `tests/ledger.test.js` de 3a sigue igual y en verde)
+
+**Interfaces:**
+- Consume: `validateLedger`, `applyRepro`, `refutation`, `judgment`, `nextStep`, `isFrozen` (`lib/ledger.js`, 3a); `readConfig` (`lib/profiles.js`); `headSha`, `workingTree` (`lib/changes.js`); `gitRun` (`lib/git.js`); `repoIdFor` (`lib/seals.js`); `pignoloHome` (`lib/home.js`).
+- Produce (`lib/ledger.js`):
+  - `buildLedger({ sha, level, profile, round = 0, reports = [], judgment = null }) → Ledger`: cada hallazgo con `id` = `<lens>-<id>` y `status: 'open'`; con `judgment` (salida de `judgment()`), `fix` → `open`, `suspect` → `suspect`, cada par de `conflicts` → los dos `open` con `conflict` = id del otro. Id repetido → lanza.
+  - `nextRound(ledger, { sha, fixed = [], reports = [] }) → Ledger`: `sha` nuevo, `round + 1`, los `confirmed` de `fixed` → `fixed`, los nuevos con id `r<round+1>-<lens>-<id>`. Con `round >= 2` lanza.
+- Produce (`scripts/ledger.js`; JSON por stdout; exit 0; 1 si el ledger no valida, si el candidato no está congelado o si ya hubo 2 rondas; 2 uso):
+  - `plan --level <l> [--profile <p>]` (sin `--profile`, el de la config; antes era obligatorio).
+  - `build --sha <sha> --level <l> [--profile <p>] [--round <n>] --out <archivo> [--judgment <j.json>] [<informe.json>...]` → `{ ok, file, findings }`; inválido → exit 1 sin escribir.
+  - `refute --ledger <archivo> <verdicts.json>` con `{ "<id>": [veredictos] }` → marca `refuted` y devuelve `{ results }`. La forma de 3a (`--profile --level` y una lista) sigue.
+  - `repro --ledger <archivo> --id <id> --red | --no-red` → `{ finding }`; id inexistente → 1; sin `--red`/`--no-red` → 2.
+  - `round --ledger <archivo> --sha <sha> [--fixed <id>]... [<informe.json>...]` → `{ ok, round }`.
+  - `next --ledger <archivo>` → `{ next: 'done'|'fix'|'escalate' }`.
+  - `frozen --cwd <dir> --sha <sha>` → `{ frozen, head, reason }`; exit 0 si congelado, 1 si no.
+  - `save --ledger <archivo> --cwd <dir> [--kind review|judgment]` → `{ ok, file }` con `file` = `<pignoloHome>/reviews/<repoId>/<sha>-<kind>.json`.
+  - Los verbos con `--ledger` reescriben ese archivo en forma atómica. `validate` y `judgment` no cambian.
+
+- [ ] **Paso 1: tests primero** (`tests/ledger-cli.test.js`, completo):
+
+  ````js
+  'use strict';
+  // Verbos de ledger.js que usan las skills review y judgment (hito 3b).
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const { PLUGIN_ROOT, makeRepo, makeTempDir, git } = require('./helpers');
+
+  const CLI = path.join(PLUGIN_ROOT, 'scripts', 'ledger.js');
+  const cli = (args, opts = {}) => {
+    const r = spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', timeout: 20000, ...opts });
+    return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : undefined, stderr: r.stderr };
+  };
+  const SHA = 'a'.repeat(40);
+  const SHA2 = 'b'.repeat(40);
+  const finding = (id, lens, location, severity, extra = {}) => ({
+    id, lens, location, severity, evidence: 'observado', ...(severity === 'BLOCKER' || severity === 'CRITICAL' ? { repro: 'x' } : {}), ...extra,
+  });
+  const writeJson = (dir, name, obj) => {
+    const f = path.join(dir, name);
+    fs.writeFileSync(f, JSON.stringify(obj));
+    return f;
+  };
+  const read = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+
+  function built(dir, reports, extra = []) {
+    const files = reports.map((r, i) => writeJson(dir, `r${i}.json`, r));
+    const out = path.join(dir, 'ledger.json');
+    const r = cli(['build', '--sha', SHA, '--level', 'high', '--profile', 'max', '--out', out, ...extra, ...files]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    return out;
+  }
+
+  test('build: prefija el id con la lente, deja todo open y valida', () => {
+    const dir = makeTempDir();
+    const out = built(dir, [[finding('1', 'reliability', 'src/a.js:3', 'CRITICAL')], [finding('1', 'risk', 'src/b.js:9', 'WARNING')]]);
+    const l = read(out);
+    assert.deepStrictEqual(l.findings.map((f) => [f.id, f.status]), [['reliability-1', 'open'], ['risk-1', 'open']]);
+    assert.strictEqual(l.round, 0);
+    assert.strictEqual(cli(['validate', out]).status, 0);
+  });
+
+  test('build: un informe vacío da un ledger válido sin hallazgos (§12: se persiste vacío)', () => {
+    const dir = makeTempDir();
+    const l = read(built(dir, [[]]));
+    assert.deepStrictEqual(l.findings, []);
+  });
+
+  test('build: un hallazgo inválido (CRITICAL sin repro) → exit 1 y no escribe', () => {
+    const dir = makeTempDir();
+    const bad = writeJson(dir, 'bad.json', [{ id: '1', lens: 'risk', location: 'a.js:1', severity: 'CRITICAL', evidence: 'e' }]);
+    const out = path.join(dir, 'ledger.json');
+    const r = cli(['build', '--sha', SHA, '--level', 'high', '--profile', 'max', '--out', out, bad]);
+    assert.strictEqual(r.status, 1);
+    assert.ok(!fs.existsSync(out));
+  });
+
+  test('build --judgment: fix open, suspect suspect, conflictos open con el id del otro', () => {
+    const dir = makeTempDir();
+    const a = [finding('1', 'judge-a', 'src/a.js:10', 'BLOCKER'), finding('2', 'judge-a', 'src/c.js:1', 'WARNING'), finding('3', 'judge-a', 'src/d.js:5', 'BLOCKER')];
+    const b = [finding('1', 'judge-b', 'src/a.js:12', 'CRITICAL'), finding('2', 'judge-b', 'src/d.js:5', 'SUGGESTION')];
+    const j = cli(['judgment', writeJson(dir, 'a.json', a), writeJson(dir, 'b.json', b)]).out;
+    const out = built(dir, [], ['--judgment', writeJson(dir, 'j.json', j)]);
+    const byId = Object.fromEntries(read(out).findings.map((f) => [f.id, f]));
+    assert.strictEqual(byId['judge-a-1'].status, 'open');
+    assert.strictEqual(byId['judge-a-2'].status, 'suspect');
+    assert.strictEqual(byId['judge-a-3'].conflict, 'judge-b-2');
+    assert.strictEqual(byId['judge-b-2'].conflict, 'judge-a-3');
+  });
+
+  test('repro: CRITICAL con rojo → confirmed; sin rojo → WARNING unreproduced', () => {
+    const dir = makeTempDir();
+    const out = built(dir, [[finding('1', 'reliability', 'src/a.js:3', 'CRITICAL'), finding('2', 'risk', 'src/b.js:3', 'BLOCKER')]]);
+    assert.strictEqual(cli(['repro', '--ledger', out, '--id', 'reliability-1', '--red']).status, 0);
+    assert.strictEqual(cli(['repro', '--ledger', out, '--id', 'risk-2', '--no-red']).status, 0);
+    const [f1, f2] = read(out).findings;
+    assert.deepStrictEqual([f1.status, f1.severity], ['confirmed', 'CRITICAL']);
+    assert.deepStrictEqual([f2.status, f2.severity], ['unreproduced', 'WARNING']);
+    assert.strictEqual(cli(['repro', '--ledger', out, '--id', 'nope', '--red']).status, 1);
+    assert.strictEqual(cli(['repro', '--ledger', out, '--id', 'risk-2']).status, 2);
+  });
+
+  test('refute --ledger: con max hacen falta 2 REFUTED de 3; INCONCLUSIVE y faltantes quedan en pie', () => {
+    const dir = makeTempDir();
+    const out = built(dir, [[finding('1', 'risk', 'a.js:1', 'CRITICAL'), finding('2', 'risk', 'b.js:1', 'CRITICAL'), finding('3', 'risk', 'c.js:1', 'WARNING')]]);
+    const v = writeJson(dir, 'v.json', { 'risk-1': ['REFUTED', 'REFUTED', 'CONFIRMED'], 'risk-2': ['REFUTED', 'INCONCLUSIVE'] });
+    const r = cli(['refute', '--ledger', out, v]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(r.out.results, { 'risk-1': 'refuted', 'risk-2': 'stands' });
+    assert.deepStrictEqual(read(out).findings.map((f) => f.status), ['refuted', 'open', 'open']);
+  });
+
+  test('round: sha nuevo, round + 1, los fixed pasan a fixed, suma lo nuevo; tope en 2', () => {
+    const dir = makeTempDir();
+    const out = built(dir, [[finding('1', 'reliability', 'a.js:1', 'CRITICAL')]]);
+    cli(['repro', '--ledger', out, '--id', 'reliability-1', '--red']);
+    assert.strictEqual(cli(['next', '--ledger', out]).out.next, 'fix');
+    const fresh = writeJson(dir, 'n.json', [finding('1', 'reliability', 'a.js:7', 'WARNING')]);
+    let r = cli(['round', '--ledger', out, '--sha', SHA2, '--fixed', 'reliability-1', fresh]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    const l = read(out);
+    assert.strictEqual(l.sha, SHA2);
+    assert.strictEqual(l.round, 1);
+    assert.deepStrictEqual(l.findings.map((f) => [f.id, f.status]), [['reliability-1', 'fixed'], ['r1-reliability-1', 'open']]);
+    assert.strictEqual(cli(['next', '--ledger', out]).out.next, 'done');
+    r = cli(['round', '--ledger', out, '--sha', SHA]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(cli(['round', '--ledger', out, '--sha', SHA2]).status, 1);
+  });
+
+  test('next: round 2 con un confirmado abierto → escalate', () => {
+    const dir = makeTempDir();
+    const l = { v: 1, sha: SHA, level: 'high', profile: 'max', round: 2, findings: [{ ...finding('x', 'risk', 'a.js:1', 'CRITICAL'), status: 'confirmed' }] };
+    assert.strictEqual(cli(['next', '--ledger', writeJson(dir, 'l.json', l)]).out.next, 'escalate');
+  });
+
+  test('frozen: HEAD limpio → 0; otro sha o cambio sin commitear → 1 con el motivo', () => {
+    const repo = makeRepo();
+    const head = git(['rev-parse', 'HEAD'], repo);
+    assert.strictEqual(cli(['frozen', '--cwd', repo, '--sha', head]).status, 0);
+    const other = cli(['frozen', '--cwd', repo, '--sha', SHA]);
+    assert.strictEqual(other.status, 1);
+    assert.match(other.out.reason, /HEAD es/);
+    fs.writeFileSync(path.join(repo, 'a.txt'), 'cambio\n');
+    const dirty = cli(['frozen', '--cwd', repo, '--sha', head]);
+    assert.strictEqual(dirty.status, 1);
+    assert.match(dirty.out.reason, /sin commitear/);
+  });
+
+  test('save: guarda el ledger en ~/.pignolo/reviews/<repo-id>/<sha>-<kind>.json; inválido → 1', () => {
+    const repo = makeRepo();
+    const dir = makeTempDir();
+    const out = built(dir, [[]]);
+    const r = cli(['save', '--ledger', out, '--cwd', repo]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.ok(r.out.file.startsWith(path.join(process.env.PIGNOLO_HOME, 'reviews')));
+    assert.ok(r.out.file.endsWith(`${SHA}-review.json`));
+    const j = cli(['save', '--ledger', out, '--cwd', repo, '--kind', 'judgment']);
+    assert.ok(j.out.file.endsWith(`${SHA}-judgment.json`));
+    assert.strictEqual(cli(['save', '--ledger', out, '--cwd', repo, '--kind', 'x']).status, 2);
+    assert.deepStrictEqual(read(r.out.file), read(out));
+    const bad = writeJson(dir, 'bad.json', { v: 1 });
+    assert.strictEqual(cli(['save', '--ledger', bad, '--cwd', repo]).status, 1);
+  });
+
+  test('plan sin --profile usa el perfil de la config del usuario (balanced por defecto)', () => {
+    const r = cli(['plan', '--level', 'high']);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(r.out, { lenses: ['risk', 'resilience', 'readability', 'reliability', 'testability'], refuters: 1, judgmentDay: false });
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot tests/ledger-cli.test.js`. Esperado (medido en la copia): fallan los 11 (verbos inexistentes; `plan` sin `--profile` sale 2). Anotar el resumen.
+- [ ] **Paso 3: implementar.** En `lib/ledger.js`, antes de `module.exports`, y sumar `buildLedger, nextRound` a los exports:
+
+  ````js
+  // Ledger de una ronda a partir de los informes de las lentes, sin reescribir los
+  // hallazgos: el id pasa a <lente>-<id> (evita choques entre lentes) y el estado a 'open'.
+  // Con `judgment` (salida de judgment()), `fix` entra 'open', `suspect` entra
+  // 'suspect' y cada par de `conflicts` entra 'open' con `conflict` = id del otro.
+  function buildLedger({ sha, level, profile, round = 0, reports = [], judgment: j = null }) {
+    const findings = [];
+    const add = (f, status, extra = {}) => {
+      if (!isObj(f)) throw new Error('un hallazgo no es un objeto');
+      findings.push({ ...f, id: `${f.lens}-${f.id}`, status, ...extra });
+    };
+    for (const r of reports) {
+      if (!Array.isArray(r)) throw new Error('cada informe debe ser una lista de hallazgos');
+      r.forEach((f) => add(f, 'open'));
+    }
+    if (j) {
+      (j.fix || []).forEach((f) => add(f, 'open'));
+      (j.suspect || []).forEach((f) => add(f, 'suspect'));
+      (j.conflicts || []).forEach(([a, b]) => {
+        add(a, 'open', { conflict: `${b.lens}-${b.id}` });
+        add(b, 'open', { conflict: `${a.lens}-${a.id}` });
+      });
+    }
+    const seen = new Set();
+    for (const f of findings) {
+      if (seen.has(f.id)) throw new Error(`id repetido: ${f.id}`);
+      seen.add(f.id);
+    }
+    return { v: 1, sha, level, profile, round, findings };
+  }
+
+  // Ronda siguiente tras el fixer (§12: re-revisión sobre ledger + delta): sha nuevo,
+  // round + 1, los confirmados de `fixed` pasan a 'fixed' y se suman los hallazgos nuevos.
+  function nextRound(ledger, { sha, fixed = [], reports = [] }) {
+    if (ledger.round >= 2) throw new Error('máximo 2 rondas de fix (§12): lo abierto se escala');
+    const fresh = buildLedger({ sha, level: ledger.level, profile: ledger.profile, reports }).findings
+      .map((f) => ({ ...f, id: `r${ledger.round + 1}-${f.id}` }));
+    const old = ledger.findings.map((f) => (fixed.includes(f.id) && f.status === 'confirmed' ? { ...f, status: 'fixed' } : f));
+    return { ...ledger, sha, round: ledger.round + 1, findings: [...old, ...fresh] };
+  }
+  ````
+
+  `scripts/ledger.js` completo:
+
+  ````js
+  'use strict';
+  // CLI del ledger de revisión (spec §12). Salida JSON; exit 0; 1 si el ledger no valida o
+  // el candidato no está congelado; 2 por uso incorrecto.
+  // Uso:
+  //   validate <archivo> | plan --level <l> [--profile <p>] | judgment <a.json> <b.json>
+  //   refute --profile <p> --level <l> <verdicts.json>          (una lista de veredictos)
+  //   refute --ledger <archivo> <verdicts.json>                 ({ "<id>": [veredictos] })
+  //   build --sha <sha> --level <l> [--profile <p>] --out <archivo> [--judgment <j.json>] [<informe.json>...]
+  //   repro --ledger <archivo> --id <id> --red | --no-red
+  //   round --ledger <archivo> --sha <sha> [--fixed <id>]... [<informe.json>...]
+  //   next --ledger <archivo>
+  //   frozen --cwd <dir> --sha <sha>
+  //   save --ledger <archivo> --cwd <dir> [--kind review|judgment]
+  // Los verbos con --ledger reescriben ese archivo en el lugar (escritura atómica).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const crypto = require('node:crypto');
+  const L = require('../lib/ledger');
+  const { readConfig } = require('../lib/profiles');
+  const { headSha, workingTree } = require('../lib/changes');
+  const { gitRun } = require('../lib/git');
+  const { repoIdFor } = require('../lib/seals');
+  const { pignoloHome } = require('../lib/home');
+
+  const GIT_MS = 60000;
+  const VALUE = ['level', 'profile', 'sha', 'out', 'ledger', 'id', 'cwd', 'judgment', 'round', 'kind'];
+  const MULTI = ['fixed'];
+  const BOOL = ['red', 'no-red'];
+
+  class Usage extends Error {}
+  class Fail extends Error {}
+
+  function parse(argv) {
+    const o = { pos: [], fixed: [] };
+    for (let i = 0; i < argv.length; i += 1) {
+      const a = argv[i];
+      if (!a.startsWith('--')) { o.pos.push(a); continue; }
+      const k = a.slice(2);
+      if (BOOL.includes(k)) { o[k] = true; continue; }
+      if (!VALUE.includes(k) && !MULTI.includes(k)) throw new Usage(`opción desconocida: ${a}`);
+      i += 1;
+      if (argv[i] === undefined) throw new Usage(`${a} necesita un valor`);
+      if (MULTI.includes(k)) o[k].push(argv[i]);
+      else o[k] = argv[i];
+    }
+    return o;
+  }
+
+  const readJson = (f) => JSON.parse(fs.readFileSync(f, 'utf8'));
+  const print = (x) => process.stdout.write(`${JSON.stringify(x)}\n`);
+
+  function writeJson(file, obj) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
+    try {
+      fs.writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`);
+      fs.renameSync(tmp, file);
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  }
+
+  // Sin --profile, el del usuario (~/.pignolo/config.json; balanced por defecto).
+  const profileOf = (o) => o.profile || readConfig().profile;
+
+  function need(o, ...keys) {
+    for (const k of keys) if (o[k] === undefined) throw new Usage(`falta --${k}`);
+  }
+
+  function checked(ledger) {
+    const errors = L.validateLedger(ledger);
+    if (errors.length) throw new Fail(`el ledger no valida: ${errors.join('; ')}`);
+    return ledger;
+  }
+
+  // Congelado (§12): HEAD es el SHA revisado y la copia de trabajo es el árbol de ese commit.
+  function frozen(cwd, sha) {
+    const head = headSha({ cwd, timeoutMs: GIT_MS });
+    let headTree = null;
+    if (head) headTree = gitRun(['rev-parse', `${head}^{tree}`], cwd, { timeout: GIT_MS });
+    const tree = workingTree({ cwd, timeoutMs: GIT_MS });
+    const ok = L.isFrozen({ sha }, head, { headTree, workingTree: tree });
+    let reason = null;
+    if (!ok) reason = head !== sha ? `HEAD es ${head}, no ${sha}` : 'hay cambios sin commitear en la copia de trabajo';
+    return { frozen: ok, head, reason };
+  }
+
+  const VERBS = {
+    validate(o) {
+      if (o.pos.length !== 1) throw new Usage('validate <archivo>');
+      const errors = L.validateLedger(readJson(o.pos[0]));
+      print({ ok: errors.length === 0, errors });
+      return errors.length ? 1 : 0;
+    },
+    plan(o) {
+      need(o, 'level');
+      print(L.reviewPlan({ level: o.level, profile: profileOf(o) }));
+      return 0;
+    },
+    judgment(o) {
+      if (o.pos.length !== 2) throw new Usage('judgment <a.json> <b.json>');
+      print(L.judgment(readJson(o.pos[0]), readJson(o.pos[1])));
+      return 0;
+    },
+    refute(o) {
+      if (o.pos.length !== 1) throw new Usage('refute ... <verdicts.json>');
+      const verdicts = readJson(o.pos[0]);
+      if (!o.ledger) {
+        need(o, 'level', 'profile');
+        print({ result: L.refutation(verdicts, { profile: o.profile, level: o.level }) });
+        return 0;
+      }
+      const ledger = checked(readJson(o.ledger));
+      if (verdicts === null || typeof verdicts !== 'object' || Array.isArray(verdicts)) {
+        throw new Usage('con --ledger, verdicts.json es { "<id>": [veredictos] }');
+      }
+      const results = {};
+      const findings = ledger.findings.map((f) => {
+        if (!Object.prototype.hasOwnProperty.call(verdicts, f.id)) return f;
+        results[f.id] = L.refutation(verdicts[f.id], { profile: ledger.profile, level: ledger.level });
+        return results[f.id] === 'refuted' ? { ...f, status: 'refuted' } : f;
+      });
+      writeJson(o.ledger, { ...ledger, findings });
+      print({ results });
+      return 0;
+    },
+    build(o) {
+      need(o, 'sha', 'level', 'out');
+      const ledger = L.buildLedger({
+        sha: o.sha, level: o.level, profile: profileOf(o), round: o.round === undefined ? 0 : Number(o.round),
+        reports: o.pos.map(readJson), judgment: o.judgment ? readJson(o.judgment) : null,
+      });
+      checked(ledger);
+      writeJson(o.out, ledger);
+      print({ ok: true, file: path.resolve(o.out), findings: ledger.findings.length });
+      return 0;
+    },
+    repro(o) {
+      need(o, 'ledger', 'id');
+      if (Boolean(o.red) === Boolean(o['no-red'])) throw new Usage('repro necesita --red o --no-red');
+      const ledger = checked(readJson(o.ledger));
+      const i = ledger.findings.findIndex((f) => f.id === o.id);
+      if (i < 0) throw new Fail(`no hay un hallazgo ${o.id} en el ledger`);
+      const finding = L.applyRepro(ledger.findings[i], { red: o.red === true });
+      ledger.findings[i] = finding;
+      writeJson(o.ledger, ledger);
+      print({ finding });
+      return 0;
+    },
+    round(o) {
+      need(o, 'ledger', 'sha');
+      const ledger = checked(readJson(o.ledger));
+      if (ledger.round >= 2) throw new Fail('máximo 2 rondas de fix (§12): lo abierto se escala');
+      const next = checked(L.nextRound(ledger, { sha: o.sha, fixed: o.fixed, reports: o.pos.map(readJson) }));
+      writeJson(o.ledger, next);
+      print({ ok: true, round: next.round });
+      return 0;
+    },
+    next(o) {
+      need(o, 'ledger');
+      print({ next: L.nextStep(checked(readJson(o.ledger))) });
+      return 0;
+    },
+    frozen(o) {
+      need(o, 'cwd', 'sha');
+      const r = frozen(path.resolve(o.cwd), o.sha);
+      print(r);
+      return r.frozen ? 0 : 1;
+    },
+    save(o) {
+      need(o, 'ledger', 'cwd');
+      const kind = o.kind || 'review';
+      if (!['review', 'judgment'].includes(kind)) throw new Usage('--kind debe ser review o judgment');
+      const ledger = checked(readJson(o.ledger));
+      const repoId = repoIdFor({ cwd: path.resolve(o.cwd), timeoutMs: GIT_MS });
+      const file = path.join(pignoloHome(), 'reviews', repoId, `${ledger.sha}-${kind}.json`);
+      writeJson(file, ledger);
+      print({ ok: true, file });
+      return 0;
+    },
+  };
+
+  try {
+    const [verb, ...rest] = process.argv.slice(2);
+    if (!VERBS[verb]) throw new Usage('uso: ledger.js validate|plan|judgment|refute|build|repro|round|next|frozen|save [opciones]');
+    process.exitCode = VERBS[verb](parse(rest));
+  } catch (e) {
+    process.stderr.write(`pignolo ledger: ${e.message}\n`);
+    process.exitCode = e instanceof Fail ? 1 : 2;
+  }
+  ````
+
+- [ ] **Paso 4: verde.** `node --test --test-reporter=dot tests/ledger-cli.test.js tests/ledger.test.js` → todo verde (medido: 11 + los de 3a).
+- [ ] **Paso 5: commit.** `feat(ledger): verbos build, repro, refute, round, next, frozen y save para las skills de revisión`.
+
+### Task 12: `run.js` para las skills y `setup.js models` (sonnet)
+
+**Files:**
+- Modify: `plugins/pignolo/scripts/run.js`, `plugins/pignolo/scripts/setup.js`, `tests/run-lifecycle.test.js` (dos esperados del `.gitignore`)
+- Test: `tests/run-files.test.js`, `tests/setup-models.test.js` (nuevos)
+
+**Interfaces:**
+- Consume: `matchAny` (`lib/globs.js`), `readProjectConfig` (ya usado), `resolveModel` (`lib/profiles.js`), `ROLES` (`lib/roles.js`).
+- Produce:
+  - `run.js start`: `ensureIgnored(main, ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/'])`.
+  - `run.js task`: cada `--file` normalizado (`\` → `/`, sin `./` inicial); vacío, absoluto o con `..` → exit 2. Con `--agent pignolo:test-writer`, todo archivo en `testPaths` y ninguno en `protectedTestConfig`; con `pignolo:implementer` o `pignolo:fixer` sin `--test-authorization`, ninguno en `testPaths` ni `protectedTestConfig`. Si no → exit 1 con la lista y `Alternativa:`. La validación usa la config leída de `testRef ?? base` (la misma que ya lee el script).
+  - `setup.js models` → `{ profile, models: { <rol>: 'opus'|'sonnet' } }` para los 19 roles, con las sobrescrituras de `models` de la config.
+
+- [ ] **Paso 1: tests primero.** `tests/run-files.test.js`:
+
+  ````js
+  'use strict';
+  // run.js task: --file normalizado y archivos por rol (hito 3b).
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const { PLUGIN_ROOT, makeRepo, makeTempDir, git } = require('./helpers');
+
+  const SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'run.js');
+  const run = (cwd, args) => {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', timeout: 20000 });
+    return { status: r.status, out: r.stdout.trim() ? JSON.parse(r.stdout) : undefined, stderr: r.stderr };
+  };
+
+  // Repo con project.md commiteado (test-paths: tests/, protected-test-config: check.js),
+  // flujo daily y una worktree de tarea.
+  function setup() {
+    const repo = makeRepo();
+    fs.mkdirSync(path.join(repo, '.pignolo'));
+    fs.writeFileSync(path.join(repo, '.pignolo', 'project.md'),
+      '---\ntype: code-tested\ngates:\n  on-done: node check.js\ntest-paths:\n  - tests/\nprotected-test-config:\n  - check.js\n---\n');
+    git(['add', '-f', '.pignolo/project.md'], repo);
+    git(['commit', '-q', '-m', 'project.md'], repo);
+    const base = git(['rev-parse', 'HEAD'], repo);
+    assert.strictEqual(run(repo, ['start', '--flow', 'daily']).status, 0);
+    const wt = path.join(makeTempDir('pignolo-wt-'), 'wt');
+    git(['worktree', 'add', '-q', '-b', 'task/daily/2026-09-30-demo', wt], repo);
+    return { repo, wt, base };
+  }
+  const task = (s, ...extra) => run(s.repo, ['task', '--id', 'demo', '--worktree', s.wt, '--base', s.base, ...extra]);
+
+  test('--file con barras invertidas y ./ se guarda con barras normales', () => {
+    const s = setup();
+    const r = task(s, '--file', 'tests\\a.test.js', '--file', './tests/b.test.js', '--agent', 'pignolo:test-writer');
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual(r.out.run.task.files, ['tests/a.test.js', 'tests/b.test.js']);
+  });
+
+  test('--file absoluta o con .. → exit 2', () => {
+    const s = setup();
+    assert.strictEqual(task(s, '--file', path.join(s.wt, 'src', 'a.js'), '--agent', 'pignolo:implementer').status, 2);
+    assert.strictEqual(task(s, '--file', 'src/../../x.js', '--agent', 'pignolo:implementer').status, 2);
+    assert.strictEqual(task(s, '--file', '/src/a.js', '--agent', 'pignolo:implementer').status, 2);
+  });
+
+  test('test-writer con un archivo fuera de test-paths o protegido → exit 1 con Alternativa', () => {
+    const s = setup();
+    const out = task(s, '--file', 'tests/a.test.js', '--file', 'src/a.js', '--agent', 'pignolo:test-writer');
+    assert.strictEqual(out.status, 1);
+    assert.match(out.stderr, /src\/a\.js/);
+    assert.match(out.stderr, /Alternativa/);
+    assert.strictEqual(task(s, '--file', 'check.js', '--agent', 'pignolo:test-writer').status, 1);
+  });
+
+  test('implementer o fixer con un test sin --test-authorization → exit 1; con autorización → 0', () => {
+    const s = setup();
+    assert.strictEqual(task(s, '--file', 'src/a.js', '--file', 'tests/a.test.js', '--agent', 'pignolo:implementer').status, 1);
+    assert.strictEqual(task(s, '--file', 'check.js', '--agent', 'pignolo:fixer').status, 1);
+    const ok = task(s, '--file', 'src/a.js', '--file', 'tests/a.test.js', '--agent', 'pignolo:implementer', '--test-authorization');
+    assert.strictEqual(ok.status, 0, ok.stderr);
+  });
+
+  test('start agrega .gitignore, tmp/ y worktrees/ al .gitignore de .pignolo, y git no los ve', () => {
+    const repo = makeRepo();
+    assert.strictEqual(run(repo, ['start', '--flow', 'trivial']).status, 0);
+    const gi = fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8').split('\n');
+    assert.ok(gi.includes('.gitignore') && gi.includes('tmp/') && gi.includes('worktrees/'));
+    fs.mkdirSync(path.join(repo, '.pignolo', 'tmp'));
+    fs.writeFileSync(path.join(repo, '.pignolo', 'tmp', 'x.json'), '{}');
+    assert.ok(!git(['status', '--porcelain', '--untracked-files=all'], repo).includes('.pignolo/'), 'ni tmp/ ni el propio .gitignore');
+  });
+  ````
+
+  `tests/setup-models.test.js`:
+
+  ````js
+  'use strict';
+  // setup.js models: el modelo de cada rol según el perfil (§7), para los despachos de las skills.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { makeTempDir } = require('./helpers');
+  const { main } = require('../plugins/pignolo/scripts/setup');
+
+  function envWith(config) {
+    const home = path.join(makeTempDir(), '.pignolo');
+    if (config) {
+      fs.mkdirSync(home, { recursive: true });
+      fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
+    }
+    return { PIGNOLO_HOME: home };
+  }
+
+  test('models sin config: balanced, revisores en opus e implementer en sonnet', () => {
+    const r = main(['models'], envWith(null));
+    assert.strictEqual(r.profile, 'balanced');
+    assert.strictEqual(r.models['review-risk'], 'opus');
+    assert.strictEqual(r.models.implementer, 'sonnet');
+  });
+
+  test('models con max y una sobrescritura por rol', () => {
+    const r = main(['models'], envWith({ profile: 'max', models: { fixer: 'sonnet' } }));
+    assert.strictEqual(r.profile, 'max');
+    assert.strictEqual(r.models.implementer, 'opus');
+    assert.strictEqual(r.models.fixer, 'sonnet');
+  });
+  ````
+
+  En `tests/run-lifecycle.test.js`, los dos esperados de `start` (líneas del test `start writes a valid run.json…` y `start with a gitignore that already has lines…`) pasan a `'.gitignore\nrun.json\n.disabled\ntmp/\nworktrees/\n'` y `'foo\n.gitignore\nrun.json\n.disabled\ntmp/\nworktrees/\n'`. Los de `ensureIgnored` directo no cambian.
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot tests/run-files.test.js tests/setup-models.test.js tests/run-lifecycle.test.js`. Esperado (medido): 5 de `run-files`, 2 de `setup-models` y los 2 de `run-lifecycle` en rojo.
+- [ ] **Paso 3: implementar.** En `scripts/run.js`:
+
+  - Imports y constantes (después de `const MALFORMED = '_malformed';`); en `start`, `ensureIgnored(main, IGNORED)` reemplaza a `ensureIgnored(main, ['run.json', '.disabled'])`:
+
+  ````js
+  const { matchAny } = require('../lib/globs');
+
+  // .pignolo/.gitignore: él mismo (sin commitear, contaría como un archivo más del diff y
+  // ningún cambio sería trivial), la marca, el flag, los temporales de las skills y sus worktrees.
+  const IGNORED = ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/'];
+  const WRITERS_NO_TESTS = ['pignolo:implementer', 'pignolo:fixer'];
+  ````
+
+  - Antes de `function task(`:
+
+  ````js
+  // --file: relativa a la raíz de la worktree y con '/' (las rutas de git). Se normaliza
+  // '\' y un './' inicial; una ruta absoluta o con '..' es un error de uso.
+  function normFile(p) {
+    const s = String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+    if (s === '' || /^([a-zA-Z]:)?\//.test(s) || s.split('/').includes('..')) {
+      throw new Usage(`--file debe ser una ruta relativa a la worktree, sin '..': ${p}`);
+    }
+    return s;
+  }
+
+  // Cada rol escribe solo donde el gate y el handback-gate lo van a aceptar (Review Focus 5
+  // de 3a: fallar al registrar, no tras 8 rechazos).
+  function checkFiles(t, cfg) {
+    const tests = t.files.filter((f) => matchAny(cfg.testPaths, f) || matchAny(cfg.protectedTestConfig, f));
+    if (t.agents.includes('pignolo:test-writer')) {
+      const bad = t.files.filter((f) => !matchAny(cfg.testPaths, f) || matchAny(cfg.protectedTestConfig, f));
+      if (bad.length) throw new Fail(`el test-writer solo escribe en test-paths y fuera de protected-test-config: ${bad.join(', ')}. Alternativa: elegí rutas de test-paths o registrá esos archivos para el implementer`);
+    } else if (!t.testAuthorization && t.agents.some((a) => WRITERS_NO_TESTS.includes(a)) && tests.length) {
+      throw new Fail(`el implementer y el fixer no tocan tests ni su configuración sin --test-authorization: ${tests.join(', ')}. Alternativa: registrá esos archivos para el test-writer`);
+    }
+  }
+  ````
+
+  - Dentro de `task`, en el armado de `t`:
+
+  ````js
+    t.files = o.multi.file ? o.multi.file.map(normFile) : ((prev && prev.files) || []);
+    t.agents = o.multi.agent || (prev && prev.agents) || [];
+    if (o['test-authorization'] || (prev && prev.testAuthorization)) t.testAuthorization = true;
+    checkFiles(t, cfg);
+  ````
+
+  En `scripts/setup.js`:
+
+  - Imports: `const { readConfig, writeConfig, resolveModel } = require('../lib/profiles');` y `const { ROLES } = require('../lib/roles');`.
+  - Antes de `function parseArgs(`:
+
+  ````js
+  // Modelo de cada rol según el perfil del usuario (§7): las skills lo pasan explícito en
+  // cada despacho.
+  function models(env) {
+    const cfg = readConfig({ env });
+    const out = {};
+    for (const role of Object.keys(ROLES)) out[role] = resolveModel(role, cfg);
+    return { profile: cfg.profile, models: out };
+  }
+  ````
+
+  - En `main`, después de la rama de `conflicts`: `if (cmd === 'models') return models(env);`, y `models` en el texto de uso.
+
+- [ ] **Paso 4: verde.** Los tres archivos y además `tests/gates.test.js` y `tests/toggle.test.js` completos (usan `run.js task` y `.pignolo/.gitignore`).
+- [ ] **Paso 5: commit.** `feat(run): rutas --file normalizadas, archivos por rol al registrar y temporales ignorados; setup.js models`.
+
+### Task 13: salida `json` de los revisores, plantillas y ayuda de tests de forma (sonnet)
+
+**Files:**
+- Modify: `plugins/pignolo/agents/review-risk.md`, `review-resilience.md`, `review-readability.md`, `review-reliability.md`, `review-testability.md`, `judge-a.md`, `judge-b.md`, `refuter.md` (solo la sección `## Output`)
+- Create: `plugins/pignolo/templates/question.md`, `plugins/pignolo/templates/task-card.md`, `plugins/pignolo/templates/review-summary.md`, `tests/skill-forms.js` (ayuda, no test)
+- Test: `tests/agents-output.test.js`, `tests/templates.test.js`
+
+**Interfaces:**
+- Produce: el contrato de salida que consumen `ledger.js build` (Task 11), las skills (Tasks 15 y 16) y los graders (Task 17); las tres plantillas que nombran las skills; `readSkill(name)`, `brokenReferences(text)` y `VERBS` para los tests de forma de la ola 1 (`VERBS` lista los verbos de `run.js`, `ledger.js` y `setup.js` **después** de las Tasks 11 y 12).
+
+- [ ] **Paso 1: tests primero.** `tests/agents-output.test.js`:
+
+  ````js
+  'use strict';
+  // Forma de salida de los revisores (hito 3b): un bloque json que ledger.js build copia tal
+  // cual. Solo forma, no el texto libre.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { PLUGIN_ROOT } = require('./helpers');
+
+  const agent = (name) => fs.readFileSync(path.join(PLUGIN_ROOT, 'agents', `${name}.md`), 'utf8');
+  const REVIEWERS = {
+    'review-risk': 'risk', 'review-resilience': 'resilience', 'review-readability': 'readability',
+    'review-reliability': 'reliability', 'review-testability': 'testability', 'judge-a': 'judge-a', 'judge-b': 'judge-b',
+  };
+
+  for (const [name, lens] of Object.entries(REVIEWERS)) {
+    test(`${name}: hallazgos en un bloque json con las claves del ledger y su lente`, () => {
+      const s = agent(name);
+      assert.match(s, /one fenced `json` block/);
+      assert.match(s, /keys in this order: `id`[^\n]*`lens` \(`[a-z-]+`\), `location` \(`path:line`[^\n]*`severity`, `evidence`[^\n]*`repro`/);
+      assert.ok(s.includes(`\`lens\` (\`${lens}\`)`));
+      assert.match(s, /APPROVE[^\n]*REQUEST_CHANGES[^\n]*ESCALATE/);
+    });
+  }
+
+  test('refuter: veredictos en un bloque json claim, verdict, reason', () => {
+    assert.match(agent('refuter'), /one fenced `json` block[^\n]*keys in this order: `claim`[^\n]*`verdict`, `reason`/);
+  });
+  ````
+
+  `tests/templates.test.js`:
+
+  ````js
+  'use strict';
+  // Plantillas de texto de las skills de carriles (hito 3b): forma, no texto libre.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { PLUGIN_ROOT } = require('./helpers');
+
+  const tpl = (n) => fs.readFileSync(path.join(PLUGIN_ROOT, 'templates', n), 'utf8');
+  const CATEGORIES = ['identity', 'scope', 'costs', 'dependencies', 'irreversible', 'security', 'contract', 'rule-conflict',
+    'scope-card', 'test-authorization', 'needs-review-batch', 'judge-conflict', 'live-check-input', 'quota'];
+
+  test('question.md: dos capas, la lista cerrada de categorías completa, recomendación', () => {
+    const t = tpl('question.md');
+    for (const c of CATEGORIES) assert.ok(t.includes(c), c);
+    assert.ok(t.indexOf('In plain words') < t.indexOf('Technical detail'));
+    assert.match(t, /Recommendation/);
+  });
+
+  test('task-card.md: worktree, archivos, gate con --task, cierre con las tres palabras', () => {
+    const t = tpl('task-card.md');
+    for (const re of [/Worktree:/, /Files you may touch/, /gate\.js" --level on-done --task/, /DONE, BLOCKED or NEEDS_CONTEXT/, /forward slashes/]) {
+      assert.match(t, re);
+    }
+  });
+
+  test('review-summary.md: dos capas y los refutados siempre listados', () => {
+    const t = tpl('review-summary.md');
+    assert.ok(t.indexOf('In plain words') < t.indexOf('Technical detail'));
+    for (const re of [/APPROVED \| ESCALATED/, /Refuted/, /Not reproduced/, /Suspect/, /ledger\.js save/]) assert.match(t, re);
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot tests/agents-output.test.js tests/templates.test.js`. Esperado (medido): 8 y 3 en rojo.
+- [ ] **Paso 3: implementar.**
+  - En cada lente `review-<lens>.md` (`risk`, `resilience`, `readability`, `reliability`), reemplazar la línea `One block per finding with these fields: id, lens (<lens>), location (path:line), severity, evidence, repro-spec.` por el párrafo de abajo con su lente, y `With no findings, write "no findings" and say what you covered.` por `With no findings, say below the block what you covered.`. En `review-testability.md`, reemplazar `One block per finding: id, lens (testability), location, severity, evidence (the command you ran and its output, including the forged red), repro-spec.` por el mismo párrafo con `` `evidence` (the command you ran and its output, including the forged red), `` en lugar de `` `evidence`, ``. En `judge-a.md` y `judge-b.md`, reemplazar `Findings, each with: id, location, severity, evidence, and a repro-spec for BLOCKER and CRITICAL.` por el párrafo con `judge-a` o `judge-b`:
+
+    ```
+    Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`<lens>`), `location` (`path:line`, a single line number), `severity`, `evidence`, `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). With no findings the block is `[]`. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
+    ```
+
+  - En `refuter.md`, reemplazar `For each claim: claim id, verdict, reason with evidence.` por:
+
+    ```
+    Write the verdicts as one fenced `json` block: an array with one object per claim, keys in this order: `claim` (the claim id from the brief), `verdict`, `reason` (the evidence: command and output, or file and line). Pignolo feeds the block to its refutation rule as is, so it must be valid JSON.
+    ```
+
+  - `templates/question.md`:
+
+  ````markdown
+  <!--
+  pignolo question template (spec §4.4 and §4.6). Fill it in the human's language: every
+  heading and sentence below is translated, the structure is kept. One question per message.
+
+  Category: exactly one of the closed list, by its English name, followed by its name in the
+  human's language:
+    identity, scope, costs, dependencies, irreversible, security, contract, rule-conflict,
+    scope-card, test-authorization, needs-review-batch, judge-conflict, live-check-input, quota
+  A question without a category is a failure (spec §0 c).
+
+  Options: complete, in the order they were found, never summarized or reordered. Each one says
+  what happens, its cost and whether it can be undone.
+  -->
+  **<"In plain words" heading>**
+  <1 to 3 short lines, no jargon, no paths, no counts: what is going on and what the human has to decide.>
+
+  **<"Question" heading>** · category: `<category>` (<category name in the human's language>)
+  <the question, in one line>
+
+  1. <option: what happens · cost · reversible or not>
+  2. <option: what happens · cost · reversible or not>
+
+  <"Recommendation" label>: <option number>, because <evidence in one line>.
+
+  **<"Technical detail" heading>**
+  - <"Context" label>: <at most 2 lines>.
+  - <"Evidence" label>: <commands run, files and lines, script output (risk hits, gate status, ledger ids)>.
+  - <"Cost and reversibility" label>: <per option, one line each>.
+  ````
+
+  - `templates/task-card.md`:
+
+  ````markdown
+  <!--
+  pignolo task-card template (spec §2, §5.2, §6.1). The orchestrator fills it, writes it to
+  <main>/.pignolo/tmp/task-<id>.md and pastes it whole into the dispatch brief. Internal text:
+  English. Every path is absolute or relative to the worktree root, always with forward slashes.
+  -->
+  # Task-card <id>
+
+  - Goal: <one line, from the human's request>
+  - Requirement (literal): <the human's words, quoted>
+  - Role: <pignolo:test-writer | pignolo:implementer | pignolo:fixer>
+  - Worktree: <absolute path>. Run every shell command as `cd "<worktree>" && <command>`; read and edit files only inside it.
+  - Branch: task/daily/<YYYY-MM-DD>-<slug> · base: <sha> · test reference: <sha or "none yet">
+  - Files you may touch (the gate rejects any other): <one per line, relative to the worktree root>
+  - Tests that define done: <paths and test names, or "you write them" for the test-writer>
+  - test-paths: <globs from project.md> · protected-test-config: <globs>
+  - Gate: `node "<plugin root>/scripts/gate.js" --level on-done --task` (it runs `<gates.on-done from project.md>` and seals the result; the handback-gate accepts DONE only with that seal for the current tree)
+  - Risk: <low | medium | high> · reserved decisions authorized by the human: <none, or category + what was authorized>
+  - Approved visual (optional): <design/approved/<flow>/ with manifest.json, or "none">
+  - Out of scope: <what not to touch or add>
+  - Close with exactly one word on the last line: DONE, BLOCKED or NEEDS_CONTEXT.
+  ````
+
+  - `templates/review-summary.md`:
+
+  ````markdown
+  <!--
+  pignolo closing summary of a review or Judgment Day (spec §4.6, §12). Fill it in the human's
+  language: headings and sentences translated, structure kept. Every count and id comes from the
+  ledger file (ledger.js output), never from memory. Refuted findings are always listed.
+  -->
+  **<"In plain words" heading>**
+  <1 to 3 lines: whether the change is approved, what was fixed and what, if anything, is left for the human. Approving does not authorize delivering.>
+
+  **<"Technical detail" heading>**
+  - <"Result" label>: APPROVED | ESCALATED · SHA <sha> · level <low|medium|high> · profile <profile> · rounds <0-2>
+  - <"Reviewed by" label>: <lenses run, refuters, judges; "structural reading" for low risk>
+  - <"Confirmed and fixed" label>: <ledger id · location · severity · confirming test> (or "none")
+  - <"Open or escalated" label>: <ledger id · location · severity · why> (or "none")
+  - <"Refuted" label>: <ledger id · location · refuter reason> (or "none")
+  - <"Not reproduced (lowered to WARNING)" label>: <ledger id · location> (or "none")
+  - <"Suspect (one judge only)" label>: <ledger id · location> (or "none")
+  - <"Ledger" label>: <path returned by ledger.js save>
+  ````
+
+  - `tests/skill-forms.js`:
+
+  ````js
+  'use strict';
+  // Ayudas para los tests de forma de las skills de carriles (hito 3b). No es un test.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { PLUGIN_ROOT } = require('./helpers');
+  const { parseFrontmatter } = require('../plugins/pignolo/lib/yaml-lite');
+
+  // Verbos que aceptan hoy los scripts que las skills operan.
+  const VERBS = {
+    'run.js': ['start', 'task', 'renew', 'status', 'end'],
+    'ledger.js': ['validate', 'plan', 'judgment', 'refute', 'build', 'repro', 'round', 'next', 'frozen', 'save'],
+    'setup.js': ['check', 'models', 'permissions', 'config', 'conflicts'],
+  };
+
+  function readSkill(name) {
+    const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md'), 'utf8');
+    return { text, ...parseFrontmatter(text) };
+  }
+
+  // Todo script y plantilla que la skill nombra existe, y todo verbo de run/ledger/setup es real.
+  function brokenReferences(text) {
+    const out = [];
+    for (const m of text.matchAll(/(?:\$\{CLAUDE_PLUGIN_ROOT\}|<P>)\/((?:scripts|templates)\/[\w.-]+)/g)) {
+      if (!fs.existsSync(path.join(PLUGIN_ROOT, m[1]))) out.push(m[1]);
+    }
+    for (const m of text.matchAll(/\b(run\.js|ledger\.js|setup\.js)"? ([a-z][a-z-]*)/g)) {
+      if (!VERBS[m[1]].includes(m[2])) out.push(`${m[1]} ${m[2]}`);
+    }
+    return out;
+  }
+
+  module.exports = { readSkill, brokenReferences, VERBS };
+  ````
+
+- [ ] **Paso 4: verde.** Los dos archivos, más `tests/agents-tools.test.js` y `tests/manifest.test.js` completos (frontmatter de los agentes intacto).
+- [ ] **Paso 5: commit.** `feat(agents): los revisores entregan un bloque json para el ledger; plantillas de pregunta, tarjeta y resumen`.
+
+---
+
+## Ola 1 (en paralelo: Tasks 14 a 18, cada una en su worktree)
+
+Todas parten de `contract/hito-3b/v1`. Ninguna toca archivos de la ola 0; si un contrato parece mal, `BLOCKED` sin cambiarlo. Las skills se escriben con los textos de abajo; el implementador puede ajustar redacción, nunca el orden de pasos ni los comandos (los fija el test de forma).
+
+### Task 14: skills `entry` y `trivial` (sonnet)
+
+**Files:**
+- Create: `plugins/pignolo/skills/entry/SKILL.md`, `plugins/pignolo/skills/trivial/SKILL.md`
+- Test: `tests/skill-lanes.test.js`
+
+**Interfaces:**
+- Consume: `run.js status|start|end`, `risk.js --files-from|--diff`, `gate.js --level on-done [--no-tests-reason]`, `setup.js models`, `templates/question.md`, `readSkill`/`brokenReferences`.
+- Produce: `entry` invoca `pignolo:trivial` o `pignolo:daily` con el pedido literal, la ruta de la lista de archivos y el JSON de riesgo.
+
+- [ ] **Paso 1: test primero** (`tests/skill-lanes.test.js`):
+
+  ````js
+  'use strict';
+  // Forma de las skills entry y trivial (hito 3b). Solo forma: el comportamiento de los
+  // scripts lo cubre tests/flow-lanes.test.js; el de los agentes, las evals y el checklist manual.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const { readSkill, brokenReferences } = require('./skill-forms');
+
+  for (const name of ['entry', 'trivial']) {
+    test(`${name}: frontmatter invocable por el modelo y referencias reales`, () => {
+      const s = readSkill(name);
+      assert.strictEqual(s.data.name, name);
+      assert.ok(s.data.description.length > 40);
+      assert.strictEqual(s.data['disable-model-invocation'], undefined);
+      assert.deepStrictEqual(brokenReferences(s.text), []);
+    });
+  }
+
+  test('entry: dos capas con categoría, estado del flujo, piso de riesgo con barras normales', () => {
+    const { text } = readSkill('entry');
+    for (const re of [/templates\/question\.md/, /run\.js" status/, /risk\.js" --files-from/, /forward slashes/, /pignolo:trivial/, /pignolo:daily/]) {
+      assert.match(text, re);
+    }
+  });
+
+  test('trivial: gate on-done, riesgo sobre el diff real, commit -F y cierre del flujo', () => {
+    const { text } = readSkill('trivial');
+    for (const re of [/run\.js" start --flow trivial/, /gate\.js" --level on-done/, /risk\.js" --diff HEAD/, /git commit -F/, /run\.js" end/]) {
+      assert.match(text, re);
+    }
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** Solo este archivo: falla por los `SKILL.md` ausentes.
+- [ ] **Paso 3: escribir las skills.** `skills/entry/SKILL.md`:
+
+  ````markdown
+  ---
+  name: entry
+  description: Use first for any request in a project where pignolo is active (a .pignolo/project.md exists and pignolo is not switched off). Decides whether the request authorizes a change and picks the lane (trivial or daily) from pignolo's risk floor.
+  ---
+
+  You are the orchestrator in the main conversation. Speak to the human in their language; this text is internal.
+
+  ## Talking to the human
+
+  Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/templates/question.md`: first "in plain words" (1 to 3 lines, no jargon, no paths, no counts), then the technical detail. One step per message, at most one question, and every question carries one category from the closed list in that template. Every count, path and status you state comes from a script's JSON output, never from memory.
+
+  ## Steps
+
+  1. **Is pignolo on here?** Find the project root: the nearest directory upward that holds `.pignolo/project.md` (stop at the first one that holds `.git`). If there is none, or `.pignolo/.disabled` exists there, pignolo is not active: say so in one line and handle the request normally, without pignolo's flows. Call that root `<main>` (for a git worktree, the main checkout that owns it).
+  2. **Does the request authorize a change?** A question, an explanation or an investigation authorizes none: answer read-only. Something you notice while reading never widens the authorization: report it and stop there. A request to review without changing anything goes to the `pignolo:review` skill in report-only mode.
+  3. **Is another flow running?** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" status --cwd "<main>"`. If `running` is true and the flow is not the one you are already in, stop and ask the human (category `scope`) whether to close it with `run.js end` or resume it. If `malformed` is true, show the path and offer `run.js end`.
+  4. **What will change?** Read what you need to know which files the change touches: up to 3 files yourself; for 4 or more dispatch `pignolo:explorer` (model from `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" models`) and treat its report as claims to check. With the Write tool, write the list to `<main>/.pignolo/tmp/entry-files.txt`: one path per line, relative to `<main>`, with forward slashes (`src/app.js`, never `src\app.js`).
+  5. **Risk floor.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/risk.js" --files-from "<main>/.pignolo/tmp/entry-files.txt" --cwd "<main>"`, adding `--deleted <path>` for each file the change deletes. The JSON gives `level`, `reserved`, `laneFloor`, `hits` and `categories`. The floor is a floor: you may only raise it, never lower it (spec §4.2).
+  6. **Reserved decisions first.** If `reserved` is true, ask before anything else, one question per hit category (the category is the one in the hit), with the hit's path and detail in the technical part. Continue only with an explicit yes from the human in their own turn; carry what they authorized into the task-card.
+  7. **Pick the lane** (spec §5.2), the higher of the floor and your judgment:
+     - `trivial`: one line or a mechanical change you fully understand, `laneFloor` is `trivial`, no hit.
+     - `daily`: everything else that fits one task.
+     - `plan`: the floor says `plan` (a UI change without `visible-paths`), or the change needs a spec. Plan mode is not built yet: ask the human (category `scope`) whether to continue in `daily` with a high-risk review or to stop.
+  8. **Hand over.** Invoke the `pignolo:trivial` or `pignolo:daily` skill with the request (quoted literally), the path of the file list and the risk JSON. Lanes only go up (trivial → daily → plan), never down.
+  ````
+
+  `skills/trivial/SKILL.md`:
+
+  ````markdown
+  ---
+  name: trivial
+  description: Use only when pignolo's entry skill picked the trivial lane. Makes a one-line or mechanical change in the main checkout, seals the on-done gate, re-checks the risk floor on the real diff and commits. No review.
+  ---
+
+  You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill. Talk to the human as the entry skill says: two layers (`${CLAUDE_PLUGIN_ROOT}/templates/question.md`), one step per message, a category on every question, facts only from script output.
+
+  ## Steps
+
+  1. **Open the flow.** `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" start --flow trivial --cwd "<main>"`. Exit 1 means another flow is running or `run.json` is unreadable: stop and tell the human what the message says.
+  2. **Make the change** yourself, in the files of the entry list only, and nothing else.
+  3. **Gate.** `node "${CLAUDE_PLUGIN_ROOT}/scripts/gate.js" --level on-done --cwd "<main>"`.
+     - Exit 0 (`PASS`): go on.
+     - `FAIL`: read the log tail; if your change caused it, fix it once and run the gate again; otherwise stop and tell the human.
+     - `NO_TESTS` (a `code-untested` project): if the change has nothing to test (a comment, a string), write the reason with Write to `<main>/.pignolo/tmp/no-tests-reason.txt` and run the gate again with `--no-tests-reason "<main>/.pignolo/tmp/no-tests-reason.txt"`; if it has behavior, the change is not trivial: go to step 4's escalation.
+     - `NO_GATE` or `TREE_CHANGED`: the project's gate is missing or writes files; stop and tell the human the alternative the gate printed.
+  4. **Risk on the real diff.** `node "${CLAUDE_PLUGIN_ROOT}/scripts/risk.js" --diff HEAD --cwd "<main>"`. The lane stays trivial only if `level` is `low`, `laneFloor` is `trivial` and `reserved` is false. Otherwise escalate:
+     - Undo your own edit with the Edit tool, restoring the exact previous text (never `git restore`, `git checkout -- <file>` or `git stash`).
+     - `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" end --cwd "<main>"`.
+     - Ask the human (category: the hit's category; `scope` if the lane rose without a hit): 1) redo it in the daily lane (recommended), 2) leave it for them. Never commit here.
+  5. **Commit.** Write the message with Write to `<main>/.pignolo/tmp/commit-msg.txt`: Conventional Commits in the human's language, then the trailers `Agent: orchestrator` and `Gates: on-done PASS`. Then `cd "<main>" && git add <each changed file by path> && git commit -F "<main>/.pignolo/tmp/commit-msg.txt"`. Never `git add -A` or `git add .`.
+  6. **Close.** `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" end --cwd "<main>"`, then a two-layer summary: what changed in plain words; below, the commit, the files and the gate status.
+  ````
+
+- [ ] **Paso 4: verde** y `claude plugin validate plugins/pignolo`.
+- [ ] **Paso 5: commit.** `feat(skills): entry decide autorización y carril; trivial cambia, sella y commitea`.
+
+### Task 15: skill `daily` (opus)
+
+**Files:**
+- Create: `plugins/pignolo/skills/daily/SKILL.md`
+- Test: `tests/skill-daily.test.js`
+
+**Interfaces:**
+- Consume: `run.js start|task|renew|status|end`, `risk.js --diff`, `gate.js --level on-done --task`, `setup.js models`, `templates/task-card.md`, `templates/question.md`, `templates/review-summary.md`, la skill `pignolo:review` (Task 16; se invoca por nombre).
+- Produce: el recorrido de §5.2 en el orden fijo de 3a (ruling "La tarea se registra antes del `test-writer`"), verificado de punta a punta por los scripts en la Task 18.
+
+- [ ] **Paso 1: test primero** (`tests/skill-daily.test.js`):
+
+  ````js
+  'use strict';
+  // Forma de la skill daily (hito 3b): el orden de 3a y las reglas de cada escritor.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const { readSkill, brokenReferences } = require('./skill-forms');
+
+  test('daily: frontmatter y referencias reales', () => {
+    const s = readSkill('daily');
+    assert.strictEqual(s.data.name, 'daily');
+    assert.strictEqual(s.data['disable-model-invocation'], undefined);
+    assert.deepStrictEqual(brokenReferences(s.text), []);
+  });
+
+  test('daily: orden de 3a (task del test-writer, rojo, testRef, implementer) hasta el merge', () => {
+    const { text } = readSkill('daily');
+    const order = [
+      /run\.js" start --flow daily/,
+      /git worktree add -b task\/daily\/<YYYY-MM-DD>-<slug> "<main>\/\.pignolo\/worktrees\/<slug>"/,
+      /--agent pignolo:test-writer/,
+      /Prove red yourself/,
+      /--test-ref <T>[^\n]*--agent pignolo:implementer/,
+      /risk\.js" --diff <base>/,
+      /pignolo:review/,
+      /git merge --no-ff -F/,
+      /run\.js" end/,
+    ];
+    let at = 0;
+    for (const re of order) {
+      const m = re.exec(text.slice(at));
+      assert.ok(m, `falta o está fuera de orden: ${re}`);
+      at += m.index + m[0].length;
+    }
+  });
+
+  test('daily: status tras cada escritor, re-registro, renew, barras normales, modelos y categorías', () => {
+    const { text } = readSkill('daily');
+    for (const re of [/run\.js" status/, /handback\.accepted/, /At most 2 automatic continuations/, /register the task again/,
+      /run\.js" renew/, /uses `\/`/, /setup\.js" models/, /templates\/task-card\.md/, /category `irreversible`/]) {
+      assert.match(text, re);
+    }
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** Solo este archivo.
+- [ ] **Paso 3: escribir la skill** (`skills/daily/SKILL.md`):
+
+  ````markdown
+  ---
+  name: daily
+  description: Use only when pignolo's entry skill picked the daily lane. Runs one task in its own branch and worktree - test-writer, red proved by you, implementer, sealed gate, review by risk - then merges into the origin branch with the human's confirmation.
+  ---
+
+  You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill; `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human as the entry skill says: two layers (`<P>/templates/question.md`), one step per message, a category on every question, facts only from script output.
+
+  ## Rules that hold in every step
+
+  - **Only you run `run.js`.** Subagents cannot (the guard blocks them). You register the task before every writer dispatch, renew the flow before every dispatch, and run `status` after every writer.
+  - **A report is not proof.** After each writer returns, run `node "<P>/scripts/run.js" status --cwd "<main>"`. The writer is accepted only if `handback.accepted` is true. Otherwise the task is BLOCKED whatever the report says; the reason is in `handback.lastReason`.
+  - **Continue at most twice.** Compare the report with the task-card. If items are still open and the writer named no block, register the task again with the same `run.js task` command (that resets its handback counter) and dispatch the same writer once more, naming the open items. At most 2 automatic continuations per writer; after that, ask the human (category `scope`, or the reserved category if that is what blocks).
+  - **Paths with forward slashes.** Every `--file` is relative to the worktree root and uses `/` (`tests/cart.test.js`, never `tests\cart.test.js`).
+  - **Files and messages through Write.** Task-cards, commit messages and file lists go to `<main>/.pignolo/tmp/` with the Write tool; commits use `git commit -F <file>`. Stage by path; never `git add -A` or `git add .`.
+  - **Models.** Run `node "<P>/scripts/setup.js" models` once at the start and pass `model: <models[role]>` on every dispatch.
+
+  ## Steps
+
+  1. **Open the flow.** `node "<P>/scripts/run.js" start --flow daily --cwd "<main>"`. Exit 1: stop and tell the human what the message says.
+  2. **Branch and worktree** (spec §11.1, §11.2 mechanism B). Pick a slug (`[a-z0-9-]`, at most 40 characters) and today's date. From `<main>`: `git branch --show-current` is the origin branch; then `cd "<main>" && git worktree add -b task/daily/<YYYY-MM-DD>-<slug> "<main>/.pignolo/worktrees/<slug>" HEAD`. Call the worktree `<wt>` and its `git rev-parse HEAD` `<base>`. If the branch name exists, add `-2`, `-3`.
+  3. **Explore** what the change needs: up to 3 files yourself, 4 or more through `pignolo:explorer`. Explorer reports are claims to check.
+  4. **Task-card.** Fill `<P>/templates/task-card.md` for the test-writer and write it to `<main>/.pignolo/tmp/task-<slug>.md`. Pick the test files: inside `test-paths` (from `.pignolo/project.md`), next to the existing tests and following their naming. Skip steps 5 to 8 only when `project.md` says `type: docs` or `type: script`.
+  5. **Register and dispatch the test-writer.**
+     - `node "<P>/scripts/run.js" renew --cwd "<main>"`
+     - `node "<P>/scripts/run.js" task --id <slug> --worktree "<wt>" --base <base> --file <test path> [--file <test path>]... --agent pignolo:test-writer --cwd "<main>"`. Exit 1 names the file that is outside `test-paths`: fix the list, never the check.
+     - Dispatch `pignolo:test-writer` with the task-card and the literal requirement. It must not read the implementation.
+  6. **Accept.** `run.js status` as in the rules above; continue at most twice.
+  7. **Prove red yourself** (the test-writer has no Bash). Run the command it named: `cd "<wt>" && <command>`. The test must fail, and for the reason the test-writer stated. If it passes, it proves nothing: dispatch the test-writer again naming that (it counts as a continuation). Keep the failing output for the summary.
+  8. **Commit the tests.** Write the message (`test: ...`, trailers `Agent: pignolo:test-writer` and `Gates: red proved by the orchestrator`), then `cd "<wt>" && git add <test paths> && git commit -F "<main>/.pignolo/tmp/commit-msg.txt"`. Call the new `git rev-parse HEAD` `<T>`.
+  9. **Register and dispatch the implementer.**
+     - `node "<P>/scripts/run.js" renew --cwd "<main>"`
+     - `node "<P>/scripts/run.js" task --id <slug> --test-ref <T> --file <source path> [--file <source path>]... --agent pignolo:implementer --cwd "<main>"` (same id: it keeps `worktree` and `base`, adds `testRef`, replaces files and agent, and resets the counter). A test path in this list is refused: implementers do not touch tests.
+     - Update the task-card (role, files, test reference) and dispatch `pignolo:implementer`. The card tells it to run every command as `cd "<wt>" && <command>` and to close only after `node "<P>/scripts/gate.js" --level on-done --task` passes.
+  10. **Accept.** `run.js status`; continue at most twice (register again before each re-dispatch).
+  11. **Risk on the real diff.** `node "<P>/scripts/risk.js" --diff <base> --cwd "<wt>"`. The level of the task is the higher of this and the entry classification. A new reserved hit: stop and ask (the hit's category). `laneFloor` `plan`: stop and ask (category `scope`).
+  12. **Commit the change.** Write the message (Conventional Commits in the human's language, trailers `Agent: pignolo:implementer` and `Gates: on-done PASS`), then `cd "<wt>" && git add <source paths> && git commit -F "<main>/.pignolo/tmp/commit-msg.txt"`.
+  13. **Review.** Invoke the `pignolo:review` skill with `<wt>`, `<base>`, the level from step 11, the task-card path and `<slug>` as the task id. It returns APPROVED or ESCALATED and the ledger path. ESCALATED: show the summary and ask the human how to go on (category `scope`); do not merge.
+  14. **Merge** (spec §4.4: into `main` one by one; into another origin branch as a routine confirmation). Ask the human (category `irreversible`), recommending the merge when the review is APPROVED. Only after an explicit yes in their own turn: write the merge message and run `cd "<main>" && git merge --no-ff -F "<main>/.pignolo/tmp/merge-msg.txt" task/daily/<YYYY-MM-DD>-<slug>`. Then `cd "<main>" && git worktree remove "<wt>"` (without `--force`; the branch stays).
+  15. **Close.** `node "<P>/scripts/run.js" end --cwd "<main>"` and the closing summary with `<P>/templates/review-summary.md`, adding the red output of step 7 and the commits.
+
+  If the human stops the task, or it ends BLOCKED and they do not want to go on, run `run.js end` so the flow stops restricting agents; the branch and the worktree stay for them.
+  ````
+
+- [ ] **Paso 4: verde**, `claude plugin validate plugins/pignolo`, y una lectura contra el Review Focus 1 y 5: cada despacho de un escritor tiene antes `renew` + `task` y después `status`, y toda salida del flujo pasa por `run.js end`.
+- [ ] **Paso 5: commit.** `feat(skills): daily con test-writer, rojo demostrado, implementer sellado, revisión y merge confirmado`.
+
+### Task 16: skills `review` y `judgment` (opus)
+
+**Files:**
+- Create: `plugins/pignolo/skills/review/SKILL.md`, `plugins/pignolo/skills/judgment/SKILL.md`
+- Test: `tests/skill-review.test.js`
+
+**Interfaces:**
+- Consume: todos los verbos de `ledger.js` (Task 11), `run.js task|renew|status|start|end`, `setup.js models`, la salida `json` de los revisores (Task 13), `templates/review-summary.md`.
+- Produce: para `daily`, `APPROVED | ESCALATED` y la ruta del ledger; `judgment` invocable desde `review` o a pedido del humano.
+
+- [ ] **Paso 1: test primero** (`tests/skill-review.test.js`):
+
+  ````js
+  'use strict';
+  // Forma de las skills review y judgment (hito 3b).
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const { readSkill, brokenReferences } = require('./skill-forms');
+
+  for (const name of ['review', 'judgment']) {
+    test(`${name}: frontmatter y referencias reales`, () => {
+      const s = readSkill(name);
+      assert.strictEqual(s.data.name, name);
+      assert.strictEqual(s.data['disable-model-invocation'], undefined);
+      assert.deepStrictEqual(brokenReferences(s.text), []);
+    });
+  }
+
+  test('review: congelado, plan, build verbatim, refute, repro, next, round, save siempre', () => {
+    const { text } = readSkill('review');
+    for (const re of [/ledger\.js" frozen/, /ledger\.js" plan --level/, /ledger\.js" build --sha/, /ledger\.js" refute --ledger/,
+      /ledger\.js repro --ledger/, /ledger\.js" next --ledger/, /ledger\.js" round --ledger/, /ledger\.js" save --ledger/,
+      /verbatim/, /run\.js" task --id <task>-repro/, /--agent pignolo:fixer/, /pignolo:judgment/, /templates\/review-summary\.md/]) {
+      assert.match(text, re);
+    }
+  });
+
+  test('judgment: jueces ciegos en paralelo, judgment + build --judgment, judge-conflict, save --kind judgment', () => {
+    const { text } = readSkill('judgment');
+    for (const re of [/pignolo:judge-a/, /pignolo:judge-b/, /Never show one judge the other/, /ledger\.js" judgment/,
+      /--judgment "<j\.json>"/, /category `judge-conflict`/, /--kind judgment/]) {
+      assert.match(text, re);
+    }
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** Solo este archivo.
+- [ ] **Paso 3: escribir las skills.** `skills/review/SKILL.md`:
+
+  ````markdown
+  ---
+  name: review
+  description: Use when pignolo's daily skill reaches its review step, or when the human asks pignolo to review a commit. Reviews a frozen SHA with the depth its risk level sets - lenses, refuters, repro tests, at most two fixer rounds - and persists the ledger even when it is empty.
+  ---
+
+  You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root; `<wt>` is the worktree under review (the task worktree from daily, or `<main>` for a review the human asked for); `<base>` is the task base from daily, or the commit the human names (by default the parent of the reviewed commit); `<task>` is the daily task id, or `review-<first 7 of the SHA>`; `<L>` is `<main>/.pignolo/tmp/review-<first 7 of the SHA>/ledger.json`. Talk to the human as the entry skill says: two layers, one step per message, a category on every question, facts only from script output.
+
+  ## Rules
+
+  - **You never grade findings.** You copy each agent's `json` block verbatim into a file with Write and let `ledger.js` decide. You never drop, merge, reword or re-rate a finding (spec §12). Refuted findings are always listed in the summary.
+  - **Frozen candidate.** The review is of one SHA. Before dispatching and before accepting any result, `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA>` must exit 0. If it exits 1, commit first or start over on the new SHA.
+  - **Writers follow the daily rules:** `run.js renew` before each dispatch, `run.js task` before each writer, `run.js status` after each writer (accepted only with `handback.accepted`), at most 2 automatic continuations, `--file` relative with `/`.
+  - **Models:** `node "<P>/scripts/setup.js" models`; pass `model` on every dispatch.
+  - **Report-only mode** (the human asked only for a review): no test-writer and no fixer, so steps 7 and 9 are skipped; the result lists every finding still standing, and it is APPROVED only if no BLOCKER or CRITICAL stands.
+
+  ## Steps
+
+  1. **Flow.** Inside daily, the flow is already open. For a review the human asked for, `node "<P>/scripts/run.js" start --flow review --cwd "<main>"` (and `end` at the close).
+  2. **Freeze.** `<SHA>` = `cd "<wt>" && git rev-parse HEAD`; run the frozen check.
+  3. **Plan.** `node "<P>/scripts/ledger.js" plan --level <level>` returns `lenses`, `refuters` and `judgmentDay` for the user's profile.
+  4. **Low risk (no lenses): structural reading.** Read `cd "<wt>" && git diff <base>..<SHA>` yourself against the task-card and N1 to N4 (the control is on the real path; no fail-open code; comments and commits are true; what is lost is declared). If you see a real defect, raise the level to `medium` and go back to step 3 (you may raise, never lower). If not, write `[]` to `<main>/.pignolo/tmp/review-<sha7>/structural.json` and build the ledger with it (step 5, last command).
+  5. **Lenses (medium and high).** Dispatch every lens of the plan in parallel, in one message: `pignolo:review-<lens>`, each with the SHA, `<wt>` (its files are the SHA), the diff `<base>..<SHA>` (for more than 400 lines, the file list and the diff of the risky files), the task-card and the level. Write each lens's `json` block verbatim to `<main>/.pignolo/tmp/review-<sha7>/<lens>.json`. A lens whose block is missing or not valid JSON is dispatched once more naming that; if it fails again, ask the human (category `scope`). Then:
+     `node "<P>/scripts/ledger.js" build --sha <SHA> --level <level> --out "<L>" <each lens file>`
+  6. **Refuters (high risk, `refuters` > 0).** Claims = every finding in `<L>` with status `open` and severity BLOCKER, CRITICAL or WARNING, numbered by their ledger `id`. Dispatch `refuters` instances of `pignolo:refuter` in parallel, each with the SHA, `<wt>` and the claims (location, evidence, repro) and nothing else. Write each refuter's `json` block verbatim; build `<main>/.pignolo/tmp/review-<sha7>/verdicts.json` as `{ "<ledger id>": [<verdict of refuter 1>, <verdict of refuter 2>, ...] }` copying each `verdict` value as written (a missing claim is simply absent from its list). Then `node "<P>/scripts/ledger.js" refute --ledger "<L>" "<verdicts file>"`. Missing or malformed verdicts leave the finding standing.
+  7. **Repro tests** for every finding still `open` with severity BLOCKER or CRITICAL (spec §12). Pick one test path per finding inside `test-paths`; register `node "<P>/scripts/run.js" task --id <task>-repro<round> --worktree "<wt>" --base <SHA> --file <test path>... --agent pignolo:test-writer --cwd "<main>"`, renew, and dispatch `pignolo:test-writer` with each finding's `repro` (header `Protects: <ledger id>`). After `run.js status` accepts it, run each test from `<wt>`: fails for the stated reason → `ledger.js repro --ledger "<L>" --id <id> --red`; passes or cannot run → `--no-red` (it drops to WARNING and stays in the ledger). Commit only the red tests (`test: repro <ids>`) and call that commit `<R>`; remove the files of the tests that did not go red.
+     A finding located in a test file needs `test-authorization` from the human before any fix (spec §9.3): ask.
+  8. **Next step.** `node "<P>/scripts/ledger.js" next --ledger "<L>"`: `done` → step 10; `escalate` → step 10 with the open findings; `fix` → step 9.
+  9. **Fixer round** (at most 2 rounds; the script refuses a third).
+     - `node "<P>/scripts/run.js" task --id <task>-fix<round + 1> --worktree "<wt>" --base <SHA> --test-ref <R> --file <source files of the confirmed findings> --agent pignolo:fixer --cwd "<main>"`, renew, dispatch `pignolo:fixer` (model from `models`) with the confirmed ledger entries, their confirming tests and the gate command. `run.js status` decides.
+     - Run each confirming test from `<wt>`; the ones now green are fixed. Commit the fix (`fix: <ids>`, trailers `Agent: pignolo:fixer`, `Gates: on-done PASS`); the new HEAD is `<SHA2>`.
+     - Re-review only the ledger plus the delta: dispatch the lenses that produced the confirmed findings with the previous findings and the diff `<SHA>..<SHA2>`, write their blocks verbatim, and run `node "<P>/scripts/ledger.js" round --ledger "<L>" --sha <SHA2> --fixed <each fixed id> <each new lens file>`. `<SHA>` becomes `<SHA2>`; freeze it and repeat steps 6 to 8 for the new open findings.
+  10. **Judgment Day.** If the plan says `judgmentDay` (or the human asked for it), invoke the `pignolo:judgment` skill on the final SHA and merge its result into the outcome.
+  11. **Persist.** `node "<P>/scripts/ledger.js" save --ledger "<L>" --cwd "<wt>"` always, also with no findings. Keep the returned path.
+  12. **Result.** APPROVED when `next` is `done` and Judgment Day (if it ran) approved; otherwise ESCALATED. Summarize with `<P>/templates/review-summary.md`. Approving does not authorize delivering.
+  ````
+
+  `skills/judgment/SKILL.md`:
+
+  ````markdown
+  ---
+  name: judgment
+  description: Use when pignolo's review skill calls for Judgment Day (profile max on high risk) or the human asks for it. Two blind judges review the same frozen SHA in parallel; what both find is fixed, what one finds is suspect; the result is APPROVED or ESCALATED.
+  ---
+
+  You are the orchestrator in the main conversation. `<P>`, `<main>` and `<wt>` mean what they mean in the review skill; `<J>` is `<main>/.pignolo/tmp/judgment-<first 7 of the SHA>/ledger.json`. Same rules as the review skill: you never grade findings (verbatim `json` blocks, `ledger.js` decides), frozen SHA checked before dispatching and before accepting, writers registered and accepted through `run.js`, two layers and a category on every question.
+
+  ## Steps
+
+  1. **Freeze.** `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <SHA>` must exit 0.
+  2. **Judges, blind and in parallel.** In one message, dispatch `pignolo:judge-a` and `pignolo:judge-b` (models from `node "<P>/scripts/setup.js" models`), each with exactly the same brief: the SHA, `<wt>`, the task-card and the list of changed files. Never show one judge the other's report or a previous verdict.
+  3. **Copy verbatim.** Write each judge's `json` block to `<main>/.pignolo/tmp/judgment-<sha7>/a.json` and `b.json`. A missing or invalid block: dispatch that judge once more; if it fails again, the result is ESCALATED.
+  4. **Compare** (spec §12): `node "<P>/scripts/ledger.js" judgment "<a.json>" "<b.json>" > "<main>/.pignolo/tmp/judgment-<sha7>/j.json"`, then `node "<P>/scripts/ledger.js" build --sha <SHA> --level <level> --out "<J>" --judgment "<j.json>"`. Found by both (same file, lines at most 3 apart) → `open`; by one → `suspect`; one judge blocking and the other not on the same spot → both `open` with a `conflict` field.
+  5. **Evidence settles conflicts first.** Every `open` BLOCKER or CRITICAL, conflicts included, goes through the repro step of the review skill (test-writer, red proved by you, `ledger.js repro --ledger "<J>" ...`). Ask the human with category `judge-conflict` only when a conflict cannot be reproduced either way (the test-writer ends BLOCKED or NEEDS_CONTEXT): one question per conflict, both judges' evidence quoted in the technical part.
+  6. **Fix.** `node "<P>/scripts/ledger.js" next --ledger "<J>"`; on `fix`, run the fixer round of the review skill on `<J>`, then both judges again on the new SHA with the previous findings and the delta, and `ledger.js round --ledger "<J>" ...`. At most 2 rounds.
+  7. **Persist.** `node "<P>/scripts/ledger.js" save --ledger "<J>" --cwd "<wt>" --kind judgment`.
+  8. **Result.** APPROVED when `next` is `done` and no conflict is left unanswered; otherwise ESCALATED. Summarize with `<P>/templates/review-summary.md`, listing the suspects.
+  ````
+
+- [ ] **Paso 4: verde**, `claude plugin validate plugins/pignolo`, y una lectura contra el Review Focus 2 y 3 (ningún paso resume o re-califica un bloque; `frozen` antes de despachar y de aceptar; `round` con el SHA nuevo).
+- [ ] **Paso 5: commit.** `feat(skills): review con lentes, refuters, repro y fixer (máx. 2 rondas); Judgment Day con jueces ciegos`.
+
+### Task 17: evals `agents` de lentes, refuter, jueces y fixer (opus)
+
+**Files:**
+- Create: `tests/evals/review-cases.js` (tabla y generador), `tests/eval-cases.test.js`
+- Modify: `.gitignore` (agrega `tests/evals/generated/` y `tests/evals/**/results/`)
+
+**Interfaces:**
+- Consume: el contrato de salida de la Task 13 (claves en orden, verdicto final en su propia línea), `parseFrontmatter` (`lib/yaml-lite.js`) para leer los graders en el test.
+- Produce: `node tests/evals/review-cases.js --out <dir> [--reviewer-model opus|sonnet]` → un directorio por caso (`case.yaml`, `fixture.sh`, `prompt.md`, `graders/*.md`) para `claude plugin eval . --eval-dir <dir>`; `CASES`, `build`, `SUB` exportados.
+- Formato de los graders (verificado contra el esquema de `claude plugin eval` 2.1.285: tipos `regex | tool_order | tool_used | file_exists | llm | baseline`; `regex` con `target: trace | last_message | files | mock_calls | {source: file, path}`, `flags`, `match: contains | not_contains | count:N`): `tool_used` sobre `Agent` con `subagent_type` y `model`; `regex` sobre `trace` con el prefijo `SUB` (evento `assistant` con `parent_tool_use_id` no nulo); para el fixer, además `regex` sobre el archivo corregido y sobre el test (que no cambió).
+
+- [ ] **Paso 1: test primero** (`tests/eval-cases.test.js`):
+
+  ````js
+  'use strict';
+  // Graders de las evals del hito 3b, sin gastar tokens: cada grader se corre contra un trace
+  // sintético (eventos stream-json) y debe aprobar la salida buena del SUBAGENTE, reprobar la
+  // mala y reprobar la misma salida buena si viene de la sesión principal (defecto de las
+  // evals del hito 2: el grader miraba la sesión principal).
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { makeTempDir } = require('./helpers');
+  const { parseFrontmatter } = require('../plugins/pignolo/lib/yaml-lite');
+  const { CASES, build } = require('./evals/review-cases');
+
+  const event = (text, parent) => JSON.stringify({
+    type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text }] }, parent_tool_use_id: parent, session_id: 's',
+  });
+  const toolEvent = (name, input, parent) => JSON.stringify({
+    type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'toolu_x', name, input }] }, parent_tool_use_id: parent, session_id: 's',
+  });
+  const brief = (text) => JSON.stringify({ type: 'user', message: { role: 'user', content: text }, parent_tool_use_id: 'toolu_p', session_id: 's' });
+
+  function grade(g, { trace, files }) {
+    const text = typeof g.target === 'object' ? files[g.target.path] : trace;
+    const hit = new RegExp(g.pattern, g.flags || '').test(text);
+    return g.match === 'not_contains' ? !hit : hit;
+  }
+
+  const out = makeTempDir('pignolo-evals-');
+  build({ out, reviewerModel: 'opus' });
+  const graders = (name) => fs.readdirSync(path.join(out, name, 'graders'))
+    .map((f) => parseFrontmatter(fs.readFileSync(path.join(out, name, 'graders', f), 'utf8')).data)
+    .filter((g) => g.type === 'regex');
+
+  for (const c of CASES) {
+    test(`eval ${c.name}: estructura y fixture`, () => {
+      for (const f of ['case.yaml', 'prompt.md', 'fixture.sh']) assert.ok(fs.existsSync(path.join(out, c.name, f)), f);
+      const sh = fs.readFileSync(path.join(out, c.name, 'fixture.sh'), 'utf8');
+      for (const content of Object.values(c.files)) assert.ok(sh.includes(content.replace(/\n$/, '')));
+      const prompt = fs.readFileSync(path.join(out, c.name, 'prompt.md'), 'utf8');
+      assert.match(prompt, new RegExp(`subagent_type pignolo:${c.agent}`));
+      assert.ok(fs.existsSync(path.join(out, c.name, 'graders', 'dispatched.md')));
+    });
+
+    test(`eval ${c.name}: los graders ven al subagente y no a la sesión principal`, () => {
+      const gs = graders(c.name);
+      assert.ok(gs.length > 0);
+      // Traces: el brief del subagente siempre está (parent no nulo, tipo user) y no debe bastar.
+      const tools = c.agent === 'fixer'
+        ? [toolEvent('Edit', { file_path: '/w/src/pages.js' }, 'toolu_p'), toolEvent('Bash', { command: 'node --test tests/' }, 'toolu_p')]
+        : [];
+      const fixed = { 'src/pages.js': c.files['src/pages.js'] && c.files['src/pages.js'].replace('start + size - 1);', 'start + size);'), 'tests/pages.test.js': c.files['tests/pages.test.js'] };
+      const good = { trace: [brief(c.brief), ...tools, event(c.samples.pass, 'toolu_p')].join('\n'), files: fixed };
+      const bad = { trace: [brief(c.brief), event(c.samples.fail, 'toolu_p')].join('\n'), files: c.files };
+      const fromMain = { trace: [brief(c.brief), event(c.samples.pass, null)].join('\n'), files: c.files };
+      for (const g of gs) assert.ok(grade(g, good), `${c.name}: el grader ${g.pattern} reprueba la salida buena`);
+      assert.ok(gs.some((g) => !grade(g, bad)), `${c.name}: ningún grader reprueba la salida mala`);
+      assert.ok(gs.some((g) => !grade(g, fromMain)), `${c.name}: la salida buena desde la sesión principal aprueba`);
+    });
+  }
+
+  test('evals: 14 casos (8 lentes, 4 jueces, refuter, fixer) y la rama sonnet solo cambia el modelo de los revisores', () => {
+    assert.strictEqual(CASES.length, 14);
+    const son = makeTempDir('pignolo-evals-sonnet-');
+    build({ out: son, reviewerModel: 'sonnet' });
+    const p = fs.readFileSync(path.join(son, 'review-risk-defect', 'prompt.md'), 'utf8');
+    assert.match(p, /model sonnet/);
+    assert.match(fs.readFileSync(path.join(son, 'review-risk-defect', 'graders', 'model.md'), 'utf8'), /"model":"sonnet"/);
+    assert.doesNotMatch(fs.readFileSync(path.join(son, 'fixer-confirmed-finding', 'prompt.md'), 'utf8'), /model (opus|sonnet)\)/);
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** Falla por el módulo ausente.
+- [ ] **Paso 3: implementar** `tests/evals/review-cases.js`:
+
+  ````js
+  'use strict';
+  // Evals `agents` del hito 3b (§15): lentes, refuter, jueces y fixer. Una sola tabla genera
+  // los casos de `claude plugin eval` (prompt.md, case.yaml, fixture.sh, graders/*.md).
+  // Los graders miran lo que hizo el SUBAGENTE, no la sesión principal: una línea del
+  // trace (un evento stream-json) cuenta solo si es de tipo assistant y trae un
+  // parent_tool_use_id no nulo. La sesión principal solo despacha y contesta RELAYED.
+  //
+  // Uso: node tests/evals/review-cases.js --out <dir> [--reviewer-model opus|sonnet]
+  // (la salida va a tests/evals/generated/, que no se versiona).
+  const fs = require('node:fs');
+  const path = require('node:path');
+
+  const REPO = path.join(__dirname, '..', '..');
+  const FAKE_SHA = '1111111111111111111111111111111111111111';
+
+  // ---- fuentes sintéticas (sin datos reales) ----
+  const PAGES = `'use strict';
+  // Devuelve la página \`page\` (desde 1) de \`items\`, de a \`size\` elementos.
+  function pageOf(items, page, size) {
+    if (!Array.isArray(items)) throw new TypeError('items debe ser una lista');
+    if (!(page >= 1) || !(size >= 1)) throw new RangeError('page y size empiezan en 1');
+    const start = (page - 1) * size;
+    return items.slice(start, start + size);
+  }
+
+  module.exports = { pageOf };
+  `;
+  const PAGES_BUG = PAGES.replace('start + size);', 'start + size - 1);');
+  const PAGES_CLEAN = PAGES.replace('  const start = (page - 1) * size;\n', '  const start = (page - 1) * size; // índice del primer elemento\n');
+
+  const STORE = `'use strict';
+  const fs = require('node:fs');
+
+  // Guarda \`rows\` como JSON en \`file\`. Devuelve true solo si quedó escrito.
+  function saveRows(file, rows) {
+    const tmp = \`\${file}.tmp\`;
+    fs.writeFileSync(tmp, JSON.stringify(rows));
+    fs.renameSync(tmp, file);
+    return true;
+  }
+
+  module.exports = { saveRows };
+  `;
+  const STORE_BUG = STORE.replace(`  fs.writeFileSync(tmp, JSON.stringify(rows));
+    fs.renameSync(tmp, file);
+    return true;`, `  try {
+      fs.writeFileSync(tmp, JSON.stringify(rows));
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      return true;
+    }
+    return true;`);
+  const STORE_CLEAN = STORE.replace(`  fs.writeFileSync(tmp, JSON.stringify(rows));
+    fs.renameSync(tmp, file);`, `  try {
+      fs.writeFileSync(tmp, JSON.stringify(rows));
+      fs.renameSync(tmp, file);
+    } catch (e) {
+      fs.rmSync(tmp, { force: true });
+      throw e;
+    }`);
+
+  const REPORT = `'use strict';
+  const fs = require('node:fs');
+  const path = require('node:path');
+
+  const DIR = path.join(__dirname, '..', 'reports');
+
+  // Lee el informe \`name\` de reports/ (solo nombres simples).
+  function readReport(name) {
+    if (!/^[a-z0-9-]+\\.txt$/.test(name)) throw new Error('nombre inválido');
+    return fs.readFileSync(path.join(DIR, name), 'utf8');
+  }
+
+  module.exports = { readReport };
+  `;
+  const REPORT_BUG = REPORT.replace("  if (!/^[a-z0-9-]+\\.txt$/.test(name)) throw new Error('nombre inválido');\n", '');
+  const REPORT_CLEAN = REPORT.replace("throw new Error('nombre inválido')", "throw new Error(`nombre de informe inválido: ${name}`)");
+
+  const TOKEN = `'use strict';
+  // true si el token ya venció.
+  function isExpired(token, now = Date.now()) {
+    return token.expiresAt <= now;
+  }
+
+  module.exports = { isExpired };
+  `;
+  const TOKEN_BUG = TOKEN.replace('// true si el token ya venció.', '// true si el token sigue vigente.');
+  const TOKEN_CLEAN = TOKEN.replace('// true si el token ya venció.', '// true si el token ya venció (expiresAt en ms desde epoch).');
+
+  const PAGES_TEST = `'use strict';
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const { pageOf } = require('../src/pages');
+
+  // Protects: R1 · Breaks if: pageOf drops the last item of a page
+  test('pageOf returns size items per full page', () => {
+    assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]);
+    assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 3, 2), [5]);
+  });
+  `;
+
+  // Diff unificado mínimo (una sola zona de cambio) entre dos versiones, para el brief.
+  function diff(file, a, b) {
+    const x = a.split('\n');
+    const y = b.split('\n');
+    let s = 0;
+    while (s < x.length && x[s] === y[s]) s += 1;
+    let e = 0;
+    while (e < x.length - s && e < y.length - s && x[x.length - 1 - e] === y[y.length - 1 - e]) e += 1;
+    const from = Math.max(0, s - 2);
+    const oldEnd = x.length - e;
+    const newEnd = y.length - e;
+    const ctxEnd = Math.min(x.length, oldEnd + 2);
+    const lines = [
+      `--- a/${file}`, `+++ b/${file}`,
+      `@@ -${from + 1},${ctxEnd - from} +${from + 1},${ctxEnd - from + (newEnd - oldEnd)} @@`,
+      ...x.slice(from, s).map((l) => ` ${l}`),
+      ...x.slice(s, oldEnd).map((l) => `-${l}`),
+      ...y.slice(s, newEnd).map((l) => `+${l}`),
+      ...x.slice(oldEnd, ctxEnd).map((l) => ` ${l}`),
+    ];
+    return lines.join('\n');
+  }
+
+  // ---- graders ----
+  // Línea de trace de un subagente (evento assistant con parent_tool_use_id no nulo).
+  const SUB = '^(?=[^\\n]*"type":"assistant")(?=[^\\n]*"parent_tool_use_id":"[^"]+")[^\\n]*';
+  // Separadores entre dos claves JSON dentro del texto del subagente (serializado: \" y \n).
+  const SEP = '(?:,|\\s|\\\\[rn])*';
+  const key = (k, v) => `\\\\"${k}\\\\":\\s*\\\\"${v}\\\\"`;
+  const trace = (name, pattern, match = 'contains') => ({ name, type: 'regex', target: 'trace', flags: 'm', pattern: SUB + pattern, match });
+  const finding = (file, lines, sev) => `${key('location', `${file.replace(/\./g, '\\.')}:(${lines})`)}${SEP}${key('severity', `(${sev})`)}`;
+  const verdict = (word) => trace(`verdict-${word.toLowerCase()}`, `\\\\n${word}(\\\\n)*"`);
+  const dispatched = (agent, model) => [
+    { name: 'dispatched', type: 'tool_used', tool: 'Agent', input_match: `"subagent_type":"pignolo:${agent}"` },
+    ...(model ? [{ name: 'model', type: 'tool_used', tool: 'Agent', input_match: `"model":"${model}"` }] : []),
+  ];
+
+  // ---- muestras para el test determinista de los graders (tests/eval-cases.test.js) ----
+  const report = (findings, word) => `Review of ${FAKE_SHA}.\n\`\`\`json\n${JSON.stringify(findings, null, 2)}\n\`\`\`\n${word}`;
+  const f = (lens, location, severity) => ({ id: '1', lens, location, severity, evidence: 'observed in the file', ...(/BLOCKER|CRITICAL/.test(severity) ? { repro: 'call it and compare' } : {}) });
+
+  const LENS_CASES = [
+    { lens: 'reliability', file: 'src/pages.js', base: PAGES, bug: PAGES_BUG, clean: PAGES_CLEAN, lines: '[4-9]|10', sample: 7, sev: 'BLOCKER|CRITICAL', goal: 'pageOf returns page `page` (1-based) of `items`, `size` items per page.' },
+    { lens: 'resilience', file: 'src/store.js', base: STORE, bug: STORE_BUG, clean: STORE_CLEAN, lines: '[8-9]|1[0-5]', sample: 11, sev: 'BLOCKER|CRITICAL', goal: 'saveRows writes rows atomically and returns true only when they were written.' },
+    { lens: 'risk', file: 'src/report.js', base: REPORT, bug: REPORT_BUG, clean: REPORT_CLEAN, lines: '[6-9]|1[0-2]', sample: 9, sev: 'BLOCKER|CRITICAL', goal: 'readReport returns a report from reports/ by simple name; names come from HTTP requests.' },
+    { lens: 'readability', file: 'src/token.js', base: TOKEN, bug: TOKEN_BUG, clean: TOKEN_CLEAN, lines: '[1-5]', sample: 2, sev: 'BLOCKER|CRITICAL|WARNING', goal: 'isExpired tells whether a token has expired.' },
+  ];
+
+  const reviewBrief = (goal, file, a, b) => [
+    `Frozen SHA: ${FAKE_SHA} (the files in the current directory are that SHA).`,
+    'Risk level: high.',
+    `Task-card goal: ${goal}`,
+    'Diff (base..SHA):',
+    '```diff', diff(file, a, b), '```',
+  ].join('\n');
+
+  function lensCases() {
+    const out = [];
+    for (const c of LENS_CASES) {
+      const agent = `review-${c.lens}`;
+      out.push({
+        name: `${agent}-defect`, agent, tags: ['agents', 'review', 'defect'], reviewer: true,
+        files: { [c.file]: c.bug }, brief: reviewBrief(c.goal, c.file, c.base, c.bug),
+        graders: [trace('finds-planted-defect', finding(c.file, c.lines, c.sev))],
+        samples: {
+          pass: report([f(c.lens, `${c.file}:${c.sample}`, c.lens === 'readability' ? 'WARNING' : 'CRITICAL')], 'REQUEST_CHANGES'),
+          fail: report([f(c.lens, `src/other.js:7`, 'CRITICAL')], 'REQUEST_CHANGES'),
+        },
+      });
+      out.push({
+        name: `${agent}-clean`, agent, tags: ['agents', 'review', 'clean'], reviewer: true,
+        files: { [c.file]: c.clean }, brief: reviewBrief(c.goal, c.file, c.base, c.clean),
+        graders: [verdict('APPROVE'), trace('no-blocking-finding', `${SEP}${key('severity', '(BLOCKER|CRITICAL)')}`, 'not_contains')],
+        samples: {
+          pass: report([f(c.lens, `${c.file}:3`, 'SUGGESTION')], 'APPROVE'),
+          fail: report([f(c.lens, `${c.file}:3`, 'CRITICAL')], 'REQUEST_CHANGES'),
+        },
+      });
+    }
+    return out;
+  }
+
+  function judgeCases() {
+    const out = [];
+    for (const j of ['judge-a', 'judge-b']) {
+      out.push({
+        name: `${j}-defect`, agent: j, tags: ['agents', 'judges', 'defect'], reviewer: true,
+        files: { 'src/pages.js': PAGES_BUG }, brief: reviewBrief(LENS_CASES[0].goal, 'src/pages.js', PAGES, PAGES_BUG),
+        graders: [trace('finds-planted-defect', finding('src/pages.js', '[4-9]|10', 'BLOCKER|CRITICAL')), verdict('REQUEST_CHANGES')],
+        samples: { pass: report([f(j, 'src/pages.js:7', 'BLOCKER')], 'REQUEST_CHANGES'), fail: report([], 'APPROVE') },
+      });
+      out.push({
+        name: `${j}-clean`, agent: j, tags: ['agents', 'judges', 'clean'], reviewer: true,
+        files: { 'src/pages.js': PAGES_CLEAN }, brief: reviewBrief(LENS_CASES[0].goal, 'src/pages.js', PAGES, PAGES_CLEAN),
+        graders: [verdict('APPROVE'), trace('no-blocking-finding', `${SEP}${key('severity', '(BLOCKER|CRITICAL)')}`, 'not_contains')],
+        samples: { pass: report([], 'APPROVE'), fail: report([f(j, 'src/pages.js:7', 'CRITICAL')], 'REQUEST_CHANGES') },
+      });
+    }
+    return out;
+  }
+
+  const claim = (id, v) => `${key('claim', id)}${SEP}${key('verdict', v)}`;
+  const refuterCase = {
+    name: 'refuter-false-finding', agent: 'refuter', tags: ['agents', 'refuter'], reviewer: true,
+    files: { 'src/pages.js': PAGES, 'src/token.js': TOKEN },
+    brief: [
+      `SHA: ${FAKE_SHA} (the files in the current directory are that SHA; there is no git history).`,
+      'Claims:',
+      'C1. src/pages.js:6 — pageOf(items, 0, 2) computes a negative start and returns the wrong items. Repro-spec: call pageOf([1,2,3], 0, 2) and observe a non-empty result.',
+      'C2. src/token.js:4 — isExpired returns true when expiresAt equals now. Repro-spec: isExpired({ expiresAt: 5 }, 5) returns true.',
+    ].join('\n'),
+    graders: [trace('refutes-false-claim', claim('C1', 'REFUTED')), trace('keeps-true-claim', claim('C2', 'REFUTED'), 'not_contains')],
+    samples: {
+      pass: `\`\`\`json\n${JSON.stringify([{ claim: 'C1', verdict: 'REFUTED', reason: 'line 5 throws' }, { claim: 'C2', verdict: 'CONFIRMED', reason: '<=' }], null, 2)}\n\`\`\``,
+      fail: `\`\`\`json\n${JSON.stringify([{ claim: 'C1', verdict: 'CONFIRMED', reason: 'x' }, { claim: 'C2', verdict: 'REFUTED', reason: 'y' }], null, 2)}\n\`\`\``,
+    },
+  };
+
+  // El fixer tiene Bash: su caso requiere WSL2 (§15); en Windows nativo el runner lo rechaza.
+  const fixerCase = {
+    name: 'fixer-confirmed-finding', agent: 'fixer', tags: ['agents', 'fixer', 'wsl2'], reviewer: false,
+    files: { 'src/pages.js': PAGES_BUG, 'tests/pages.test.js': PAGES_TEST },
+    brief: [
+      'Task-card: fix the confirmed finding below. Files you may touch: src/pages.js. Gate: node --test tests/',
+      'Ledger entry reliability-1 (confirmed): location src/pages.js:7, severity CRITICAL, evidence: slice end drops the last item of each full page.',
+      'Confirming test (red against the frozen SHA): tests/pages.test.js.',
+    ].join('\n'),
+    allowedTools: ['Agent', 'Read', 'Edit', 'Write', 'Bash'],
+    graders: [
+      { name: 'fixed', type: 'regex', target: { source: 'file', path: 'src/pages.js' }, pattern: 'slice\\(start, start \\+ size\\)' },
+      { name: 'test-untouched', type: 'regex', target: { source: 'file', path: 'tests/pages.test.js' }, pattern: 'pageOf\\(\\[1, 2, 3, 4, 5\\], 3, 2\\), \\[5\\]' },
+      trace('subagent-edited-source', '"name":"(Edit|Write)"[^\\n]*src/pages\\.js'),
+      trace('subagent-ran-tests', '"name":"Bash"[^\\n]*node --test'),
+      trace('done', '\\\\nDONE(\\\\n)*"'),
+    ],
+    samples: { pass: 'RED: ... GREEN: ...\nDONE', fail: 'I could not run it.\nBLOCKED' },
+  };
+
+  const CASES = [...lensCases(), ...judgeCases(), refuterCase, fixerCase];
+
+  // ---- escritura ----
+  function yamlValue(v) {
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (/^[A-Za-z0-9_.:/-]+$/.test(v) && !/^(true|false)$/.test(v)) return v;
+    return `'${String(v).replace(/'/g, "''")}'`;
+  }
+
+  function graderMd(g) {
+    const lines = ['---'];
+    for (const [k, v] of Object.entries(g)) {
+      if (k === 'name') continue;
+      if (v && typeof v === 'object') {
+        lines.push(`${k}:`);
+        for (const [k2, v2] of Object.entries(v)) lines.push(`  ${k2}: ${yamlValue(v2)}`);
+      } else lines.push(`${k}: ${yamlValue(v)}`);
+    }
+    lines.push('---', '');
+    return lines.join('\n');
+  }
+
+  function fixtureSh(files) {
+    const out = ['#!/usr/bin/env bash', '# Synthetic fixture generated by tests/evals/review-cases.js (no real data).', 'set -e'];
+    for (const [p, content] of Object.entries(files)) {
+      if (content.includes('PIGNOLO_EOF')) throw new Error(`delimitador dentro de ${p}`);
+      out.push(`mkdir -p ${path.posix.dirname(p)}`, `cat > ${p} <<'PIGNOLO_EOF'`, content.replace(/\n$/, ''), 'PIGNOLO_EOF');
+    }
+    return `${out.join('\n')}\n`;
+  }
+
+  function promptMd(c, caseDir, reviewerModel) {
+    const plugin = path.relative(caseDir, path.join(REPO, 'plugins', 'pignolo')).split(path.sep).join('/');
+    const model = c.reviewer ? reviewerModel : null;
+    const tools = c.allowedTools || ['Agent', 'Read', 'Grep', 'Glob'];
+    const how = model ? `subagent_type pignolo:${c.agent}, model ${model}` : `subagent_type pignolo:${c.agent}`;
+    return [
+      '---',
+      `runs: 5`,
+      `max_turns: ${c.reviewer ? 20 : 40}`,
+      `timeout_seconds: ${c.reviewer ? 600 : 900}`,
+      'model: sonnet',
+      `plugins: ["${plugin}"]`,
+      `tags: [${[...c.tags, model || 'frontmatter'].join(', ')}]`,
+      `allowed_tools: [${tools.join(', ')}]`,
+      '---',
+      '',
+      `Dispatch the pignolo:${c.agent} agent (${how}) with exactly the brief between the two lines of dashes. Do not read, run or change anything yourself. When the agent returns, reply with only the word RELAYED.`,
+      '',
+      '----------',
+      c.brief,
+      '----------',
+      '',
+    ].join('\n');
+  }
+
+  function build({ out, reviewerModel = 'opus' }) {
+    if (!['opus', 'sonnet'].includes(reviewerModel)) throw new Error('--reviewer-model debe ser opus o sonnet');
+    for (const c of CASES) {
+      const dir = path.join(out, c.name);
+      fs.rmSync(dir, { recursive: true, force: true });
+      fs.mkdirSync(path.join(dir, 'graders'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'case.yaml'), `schema_version: "1.1"\nname: ${c.name}\ncontext:\n  scaffold_script: fixture.sh\n`);
+      fs.writeFileSync(path.join(dir, 'fixture.sh'), fixtureSh(c.files));
+      fs.writeFileSync(path.join(dir, 'prompt.md'), promptMd(c, dir, reviewerModel));
+      const graders = [...dispatched(c.agent, c.reviewer ? reviewerModel : null), ...c.graders];
+      for (const g of graders) fs.writeFileSync(path.join(dir, 'graders', `${g.name}.md`), graderMd(g));
+    }
+    return CASES.map((c) => c.name);
+  }
+
+  if (require.main === module) {
+    const a = process.argv.slice(2);
+    const get = (k) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : undefined; };
+    const out = get('--out');
+    if (!out) {
+      process.stderr.write('uso: node tests/evals/review-cases.js --out <dir> [--reviewer-model opus|sonnet]\n');
+      process.exit(2);
+    }
+    const names = build({ out: path.resolve(out), reviewerModel: get('--reviewer-model') || 'opus' });
+    process.stdout.write(`${JSON.stringify({ out: path.resolve(out), cases: names })}\n`);
+  }
+
+  module.exports = { CASES, build, SUB };
+  ````
+
+  y en `.gitignore`:
+
+  ```
+  tests/evals/generated/
+  tests/evals/**/results/
+  ```
+
+- [ ] **Paso 4: verde** (29 subtests) y **rojo del test agregado sobre el grader**: con `const SUB = '';` en `review-cases.js`, el test debe fallar (medido: 13 de 29 en rojo, todos por "la salida buena desde la sesión principal aprueba"); restaurar.
+- [ ] **Paso 5: generar y mirar un caso a mano** (sin correrlo): `node tests/evals/review-cases.js --out tests/evals/generated/opus` y leer `review-reliability-defect/prompt.md` y sus graders. **No correr `claude plugin eval`**: es la decisión de costo del autor (Task 19).
+- [ ] **Paso 6: commit.** `test(evals): casos de lentes, refuter, jueces y fixer con graders sobre el subagente`.
+
+### Task 18: carriles de punta a punta por los scripts (sonnet)
+
+**Files:**
+- Create: `tests/flow-lanes.test.js`
+
+Es un test agregado después del código de la ola 0: sigue, comando por comando, lo que ejecutan `trivial` y `daily` desde el hilo principal (los escritores se simulan escribiendo los archivos; su cierre pasa por el launcher real del handback-gate).
+
+- [ ] **Paso 1: escribir el test:**
+
+  ````js
+  'use strict';
+  // Carriles trivial y daily de punta a punta por los scripts, en el orden exacto que
+  // prescriben las skills (hito 3b): lo que el hilo principal ejecuta, sin agentes. Los
+  // escritores se simulan escribiendo los archivos; su cierre pasa por el launcher real.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const { makeRepo, runLauncher, git, PLUGIN_ROOT } = require('./helpers');
+
+  const SCRIPTS = path.join(PLUGIN_ROOT, 'scripts');
+  const HOME = process.env.PIGNOLO_HOME;
+  // Sin NODE_TEST_CONTEXT: si no, un `node --test` hijo (la compuerta, el rojo) le reporta al
+  // runner de esta suite y sale 0 aunque sus tests fallen.
+  const ENV = { ...process.env, PIGNOLO_HOME: HOME, PIGNOLO_DISABLED: '' };
+  delete ENV.NODE_TEST_CONTEXT;
+
+  function put(root, rel, text) {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  }
+  function script(name, args, cwd) {
+    const r = spawnSync(process.execPath, [path.join(SCRIPTS, name), ...args], {
+      cwd, encoding: 'utf8', env: ENV, timeout: 60000,
+    });
+    let json;
+    try { json = JSON.parse(r.stdout); } catch (_) { json = undefined; }
+    return { status: r.status, json, stderr: r.stderr };
+  }
+  let n = 0;
+  const stop = (wt, agent) => {
+    n += 1;
+    return runLauncher('handback-gate', {
+      hook_event_name: 'SubagentStop', agent_type: agent, agent_id: `a-${n}`,
+      last_assistant_message: 'informe\nDONE', stop_hook_active: false, cwd: wt,
+    }, { PIGNOLO_HOME: HOME });
+  };
+
+  function project() {
+    const main = makeRepo();
+    put(main, '.pignolo/project.md', [
+      '---', 'type: code-tested', 'gates:', '  on-done: node --test', 'test-paths:', '  - tests/', '---', '',
+    ].join('\n'));
+    put(main, 'src/sum.js', "'use strict';\nfunction sum(a, b) {\n  return a - b;\n}\nmodule.exports = sum;\n");
+    put(main, 'tests/base.test.js', "'use strict';\nrequire('node:test')('base', () => {});\n");
+    git(['add', '-A'], main);
+    git(['commit', '-q', '-m', 'C0'], main);
+    return main;
+  }
+
+  test('trivial: start, risk --files-from, cambio, gate on-done, risk --diff HEAD, commit, end', () => {
+    const main = project();
+    assert.strictEqual(script('run.js', ['start', '--flow', 'trivial', '--cwd', main], main).status, 0);
+    put(main, '.pignolo/tmp/files.txt', 'src/sum.js\n');
+    const before = script('risk.js', ['--files-from', path.join(main, '.pignolo/tmp/files.txt'), '--cwd', main], main);
+    assert.strictEqual(before.status, 0, before.stderr);
+    assert.strictEqual(before.json.laneFloor, 'trivial');
+    put(main, 'src/sum.js', "'use strict';\nfunction sum(a, b) {\n  return a + b;\n}\nmodule.exports = sum;\n");
+    const gate = script('gate.js', ['--level', 'on-done', '--cwd', main], main);
+    assert.strictEqual(gate.status, 0, gate.stderr);
+    assert.strictEqual(gate.json.status, 'PASS');
+    const after = script('risk.js', ['--diff', 'HEAD', '--cwd', main], main);
+    assert.strictEqual(after.status, 0, after.stderr);
+    assert.deepStrictEqual([after.json.level, after.json.laneFloor, after.json.reserved], ['low', 'trivial', false], JSON.stringify(after.json));
+    git(['add', 'src/sum.js'], main);
+    git(['commit', '-q', '-m', 'fix: suma'], main);
+    assert.strictEqual(script('run.js', ['end', '--cwd', main], main).status, 0);
+  });
+
+  test('daily: worktree en .pignolo/worktrees, test-writer, rojo, implementer, gate, handback, ledger, merge', () => {
+    const main = project();
+    assert.strictEqual(script('run.js', ['start', '--flow', 'daily', '--cwd', main], main).status, 0);
+    const wt = path.join(main, '.pignolo', 'worktrees', 'sum-fix');
+    git(['worktree', 'add', '-q', '-b', 'task/daily/2026-09-30-sum-fix', wt, 'HEAD'], main);
+    assert.strictEqual(git(['status', '--porcelain', '--untracked-files=all'], main).includes('.pignolo/worktrees'), false);
+    const base = git(['rev-parse', 'HEAD'], wt);
+
+    // 1. Registro del test-writer (barras invertidas: el script las normaliza).
+    let r = script('run.js', ['task', '--id', 'sum-fix', '--worktree', wt, '--base', base, '--file', 'tests\\sum.test.js', '--agent', 'pignolo:test-writer', '--cwd', main], main);
+    assert.strictEqual(r.status, 0, r.stderr);
+    put(wt, 'tests/sum.test.js', "'use strict';\nconst assert = require('node:assert');\nconst sum = require('../src/sum');\nrequire('node:test')('sum', () => { assert.strictEqual(sum(2, 3), 5); });\n");
+    assert.strictEqual(stop(wt, 'pignolo:test-writer').status, 0);
+    r = script('run.js', ['status', '--cwd', main], main);
+    assert.strictEqual(r.json.handback.accepted, true);
+
+    // 2. Rojo demostrado por el orquestador y commit T.
+    const red = spawnSync(process.execPath, ['--test'], { cwd: wt, encoding: 'utf8', env: ENV });
+    assert.notStrictEqual(red.status, 0);
+    git(['add', 'tests/sum.test.js'], wt);
+    git(['commit', '-q', '-m', 'test: suma'], wt);
+    const T = git(['rev-parse', 'HEAD'], wt);
+
+    // 3. Implementer: registro con --test-ref, cambio, gate con --task, handback.
+    r = script('run.js', ['task', '--id', 'sum-fix', '--test-ref', T, '--file', 'src/sum.js', '--agent', 'pignolo:implementer', '--cwd', main], main);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(stop(wt, 'pignolo:implementer').status, 2, 'sin sello no pasa');
+    put(wt, 'src/sum.js', "'use strict';\nfunction sum(a, b) {\n  return a + b;\n}\nmodule.exports = sum;\n");
+    const gate = script('gate.js', ['--level', 'on-done', '--task', '--cwd', wt], wt);
+    assert.strictEqual(gate.status, 0, gate.stderr);
+    assert.strictEqual(stop(wt, 'pignolo:implementer').status, 0);
+    r = script('run.js', ['status', '--cwd', main], main);
+    assert.strictEqual(r.json.handback.accepted, true);
+
+    // 4. Piso de riesgo sobre el diff real.
+    const risk = script('risk.js', ['--diff', base, '--cwd', wt], wt);
+    assert.strictEqual(risk.json.reserved, false);
+
+    // 5. Commit y revisión: congelado, ledger (vacío en riesgo bajo) y guardado.
+    git(['add', 'src/sum.js'], wt);
+    git(['commit', '-q', '-m', 'fix: suma'], wt);
+    const sha = git(['rev-parse', 'HEAD'], wt);
+    assert.strictEqual(script('ledger.js', ['frozen', '--cwd', wt, '--sha', sha], wt).status, 0);
+    put(main, '.pignolo/tmp/lens-empty.json', '[]');
+    const ledger = path.join(main, '.pignolo/tmp/ledger.json');
+    r = script('ledger.js', ['build', '--sha', sha, '--level', risk.json.level, '--out', ledger, path.join(main, '.pignolo/tmp/lens-empty.json')], main);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(script('ledger.js', ['next', '--ledger', ledger], main).json.next, 'done');
+    const saved = script('ledger.js', ['save', '--ledger', ledger, '--cwd', wt], main);
+    assert.strictEqual(saved.status, 0, saved.stderr);
+    assert.ok(fs.existsSync(saved.json.file));
+
+    // 6. Merge a la rama de origen, fin del flujo, worktree fuera (limpia).
+    put(main, '.pignolo/tmp/merge-msg.txt', 'merge: suma\n');
+    git(['merge', '-q', '--no-ff', '-F', path.join(main, '.pignolo/tmp/merge-msg.txt'), 'task/daily/2026-09-30-sum-fix'], main);
+    assert.strictEqual(git(['log', '-1', '--format=%s'], main), 'merge: suma');
+    assert.strictEqual(script('run.js', ['end', '--cwd', main], main).status, 0);
+    git(['worktree', 'remove', wt], main);
+    assert.strictEqual(fs.readFileSync(path.join(main, 'src/sum.js'), 'utf8').includes('a + b'), true);
+    assert.strictEqual(git(['status', '--porcelain'], main).includes('src/'), false);
+  });
+  ````
+
+- [ ] **Paso 2: verde.** `node --test --test-reporter=dot tests/flow-lanes.test.js`.
+- [ ] **Paso 3: rojo rompiendo lo que protege**, en una copia descartable de la worktree o restaurando desde la conversación principal: (a) quitar `'.gitignore'` de `IGNORED` en `scripts/run.js` → el caso `trivial` falla con `[ 'medium', 'daily', false ]` (medido); (b) quitar `.map(normFile)` → el caso `daily` falla al registrar el `test-writer` (`tests\sum.test.js` no está en `test-paths`; medido); (c) quitar `delete ENV.NODE_TEST_CONTEXT` → el rojo del orquestador sale 0 y el test falla en `assert.notStrictEqual(red.status, 0)` (medido). Anotar las tres salidas.
+- [ ] **Paso 4: commit.** `test(flow): carriles trivial y daily de punta a punta por los scripts`.
+
+---
+
+## Ola 2
+
+### Unión de la ola 1
+
+- [ ] Unir las Tasks 14 a 18 a `core/hito-3b`. Archivos disjuntos; un conflicto es un error del plan y se registra.
+- [ ] `npm run test:quiet` una vez: verde (esperado 1180 tests, 1178 pasan, 2 saltados).
+- [ ] `claude plugin validate plugins/pignolo` sin errores.
+
+### Task 19: cierre de la parte 3b
+
+- [ ] **Spec** (sin cambiar contratos):
+  - §2: las skills de flujo son invocables por el modelo; `disable-model-invocation` queda para las que cambian la configuración de pignolo (ruling).
+  - §5.1–§5.2: cómo decide `entry`; `trivial` en el checkout principal y su escalamiento; `daily` con worktree en `.pignolo/worktrees/` y el orden de registro de 3a.
+  - §6: `run.js task` valida y normaliza `--file`; `.pignolo/.gitignore` se ignora a sí mismo y cubre `tmp/` y `worktrees/`.
+  - §12: salida `json` de los revisores; refuter antes de la reproducción; riesgo bajo sin lente; `judge-conflict` después de la evidencia; ledger en `~/.pignolo/reviews/`.
+  - §15: diseño de las evals `agents` (graders sobre eventos del subagente, definición de recall y falso positivo, generador único, rama sonnet, fixer en WSL2) y el test determinista de los graders.
+- [ ] **Versión y docs:** `plugin.json` a `0.4.0`; entrada `0.4.0` en el `CHANGELOG` con el motivo (los carriles existen y usan la capa 2 de 3a); README: qué hace cada carril en dos capas, que un flujo necesita `.pignolo/project.md` **commiteado** con `type` y `gates.on-done`, y que `.pignolo/worktrees/` y `.pignolo/tmp/` son de pignolo.
+- [ ] **Checklist manual** `tests/manual/hito-3b.md` (sesión real, Windows nativo; sin datos del proyecto del autor en el repo):
+  1. En un repo de prueba con `project.md` commiteado, un pedido de una línea: ¿Claude invoca `pignolo:entry` sin que se lo pidan, y `entry` elige `trivial`? Anotar si hubo que nombrarla.
+  2. `trivial` completo: commit con trailers, `run.json` borrado al final, `git status` limpio (sin `.pignolo/.gitignore` a la vista).
+  3. `daily` completo: worktree en `.pignolo/worktrees/`, `test-writer` sin Bash, rojo mostrado por el orquestador, `implementer` que corre `gate.js --task`, `run.js status` después de cada escritor, merge con pregunta `irreversible`.
+  4. Un `implementer` que dice `DONE` sin sello: el handback-gate lo frena, y el orquestador lo trata como `BLOCKED` por `run.js status` aunque el informe diga `DONE`.
+  5. Un subagente que intenta `node .../scripts/run.js end`: la guardia lo niega (regla `pignolo-run`).
+  6. Riesgo `medium`: dos lentes en paralelo, sus bloques `json` copiados tal cual, ledger guardado en `~/.pignolo/reviews/`.
+  7. Riesgo `high` con perfil `max`: 3 refuters, repro, un fixer y Judgment Day; resumen con los refutados listados.
+  8. Cada mensaje al humano de los puntos 1 a 7 en dos capas, un paso por mensaje y con categoría. Anotar los que fallen.
+  9. Abandonar un `daily` a mitad: la skill corre `run.js end` y `Explore` vuelve a pasar.
+- [ ] **Suite y revisión final:** `npm run test:quiet`; una revisión final opus de `main..core/hito-3b` con el Review Focus; una pasada de arreglos; una confirmación acotada.
+- [ ] **Evals — solo con la decisión del autor (abajo).** Con el tope que elija, en este orden y deteniéndose al primer problema:
+  1. Generar: `node tests/evals/review-cases.js --out tests/evals/generated/opus`.
+  2. **Sonda** (1 caso, 1 corrida, tope 1 USD): `claude plugin eval . --eval-dir tests/evals/generated/opus --case review-reliability-defect --runs 1 --ablation none --scaffold --trust-plugin --max-cost-usd 1 --json tests/evals/generated/probe.json`. Abrir el `trace_path` del resultado y contar las líneas con `"parent_tool_use_id":"toolu`: si son 0, el stream no trae al subagente, los graders no pueden aprobar y se frena todo (`BLOCKED`, sin más gasto). Verificar también que la sesión principal corrió en sonnet (`modelUsage`).
+  3. **Calibración** (1 corrida por caso de revisor, 13 casos, tope 6 USD, incluida la sonda): `claude plugin eval . --eval-dir tests/evals/generated/opus --tag review --tag judges --tag refuter --runs 1 --ablation none --scaffold --trust-plugin --max-cost-usd 6 -j 2` (*hipótesis:* `--tag` repetido suma casos; si los intersecta, una corrida por etiqueta con el mismo tope total). Leer cada grader que falló en el trace antes de culpar al agente (un grader mal escrito se arregla en `review-cases.js` y en su test determinista). El caso del fixer, 1 corrida desde WSL2 con `--tag fixer --allow-tools Bash Edit Write`.
+  4. **Corrida completa** (5 por caso) y **rama sonnet** (`--reviewer-model sonnet --out tests/evals/generated/sonnet`), solo si el autor las aprobó, con el tope que haya fijado y el costo por corrida medido en la calibración.
+  5. Resultados en `tests/evals/RESULTS.md` (sección nueva: comando, casos, pasan/5, costo, modelo y effort), sin versionar `results/`.
+- [ ] **Estado:** actualizar `docs/STATE.md` (qué quedó, resultado de las evals o su espera, siguiente: hito 4).
+- [ ] **Unión y push:** unir a `main` en local; el push, como todo push del repo, solo con el OK del autor.
+
+---
+
+## Estimación de costo de las evals
+
+*Hipótesis — sin medir en estas evals.* Tokens por corrida estimados a partir de la forma de cada caso (brief de ~2,5 k tokens, 1 a 3 archivos de ~15 líneas, 4 a 6 turnos del revisor; el fixer con ~12 turnos porque corre tests) y contrastados con lo medido en el hito 2 (explorer 0,11 USD por corrida, researcher opus 0,19). Precios de la API por millón de tokens (tabla de modelos de la skill `claude-api`, cacheada el 2026-09-25): **Opus 5.5** entrada 4, salida 20, lectura de caché 0,20; **Sonnet 5.5** entrada 2, salida 10, lectura de caché 0,20; escritura de caché = 1,25 × entrada.
+
+| Parte de una corrida | Tokens (hipótesis) | Cálculo | USD |
+|---|---|---|---|
+| Sesión principal (sonnet): escritura de caché | 20 k | 20 k × 2,50 / M | 0,050 |
+| Sesión principal: lecturas de caché y salida | 42 k lectura, 0,6 k salida | 42 k × 0,20 / M + 0,6 k × 10 / M | 0,014 |
+| **Sesión principal** | | | **0,064** |
+| Revisor opus `high`: escritura de caché | 16 k | 16 k × 5,00 / M | 0,080 |
+| Revisor opus: lecturas de caché | 60 k | 60 k × 0,20 / M | 0,012 |
+| Revisor opus: salida con razonamiento | 6 k | 6 k × 20 / M | 0,120 |
+| **Caso de revisor en opus** | | 0,064 + 0,212 | **≈ 0,28** |
+| **Caso de revisor en sonnet** | mismos tokens | 0,064 + (16 k × 2,50 + 60 k × 0,20 + 6 k × 10) / M | **≈ 0,18** |
+| **Caso del fixer** (sonnet, `high`) | 25 k escritura, 200 k lectura, 8 k salida | 0,064 + (25 k × 2,50 + 200 k × 0,20 + 8 k × 10) / M | **≈ 0,25** |
+
+| Corrida | Casos × corridas | Cálculo | Estimado | Rango (× 0,6 a × 1,5) | Tope propuesto |
+|---|---|---|---|---|---|
+| **Calibración** (incluye la sonda) | 13 revisores × 1 + fixer × 1 | 13 × 0,28 + 0,25 | **≈ 3,9 USD** | 2,3 a 5,8 | **6 USD** |
+| **Completa en opus** | 13 × 5 + fixer × 5 | 65 × 0,28 + 5 × 0,25 | **≈ 19,5 USD** | 12 a 29 | **30 USD** |
+| Rama sonnet (§7) | 13 × 5 | 65 × 0,18 | ≈ 11,7 USD | 7 a 18 | 18 USD |
+| Todo | | 3,9 + 19,5 + 11,7 | ≈ 35 USD | 21 a 53 | 54 USD |
+
+Lo que más mueve la cifra es la salida con razonamiento del revisor en `high` (43 % del caso en opus); la calibración la mide. El caso del fixer necesita WSL2: si no está, queda fuera y se descuentan 0,25 (calibración) o 1,25 USD (completa).
+
+## Decisión pendiente del autor
+
+**D-3b. Costo de las evals `agents` del hito 3** (§15; el costo es reservado, §4.1.3).
+
+1. **Solo la calibración ahora** (tope 6 USD, ~3,9 estimado): sonda + 1 corrida por caso. Valida los graders y la hipótesis del trace y da el costo real por corrida; la corrida completa y la rama sonnet se deciden después con esa cifra. Reversible: no compromete nada más.
+2. **Calibración + corrida completa en opus** (tope 36 USD, ~23 estimado): da el veredicto de §0 d (≥ 4 de 5 por caso) para lentes, refuter, jueces y fixer en este hito.
+3. **Todo, con la rama sonnet** (tope 54 USD, ~35 estimado): además decide si `economy` puede pasar los revisores a sonnet (§7).
+
+**Recomendación: 1.** La sonda frena el gasto en 1 USD si el trace no trae al subagente, y la calibración convierte esta tabla de hipótesis en una cifra medida antes de gastar el resto; lo que no aporte la corrida completa en este hito (los umbrales de §0 d se miden de nuevo en el hito 8) no se pierde por esperar.
