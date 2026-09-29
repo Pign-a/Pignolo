@@ -39,3 +39,23 @@ test('trivial: gate on-done, riesgo sobre el diff real, commit -F y cierre del f
     assert.match(text, re);
   }
 });
+
+// Revisión final 3b (1): trivial trabaja en <main>; con trabajo sin commitear del humano,
+// su compuerta, su riesgo y su commit lo mezclarían con el del humano.
+test('trivial: mira git status --porcelain en <main> antes de run.js start y, si no está limpio, no usa trivial', () => {
+  const { text } = readSkill('trivial');
+  const porcelain = text.search(/cd "<main>" && git status --porcelain/);
+  const start = text.search(/run\.js" start --flow trivial/);
+  assert.ok(porcelain >= 0 && porcelain < start, 'el chequeo va antes de abrir el flujo');
+  assert.match(text, /git status --porcelain[^\n]*prints anything[^\n]*do not use this lane[^\n]*pignolo:daily[^\n]*category `scope`/);
+});
+
+// Revisión final 3b (2): toda salida después de abrir el flujo lo cierra.
+test('trivial: cada parada después de run.js start cierra el flujo con run.js end, y hay un catch-all', () => {
+  const { text } = readSkill('trivial');
+  assert.match(text, /`FAIL`[^\n]*otherwise[^\n]*run\.js" end[^\n]*then stop/);
+  assert.match(text, /`NO_GATE` or `TREE_CHANGED`[^\n]*run\.js" end[^\n]*then stop/);
+  assert.match(text, /\nIf you stop after step 2 for any reason[^\n]*run `run\.js end`/);
+  const stops = text.split('\n').filter((l) => /\bstop\b/.test(l) && !/run\.js" start|git status --porcelain|If you stop after step 2/.test(l));
+  for (const l of stops) assert.match(l, /run\.js" end/, `parada sin run.js end: ${l}`);
+});

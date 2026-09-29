@@ -40,3 +40,15 @@ test('daily: status tras cada escritor, re-registro, renew, barras normales, mod
     assert.match(text, re);
   }
 });
+
+// Revisión final 3b (4): con type docs|script no hay tarea ni <T> al llegar al paso 9.
+test('daily: si se saltearon los pasos 5 a 8, el implementer se registra con --worktree y --base y sin --test-ref', () => {
+  const { text } = readSkill('daily');
+  assert.match(text, /If you skipped steps 5 to 8[^\n]*run\.js" task --id <slug> --worktree "<wt>" --base <base> --file <source path>[^\n]*--agent pignolo:implementer --cwd "<main>"`[^\n]*without `--test-ref`/);
+});
+
+// Revisión final 3b (16): live-check (§9) no está construido; el merge lo avisa.
+test('daily: el paso del merge avisa que live-check no corrió si project.md lo declara', () => {
+  const { text } = readSkill('daily');
+  assert.match(text, /\*\*Merge\*\*[^\n]*gates\.live-check[^\n]*not run/);
+});
