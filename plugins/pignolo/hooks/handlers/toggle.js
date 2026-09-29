@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { flagPaths } = require('../../lib/disabled');
+const { ensureIgnored } = require('../../lib/pignolo-gitignore');
 
 function kind(input) {
   if (input.hook_event_name !== 'UserPromptExpansion') return null;
@@ -28,10 +29,7 @@ exports.run = (input, ctx = {}) => {
   if (k === 'off') {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, `${new Date().toISOString()}\n`);
-    if (scope === 'project') {
-      const gi = path.join(cwd, '.pignolo', '.gitignore');
-      if (!fs.existsSync(gi)) fs.writeFileSync(gi, '.disabled\n');
-    }
+    if (scope === 'project') ensureIgnored(path.dirname(path.dirname(file)), ['.disabled']);
   } else {
     fs.rmSync(file, { force: true });
   }
