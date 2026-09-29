@@ -1,13 +1,13 @@
 # Estado de pignolo
 
-_Última actualización: 2026-09-27._ Leer esto primero al retomar.
+_Última actualización: 2026-09-29._ Leer esto primero al retomar.
 
 ## Dónde estamos
 
 - **Diseño:** spec v1 aprobado (`docs/specs/2026-09-26-pignolo-v1-design.md`), revisado en dos rondas por IA; tarjeta de alcance aprobada por el autor (`docs/specs/2026-09-26-pignolo-v1-scope-card.md`).
 - **Plan del hito 1** (`docs/plans/2026-09-26-hito-1-esqueleto-y-guardia.md`): 9 tareas. La Task 9 (`rules/core.md` + test de tamaño) se agregó el 2026-09-27 (`f5648ed`, **commit local sin pushear**).
 - **Auditoría independiente ronda 2** (`docs/audits/2026-09-27-auditoria-plan-hito-1.md`): `REQUEST_CHANGES`. El replay coincide con el plan en las 9 tareas, pero la guardia deja pasar 45 de 119 comandos destructivos. El más grave (F1) borra `.git` y con él las instantáneas, que hoy viven dentro del repo.
-- **El plugin nunca corrió dentro de Claude Code**: todo lo probado son módulos y el launcher como subproceso. Los puntos 7 y 8 del checklist manual (payload real de `UserPromptExpansion` para una skill de plugin; si `systemMessage` se muestra) siguen sin verificar.
+- **El plugin ya corrió dentro de Claude Code** (2026-09-29): primera corrida del checklist manual en `tests/manual/hito-1-resultados.md`. La guardia, el toggle, las instantáneas en la sombra (el `session_id` coincide, también tras `/clear`) y los `systemMessage` funcionan en vivo. Hubo un solo bug, el BOM de PowerShell 5.1 en el launcher, arreglado en `45d1e99`. Falta una segunda corrida para los puntos 1, 3, 12 (canario en vivo), 15 (medir la siembra) y `/resume`.
 
 ## Investigaciones terminadas (2026-09-27)
 
@@ -109,7 +109,7 @@ _Última actualización: 2026-09-27._ Leer esto primero al retomar.
 
 1. ~~Rehacer el diseño de la guardia y las instantáneas en el spec~~ (hecho el 2026-09-27, `19bc9f3`: §0b, §1.9, §3.3, §8.3, §8.4, §11.6, §15, §18). Falta reescribir las tareas afectadas del plan (3a, 3b, 4, 5, 7 y probablemente 2 por el plazo interno del launcher). Un agente opus corrige F1–F12 en una copia de trabajo (partiendo de la réplica de `local/audits/2026-09-27-auditoria-2/repo/`), con rojo y verde demostrados, y recién ahí pasa el código al plan.
 2. Tercera auditoría independiente del plan corregido.
-3. Ejecutar el hito 1 y correr el checklist manual `tests/manual/hito-1.md` en una sesión real.
+3. ~~Ejecutar el hito 1 y correr el checklist manual `tests/manual/hito-1.md` en una sesión real~~ (hecho el 2026-09-29; resultados en `tests/manual/hito-1-resultados.md`, queda una segunda corrida corta).
 
 ## Material fuera de git (`local/`, en `.gitignore`)
 
