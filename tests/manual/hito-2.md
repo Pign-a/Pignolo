@@ -2,7 +2,7 @@
 
 Correr en una sesión INTERACTIVA de Claude Code, en Windows nativo, con el plugin 0.2.0 instalado (`/plugin marketplace update pignolo`). Registrar fecha, versión de Claude Code y resultado de cada punto (los resultados van en `tests/manual/hito-2-resultados.md`).
 
-1. [ ] `/pignolo:setup` en una sesión real: la skill corre `check` y muestra la lista (node, git, `gh`, PowerShell, superpowers, agent teams), pregunta el perfil, escribe `~/.pignolo/config.json` con el perfil elegido y, sin un sí explícito, no toca ningún `settings.json`. Con el sí, existe un `settings.json.pignolo-bak-<fecha>` y las reglas previas siguen todas en su lugar.
+1. [ ] `/pignolo:setup` en una sesión real: la skill corre `check` y muestra la lista (node, git, `gh`, PowerShell, superpowers, agent teams), pregunta el perfil, escribe `~/.pignolo/config.json` con el perfil elegido y, sin un sí explícito, no toca ningún `settings.json`. Con el sí, si el archivo ya existía queda un `settings.json.pignolo-bak-<fecha>` y las reglas previas siguen todas en su lugar; si no existía, se crea sin respaldo.
 2. [ ] `/pignolo:setup` con `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1` en el entorno (o en `env` de `settings.json`): el chequeo avisa que el perfil no se va a aplicar y nombra la variable.
 3. [ ] En un repo SIN `.pignolo/project.md`: pedirle a Claude "usá un agente Explore para buscar X". El despacho pasa (el hook no niega fuera de un proyecto activo).
 4. [ ] En un repo CON `.pignolo/project.md` (creado a mano): el mismo pedido se niega con el mensaje que nombra `pignolo:explorer` como alternativa. Repetir con `general-purpose`, con `fork` y con un despacho sin `subagent_type`: los tres se niegan.

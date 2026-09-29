@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-09-29
+
+- `/pignolo:setup`: los conteos de reglas salen del JSON del script (en la primera corrida real el modelo contó 97 en vez de 96) y el resumen nombra la ruta de la config y cómo se resolvió cada conflicto de reglas. Hallado en el checklist manual del hito 2.
+
 ## 0.2.0 — 2026-09-29
 
 - Hito 2: los 19 agentes (`agents/`), la tabla de roles y los perfiles de modelo (`max`, `balanced`, `economy`) con la config de usuario `~/.pignolo/config.json`, `/pignolo:setup` y el hook `PreToolUse` sobre `Agent`. Motivo: sin agentes propios, la delegación caía en `Explore`/`general-purpose`, que no llevan las herramientas ni el modelo del rol.
