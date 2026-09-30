@@ -97,6 +97,13 @@ export function manifestSha(projectRoot, approvedPath) {
 
 export const APPROVED_PATH = /^design\/approved\/[a-z0-9][a-z0-9-]{0,63}$/;
 
+// sha256 of the manifest that DESIGN.md registers for approvedPath (the last entry wins), or null.
+export function registeredManifestSha(designText, approvedPath) {
+  const escaped = approvedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const entries = [...String(designText).matchAll(new RegExp(`\`${escaped}/\`[^\\n]*?sha256 \`([0-9a-f]{64})\``, 'g'))];
+  return entries.length ? entries[entries.length - 1][1] : null;
+}
+
 export function verifyApproved({ projectRoot, approvedPath }) {
   const problems = [];
   const blocked = () => ({ status: 'BLOCKED', problems });
@@ -109,14 +116,11 @@ export function verifyApproved({ projectRoot, approvedPath }) {
     problems.push({ problem: 'no-design-md' });
     return blocked();
   }
-  const text = fs.readFileSync(designFile, 'utf8');
-  const escaped = approvedPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const entries = [...text.matchAll(new RegExp(`\`${escaped}/\`[^\\n]*?sha256 \`([0-9a-f]{64})\``, 'g'))];
-  if (!entries.length) {
+  const expected = registeredManifestSha(fs.readFileSync(designFile, 'utf8'), approvedPath);
+  if (!expected) {
     problems.push({ problem: 'no-entry' });
     return blocked();
   }
-  const expected = entries[entries.length - 1][1];
   const dir = path.join(projectRoot, ...approvedPath.split('/'));
   let manifest;
   try {

@@ -2,7 +2,10 @@
 //
 // node <root>/scripts/ui-check.mjs [--project <repo root>] --run <folder in .pignolo-ui/>
 //   (--files <path>)... [--files-from <list.json>] [--design <DESIGN.md>] [--base <ref>]
-//   [--dom <file>]... [--gate]
+//   [--dom <file>]... [--url <development URL>]... [--gate]
+//
+// --url (at most 20, one origin, loopback only: nothing remote at run time) feeds the static
+// SEO rules with what the development server returns; it needs --design (spec §5.4, A-06).
 //
 // --project defaults to `git rev-parse --show-toplevel` from the cwd, or the cwd without git.
 // Writes <run>/ui-check.json ({ catalogVersion, inputs, base, entries }) and prints
@@ -17,15 +20,17 @@ import { runCheck } from '../lib/ui-check.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { BaseRefError, assertRef } from '../lib/scope.mjs';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 
 class UsageError extends Error {}
 
-const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom']);
-const REPEATED = new Set(['files', 'dom']);
+const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url']);
+const REPEATED = new Set(['files', 'dom', 'url']);
+const MAX_URLS = 20;
 const FLAGS = new Set(['gate']);
 
 function parseArgs(argv) {
-  const opts = { files: [], dom: [] };
+  const opts = { files: [], dom: [], url: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
@@ -98,6 +103,16 @@ function readFilesFrom(file) {
   return list;
 }
 
+function checkUrls(urls, design) {
+  if (!urls.length) return [];
+  if (!design) throw new UsageError('--url necesita --design: el SEO estático solo corre si DESIGN.md declara web.public');
+  if (urls.length > MAX_URLS) throw new UsageError(`--url admite como mucho ${MAX_URLS} direcciones`);
+  for (const u of urls) if (!isLoopbackUrl(u)) throw new UsageError(`--url solo acepta direcciones locales (localhost, 127.0.0.1, ::1): ${u}`);
+  const origin = new URL(urls[0]).origin;
+  for (const u of urls) if (new URL(u).origin !== origin) throw new UsageError(`todas las --url deben tener el mismo origen (${origin}): ${u}`);
+  return urls;
+}
+
 export async function main(argv, { cwd = process.cwd(), check = runCheck } = {}) {
   try {
     const opts = parseArgs(argv);
@@ -115,11 +130,12 @@ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {})
     const files = listed.map((f) => inputFile(project, path.resolve(cwd, f), '--files'));
     const dom = opts.dom.map((f) => inputFile(project, path.resolve(cwd, f), '--dom'));
     const design = opts.design !== undefined ? inputFile(project, path.resolve(cwd, opts.design), '--design') : null;
+    const urls = checkUrls(opts.url, design);
     if (!files.length && !dom.length && !design) throw new UsageError('falta --files, --dom o --design: no hay nada que chequear');
 
     const base = opts.base ?? null;
     if (base !== null) assertRef(project, base); // an invalid ref is a usage error, before any rule runs
-    const result = await check({ project, files, design, base, dom });
+    const result = await check({ project, files, design, base, dom, urls });
 
     ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
     fs.mkdirSync(runDir, { recursive: true });
