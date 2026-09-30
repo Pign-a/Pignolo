@@ -6,7 +6,7 @@ Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
 
 ## Requisitos
 
-- Node ≥ 20 (sin dependencias npm).
+- Node ≥ 22 (sin dependencias npm).
 - git ≥ 2.31 (el repo sombra usa `rev-parse --path-format=absolute` y `fetch --no-write-fetch-head`).
 - En Windows, PowerShell (`powershell.exe`) para leer comandos de PowerShell por su AST; sin él, esos comandos quedan como no verificables.
 

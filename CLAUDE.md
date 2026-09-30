@@ -17,7 +17,7 @@ Plugin de Claude Code con una metodología de desarrollo con agentes: autonomía
 - Nombres de elementos del plugin en inglés (`review`, `project.md`, `implementer`...). Texto interno de skills, agentes y reglas en inglés. Mensajes al autor, commits y docs en español.
 - Commits en español, Conventional Commits.
 - Todo cambio publicado de un plugin sube su `version` en `plugin.json` y suma su entrada al CHANGELOG: sin eso, `/plugin update` no lo toma.
-- Node ≥ 20, sin dependencias npm; tests con `node:test` vía `npm test` (no `node --test tests/`).
+- Node ≥ 22, sin dependencias npm; tests con `node:test` vía `npm test` (no `node --test tests/`).
 - Método liviano (decisión del autor, 2026-09-30, para gastar menos y avanzar más rápido): planes en tarjetas (archivos, interfaces, casos de test literales), sin construir el hito en una copia al escribir el plan; el rojo de cada test nuevo se demuestra al ejecutar, rompiendo lo que protege. Planes e implementación en sonnet; una sola revisión opus por hito al final, con una pasada de arreglos; auditoría previa del plan solo en hitos de riesgo (guardia, borrados, respaldos). Uno o dos frentes a la vez.
 - Revisores y auditores siempre en opus.
 - Decisiones del autor (el agente nunca las toma solo): identidad y alcance del producto, costos, dependencias, push, publicar, borrar, cambiar un contrato, temas legales. Lo técnico lo decide el agente y lo deja registrado.
