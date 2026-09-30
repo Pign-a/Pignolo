@@ -42,6 +42,20 @@ test('takes a WIP snapshot before an allowed shell command in a dirty repo', () 
   assert.strictEqual(wipRefs(repo).length, 1);
 });
 
+// Camino completo por el launcher con el plazo real de 2 s. Bajo carga la
+// instantánea puede no entrar y se saltea a propósito (spec §11.6): lo que no
+// depende de la carga es que el comando pasa y que nunca queda sin respaldo en
+// silencio.
+test('through the launcher, an allowed command in a dirty repo gets a snapshot or a systemMessage saying it failed', () => {
+  const repo = makeRepo();
+  fs.writeFileSync(path.join(repo, 'a.txt'), 'sin commitear\n');
+  const r = runLauncher('guard', bash('npm test', repo));
+  assert.strictEqual(r.status, 0, r.stderr);
+  const [ref] = wipRefs(repo);
+  if (ref) assert.strictEqual(git(['show', `${ref}:a.txt`], repo), 'sin commitear');
+  else assert.match(JSON.parse(r.stdout).systemMessage, /la instantánea WIP falló \(.+\); este comando corre sin respaldo previo/);
+});
+
 test('a blocked command takes no snapshot (H7)', () => {
   let calls = 0;
   const r = guard.run(bash('git reset --hard', makeRepo()), { env: {}, snapshot: () => { calls += 1; } });

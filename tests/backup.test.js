@@ -41,7 +41,7 @@ function makeDirty(repo) {
 
 const dirtyRepo = () => makeDirty(cleanRepo());
 
-// El agente pide el comando: pasa por la guardia real (launcher), que lo deja
+// El agente pide el comando: pasa por el handler real de la guardia (runGuard), que lo deja
 // pasar y toma la instantánea; después el comando corre y destruye.
 function runIndirectDestroyer(repo, home) {
   const r = runGuard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'node limpiar.js' }, cwd: repo, session_id: SESSION }, { PIGNOLO_HOME: home });
