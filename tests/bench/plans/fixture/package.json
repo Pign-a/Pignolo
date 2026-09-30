@@ -1,0 +1,8 @@
+{
+  "name": "fixture-shop",
+  "private": true,
+  "scripts": {
+    "test": "node --test \"tests/**/*.spec.js\"",
+    "lint": "node scripts/lint.js"
+  }
+}

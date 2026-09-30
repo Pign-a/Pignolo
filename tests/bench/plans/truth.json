@@ -1,0 +1,447 @@
+{
+  "real": [
+    {
+      "id": "r01",
+      "severity": "CRITICAL",
+      "tasks": [
+        "5"
+      ],
+      "keywords": [
+        "holdout.js run",
+        "cat",
+        "drop"
+      ],
+      "summary": "un implementer lee el holdout por `holdout.js run -- cat`, `list` o `drop`"
+    },
+    {
+      "id": "r02",
+      "severity": "MAJOR",
+      "tasks": [
+        "5"
+      ],
+      "keywords": [
+        "canario",
+        "CANARIES",
+        "PIGNOLO_HOME"
+      ],
+      "summary": "el canario nuevo rompe la suite y alarma con un PIGNOLO_HOME propio"
+    },
+    {
+      "id": "r03",
+      "severity": "MAJOR",
+      "tasks": [
+        "4"
+      ],
+      "keywords": [
+        "shell: false",
+        "npm",
+        "npx",
+        "ENOENT",
+        ".cmd",
+        "shim"
+      ],
+      "summary": "sin shell no se pueden lanzar npm/npx en Windows"
+    },
+    {
+      "id": "r04",
+      "severity": "MAJOR",
+      "tasks": [
+        "4"
+      ],
+      "keywords": [
+        "candado",
+        "sabotage.json",
+        "session-start",
+        "lock",
+        "not ignored",
+        "untracked"
+      ],
+      "summary": "el candado ensucia el worktree de tarea y SessionStart no lo ve"
+    },
+    {
+      "id": "r05",
+      "severity": "MAJOR",
+      "tasks": [
+        "4"
+      ],
+      "keywords": [
+        "verde previo",
+        "baseline",
+        "sin verde",
+        "already fail",
+        "green before",
+        "already red"
+      ],
+      "summary": "rojo sin verde previo"
+    },
+    {
+      "id": "r06",
+      "severity": "MAJOR",
+      "tasks": [
+        "4",
+        "7"
+      ],
+      "keywords": [
+        "spawnSync",
+        "child.kill",
+        "nieto",
+        "event loop",
+        "grandchild",
+        "process tree"
+      ],
+      "summary": "señales con spawnSync; child.kill deja vivo al nieto"
+    },
+    {
+      "id": "r07",
+      "severity": "MAJOR",
+      "tasks": [
+        "3"
+      ],
+      "keywords": [
+        "testRef",
+        "test-writer",
+        "weakened",
+        "test-writer commit",
+        "weakening"
+      ],
+      "summary": "los debilitamientos del test-writer quedan dentro del testRef"
+    },
+    {
+      "id": "r08",
+      "severity": "MAJOR",
+      "tasks": [
+        "3"
+      ],
+      "keywords": [
+        "pre-merge",
+        "baseRef",
+        "sin commitear",
+        "HEAD",
+        "committed",
+        "merge-base"
+      ],
+      "summary": "la mutación y weakened no corren en pre-merge sin tarea sobre código commiteado"
+    },
+    {
+      "id": "r09",
+      "severity": "MAJOR",
+      "tasks": [
+        "6"
+      ],
+      "keywords": [
+        "protect-paths",
+        "holdout",
+        "guardOff",
+        "hooksOff",
+        "/pignolo:off",
+        "worktree"
+      ],
+      "summary": "protect-paths choca con el holdout, el cwd del checkout principal y el interruptor"
+    },
+    {
+      "id": "r10",
+      "severity": "MAJOR",
+      "tasks": [
+        "5"
+      ],
+      "keywords": [
+        "siempre activo",
+        "private-reads",
+        "decisión",
+        "always active",
+        "main thread",
+        "contract"
+      ],
+      "summary": "private-reads siempre activo era decisión del autor"
+    },
+    {
+      "id": "r11",
+      "severity": "MINOR",
+      "tasks": [
+        "1"
+      ],
+      "keywords": [
+        "fit(",
+        "process.exit",
+        "falsos positivos",
+        "word boundary",
+        "false positive"
+      ],
+      "summary": "palabras clave sin límite dan falsos positivos en esta suite"
+    },
+    {
+      "id": "r12",
+      "severity": "MINOR",
+      "tasks": [
+        "4"
+      ],
+      "keywords": [
+        "--numstat",
+        "EPERM",
+        "pid",
+        "apply --check",
+        "pid reuse"
+      ],
+      "summary": "--numstat no prueba que el parche aplique; EPERM es vivo; reutilización de pid"
+    },
+    {
+      "id": "r13",
+      "severity": "MINOR",
+      "tasks": [
+        "2",
+        "3",
+        "6",
+        "7"
+      ],
+      "keywords": [
+        "no puede fallar",
+        "test-cannot-fail",
+        "sin rojo",
+        "cannot fail",
+        "can't fail",
+        "never runs",
+        "does not throw",
+        "warning"
+      ],
+      "summary": "tests que no pueden fallar"
+    },
+    {
+      "id": "r14",
+      "severity": "MINOR",
+      "tasks": [
+        "5",
+        "4",
+        "3"
+      ],
+      "keywords": [
+        "Grep",
+        "pattern",
+        "Glob",
+        "glob parameter",
+        ".."
+      ],
+      "summary": "Grep.pattern no es ruta, .. en Glob, clean mezclado, dependencias del holdout, semilla, repetición"
+    }
+  ],
+  "p1": [
+    {
+      "id": "p1-missing-symbol",
+      "type": "missing-symbol",
+      "tasks": [
+        "T1"
+      ],
+      "keywords": [
+        "roundCents"
+      ],
+      "summary": "T1 consume roundCents de lib/money.js y no existe"
+    },
+    {
+      "id": "p1-wrong-signature",
+      "type": "wrong-signature",
+      "tasks": [
+        "T2"
+      ],
+      "keywords": [
+        "applyDiscount",
+        "cap"
+      ],
+      "summary": "T2 llama applyDiscount con un parámetro cap que no recibe"
+    },
+    {
+      "id": "p1-test-cannot-fail",
+      "type": "test-cannot-fail",
+      "tasks": [
+        "T2"
+      ],
+      "keywords": [
+        "tests/coupon.spec.js",
+        "percent: 0"
+      ],
+      "summary": "el test de cupones solo prueba applyDiscount, que ya pasa"
+    },
+    {
+      "id": "p1-contradiction",
+      "type": "contradiction",
+      "tasks": [
+        "T2",
+        "T3"
+      ],
+      "keywords": [
+        "coupons.json",
+        "coupons.csv"
+      ],
+      "summary": "T2 guarda los cupones en JSON y T3 los lee de un CSV"
+    },
+    {
+      "id": "p1-false-platform-assumption",
+      "type": "false-platform-assumption",
+      "tasks": [
+        "T3"
+      ],
+      "keywords": [
+        "chmod",
+        "./scripts/report.js"
+      ],
+      "summary": "T3 supone permisos de ejecución y shebang (POSIX); el autor usa Windows"
+    },
+    {
+      "id": "p1-broken-command",
+      "type": "broken-command",
+      "tasks": [
+        "T3"
+      ],
+      "keywords": [
+        "npm run report"
+      ],
+      "summary": "package.json no tiene el script report"
+    }
+  ],
+  "p2": [
+    {
+      "id": "p2-missing-symbol",
+      "type": "missing-symbol",
+      "tasks": [
+        "T1"
+      ],
+      "keywords": [
+        "ensureDir"
+      ],
+      "summary": "T1 consume ensureDir de lib/store.js y no existe"
+    },
+    {
+      "id": "p2-wrong-signature",
+      "type": "wrong-signature",
+      "tasks": [
+        "T1"
+      ],
+      "keywords": [
+        "load",
+        "path"
+      ],
+      "summary": "T1 llama load({ path }) y recibe { file }"
+    },
+    {
+      "id": "p2-test-cannot-fail",
+      "type": "test-cannot-fail",
+      "tasks": [
+        "T2"
+      ],
+      "keywords": [
+        "tests/csv.spec.js",
+        "summarize"
+      ],
+      "summary": "el test de csv solo comprueba que summarize existe, y ya pasa"
+    },
+    {
+      "id": "p2-contradiction",
+      "type": "contradiction",
+      "tasks": [
+        "T1",
+        "T3"
+      ],
+      "keywords": [
+        "data/cart.json",
+        "var/cart.json"
+      ],
+      "summary": "T1 guarda en data/cart.json y T3 lee var/cart.json"
+    },
+    {
+      "id": "p2-false-platform-assumption",
+      "type": "false-platform-assumption",
+      "tasks": [
+        "T1"
+      ],
+      "keywords": [
+        "/tmp/cart.json",
+        "rm -f"
+      ],
+      "summary": "el test usa /tmp y rm -f (no existen en Windows)"
+    },
+    {
+      "id": "p2-broken-command",
+      "type": "broken-command",
+      "tasks": [
+        "T3"
+      ],
+      "keywords": [
+        "export-csv.js"
+      ],
+      "summary": "el plan crea scripts/export.js y corre scripts/export-csv.js"
+    }
+  ],
+  "p3": [
+    {
+      "id": "p3-missing-symbol",
+      "type": "missing-symbol",
+      "tasks": [
+        "T1"
+      ],
+      "keywords": [
+        "normalizeSku",
+        "lib/sku.js"
+      ],
+      "summary": "T1 consume normalizeSku de lib/sku.js y no existen"
+    },
+    {
+      "id": "p3-wrong-signature",
+      "type": "wrong-signature",
+      "tasks": [
+        "T2"
+      ],
+      "keywords": [
+        "formatAmount",
+        "amount"
+      ],
+      "summary": "T2 llama formatAmount({ amount, currency }) y recibe { cents, currency }"
+    },
+    {
+      "id": "p3-test-cannot-fail",
+      "type": "test-cannot-fail",
+      "tasks": [
+        "T2"
+      ],
+      "keywords": [
+        "tests/cart-validate.spec.js",
+        "addItem suma un item válido"
+      ],
+      "summary": "el test de T2 prueba un item válido, que ya pasa sin validación"
+    },
+    {
+      "id": "p3-contradiction",
+      "type": "contradiction",
+      "tasks": [
+        "T1",
+        "T2"
+      ],
+      "keywords": [
+        "RangeError",
+        "ok: false"
+      ],
+      "summary": "T1 lanza RangeError y T2 supone que validateItem devuelve { ok: false }"
+    },
+    {
+      "id": "p3-false-platform-assumption",
+      "type": "false-platform-assumption",
+      "tasks": [
+        "T3"
+      ],
+      "keywords": [
+        "rm -rf",
+        ".cache"
+      ],
+      "summary": "T3 limpia con rm -rf (shell POSIX)"
+    },
+    {
+      "id": "p3-broken-command",
+      "type": "broken-command",
+      "tasks": [
+        "T3"
+      ],
+      "keywords": [
+        "test:unit"
+      ],
+      "summary": "package.json no tiene el script test:unit"
+    }
+  ],
+  "clean": []
+}
