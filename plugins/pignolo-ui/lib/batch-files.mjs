@@ -9,13 +9,20 @@
 //   letters differ from the disk only in case (case-mismatch), a declared state that does not
 //   match the disk, an expected file with uncommitted changes, more than 5 files, or a batch
 //   folder that already has files.json. Copies each existing file to <batch>/copies/<n>, and
-//   records the paths git ignores (`ignored`, folders collapsed, nothing hashed).
+//   records the paths git ignores (`ignored`, folders collapsed, nothing hashed) with the size
+//   and mtime of each ignored file (`ignoredStats`; a collapsed folder only has to exist).
 // verifyBatch({ project, batch, gitTimeoutMs })   -> { ok, unexpected, files, lines, overLineLimit }
 //   Delta of the current status against the initial one: every new or changed entry outside
 //   the expected list is `unexpected`; an untracked one that existed before save (ignored then,
 //   in HEAD then, or still in the index) carries `existedBefore: true`. Records what the batch
 //   left (sha256 of each file) in files.json (`after`), which restore needs. `problems` lists
 //   expected files now reached through a link that leaves the project (not-in-project).
+//   `warnings` lists every source that moved (source-moved): an ignored file that is gone or has
+//   another size or mtime, an ignored folder that is gone, or an entry of the initial state that
+//   is gone or has another sha256; while there is one, restore deletes no unexpected untracked
+//   file (it may be the only copy of what moved). An untracked file whose sha256 is the one of
+//   an initial entry also existed before (a copy). `note`: restore treats as the agent's
+//   anything the user creates between save and restore.
 // restoreBatch({ project, batch, gitTimeoutMs })  -> { ok, restored, deleted, blocked }
 //   Recomputes the delta first: a change that verify did not record is BLOCKED (not-verified).
 //   Nothing is written or deleted through a link that leaves the project (not-in-project).
@@ -24,8 +31,10 @@
 //   checked by sha256. Created files (expected new or unexpected untracked): deleted only if
 //   their sha256 is the one verify recorded; otherwise BLOCKED and left alone; a path still
 //   there whose sha256 cannot be read is BLOCKED (unreadable). An untracked file that existed
-//   before save is BLOCKED (existed-before-the-batch), never deleted. Anything else
-//   unexpected: BLOCKED (unexpectedAction, decision D-2b-1).
+//   before save is BLOCKED (existed-before-the-batch), never deleted. While a source moved
+//   (see verify), no unexpected untracked file is deleted: BLOCKED (source-moved). Anything else
+//   unexpected: BLOCKED (unexpectedAction, decision D-2b-1). `summary` says in one line exactly
+//   what was restored, deleted and left alone; `sourcesChanged` names the sources that moved.
 // Git runs with a deadline (GIT_TIMEOUT_MS); a failure or a timeout is a BatchError.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -125,9 +134,10 @@ function caseMismatch(project, rel) {
 // proof (verify recorded its sha256); the rest has no copy and git is only read, so it is
 // BLOCKED and the user is asked. The alternative (revert a tracked file that was clean with
 // `git checkout -- <file>`) changes only this function and the "git is only read" constraint.
-function unexpectedAction(u) {
+function unexpectedAction(u, sourceMoved) {
   if (u.code === '??' && u.existedBefore) return 'existed-before-the-batch';
-  return u.code === '??' && !u.wasDirty ? 'delete-if-ours' : 'block';
+  if (u.code === '??' && !u.wasDirty) return sourceMoved ? 'source-moved' : 'delete-if-ours';
+  return 'block';
 }
 
 // Paths git ignored at save (`--directory`: an ignored folder is one entry ending in '/').
@@ -135,6 +145,40 @@ function ignoredOf(project, timeoutMs) {
   return git(project, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory'], timeoutMs).split('\0').filter(Boolean);
 }
 const underIgnored = (ignored, p) => ignored.some((i) => (i.endsWith('/') ? p.startsWith(i) : p === i));
+
+// Size and mtime of each ignored file, without reading it; an ignored folder only has to exist.
+function ignoredStatsOf(project, ignored) {
+  return ignored.map((rel) => {
+    try {
+      const st = fs.lstatSync(path.join(project, ...rel.split('/').filter(Boolean)));
+      return rel.endsWith('/') ? { path: rel, dir: true } : { path: rel, size: st.size, mtimeMs: st.mtimeMs };
+    } catch {
+      return { path: rel, gone: true }; // vanished between ls-files and lstat
+    }
+  });
+}
+
+// Sources that moved since save: an ignored file gone or with another size or mtime, an ignored
+// folder gone, an initial entry gone or with another sha256. While one moved, an unexpected
+// untracked file may be its only copy (`mv`, or `cp` + `rm`), so restore deletes none. A
+// record without ignoredStats (older save) cannot tell: it counts as moved.
+function movedSources(project, record) {
+  if (!Array.isArray(record.ignoredStats)) return ['(files.json sin ignoredStats)'];
+  const expected = new Set(record.files.map((f) => f.path));
+  const moved = [];
+  for (const s of record.ignoredStats) {
+    if (s.gone || s.path.split('/')[0].toLowerCase() === '.pignolo-ui') continue; // the run folder changes on purpose
+    let st = null;
+    try { st = fs.lstatSync(path.join(project, ...s.path.split('/').filter(Boolean))); } catch { /* gone */ }
+    if (!st || (!s.dir && (st.size !== s.size || st.mtimeMs !== s.mtimeMs))) moved.push(s.path);
+  }
+  for (const b of record.initial) {
+    if (!expected.has(b.path) && fileSha(project, b.path) !== b.sha256) moved.push(b.path);
+  }
+  return moved;
+}
+
+export const TOUCH_NOTE = 'no toques el proyecto entre save y restore; lo que crees en ese intervalo se trata como del agente y restore lo borra';
 
 // Every path of a commit (only read when some untracked entry needs it).
 function treePaths(project, head, timeoutMs) {
@@ -188,7 +232,7 @@ export function saveBatch({ project, batch, expected, gitTimeoutMs = GIT_TIMEOUT
   let head = null;
   try { head = git(project, ['rev-parse', '--verify', '--quiet', 'HEAD'], gitTimeoutMs).trim() || null; } catch (e) { if (e.timeout) throw e; head = null; } // no commit yet
   const ignored = ignoredOf(project, gitTimeoutMs);
-  const record = { version: 1, head, files: recorded, initial, ignored, after: null };
+  const record = { version: 1, head, files: recorded, initial, ignored, ignoredStats: ignoredStatsOf(project, ignored), after: null };
   fs.writeFileSync(path.join(batch, RECORD), `${JSON.stringify(record, null, 2)}\n`, { flag: 'wx' });
   return { ok: true, problems: [], record };
 }
@@ -232,12 +276,14 @@ function deltaOf(project, record, timeoutMs) {
   // An untracked file restore could delete: did it exist before save? Ignored then (and no
   // longer), in HEAD then, or with another status entry now (`git rm --cached`: `D ` + `??`).
   // A record without `ignored` (older save) cannot tell: it counts as existing.
+  // A copy of an initial entry (same sha256) existed before too.
   const untracked = unexpected.filter((u) => u.code === '??' && !u.wasDirty);
   if (untracked.length) {
     const inHead = treePaths(project, record.head, timeoutMs);
     const otherEntry = new Set(current.filter((e) => e.code !== '??').flatMap((e) => (e.from ? [e.path, e.from] : [e.path])));
+    const initialShas = new Set(record.initial.map((b) => b.sha256).filter(Boolean));
     for (const u of untracked) {
-      if (!Array.isArray(record.ignored) || underIgnored(record.ignored, u.path) || inHead.has(u.path) || otherEntry.has(u.path)) u.existedBefore = true;
+      if (!Array.isArray(record.ignored) || underIgnored(record.ignored, u.path) || inHead.has(u.path) || otherEntry.has(u.path) || (u.sha256 && initialShas.has(u.sha256))) u.existedBefore = true;
     }
   }
   return unexpected;
@@ -252,9 +298,10 @@ export function verifyBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) {
   });
   const problems = record.files.flatMap((f) => { const link = linkProblem(project, f.path); return link ? [{ path: f.path, problem: link }] : []; });
   const lines = changedLines(project, record.head, record.files, gitTimeoutMs);
+  const warnings = movedSources(project, record).map((p) => ({ path: p, problem: 'source-moved' }));
   record.after = { files: Object.fromEntries(files.map((f) => [f.path, f.sha256])), unexpected };
   writeRecord(batch, record);
-  return { ok: unexpected.length === 0 && problems.length === 0, unexpected, problems, files, lines, overLineLimit: lines > MAX_LINES };
+  return { ok: unexpected.length === 0 && problems.length === 0, unexpected, problems, warnings, files, lines, overLineLimit: lines > MAX_LINES, note: TOUCH_NOTE };
 }
 
 export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) {
@@ -266,6 +313,7 @@ export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) 
   const abs = (rel) => path.join(project, ...rel.split('/'));
   // before touching anything: a change that verify did not record is not the batch's to undo
   const verified = new Set(record.after.unexpected.map((u) => u.path));
+  const sourcesChanged = movedSources(project, record);
   const fresh = new Map();
   for (const u of deltaOf(project, record, gitTimeoutMs)) {
     fresh.set(u.path, u);
@@ -301,9 +349,11 @@ export function restoreBatch({ project, batch, gitTimeoutMs = GIT_TIMEOUT_MS }) 
     }
   }
   for (const u of record.after.unexpected) {
-    const action = unexpectedAction({ ...u, existedBefore: u.existedBefore || fresh.get(u.path)?.existedBefore });
+    const action = unexpectedAction({ ...u, existedBefore: u.existedBefore || fresh.get(u.path)?.existedBefore }, sourcesChanged.length > 0);
     if (action === 'delete-if-ours') deleteIfOurs(u.path, u.sha256);
     else blocked.push({ path: u.path, problem: action === 'block' ? 'unexpected-change-not-restorable' : action });
   }
-  return { ok: blocked.length === 0, restored, deleted, blocked };
+  const list = (a) => (a.length ? ` (${a.join(', ')})` : '');
+  const summary = `restaurados ${restored.length}${list(restored)}; borrados ${deleted.length}${list(deleted)}; sin tocar ${blocked.length}${list(blocked.map((b) => b.path))}`;
+  return { ok: blocked.length === 0, restored, deleted, blocked, sourcesChanged, summary };
 }

@@ -4,9 +4,10 @@
 //           0 saved, 1 refused (see problems), 2 own error
 //   verify  --project <repo> --batch <folder>
 //           0 the delta is inside the expected list, 1 unexpected changes, 2 own error
+//           (`warnings` source-moved: restore will delete no unexpected untracked file)
 //   restore --project <repo> --batch <folder>
-//           0 everything restored, 1 BLOCKED (something left alone, nothing deleted without
-//           proof), 2 own error
+//           0 everything restored, 1 BLOCKED (something left alone; `restored` and `deleted`
+//           still list what was done, `summary` says it in one line), 2 own error
 // Prints one JSON object on stdout. Never runs destructive git.
 import fs from 'node:fs';
 import path from 'node:path';

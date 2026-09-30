@@ -309,3 +309,104 @@ test('verify warns when an expected file is reached through a link that leaves t
   assert.equal(v.ok, false);
   assert.deepEqual(v.problems, [{ path: 'src/sub/page.tsx', problem: 'not-in-project' }]);
 });
+
+// R1/R2: the only copy of a file moved or copied by the agent is never deleted (source-moved).
+const blockedAs = (r, rel) => r.blocked.find((b) => b.path === rel)?.problem;
+
+test('IMPORTANT: an ignored file renamed by the agent is never deleted (source-moved)', () => {
+  const dir = repo({ '.gitignore': 'secret.txt\n' });
+  write(dir, 'secret.txt', 'ONLY COPY\n');
+  assert.equal(saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] }).ok, true);
+  write(dir, 'src/page.tsx', 'agent\n');
+  fs.renameSync(path.join(dir, 'secret.txt'), path.join(dir, 'secret-moved.txt'));
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(v.ok, false);
+  assert.deepEqual(v.warnings, [{ path: 'secret.txt', problem: 'source-moved' }]);
+  assert.match(v.note, /no toques el proyecto entre save y restore/);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.deleted, []);
+  assert.deepEqual(r.restored, ['src/page.tsx']);
+  assert.equal(blockedAs(r, 'secret-moved.txt'), 'source-moved', JSON.stringify(r.blocked));
+  assert.deepEqual(r.sourcesChanged, ['secret.txt']);
+  assert.equal(read(dir, 'secret-moved.txt'), 'ONLY COPY\n');
+});
+
+test('IMPORTANT: an ignored file copied and then removed by the agent is never deleted', () => {
+  const dir = repo({ '.gitignore': '.env\n' });
+  write(dir, '.env', 'TOKEN=only-copy\n');
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  fs.copyFileSync(path.join(dir, '.env'), path.join(dir, '.env.example'));
+  fs.rmSync(path.join(dir, '.env'));
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.equal(blockedAs(r, '.env.example'), 'source-moved', JSON.stringify(r.blocked));
+  assert.equal(read(dir, '.env.example'), 'TOKEN=only-copy\n');
+});
+
+test('an ignored file changed in place (same path) also blocks every unexpected deletion', () => {
+  const dir = repo({ '.gitignore': 'local.db\n' });
+  write(dir, 'local.db', 'v1\n');
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'local.db', 'v2 longer\n');
+  write(dir, 'src/stray.tsx', 'x\n');
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(v.warnings, [{ path: 'local.db', problem: 'source-moved' }]);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.equal(blockedAs(r, 'src/stray.tsx'), 'source-moved');
+  assert.equal(exists(dir, 'src/stray.tsx'), true);
+});
+
+test('an ignored folder that disappears blocks every unexpected deletion; one that stays does not', () => {
+  const dir = repo({ '.gitignore': 'build/\n' });
+  write(dir, 'build/app.js', 'user build\n');
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  fs.renameSync(path.join(dir, 'build'), path.join(dir, 'out'));
+  verifyBatch({ project: dir, batch: batchOf(dir) });
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.equal(blockedAs(r, 'out/app.js'), 'source-moved');
+  assert.equal(read(dir, 'out/app.js'), 'user build\n');
+
+  const dir2 = repo({ '.gitignore': 'build/\n' });
+  write(dir2, 'build/app.js', 'user build\n');
+  saveBatch({ project: dir2, batch: batchOf(dir2), expected: [PAGE] });
+  write(dir2, 'build/app.js', 'rebuilt, bigger than before\n'); // inside a collapsed folder: not watched
+  write(dir2, 'src/stray.tsx', 'x\n');
+  const v2 = verifyBatch({ project: dir2, batch: batchOf(dir2) });
+  assert.deepEqual(v2.warnings, []);
+  const r2 = restoreBatch({ project: dir2, batch: batchOf(dir2) });
+  assert.deepEqual([r2.ok, r2.deleted], [true, ['src/stray.tsx']]);
+});
+
+test('IMPORTANT: an untracked file of the initial state renamed by the agent is never deleted', () => {
+  const dir = repo();
+  write(dir, 'notes.md', 'mine\n');
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  write(dir, 'src/page.tsx', 'agent\n');
+  fs.renameSync(path.join(dir, 'notes.md'), path.join(dir, 'notes2.md'));
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(v.warnings, [{ path: 'notes.md', problem: 'source-moved' }]);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.deepEqual(r.restored, ['src/page.tsx']);
+  assert.notEqual(blockedAs(r, 'notes2.md'), undefined, JSON.stringify(r.blocked));
+  assert.equal(read(dir, 'notes2.md'), 'mine\n');
+  // the output says exactly what happened: restored one, deleted none, left the rest
+  assert.equal(r.summary, `restaurados 1 (src/page.tsx); borrados 0; sin tocar ${r.blocked.length} (${r.blocked.map((b) => b.path).join(', ')})`);
+});
+
+test('an unexpected untracked file with the sha256 of an initial entry existed before the batch', () => {
+  const dir = repo();
+  write(dir, 'notes.md', 'mine\n');
+  saveBatch({ project: dir, batch: batchOf(dir), expected: [PAGE] });
+  fs.copyFileSync(path.join(dir, 'notes.md'), path.join(dir, 'notes-copy.md'));
+  const v = verifyBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(v.warnings, []);
+  assert.equal(v.unexpected.find((u) => u.path === 'notes-copy.md').existedBefore, true);
+  const r = restoreBatch({ project: dir, batch: batchOf(dir) });
+  assert.deepEqual(r.deleted, []);
+  assert.equal(blockedAs(r, 'notes-copy.md'), 'existed-before-the-batch');
+});
