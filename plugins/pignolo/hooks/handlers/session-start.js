@@ -4,6 +4,7 @@ const { spawn, spawnSync } = require('node:child_process');
 const { readState } = require('../../lib/disabled');
 const { backupRefs, shadowState } = require('../../lib/git-backup');
 const { CANARIES } = require('../../lib/git-guard');
+const { recoverAll } = require('../../lib/sabotage');
 
 const LAUNCHER = path.join(__dirname, '..', 'launcher.js');
 const SEEDER = path.join(__dirname, '..', '..', 'scripts', 'shadow-seed.js');
@@ -75,6 +76,16 @@ exports.run = (input, ctx = {}) => {
       backupRefs({ cwd, env, outside: false });
     } catch (e) {
       lines.push(`pignolo: no se pudo respaldar las refs (${e.message}).`);
+    }
+  }
+  if (!st.guardOff) {
+    // Sabotaje interrumpido (spec §11.6): sin candado no lanza git; callado si no hubo nada.
+    try {
+      const rec = recoverAll({ cwd });
+      for (const r of rec.recovered) lines.push(`pignolo restauró ${r.files.length} archivos que un sabotaje interrumpido dejó rotos en ${r.worktree} (${r.files.join(', ')}).`);
+      for (const e of rec.errors) lines.push(`⚠ pignolo: no se pudo recuperar un sabotaje interrumpido (${e.message}).`);
+    } catch (e) {
+      lines.push(`⚠ pignolo: no se pudo revisar si quedó un sabotaje interrumpido (${e.message}).`);
     }
   }
   let sh = null;
