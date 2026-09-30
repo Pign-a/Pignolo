@@ -1,6 +1,6 @@
 # Resultados de las evals del hito 3 (agentes de revisión)
 
-Estado: **cortada en la calibración por el freno iii, 2026-09-30.** Con los graders corregidos (0.4.1), la sonda 3 pasó, pero la calibración en Windows dio 9 de 12. Los 3 fallos son del agente o del fixture, no del grader. Gasto: 1,430 USD de 54. Las cifras se completan a medida que corre cada etapa, buenas o malas. Sin transcripciones completas (a lo sumo la línea del grader que falló, recortada) y sin datos de proyectos donde se usa pignolo: los fixtures son sintéticos. `results/` y `generated/` no se versionan.
+Estado: **completa en Windows, 2026-09-30.** Tras ajustar los agentes (0.4.2), la recalibración dio 12/12, la completa en opus 60/60 corridas (12/12 casos ≥ 4/5) y la rama sonnet 58/60 (11/12: `review-risk-clean` 3/5 por omitir el bloque ```json, con la conclusión correcta). `refuter` y `fixer` siguen sin medir (WSL2 sin preparar). Gasto total: 11,49 USD de 54 (sondas y calibraciones 2,65; completa opus 5,35; sonnet 3,49), más lo que haya consumido la completa en opus que se interrumpió, que no dejó informe. Sin transcripciones completas (a lo sumo la línea del grader que falló, recortada) y sin datos de proyectos donde se usa pignolo: los fixtures son sintéticos. `results/` y `generated/` no se versionan.
 
 Diseño y definiciones: spec §15 (`agents`). Recall: el subagente reporta la ubicación plantada como `archivo:N` (±3 líneas; un rango `archivo:A-B` no cuenta: el contrato de los agentes es `path:line`) con severidad BLOCKER o CRITICAL (en `readability`, WARNING o más). Falso positivo: BLOCKER o CRITICAL en un diff limpio. Umbral de la spec (§0 d): al menos 4 de 5 corridas por caso.
 
@@ -20,9 +20,9 @@ Freno iii (la calibración no falla en ningún caso) se cumple solo si `calib-wi
 | Recalibración 2 (Windows; agentes 0.4.2, HEAD `127a947`) | chequeo de 1 caso (`check-limit.json`, tope 0,5) y después la de la calibración con `--json tests/evals/generated/calib-win-3.json` | 2026-09-30 | 2.1.285 | revisor opus, sesión principal sonnet | **12/12** | 0,107 + 1,112 | **Pasa los frenos ii, iii y iv.** Los 3 casos limpios que fallaron con 0.4.1 ahora aprueban y los 6 defectos plantados se siguen encontrando |
 | Completa en opus (Windows) | la del plan, tope 26 | 2026-09-30 | 2.1.285 | — | — | sin informe (cortada) | **Interrumpida por el autor** ("frenemos por hoy") antes de terminar; no dejó `full-opus-win.json`. Se retoma mañana desde cero |
 | Calibración (WSL2) | no corrió | — | — | — | opus | 0 | fuera por decisión del autor: `refuter` y `fixer` quedan como "no medidos (WSL2 sin preparar)" |
-| Completa en opus (Windows) | no corrió | — | — | — | opus | 0 | — |
+| Completa en opus (Windows; agentes 0.4.2, HEAD `e141f15`) | `claude plugin eval . --eval-dir tests/evals/generated/opus --tag review --tag judges --runs 5 --ablation none --scaffold --trust-plugin --keep-temp --max-cost-usd 26 -j 2 --json tests/evals/generated/full-opus-win.json` | 2026-09-30 | 2.1.285 | sonnet | opus | 5,346 (790 s) | ninguno: **60/60 corridas aprobadas**, 12/12 casos ≥ 4/5. Freno ii: `git diff --quiet 7d03b22 -- tests/evals/review-cases.js` sale 0 |
 | Completa en opus (WSL2) | no corrió | — | — | — | opus | 0 | fuera (WSL2 sin preparar) |
-| Rama sonnet (Windows) | no corrió | — | — | — | sonnet | 0 | — |
+| Rama sonnet (Windows; agentes 0.4.2, HEAD `e141f15`) | `node tests/evals/review-cases.js --out tests/evals/generated/sonnet --reviewer-model sonnet` y `claude plugin eval . --eval-dir tests/evals/generated/sonnet --tag review --tag judges --runs 5 --ablation none --scaffold --trust-plugin --keep-temp --max-cost-usd 15 -j 2 --json tests/evals/generated/full-sonnet-win.json` | 2026-09-30 | 2.1.285 | sonnet | sonnet | 3,492 (499 s) | ninguno: 58/60 corridas, 11/12 casos ≥ 4/5. `review-risk-clean` 3/5 (falla de formato del agente, ver abajo) |
 | Rama sonnet (WSL2, solo `refuter`) | no corrió | — | — | — | sonnet | 0 | fuera (WSL2 sin preparar) |
 
 ## Por caso
@@ -55,6 +55,50 @@ Los 4 casos con defecto plantado y los 2 jueces con defecto aprobaron. Los 3 fal
 - **judge-a-clean:** no hay BLOCKER ni CRITICAL (`no-blocking-finding` aprueba) y el veredicto es APPROVE, pero después agrega una línea más ("File reviewed: …"). El contrato del agente dice "End with one word on its own line", así que el grader reprueba con razón: **falla de formato del agente**.
 
 Ningún grader quedó mal escrito en la calibración: en los 12 casos, lo que aprobó y lo que reprobó coincide con lo que el agente dijo.
+
+**Completa en opus, Windows** (5 corridas por caso, revisor opus, sesión principal sonnet, agentes 0.4.2):
+
+| Agente | Caso | Aciertos / corridas | Grader que falló | Costo total (USD) | Costo por corrida (USD) | Veredicto (umbral 4/5) |
+| --- | --- | --- | --- | --- | --- | --- |
+| review-reliability | review-reliability-defect | 5/5 | — | 0,401 | 0,080 | pasa |
+| review-reliability | review-reliability-clean | 5/5 | — | 0,444 | 0,089 | pasa |
+| review-resilience | review-resilience-defect | 5/5 | — | 0,524 | 0,105 | pasa |
+| review-resilience | review-resilience-clean | 5/5 | — | 0,578 | 0,116 | pasa |
+| review-risk | review-risk-defect | 5/5 | — | 0,436 | 0,087 | pasa |
+| review-risk | review-risk-clean | 5/5 | — | 0,454 | 0,091 | pasa |
+| review-readability | review-readability-defect | 5/5 | — | 0,432 | 0,086 | pasa |
+| review-readability | review-readability-clean | 5/5 | — | 0,437 | 0,087 | pasa |
+| judge-a | judge-a-defect | 5/5 | — | 0,388 | 0,078 | pasa |
+| judge-a | judge-a-clean | 5/5 | — | 0,452 | 0,090 | pasa |
+| judge-b | judge-b-defect | 5/5 | — | 0,387 | 0,077 | pasa |
+| judge-b | judge-b-clean | 5/5 | — | 0,412 | 0,082 | pasa |
+| refuter | refuter-false-finding | no medido (WSL2 sin preparar) | — | — | — | — |
+| fixer | fixer-confirmed-finding | no medido (WSL2 sin preparar) | — | — | — | — |
+
+Ninguna corrida terminó con error. Los 60 directorios temporales (`--keep-temp`) se borraron tras leer el informe.
+
+**Rama sonnet, Windows** (5 corridas por caso, revisor **sonnet**, sesión principal sonnet, agentes 0.4.2):
+
+| Agente | Caso | Aciertos / corridas | Grader que falló | Costo total (USD) | Costo por corrida (USD) | Veredicto (umbral 4/5) |
+| --- | --- | --- | --- | --- | --- | --- |
+| review-reliability | review-reliability-defect | 5/5 | — | 0,283 | 0,057 | pasa |
+| review-reliability | review-reliability-clean | 5/5 | — | 0,300 | 0,060 | pasa |
+| review-resilience | review-resilience-defect | 5/5 | — | 0,303 | 0,061 | pasa |
+| review-resilience | review-resilience-clean | 5/5 | — | 0,340 | 0,068 | pasa |
+| review-risk | review-risk-defect | 5/5 | — | 0,278 | 0,056 | pasa |
+| review-risk | review-risk-clean | **3/5** | `subagent-returned` y `no-blocking-finding` (2 corridas) | 0,321 | 0,064 | **no pasa** |
+| review-readability | review-readability-defect | 5/5 | — | 0,287 | 0,057 | pasa |
+| review-readability | review-readability-clean | 5/5 | — | 0,280 | 0,056 | pasa |
+| judge-a | judge-a-defect | 5/5 | — | 0,262 | 0,052 | pasa |
+| judge-a | judge-a-clean | 5/5 | — | 0,294 | 0,059 | pasa |
+| judge-b | judge-b-defect | 5/5 | — | 0,260 | 0,052 | pasa |
+| judge-b | judge-b-clean | 5/5 | — | 0,285 | 0,057 | pasa |
+
+**Qué pasó en `review-risk-clean`** (leído en el `tool_result` de las 2 corridas falladas): el revisor sonnet llegó a la conclusión correcta ("No findings. The change is a pure refactor…", cierra con `APPROVE`), pero **no escribió el bloque ```json**. Su contrato (`agents/review-risk.md:28`) pide el bloque también sin hallazgos (`[]`), porque pignolo lo copia al ledger. Sin él, `subagent-returned` reprueba con razón, y `no-blocking-finding` también, porque exige el bloque (un informe sin bloque no se puede leer). **Falla de formato del agente, no del grader**: el fondo (sin falsos positivos) es correcto en las 5 corridas.
+
+**Comparación opus/sonnet (Windows, 10 casos de lentes y 2 de jueces, 5 corridas cada uno):** recall de los defectos plantados 30/30 en los dos; falsos positivos (BLOCKER o CRITICAL en un diff limpio) 0/30 en los dos; formato 60/60 en opus y 58/60 en sonnet. Costo por corrida: opus 0,077–0,116 USD, sonnet 0,052–0,068 USD (alrededor de un 35 % menos). Con esto, sonnet supera el 80 % de recall que puso el autor como condición para que `economy` pueda pasar los revisores a sonnet (§7), pero **eso lo decide el autor**, y el caso `review-risk-clean` no llega al umbral 4/5 por formato. Son fixtures chicos y sintéticos: no miden diffs grandes.
+
+Los 60 directorios temporales se borraron tras leer el informe.
 
 ## Frenos
 

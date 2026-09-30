@@ -60,28 +60,28 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 
 ## Métricas de las evals
 
-**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Primera corrida (2026-09-30): frenada en la calibración, antes de la medición completa.** Primero se corrigió la regla automática que califica las respuestas. Con esa regla nueva, cada agente corrió una vez sobre sus casos de prueba en Windows, y aprobaron 9 de 12. Todos los defectos plantados se encontraron. Los 3 tropiezos fueron sobre cambios limpios: dos revisores bloquearon por problemas que el cambio no introducía (uno anterior al cambio, otro de durabilidad ante un corte de luz), y un juez aprobó bien pero no cerró con la palabra final sola. Como estaba previsto, la medición completa (5 corridas por caso, en opus y en sonnet) espera la decisión del autor. Dos casos (refuter y fixer) necesitan WSL2 y todavía no se midieron. Después se ajustaron los agentes (0.4.2) y la recalibración dio **12 de 12**: los tres casos limpios ahora aprueban y los defectos plantados se siguen encontrando. La medición completa (5 corridas por caso, opus y sonnet) queda para la próxima sesión. Costo hasta ahora: unos 2,7 USD, más lo que haya consumido la corrida completa que se frenó a mitad.
+**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Medición del 2026-09-30 (Windows):** cada caso corrió 5 veces con los revisores en opus y otras 5 con los revisores en sonnet. En opus aprobaron las 60 corridas. En sonnet aprobaron 58: en dos, el revisor llegó a la conclusión correcta pero no entregó su respuesta en el formato que pignolo necesita para leerla. Los dos modelos encontraron todos los defectos plantados y ninguno bloqueó un cambio limpio. Sonnet costó alrededor de un 35 % menos. Dos agentes (refuter y fixer) necesitan WSL2 y todavía no se midieron. Son casos chicos y sintéticos: no dicen cómo les va con cambios grandes.
 
-**Detalle técnico.** Umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. Claude Code 2.1.285, Windows nativo.
+**Detalle técnico.** Umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. Claude Code 2.1.285, Windows nativo, agentes 0.4.2, sesión principal en sonnet.
 
-| Agente | Caso | Aciertos / corridas | Modelo | Costo por corrida (USD) | Fecha | Umbral 4/5 |
+| Agente | Caso | Opus: aciertos / corridas | Opus: USD por corrida | Sonnet: aciertos / corridas | Sonnet: USD por corrida | Umbral 4/5 |
 | --- | --- | --- | --- | --- | --- | --- |
-| review-reliability | defecto | 1/1 | opus | 0,080 | 2026-09-30 | calibración (1 corrida) |
-| review-reliability | limpio | 1/1 | opus | 0,092 | 2026-09-30 | calibración |
-| review-resilience | defecto | 1/1 | opus | 0,106 | 2026-09-30 | calibración |
-| review-resilience | limpio | **0/1** (CRITICAL por falta de fsync) | opus | 0,152 | 2026-09-30 | calibración |
-| review-risk | defecto | 1/1 | opus | 0,092 | 2026-09-30 | calibración |
-| review-risk | limpio | 1/1 | opus | 0,097 | 2026-09-30 | calibración |
-| review-readability | defecto | 1/1 | opus | 0,084 | 2026-09-30 | calibración |
-| review-readability | limpio | **0/1** (CRITICAL por un defecto anterior al diff) | opus | 0,118 | 2026-09-30 | calibración |
-| judge-a | defecto | 1/1 | opus | 0,082 | 2026-09-30 | calibración |
-| judge-a | limpio | **0/1** (APPROVE sin ser la última línea) | opus | 0,094 | 2026-09-30 | calibración |
-| judge-b | defecto | 1/1 | opus | 0,075 | 2026-09-30 | calibración |
-| judge-b | limpio | 1/1 | opus | 0,093 | 2026-09-30 | calibración |
+| review-reliability | defecto | 5/5 | 0,080 | 5/5 | 0,057 | pasa en los dos |
+| review-reliability | limpio | 5/5 | 0,089 | 5/5 | 0,060 | pasa en los dos |
+| review-resilience | defecto | 5/5 | 0,105 | 5/5 | 0,061 | pasa en los dos |
+| review-resilience | limpio | 5/5 | 0,116 | 5/5 | 0,068 | pasa en los dos |
+| review-risk | defecto | 5/5 | 0,087 | 5/5 | 0,056 | pasa en los dos |
+| review-risk | limpio | 5/5 | 0,091 | **3/5** (sin el bloque `json`) | 0,064 | **sonnet no pasa** |
+| review-readability | defecto | 5/5 | 0,086 | 5/5 | 0,057 | pasa en los dos |
+| review-readability | limpio | 5/5 | 0,087 | 5/5 | 0,056 | pasa en los dos |
+| judge-a | defecto | 5/5 | 0,078 | 5/5 | 0,052 | pasa en los dos |
+| judge-a | limpio | 5/5 | 0,090 | 5/5 | 0,059 | pasa en los dos |
+| judge-b | defecto | 5/5 | 0,077 | 5/5 | 0,052 | pasa en los dos |
+| judge-b | limpio | 5/5 | 0,082 | 5/5 | 0,057 | pasa en los dos |
 | refuter | falso hallazgo | no medido (WSL2 sin preparar) | — | — | — | — |
 | fixer | hallazgo confirmado | no medido (WSL2 sin preparar) | — | — | — | — |
 
-Sesión principal en sonnet, revisor en opus, Claude Code 2.1.285, Windows nativo. Son corridas de calibración (1 por caso): todavía no hay veredicto contra el umbral 4/5. Freno iii (todos los casos aprobados en la calibración): 9/12, así que no corrieron la completa en opus ni la rama sonnet. Los graders 0.4.1 (leen el `tool_result` del `Agent` del caso) calificaron de acuerdo con lo que cada agente dijo. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
+Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los agentes (0.4.2); la recalibración dio 12/12. Gasto total de las evals del hito 3: 11,49 USD de un tope de 54. Comandos, frenos, calibraciones y lo que dijo el agente en cada corrida fallada, en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
 ## Guardia de shell
 
