@@ -10,7 +10,11 @@ const cases = [
   ['explorer', { profile: 'max' }, 'sonnet'],
   ['implementer', { profile: 'max' }, 'opus'],
   ['implementer', { profile: 'balanced' }, 'sonnet'],
-  ['review-risk', { profile: 'economy' }, 'opus'],
+  ['review-risk', { profile: 'economy' }, 'sonnet'],
+  ['judge-a', { profile: 'economy' }, 'sonnet'],
+  ['review-testability', { profile: 'economy' }, 'opus'],
+  ['refuter', { profile: 'economy' }, 'opus'],
+  ['review-risk', { profile: 'balanced' }, 'opus'],
   ['researcher', { profile: 'economy' }, 'sonnet'],
   ['implementer', { profile: 'balanced', models: { implementer: 'opus' } }, 'opus'],
 ];

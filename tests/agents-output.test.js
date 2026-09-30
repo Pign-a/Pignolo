@@ -23,6 +23,12 @@ for (const [name, lens] of Object.entries(REVIEWERS)) {
   });
 }
 
+for (const name of Object.keys(REVIEWERS)) {
+  test(`${name}: el bloque json va siempre, también vacío, antes del veredicto`, () => {
+    assert.match(agent(name), /The block is required in every report, before the verdict word: with no findings it is exactly `\[\]`/);
+  });
+}
+
 test('refuter: veredictos en un bloque json claim, verdict, reason', () => {
   assert.match(agent('refuter'), /one fenced `json` block[^\n]*keys in this order: `claim`[^\n]*`verdict`, `reason`/);
 });

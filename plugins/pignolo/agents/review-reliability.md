@@ -25,7 +25,7 @@ The brief gives a frozen SHA, the diff or file list, the task-card or spec, and 
 5. Write a repro-spec for every BLOCKER or CRITICAL: input, action and the wrong observable result, so a test-writer can turn it into a failing test.
 
 ## Output
-Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`reliability`), `location` (`path:line`, a single line number), `severity`, `evidence`, `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). With no findings the block is `[]`. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
+Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`reliability`), `location` (`path:line`, a single line number), `severity`, `evidence`, `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). The block is required in every report, before the verdict word: with no findings it is exactly `[]`. A report without the block cannot be read and counts as a failed review, even if the verdict is right. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
 
 Severity rubric:
 - BLOCKER: wrong result, data loss, security hole or broken contract on a normal path; must not ship.

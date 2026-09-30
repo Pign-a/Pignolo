@@ -217,6 +217,8 @@ El orquestador pasa el modelo explícito en cada despacho (pisa el del archivo).
 
 Decisiones del autor (2026-09-28, tras un debate con un agente opus por opción): (1) **revisores y auditores** (spec-reviewer, plan-auditor, lentes, refuter, jueces, validator, debugger) van en **opus en todos los perfiles, incluido `economy`**, hasta que una eval (§15 `agents`, ≥ 5 corridas por caso) muestre que sonnet con effort `high` llega a recall ≥ 80 % (§0d) con falsas alarmas comparables; recién ahí `economy` puede pasarlos a sonnet, y `setup` muestra la cifra medida. Motivo: un revisor más débil no falla a la vista, aprueba en silencio; el refuter filtra falsos positivos pero no recupera lo que el lente no vio. (2) **Haiku se reemplaza por sonnet** en todos lados: Haiku 4.5 no tiene effort y puede retirarse desde el 2026-10-15. `economy` conserva su ahorro por paralelismo, lentes, un solo refuter e implementadores en sonnet.
 
+**Decisión del autor (2026-09-30), con la eval medida:** en `economy`, las cuatro lentes (`risk`, `resilience`, `readability`, `reliability`) y los dos jueces pasan a sonnet. Medido en Windows con Claude Code 2.1.285 (5 corridas por caso, `tests/evals/RESULTS-hito-3.md`): sonnet encontró 30/30 defectos plantados, 0/30 falsos positivos y tardó ~37 % menos y costó ~35 % menos que opus; el único caso bajo el umbral (`review-risk-clean`, 3/5 por omitir el bloque `json`) pasó 5/5 tras hacer obligatorio el bloque en la carta (0.4.3). `review-testability`, `refuter`, `validator`, `spec-reviewer`, `plan-auditor` y `debugger` siguen en opus en todos los perfiles: no tienen eval de sonnet. `max` y `balanced` no cambian. Límite: fixtures chicos y sintéticos; con diffs grandes la diferencia de calidad no está medida.
+
 | Rol | `effort` (frontmatter) | `max` | `balanced` | `economy` |
 |---|---|---|---|---|
 | explorer | low | sonnet | sonnet | sonnet |
@@ -225,7 +227,8 @@ Decisiones del autor (2026-09-28, tras un debate con un agente opus por opción)
 | test-writer, implementer | medium | opus | sonnet | sonnet |
 | fixer | high | opus | sonnet | sonnet |
 | debugger | high | opus | opus | opus |
-| lentes, refuter, jueces, validator | high | opus | opus | opus |
+| lentes (`risk`, `resilience`, `readability`, `reliability`), jueces | high | opus | opus | sonnet |
+| `review-testability`, refuter, validator | high | opus | opus | opus |
 | integrator | low | sonnet | sonnet | sonnet |
 | learning-validator | medium | opus | sonnet | sonnet |
 

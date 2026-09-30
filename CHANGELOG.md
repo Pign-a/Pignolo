@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.3 — 2026-09-30
+
+- Perfil `economy`: las cuatro lentes (`risk`, `resilience`, `readability`, `reliability`) y los dos jueces corren en sonnet. `max` y `balanced` no cambian; `review-testability`, `refuter`, `validator`, `spec-reviewer`, `plan-auditor` y `debugger` siguen en opus en todos los perfiles. Motivo: la eval completa del hito 3 (sonnet 30/30 defectos, 0/30 falsos positivos, ~37 % más rápido y ~35 % más barato que opus; decisión del autor, 2026-09-30).
+- Revisores (lentes y jueces): el bloque `json` es obligatorio en todo informe, antes de la palabra del veredicto, y sin hallazgos es exactamente `[]`. Motivo: en la rama sonnet, `review-risk-clean` aprobó bien pero omitió el bloque en 2 de 5 corridas; con la regla, 5/5 (0,35 USD).
+
 ## 0.4.2 — 2026-09-30
 
 - Revisores (las cinco lentes y los dos jueces): BLOCKER y CRITICAL quedan solo para lo que el diff introduce o empeora. Un problema anterior que el diff no introduce ni empeora va como WARNING o SUGGESTION, y su evidencia dice que es anterior al cambio; un control que falta en código que el diff agrega cuenta como introducido; en código que el diff no toca, solo si la tarjeta le pide a este cambio agregarlo. Lo que el diff sí introduce mantiene su severidad. Motivo: en la calibración del hito 3, `review-readability-clean` bloqueó con CRITICAL en `src/token.js:4` por un defecto que el propio agente reconoció anterior al diff (decisión del autor, 2026-09-30).

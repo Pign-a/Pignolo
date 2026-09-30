@@ -100,6 +100,8 @@ Ninguna corrida terminó con error. Los 60 directorios temporales (`--keep-temp`
 
 Los 60 directorios temporales se borraron tras leer el informe.
 
+**Re-corrida de `review-risk-clean` en sonnet** (agentes 0.4.3, con el bloque `json` obligatorio): `claude plugin eval . --eval-dir tests/evals/generated/sonnet --case review-risk-clean --runs 5 --ablation none --scaffold --trust-plugin --keep-temp --max-cost-usd 1 -j 2 --json tests/evals/generated/sonnet-risk-clean-2.json`, 2026-09-30, Claude Code 2.1.285: **5/5**, 0,346 USD (0,069 por corrida), 20,8 s de media. Con esto el autor pasó `economy` a sonnet para las lentes y los jueces (0.4.3).
+
 ## Frenos
 
 **Primera sonda.** Freno i: no se pudo demostrar. El runner borró el trace al terminar, y ni `results/` ni el `report.html` lo guardan. Decisión del autor (2026-09-30): repetir la sonda con `--keep-temp`, dejar fuera los casos de WSL2 y ajustar los frenos. Los frenos ajustados son estos: (i) la sonda 2 da ≥ 1 SUB; (ii) igual que antes; (iii) exactamente 12 casos en `calib-win.json`, todos aprobados; (iv) sonda + sonda 2 + calibración de Windows ≤ 5,8 USD.
