@@ -6,15 +6,72 @@
 //   la guardia en las sesiones siguientes). Cubre bypassPermissions, donde la
 //   protección nativa no rige. `~` sale del HOME/USERPROFILE del entorno del hook.
 // - Flags del interruptor (§3.3): apagable solo con PIGNOLO_DISABLED.
+const fs = require('node:fs');
 const path = require('node:path');
 const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
+const { projectState, readRun } = require('../../lib/project');
 const { resolveClean, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
 
 const BLOCKED = 'pignolo bloqueó la escritura: los flags del interruptor solo los escribe /pignolo:off y /pignolo:on. Alternativa: pedile al humano que escriba el comando.\n';
 const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins. Alternativa: usá comandos git; lo que haya que cambiar ahí lo hace el humano.\n';
 
 const RUN_BLOCKED = 'pignolo bloqueó la escritura: .pignolo/run.json lo escriben solo las skills de pignolo desde la conversación principal. Alternativa: devolvé BLOCKED y nombrá lo que haga falta cambiar.\n';
+
+const PROJECT_MD = '.pignolo/project.md';
+const HOLDOUT_DIR = '.pignolo/tmp/holdout/';
+const alt = (m) => ({ exit: 2, stderr: `pignolo bloqueó la escritura: ${m}
+` });
+const ALT_IMPL = 'Alternativa: un test cambia solo con test-authorization: devolvé BLOCKED y nombrá el test.';
+const ALT_TW = 'Alternativa: escribí solo en test-paths o en .pignolo/tmp/holdout/; lo demás lo pide el hilo principal.';
+
+// Raíz del worktree que contiene abs: el de la tarea si está dentro; si no, sube hasta el primer .git (sin git).
+function worktreeOf(abs, task) {
+  const inside = (root) => { const r = path.relative(root, abs); return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? r : null; };
+  if (task && inside(task.worktree) !== null) return task.worktree;
+  let dir = path.dirname(abs);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+
+// Escritura de tests por rol en el momento (spec §6/§11): espejo previo del handback-gate.
+function roleRule({ input, env, cwd, abs }) {
+  const agent = input.agent_type;
+  if (agent !== 'pignolo:implementer' && agent !== 'pignolo:fixer' && agent !== 'pignolo:test-writer') return null;
+  const state = projectState({ env, cwd });
+  if (!state.active) return null;
+  const { run } = readRun(state.main);
+  const task = run && run.task ? run.task : null;
+  const wt = worktreeOf(abs, task);
+  if (!wt) return null;
+  const rel = path.relative(wt, abs).split(path.sep).join('/');
+  let config;
+  try {
+    const { readProjectConfig } = require('../../lib/project-config');
+    config = task
+      ? readProjectConfig({ root: task.worktree, ref: task.testRef || task.base })
+      : readProjectConfig({ root: state.main });
+  } catch (e) {
+    return alt(`no se pudo leer ${PROJECT_MD} para decidir si se puede escribir ${rel} (${e.message}). Alternativa: respondé BLOCKED con este motivo.`);
+  }
+  const { matchAny } = require('../../lib/globs');
+  const isTest = matchAny(config.testPaths, rel);
+  const isProt = rel === PROJECT_MD || matchAny(config.protectedTestConfig, rel);
+  if (agent === 'pignolo:test-writer') {
+    if (isProt) return alt(`el test-writer no escribe ${rel} (config de tests protegida). ${ALT_TW}`);
+    if (!isTest && !rel.startsWith(HOLDOUT_DIR)) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
+    return null;
+  }
+  if (rel === PROJECT_MD) return alt(`${agent.slice(8)} no escribe ${PROJECT_MD}. ${ALT_IMPL}`);
+  if (!isTest && !isProt) return null;
+  const files = task && Array.isArray(task.files) ? task.files : [];
+  if (task && task.testAuthorization === true && (files.includes(rel) || matchAny(files, rel))) return null;
+  return alt(`${agent.slice(8)} no escribe ${rel} (test o config de tests) sin autorización. ${ALT_IMPL}`);
+}
 
 exports.run = (input, ctx = {}) => {
   const env = ctx.env || process.env;
@@ -39,5 +96,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return { exit: 0 };
+  return roleRule({ input, env, cwd, abs }) || { exit: 0 };
 };
