@@ -2,7 +2,7 @@
 'use strict';
 // Runner de la prueba de metodologías de validación de planes.
 //   node tests/bench/plans/run.js [--dry-run] [--cases real,p1,p2,p3,clean]
-//     [--methods M1,M2,M3,M4,M0] [--models sonnet,opus] [--reps 3] [--cap 25]
+//     [--methods M1,M2,M3,M4,M5,M0] [--models sonnet,opus] [--reps 3] [--cap 25]
 //     [--per-run-cap <usd>] [--mode isolated|bare] [--claude <cmd> [--claude-arg <a>]...]
 //     [--probe] [--out <dir>] [--results-md <archivo>]
 // Cada corrida llama a `claude -p` en una copia temporal del repo del caso, sin pignolo.
@@ -20,18 +20,18 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const FIXTURE = path.join(__dirname, 'fixture');
 const REAL = { commit: '794b009', plan: 'docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md' };
 const CASES = ['real', 'p1', 'p2', 'p3', 'clean'];
-const METHODS = ['M1', 'M2', 'M3', 'M4', 'M0'];
+const METHODS = ['M1', 'M2', 'M3', 'M4', 'M5', 'M0'];
 const MODELS = ['sonnet', 'opus'];
-const TOOLS = { M3: 'Read,Grep,Glob', M4: 'Read,Grep,Glob', M0: 'Read,Grep,Glob,Edit,Write,Bash' };
-const PROMPT = { M3: 'reviewer.md', M4: 'layered.md', M0: 'replay.md' };
+const TOOLS = { M3: 'Read,Grep,Glob', M4: 'Read,Grep,Glob', M5: 'Read,Grep,Glob,Bash,Write', M0: 'Read,Grep,Glob,Edit,Write,Bash' };
+const PROMPT = { M3: 'reviewer.md', M4: 'layered.md', M5: 'experiments.md', M0: 'replay.md' };
 // Estimaciones por corrida (USD) antes de tener medidas; la sonda de B4 las reemplaza.
-const EST = { M3: { sonnet: 0.25, opus: 0.6 }, M4: { sonnet: 0.3, opus: 0.7 }, M0: { sonnet: 1.5, opus: 4 } };
+const EST = { M3: { sonnet: 0.25, opus: 0.6 }, M4: { sonnet: 0.3, opus: 0.7 }, M5: { sonnet: 0.8, opus: 2 }, M0: { sonnet: 1.5, opus: 4 } };
 const REAL_MULT = 2; // el plan real es ~8 veces más largo que un sintético y su repo más grande
 // Tope de gasto por corrida (--max-budget-usd), antes de acotarlo con lo que queda del tope global.
-const PER_RUN_CAP = { M3: { sonnet: 1, opus: 2.5 }, M4: { sonnet: 1.25, opus: 3 }, M0: { sonnet: 4, opus: 8 } };
+const PER_RUN_CAP = { M3: { sonnet: 1, opus: 2.5 }, M4: { sonnet: 1.25, opus: 3 }, M5: { sonnet: 3, opus: 5 }, M0: { sonnet: 4, opus: 8 } };
 const DEFAULT_CAP = 25;
 
-const isAi = (method) => method === 'M3' || method === 'M4' || method === 'M0';
+const isAi = (method) => method === 'M3' || method === 'M4' || method === 'M5' || method === 'M0';
 
 // M1 y M2 son deterministas (una vez por caso). M3 y M4 van por modelo y repetición;
 // M0, una vez por modelo. Orden por repetición: si el tope corta, quedan las primeras
@@ -101,6 +101,8 @@ function claudeArgs({ method, model, budget, mode }) {
   args.push(...(mode === 'bare' ? ['--bare'] : ['--setting-sources', 'project,local']));
   args.push('--allowedTools', TOOLS[method]);
   if (method === 'M0') args.push('--permission-mode', 'acceptEdits');
+  // M5 corre Bash de verdad en Windows (sin sandbox): va con la guardia de pignolo de este repo.
+  if (method === 'M5') args.push('--plugin-dir', path.join(REPO_ROOT, 'plugins', 'pignolo'));
   return args;
 }
 
@@ -136,15 +138,18 @@ function runOne(run, opts, truth, budget) {
       out = { error: null, costUsd: 0, durationSeconds: (Date.now() - t0) / 1000, tokens: { input: 0, output: 0, cache: 0 }, findings: toFindings(res), text: '' };
     } else {
       let report = '';
-      if (run.method === 'M4') {
+      let scratch = null;
+      if (run.method === 'M5') scratch = fs.mkdtempSync(path.join(opts.tmpDir, 'plan-bench-scratch-'));
+      if (run.method === 'M4' || run.method === 'M5') {
         report = JSON.stringify(toFindings(checkPlan({ planText: work.planText, root: work.dir, runTests: true, tmpDir: opts.tmpDir })), null, 2);
       }
-      const prompt = fs.readFileSync(path.join(__dirname, 'prompts', PROMPT[run.method]), 'utf8').replace('{{REPORT}}', () => report);
+      const prompt = fs.readFileSync(path.join(__dirname, 'prompts', PROMPT[run.method]), 'utf8').replace('{{REPORT}}', () => report).replace('{{SCRATCH}}', () => scratch || '');
       const called = callClaude({
         claude: opts.claude, args: claudeArgs({ method: run.method, model: run.model, budget, mode: opts.mode }),
         cwd: work.dir, prompt, env: opts.env, timeoutMs: opts.timeoutMs,
       });
       out = { ...called, findings: called.text };
+      if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
     }
     const g = grade({ findings: out.findings, truth, plan: run.case });
     return {
