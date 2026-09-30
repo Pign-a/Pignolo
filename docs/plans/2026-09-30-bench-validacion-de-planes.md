@@ -25,7 +25,7 @@
 
 `found` (errores plantados encontrados), `falsePositives` (hallazgos que no coinciden con ningún error plantado; en el plan limpio, todos), `costUsd`, `durationSeconds`, `tokens` (entrada, salida, caché), `model`. Por método y modelo: recall medio, falsas alarmas medias, costo medio, tiempo medio, y costo por error encontrado.
 
-**Coincidencia (determinista):** cada error plantado tiene un `id`, la tarea del plan donde está y 1 a 3 palabras clave (el símbolo, la ruta, el comando). Un hallazgo coincide si nombra la tarea (o la línea del plan) y al menos una palabra clave. Los informes se piden en un bloque `json` fijo: `[{ "task": "T3", "kind": "...", "evidence": "...", "keywords": [...] }]`.
+**Coincidencia (determinista):** cada error plantado tiene un `id`, la tarea del plan donde está y 1 a 6 palabras clave (el símbolo, la ruta, el comando; en castellano y en inglés, porque los revisores escriben en inglés y con solo castellano el calificador perdía hallazgos correctos). Un hallazgo coincide si nombra la tarea (o la línea del plan) y al menos una palabra clave. Los informes se piden en un bloque `json` fijo: `[{ "task": "T3", "kind": "...", "evidence": "...", "keywords": [...] }]`.
 
 ## Tareas
 

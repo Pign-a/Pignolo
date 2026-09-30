@@ -196,9 +196,7 @@
       "keywords": [
         "no puede fallar",
         "test-cannot-fail",
-        "sin rojo",
         "cannot fail",
-        "can't fail",
         "never runs",
         "does not throw",
         "warning"

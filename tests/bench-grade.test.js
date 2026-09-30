@@ -85,6 +85,6 @@ test('truth.json: 14 del caso real y 6 por sintético, uno de cada tipo; clean s
   for (const p of ['p1', 'p2', 'p3']) assert.deepStrictEqual(truth[p].map((e) => e.type).sort(), [...types].sort(), p);
   assert.deepStrictEqual(truth.clean, []);
   for (const e of Object.values(truth).flat()) {
-    assert.ok(e.id && (e.tasks || []).length >= 1 && e.keywords.length >= 1 && e.keywords.length <= 3, e.id);
+    assert.ok(e.id && (e.tasks || []).length >= 1 && e.keywords.length >= 1 && e.keywords.length <= 6, e.id);
   }
 });
