@@ -180,3 +180,24 @@ test('a subagent cannot run pignolo scripts/run.js; the main thread and other sc
     });
   }
 });
+
+// Holdout (hito 4a): holdout.js de pignolo lo ejecuta solo el hilo principal o el validator.
+test('only the main thread or the validator can run pignolo scripts/holdout.js', async (t) => {
+  const { PLUGIN_ROOT } = require('./helpers');
+  const repo = makeRepo();
+  const holdoutJs = path.join(PLUGIN_ROOT, 'scripts', 'holdout.js').split(path.sep).join('/');
+  const command = `node "${holdoutJs}" run --plan p1`;
+  const call = (who, mode) => guard.run({ ...bash(command, repo), permission_mode: mode, ...who }, { snapshot: () => null });
+  for (const [name, who, mode, exit] of [
+    ['implementer, default', { agent_id: 'a1', agent_type: 'pignolo:implementer' }, 'default', 2],
+    ['implementer, bypassPermissions', { agent_id: 'a1', agent_type: 'pignolo:implementer' }, 'bypassPermissions', 2],
+    ['validator', { agent_id: 'a1', agent_type: 'pignolo:validator' }, 'default', 0],
+    ['main thread', {}, 'default', 0],
+  ]) {
+    await t.test(name, () => {
+      const r = call(who, mode);
+      assert.strictEqual(r.exit, exit, r.stderr);
+      if (exit === 2) assert.match(r.stderr, /el holdout lo corre el validator; pedile el resultado al hilo principal/);
+    });
+  }
+});
