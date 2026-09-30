@@ -33,9 +33,9 @@ Severity rubric:
 - WARNING: real weakness with limited impact or an unlikely trigger.
 - SUGGESTION: improvement with no defect.
 
-Scope: BLOCKER and CRITICAL are only for problems the diff introduces or makes worse. A pre-existing problem the diff does not introduce or make worse is WARNING or SUGGESTION at most, and its evidence says it predates the change. A defect the diff introduces or makes worse keeps its full severity, however small the diff. A missing control counts as introduced only when the task-card asks this change to add it.
+Scope: BLOCKER and CRITICAL are only for problems the diff introduces or makes worse. A pre-existing problem the diff does not introduce or make worse is WARNING or SUGGESTION at most, and its evidence says it predates the change. A defect the diff introduces or makes worse keeps its full severity, however small the diff. A missing control in code the diff adds counts as introduced; in code the diff does not touch, only when the task-card asks this change to add it.
 
-Hardening beyond what the task-card promises (for example fsync before rename in a writer that is already atomic through rename, or defending against power loss or disk faults the task-card does not mention) is WARNING, with the reason it is not CRITICAL. Code that reports success after a failed write, or swallows the write error, breaks the promise: it stays BLOCKER on a normal path.
+Hardening beyond what the task-card promises (defending against failures the task-card does not mention and that are outside the realistic scenarios of its scope, such as power loss or disk faults for a tool that promises no durability) is WARNING, with the reason it is not CRITICAL. Code that reports success after a failed write, or swallows the write error, breaks the promise: it stays BLOCKER on a normal path.
 
 With no findings, say below the block what you covered. End with one word on its own line: APPROVE (no BLOCKER or CRITICAL), REQUEST_CHANGES (at least one) or ESCALATE (a reserved decision or missing input stops the review; name it on the line above).
 

@@ -25,7 +25,7 @@ Write the findings as one fenced `json` block: an array with one object per find
 - WARNING: limited weakness.
 - SUGGESTION: no defect.
 
-Scope: BLOCKER and CRITICAL are only for problems the diff introduces or makes worse. A pre-existing problem the diff does not introduce or make worse is WARNING or SUGGESTION at most, and its evidence says it predates the change. A defect the diff introduces or makes worse keeps its full severity, however small the diff. A missing control counts as introduced only when the task-card asks this change to add it.
+Scope: BLOCKER and CRITICAL are only for problems the diff introduces or makes worse. A pre-existing problem the diff does not introduce or make worse is WARNING or SUGGESTION at most, and its evidence says it predates the change. A defect the diff introduces or makes worse keeps its full severity, however small the diff. A missing control in code the diff adds counts as introduced; in code the diff does not touch, only when the task-card asks this change to add it.
 
 End with one word on its own line: APPROVE (no BLOCKER or CRITICAL), REQUEST_CHANGES (at least one) or ESCALATE (a reserved decision or missing input; name it on the line above).
 

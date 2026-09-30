@@ -35,6 +35,7 @@ for (const name of Object.keys(REVIEWERS)) {
     assert.match(s, /BLOCKER and CRITICAL are only for problems the diff introduces or makes worse/);
     assert.match(s, /pre-existing problem[^\n]*WARNING or SUGGESTION[^\n]*predates the change/);
     assert.match(s, /A defect the diff introduces or makes worse keeps its full severity/);
+    assert.match(s, /A missing control in code the diff adds counts as introduced/);
   });
 
   test(`${name}: la última línea del informe es solo la palabra del veredicto, y la regla cierra el prompt`, () => {
@@ -49,7 +50,8 @@ for (const name of Object.keys(REVIEWERS)) {
 test('review-resilience: CRITICAL solo si rompe la promesa de la tarea o pierde datos; un endurecimiento es WARNING', () => {
   const s = agent('review-resilience');
   assert.match(s, /CRITICAL only when it breaks what the task-card promises or loses data in a realistic scenario within the task's scope/);
-  assert.match(s, /Hardening[^\n]*fsync before rename[^\n]*already atomic through rename[^\n]*is WARNING, with the reason/);
+  assert.match(s, /Hardening beyond what the task-card promises[^\n]*is WARNING, with the reason/);
+  assert.doesNotMatch(s, /fsync/); // no copiar el caso limpio de la eval al prompt
   // El defecto plantado (un catch que devuelve true) sigue siendo bloqueante: rompe la promesa.
   assert.match(s, /reports success after a failed write[^\n]*BLOCKER/);
 });
