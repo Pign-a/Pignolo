@@ -9,6 +9,12 @@
         ]
       },
       {
+        "matcher": "Read|Grep|Glob|Bash|PowerShell",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "private-reads"], "timeout": 30 }
+        ]
+      },
+      {
         "matcher": "Agent",
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "agent-gate"], "timeout": 30 }
