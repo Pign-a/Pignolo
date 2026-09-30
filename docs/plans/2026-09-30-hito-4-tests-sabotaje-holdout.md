@@ -1899,8 +1899,8 @@ Los topes suman 3,6 y dejan 0,4 USD para lo único que un tope no frena: las cor
 
 **Abiertas (necesitan al autor):**
 
-1. **Quién prepara WSL2** (Node ≥ 22, git, Claude Code con sesión iniciada, el repo clonado del lado de Linux): sin eso la etapa WSL2 no arranca. Es un cambio del entorno del autor.
-2. **Los informes de las evals del hito 3 pudieron publicarse en claude.ai.** `claude plugin eval` publica el informe HTML por defecto (salvo `--no-publish`) y los comandos del hito 3 no lo pasaban. Este plan agrega `--no-publish` a todo; si el autor quiere revisar o borrar lo que se haya publicado, es suyo (publicar y borrar son decisiones reservadas).
+1. **RESUELTA (2026-09-30).** **Quién prepara WSL2** (Node ≥ 22, git, Claude Code con sesión iniciada, el repo clonado del lado de Linux): sin eso la etapa WSL2 no arranca. Es un cambio del entorno del autor. El autor le pidió al agente que lo hiciera; hecho el 2026-09-30: Ubuntu con Node 22, Claude Code 2.1.285 y sesión iniciada, verificado con una sonda de un caso del `refuter`.
+2. **REVISADA (2026-09-30).** **Los informes de las evals del hito 3 pudieron publicarse en claude.ai.** `claude plugin eval` publica el informe HTML por defecto (salvo `--no-publish`) y los comandos del hito 3 no lo pasaban. Este plan agrega `--no-publish` a todo; si el autor quiere revisar o borrar lo que se haya publicado, es suyo (publicar y borrar son decisiones reservadas). Revisado: el runner dejó los informes del hito 3 locales, porque las corridas las lanzó una sesión de Claude Code (no se publicó nada).
 
 ## Auditoría de la parte 4b y dónde quedó cada hallazgo
 
