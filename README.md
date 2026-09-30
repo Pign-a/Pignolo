@@ -85,9 +85,9 @@ Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los a
 
 ## Validación de planes
 
-**En pocas palabras.** Medimos cuánto encuentra y cuánto cuesta cada forma de revisar un plan antes de construirlo (2026-09-30, 13,59 USD). En planes chicos, todos los métodos con IA encuentran todos los errores. En un plan real con 14 errores conocidos, un revisor que solo lee encuentra menos de la mitad: opus el 43–46 %, sonnet el 31 %, y opus cuesta unas 2,5 veces más. El que encontró los 14 fue un auditor que además probaba cosas en la máquina. Por eso pignolo va a validar planes con un script gratuito, un revisor opus y experimentos solo sobre los supuestos riesgosos, sin construir el plan dos veces.
+**En pocas palabras.** Medimos cuánto encuentra y cuánto cuesta cada forma de revisar un plan antes de construirlo (2026-09-30, 18,54 USD). En planes chicos, todos los métodos con IA encuentran todos los errores. En un plan real con 14 errores conocidos, un revisor que solo lee encuentra alrededor de un tercio con opus y una quinta parte con sonnet; darle además un script o permiso para hacer experimentos no mejoró el resultado. Los errores que solo aparecen al ejecutar (cómo se comporta Windows, los procesos) no los encontró ningún método de una sola pasada: los encontró una auditoría con tiempo para experimentar. Por eso pignolo revisa los planes con un revisor opus y deja la auditoría con experimentos para los cambios de riesgo, sin construir el plan dos veces.
 
-**Detalle técnico.** Caso real (plan 4a v1): M3 revisor sonnet 31 % a 0,45 USD por corrida; M3 opus 43 % a 1,10; M4 (script + revisor) opus 46 % a 0,90; el script solo, 0 % con 20 falsas alarmas en un plan que no declara qué es nuevo. Tablas, método y límites en [`tests/evals/RESULTS-planes.md`](tests/evals/RESULTS-planes.md).
+**Detalle técnico.** Caso real (plan 4a v1), recall contado a mano: revisor opus 33 % a 1,10 USD por corrida; script + revisor opus 32 % a 0,90; con experimentos, opus 29 % a 0,95; revisor sonnet 21 % a 0,45 (10 % con el script, 14 % con experimentos). El calificador automático por palabras clave inflaba el recall hasta 7 puntos y se validó a mano. Tablas, método y límites en [`tests/evals/RESULTS-planes.md`](tests/evals/RESULTS-planes.md).
 
 ## Guardia de shell
 

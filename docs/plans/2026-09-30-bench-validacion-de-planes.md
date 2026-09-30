@@ -49,7 +49,7 @@
 **Files:** Create `tests/bench/plans/run.js`, `tests/bench/plans/prompts/{reviewer,layered,replay}.md`.
 - Corre cada método con `claude -p --model <sonnet|opus> --output-format json --max-budget-usd <tope por corrida>` en una copia temporal del repo del caso (el fixture, o `git worktree add --detach 794b009` para el real), con herramientas de solo lectura para M3/M4 (`--allowedTools Read Grep Glob`) y con edición y Bash para M0. Sin pignolo cargado: se mide el método, no el plugin (verificar si `--bare` sirve con el login de claude.ai; si no, correr sin `--bare` desde una carpeta sin CLAUDE.md). Lee `total_cost_usd`, `duration_ms` y `usage` del JSON; extrae el bloque `json` del resultado y lo califica con `grade.js`.
 - Tope global: corta antes de pasar 25 USD acumulados y lo informa. `--dry-run` imprime la matriz y el costo estimado sin llamar a nadie.
-- Salida: `tests/bench/plans/results/<fecha>.json` (no versionado) y una tabla en `tests/evals/RESULTS-planes.md`.
+- Salida: `tests/bench/plans/results/<fecha>.json` (no versionado) y una tabla en `tests/bench/plans/results/last-table.md` (también sin versionar; `tests/evals/RESULTS-planes.md` se escribe a mano con los conteos validados, así una corrida no lo pisa).
 - [ ] Test sin costo: el runner con un `claude` falso (un script que devuelve un JSON grabado) arma la matriz, suma costos, respeta el tope y escribe la tabla.
 - [ ] Commit `feat(bench): runner de la prueba de validación de planes`.
 

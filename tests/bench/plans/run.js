@@ -200,7 +200,9 @@ function renderTable(rows, { spent = 0, stopped = null } = {}) {
 function runBench(options = {}) {
   const opts = {
     cases: CASES, methods: METHODS, models: MODELS, reps: 3, cap: DEFAULT_CAP, mode: 'isolated', claude: ['claude'],
-    outDir: path.join(__dirname, 'results'), resultsMd: path.join(REPO_ROOT, 'tests', 'evals', 'RESULTS-planes.md'),
+    outDir: path.join(__dirname, 'results'), // La tabla de cada corrida va a results/ (no versionado): RESULTS-planes.md se escribe a mano
+    // con los conteos validados, y una corrida nueva no debe pisarlo.
+    resultsMd: path.join(__dirname, 'results', 'last-table.md'),
     tmpDir: os.tmpdir(), env: process.env, log: (l) => process.stdout.write(`${l}\n`), now: new Date(),
     timeoutMs: 30 * 60 * 1000, dryRun: false, perRunCap: null, ...options,
   };
