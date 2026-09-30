@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2 — 2026-09-30
+
+- Revisores (las cinco lentes y los dos jueces): BLOCKER y CRITICAL quedan solo para lo que el diff introduce o empeora. Un problema anterior que el diff no introduce ni empeora va como WARNING o SUGGESTION, y su evidencia dice que es anterior al cambio; un control que falta cuenta como introducido solo si la tarjeta le pide a este cambio agregarlo. Lo que el diff sí introduce mantiene su severidad. Motivo: en la calibración del hito 3, `review-readability-clean` bloqueó con CRITICAL en `src/token.js:4` por un defecto que el propio agente reconoció anterior al diff (decisión del autor, 2026-09-30).
+- `review-resilience`: un hallazgo es CRITICAL solo si rompe lo que la tarjeta promete o pierde datos en un escenario realista del alcance de la tarea. Un endurecimiento (por ejemplo fsync antes del rename en un escritor que ya es atómico por rename, o defenderse de cortes de luz que la tarjeta no menciona) va como WARNING con su razón. Informar éxito tras una escritura fallida, o tragarse el error, sigue siendo BLOCKER. Motivo: `review-resilience-clean` dio CRITICAL por la falta de fsync (decisión del autor, 2026-09-30).
+- Revisores: la última línea del informe es solo la palabra del veredicto; nada después (ni "File reviewed:", ni notas), y en ESCALATE la decisión se nombra en la línea de arriba. La regla cierra el prompt, donde el modelo la lee último. Motivo: `judge-a-clean` aprobó bien pero agregó "File reviewed: …" después del APPROVE (decisión del autor para `judge-a` y `judge-b`; se aplica también a las lentes, que tienen el mismo contrato).
+- `tests/agents-output.test.js` fija las tres reglas en el texto de cada agente. Si el modelo las cumple lo miden las evals, que no se tocaron (`tests/evals/review-cases.js` sin cambios).
+
 ## 0.4.1 — 2026-09-30
 
 - Evals de revisión: los graders de texto (`finds-planted-defect`, `verdict-*`, `no-blocking-finding`, `refutes-false-claim`, `keeps-true-claim`, `done`) leen ahora solo el `tool_result` que la sesión principal recibe por su `tool_use` de `Agent` con el `subagent_type` del caso. Motivo: en la sonda 2 (Claude Code 2.1.285) el informe final del subagente nunca salió como `assistant` con `parent_tool_use_id`, así que los graders positivos no podían aprobar y los `not_contains` aprobaban siempre; el revisor había hallado bien `src/pages.js:7` BLOCKER y el grader lo dio como fallado.
