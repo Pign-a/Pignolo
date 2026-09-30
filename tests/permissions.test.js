@@ -92,6 +92,7 @@ const NOT_EXPRESSIBLE = {
   'dynamic-redirect': 'el destino sale de una variable; una regla solo ve el texto literal',
   'pignolo-run': 'depende del payload (agent_id): el hilo principal sí corre run.js; una regla de permisos no distingue',
   'pignolo-holdout': 'depende del payload (agent_id, agent_type): el hilo principal y el validator sí corren holdout.js',
+  'sabotage-lock': 'depende del estado del worktree (un candado de sabotaje en su git-dir): sin candado, commit y add pasan',
 };
 
 test('a trailing " *" matches the bare command only when it is the only wildcard (F10)', () => {
