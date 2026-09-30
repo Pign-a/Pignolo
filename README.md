@@ -83,6 +83,12 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 
 Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los agentes (0.4.2); la recalibración dio 12/12. Gasto total de las evals del hito 3: 11,49 USD de un tope de 54. Comandos, frenos, calibraciones y lo que dijo el agente en cada corrida fallada, en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
+## Validación de planes
+
+**En pocas palabras.** Medimos cuánto encuentra y cuánto cuesta cada forma de revisar un plan antes de construirlo (2026-09-30, 13,59 USD). En planes chicos, todos los métodos con IA encuentran todos los errores. En un plan real con 14 errores conocidos, un revisor que solo lee encuentra menos de la mitad: opus el 43–46 %, sonnet el 31 %, y opus cuesta unas 2,5 veces más. El que encontró los 14 fue un auditor que además probaba cosas en la máquina. Por eso pignolo va a validar planes con un script gratuito, un revisor opus y experimentos solo sobre los supuestos riesgosos, sin construir el plan dos veces.
+
+**Detalle técnico.** Caso real (plan 4a v1): M3 revisor sonnet 31 % a 0,45 USD por corrida; M3 opus 43 % a 1,10; M4 (script + revisor) opus 46 % a 0,90; el script solo, 0 % con 20 falsas alarmas en un plan que no declara qué es nuevo. Tablas, método y límites en [`tests/evals/RESULTS-planes.md`](tests/evals/RESULTS-planes.md).
+
 ## Guardia de shell
 
 Capa contra errores honestos, no frontera de seguridad (spec §1.9). Analiza cada comando de Bash (tokenizador propio) y de PowerShell (AST nativo, ~0,3 s por comando) sobre su argv literal:
