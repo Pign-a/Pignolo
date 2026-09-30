@@ -60,9 +60,15 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 
 ## Métricas de las evals
 
-**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Pendiente de la primera corrida.**
+**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Primera corrida (2026-09-30): se frenó en la sonda, sin resultados de calidad todavía.** De los 14 casos corrió uno solo, de prueba, y no se pudo confirmar que la medición viera el trabajo del revisor. Por eso, como estaba previsto, no se siguió. Costo: 0,10 USD.
 
-**Detalle técnico.** Pendiente de la primera corrida: cuando exista, acá va una tabla por agente y caso (aciertos sobre corridas, modelo opus o sonnet, costo medido por corrida, fecha y versión de Claude Code) y, al lado, el umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. El detalle completo, con el comando de cada etapa, vive en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
+**Detalle técnico.** Umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. Claude Code 2.1.285, Windows nativo.
+
+| Agente | Caso | Aciertos / corridas | Modelo | Costo por corrida (USD) | Fecha | Umbral 4/5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| review-reliability | review-reliability-defect (sonda) | 0/1 | revisor opus, sesión principal sonnet | 0,097 | 2026-09-30 | sin veredicto (1 corrida) |
+
+La sonda cortó por el freno i: no se pudo contar ningún evento del subagente, porque el runner borra el trace al terminar. La calibración, la corrida completa en opus y la rama sonnet no corrieron. WSL2 tampoco tiene `claude`. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
 ## Guardia de shell
 
