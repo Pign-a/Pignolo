@@ -89,6 +89,8 @@ test('private-reads denies shell wildcards whose static prefix is the store or a
     ['Get-Content $HOME/.pignolo/h*/*/*/*', 'PowerShell', 2],
     ['Get-Content $env:USERPROFILE\\.pignolo\\s*\\*\\*', 'PowerShell', 2],
     ['cat ../.pign*/*/*/*/*', 'Bash', 2],
+    ['cat "$HOME/.pign"*/hold*/*/*', 'Bash', 2],
+    ["cat ~/'.pign'*/hold*/*/*", 'Bash', 2],
     ['cat src/*.js', 'Bash', 0],
     ['grep -n "a.*b" src/a.js', 'Bash', 0],
     ['ls tests/*.test.js', 'Bash', 0],

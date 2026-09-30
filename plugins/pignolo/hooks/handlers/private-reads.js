@@ -62,7 +62,7 @@ function shellDenied(command, ps, { cwd, home, roots, store }) {
   const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
   const globHit = (tok) => SHELL_GLOB.test(tok) && insideOrAbove(resolveClean(expand(shellPrefix(tok), home), cwd, home));
   for (const seg of command.replace(/\$\{(\w+)\}/g, '$$$1').split(/[;&|\n\r(){}`]+/)) {
-    const toks = seg.replace(/["']/g, ' ').trim().split(/\s+/).filter(Boolean);
+    const toks = seg.replace(/["']/g, '').trim().split(/\s+/).filter(Boolean);
     if (toks.some(globHit)) return true;
     for (let i = 0; i < toks.length; i += 1) {
       const prog = path.basename(toks[i].replace(/\\/g, '/')).toLowerCase().replace(/\.exe$/, '');
