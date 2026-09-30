@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-09-30
+
+- Se quita la opción `language` de `userConfig`. Los textos para el usuario siguen el idioma de la conversación (el de Claude Code). Motivo: en `/config` aparecía una fila "Idioma" sin nada que elegir, y ningún código la leía (decisión del autor, 2026-09-30).
+
 ## 0.3.0 — sin publicar
 
 - Hito 2b: SEO estático en `ui-check` (SEO-01, 02, 04, 05, 06, 09, 18; solo con `web.public: true` en el `DESIGN.md`, nunca bloquean; `--url` para revisar la URL de desarrollo local), `files.mjs` (`save | verify | restore`, §9) y `report-check.mjs` (§12).
