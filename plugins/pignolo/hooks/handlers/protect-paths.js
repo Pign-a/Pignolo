@@ -25,11 +25,16 @@ const alt = (m) => ({ exit: 2, stderr: `pignolo bloqueó la escritura: ${m}
 const ALT_IMPL = 'Alternativa: un test cambia solo con test-authorization: devolvé BLOCKED y nombrá el test.';
 const ALT_TW = 'Alternativa: escribí solo en test-paths o en .pignolo/tmp/holdout/; lo demás lo pide el hilo principal.';
 
-// Raíz del worktree que contiene abs: el de la tarea si está dentro; si no, sube hasta el primer .git (sin git).
-function worktreeOf(abs, task) {
-  const inside = (root) => { const r = path.relative(root, abs); return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? r : null; };
-  if (task && inside(task.worktree) !== null) return task.worktree;
-  let dir = path.dirname(abs);
+// Raíz del worktree que contiene `file` (ruta cruda, con sus mayúsculas). Con tarea, solo
+// el worktree de la tarea (spec §8.3): una ruta de otro repo no toma su configuración. Sin
+// tarea, sube hasta el primer .git (sin git). path.relative compara sin mayúsculas en win32.
+function worktreeOf(file, task) {
+  if (task) {
+    if (typeof task.worktree !== 'string' || !task.worktree) return null;
+    const r = path.relative(task.worktree, file);
+    return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? task.worktree : null;
+  }
+  let dir = path.dirname(file);
   for (;;) {
     if (fs.existsSync(path.join(dir, '.git'))) return dir;
     const up = path.dirname(dir);
@@ -39,16 +44,18 @@ function worktreeOf(abs, task) {
 }
 
 // Escritura de tests por rol en el momento (spec §6/§11): espejo previo del handback-gate.
-function roleRule({ input, env, cwd, abs }) {
+// `file` es la ruta cruda resuelta contra el cwd: los globs son sensibles a mayúsculas y
+// resolveClean las pierde.
+function roleRule({ input, env, cwd, file }) {
   const agent = input.agent_type;
   if (agent !== 'pignolo:implementer' && agent !== 'pignolo:fixer' && agent !== 'pignolo:test-writer') return null;
   const state = projectState({ env, cwd });
   if (!state.active) return null;
   const { run } = readRun(state.main);
   const task = run && run.task ? run.task : null;
-  const wt = worktreeOf(abs, task);
+  const wt = worktreeOf(file, task);
   if (!wt) return null;
-  const rel = path.relative(wt, abs).split(path.sep).join('/');
+  const rel = path.relative(wt, file).split(path.sep).join('/');
   let config;
   try {
     const { readProjectConfig } = require('../../lib/project-config');
@@ -96,5 +103,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return roleRule({ input, env, cwd, abs }) || { exit: 0 };
+  return roleRule({ input, env, cwd, file: path.resolve(cwd, target) }) || { exit: 0 };
 };

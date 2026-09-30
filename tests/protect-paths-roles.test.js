@@ -12,11 +12,12 @@ const payload = (cwd, file_path, agent_type, tool_name = 'Write') => ({ hook_eve
 const IMPL = 'pignolo:implementer';
 
 // Repo con project.md (test-paths: [tests/]) commiteado y un worktree real; run.json con la tarea.
-function setup(task = {}, { withProject = true } = {}) {
+function setup(task = {}, { withProject = true, testPaths = ['tests/'] } = {}) {
   const repo = makeRepo();
   if (withProject) {
     fs.mkdirSync(path.join(repo, '.pignolo'), { recursive: true });
-    fs.writeFileSync(path.join(repo, '.pignolo', 'project.md'), '---\ntype: code-tested\ntest-paths:\n  - tests/\n---\n');
+    const list = testPaths.map((p) => `  - ${JSON.stringify(p)}\n`).join('');
+    fs.writeFileSync(path.join(repo, '.pignolo', 'project.md'), `---\ntype: code-tested\ntest-paths:\n${list}---\n`);
     git(['add', '.pignolo/project.md'], repo);
     git(['commit', '-q', '-m', 'project'], repo);
   }
@@ -101,4 +102,23 @@ test('an unreadable project.md denies a pignolo writer with the path', () => {
   const r = protect.run(payload(wt, path.join(wt, 'src', 'a.js'), IMPL), { env: env() });
   assert.strictEqual(r.exit, 2);
   assert.match(r.stderr, /src\/a\.js/);
+});
+
+// Protects: mayúsculas en globs y rutas · Breaks if: rel sale en minúsculas y un glob con
+// mayúsculas (*Test.java) o un archivo de la tarjeta con mayúsculas no coinciden nunca.
+test('an uppercase test glob and uppercase task files keep their case', () => {
+  const opts = { testPaths: ['src/test/**/*Test.java'] };
+  const { wt } = setup({}, opts);
+  const f = path.join(wt, 'src', 'test', 'java', 'FooTest.java');
+  assert.strictEqual(protect.run(payload(wt, f, IMPL), { env: env() }).exit, 2);
+  const auth = setup({ testAuthorization: true, files: ['src/test/java/FooTest.java'] }, opts);
+  assert.strictEqual(protect.run(payload(auth.wt, path.join(auth.wt, 'src', 'test', 'java', 'FooTest.java'), IMPL), { env: env() }).exit, 0);
+});
+
+// Protects: alcance de la regla · Breaks if: con una tarea activa, la configuración de la tarea
+// se aplica a rutas de otro repo (worktreeOf sube hasta cualquier .git).
+test('with a task, paths outside the task worktree have no per-role rule', () => {
+  const { wt } = setup();
+  const other = makeRepo();
+  assert.strictEqual(protect.run(payload(wt, path.join(other, 'tests', 'a.test.js'), IMPL), { env: env() }).exit, 0);
 });
