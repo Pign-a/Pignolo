@@ -264,7 +264,7 @@ const fixerCase = {
   name: 'fixer-confirmed-finding', agent: 'fixer', tags: ['agents', 'fixer', 'wsl2'], reviewer: false,
   files: { 'src/pages.js': PAGES_BUG, 'tests/pages.test.js': PAGES_TEST },
   brief: [
-    'Task-card: fix the confirmed finding below. Files you may touch: src/pages.js. Gate: node --test tests/',
+    'Task-card: fix the confirmed finding below. Files you may touch: src/pages.js. Gate: node --test "tests/**/*.test.js"',
     'Ledger entry reliability-1 (confirmed): location src/pages.js:7, severity CRITICAL, evidence: slice end drops the last item of each full page.',
     'Confirming test (red against the frozen SHA): tests/pages.test.js.',
   ].join('\n'),
@@ -362,4 +362,5 @@ if (require.main === module) {
   process.stdout.write(`${JSON.stringify({ out: path.resolve(out), cases: names })}\n`);
 }
 
-module.exports = { CASES, build, SUB, reportHead };
+// Los graders y la escritura se reusan en tests/evals/testing-cases.js (hito 4b).
+module.exports = { CASES, build, SUB, reportHead, CH, SEP, key, trace, said, saidNot, lastLine, singleDispatch, dispatched, graderMd, fixtureSh, PAGES, PAGES_BUG, PAGES_TEST };
