@@ -133,7 +133,8 @@ Es del propio plugin y no usa `~/.pignolo/config.json` — porque así no depend
 |---|---|---|---|
 | `optionsPerDecision` | `string` con `options` | `"1"`, `"3"` | `"3"` (A-02, A-15) |
 | `presentation` | `string` con `options` | `"auto"` (lienzo "Design" si está disponible y hay consentimiento en el proyecto; si no, local), `"local"` (nunca se publica) | `"auto"` (A-20, §13) |
-| `language` | `string` | código BCP 47; vacío = idioma de la conversación | vacío |
+
+**Decisión del autor (2026-09-30):** sin clave `language`. Los textos para el usuario siguen el idioma de la conversación, que sigue el de Claude Code; una opción propia de idioma sobraba y en `/config` se veía como una fila vacía.
 
 ### 3.2 Archivos
 

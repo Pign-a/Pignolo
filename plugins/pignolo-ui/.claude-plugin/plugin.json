@@ -1,7 +1,7 @@
 {
   "name": "pignolo-ui",
   "displayName": "Pignolo UI",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Crear y mejorar interfaces web con decisiones de diseño explícitas y verificadas: DESIGN.md validado, checker por script y auditor con evidencia",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",
@@ -21,12 +21,6 @@
       "description": "auto: lienzo Design si está disponible y el proyecto dio consentimiento; local: nunca se publica",
       "options": ["auto", "local"],
       "default": "auto"
-    },
-    "language": {
-      "type": "string",
-      "title": "Idioma",
-      "description": "Código BCP 47 de los textos para el usuario; vacío = idioma de la conversación",
-      "default": ""
     }
   }
 }
