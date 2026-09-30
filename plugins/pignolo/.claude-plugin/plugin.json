@@ -1,7 +1,7 @@
 {
   "name": "pignolo",
   "displayName": "Pignolo",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Metodología de desarrollo con agentes: autonomía acotada, verificación real, guardia de git",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",

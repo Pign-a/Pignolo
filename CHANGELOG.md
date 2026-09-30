@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 — 2026-09-30
+
+- `scripts/plan-check.js` (y `lib/plan-check.js`): revisa un plan contra el repo sin IA. Rutas, símbolos, firmas y comandos que nombra cada tarea; `node --check` de sus bloques js; con `--run-tests`, corre los bloques de test del plan en una copia temporal y dice si dan rojo. Lo usará el `plan-auditor` (hito 5). Límite medido: en un plan que nombra lo que el propio plan va a crear da falsas alarmas; falta que ignore lo marcado como `Create`.
+- Prueba de metodologías de validación de planes (`tests/bench/plans/`, resultados en `tests/evals/RESULTS-planes.md`): revisor opus 43–46 % contra sonnet 31 % en un plan real con 14 errores; recomendación: script + revisor opus + experimentos puntuales, sin replay.
+
 ## 0.5.0 — 2026-09-30
 
 - Piso de Node del núcleo: ≥ 22 (antes ≥ 20). Node 20 perdió soporte el 2026-04-30, la suite ya no corría en 20 y nunca se probó ahí; es el mismo piso de pignolo-ui y el que pide Claude Code por npm. El código no cambia (decisión del autor, 2026-09-30, tras debate).
