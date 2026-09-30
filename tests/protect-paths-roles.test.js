@@ -122,3 +122,18 @@ test('with a task, paths outside the task worktree have no per-role rule', () =>
   const other = makeRepo();
   assert.strictEqual(protect.run(payload(wt, path.join(other, 'tests', 'a.test.js'), IMPL), { env: env() }).exit, 0);
 });
+
+// Protects: la regla por rol en NTFS · Breaks if: la ruta se compara con mayúsculas ("TESTS/a.test.js")
+// o en forma Git Bash ("/c/Users/.../tests/a.test.js") y el implementer escribe el mismo archivo.
+const WIN = { skip: process.platform !== 'win32' && 'NTFS no distingue mayúsculas solo en Windows' };
+test('implementer: TESTS/ en mayúsculas y la forma /c/ de Git Bash siguen siendo test-paths', WIN, () => {
+  const { wt } = setup();
+  assert.strictEqual(protect.run(payload(wt, path.join(wt, 'TESTS', 'a.test.js'), IMPL), { env: env() }).exit, 2);
+  const gitBash = `/${wt[0].toLowerCase()}${wt.slice(2).split(path.sep).join('/')}/tests/a.test.js`;
+  assert.strictEqual(protect.run(payload(wt, gitBash, IMPL), { env: env() }).exit, 2);
+});
+
+test('una entrada de task.files con otras mayúsculas autoriza el test en Windows', WIN, () => {
+  const { wt } = setup({ testAuthorization: true, files: ['Tests/A.test.js'] });
+  assert.strictEqual(protect.run(payload(wt, path.join(wt, 'tests', 'a.test.js'), IMPL), { env: env() }).exit, 0);
+});

@@ -43,6 +43,15 @@ function worktreeOf(file, task) {
   }
 }
 
+// Como resolveClean pero conservando las mayúsculas (los globs las distinguen): expande
+// ~ y, en Windows, /c/... (Git Bash).
+function rawResolve(target, cwd, home) {
+  let t = target;
+  if (home && (t === '~' || /^~[\\/]/.test(t))) t = home + t.slice(1);
+  if (process.platform === 'win32') t = t.replace(/^[\\/]([a-zA-Z])(?=[\\/]|$)/, '$1:/');
+  return path.resolve(cwd, t);
+}
+
 // Escritura de tests por rol en el momento (spec §6/§11): espejo previo del handback-gate.
 // `file` es la ruta cruda resuelta contra el cwd: los globs son sensibles a mayúsculas y
 // resolveClean las pierde.
@@ -55,7 +64,8 @@ function roleRule({ input, env, cwd, file }) {
   const task = run && run.task ? run.task : null;
   const wt = worktreeOf(file, task);
   if (!wt) return null;
-  const rel = path.relative(wt, file).split(path.sep).join('/');
+  const lc = (x) => (process.platform === 'win32' ? x.toLowerCase() : x); // NTFS no distingue mayúsculas
+  const rel = lc(path.relative(wt, file).split(path.sep).join('/'));
   let config;
   try {
     const { readProjectConfig } = require('../../lib/project-config');
@@ -66,8 +76,8 @@ function roleRule({ input, env, cwd, file }) {
     return alt(`no se pudo leer ${PROJECT_MD} para decidir si se puede escribir ${rel} (${e.message}). Alternativa: respondé BLOCKED con este motivo.`);
   }
   const { matchAny } = require('../../lib/globs');
-  const isTest = matchAny(config.testPaths, rel);
-  const isProt = rel === PROJECT_MD || matchAny(config.protectedTestConfig, rel);
+  const isTest = matchAny(config.testPaths.map(lc), rel);
+  const isProt = rel === PROJECT_MD || matchAny(config.protectedTestConfig.map(lc), rel);
   if (agent === 'pignolo:test-writer') {
     if (isProt) return alt(`el test-writer no escribe ${rel} (config de tests protegida). ${ALT_TW}`);
     if (!isTest && !rel.startsWith(HOLDOUT_DIR)) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
@@ -75,7 +85,7 @@ function roleRule({ input, env, cwd, file }) {
   }
   if (rel === PROJECT_MD) return alt(`${agent.slice(8)} no escribe ${PROJECT_MD}. ${ALT_IMPL}`);
   if (!isTest && !isProt) return null;
-  const files = task && Array.isArray(task.files) ? task.files : [];
+  const files = task && Array.isArray(task.files) ? task.files.map(lc) : [];
   if (task && task.testAuthorization === true && (files.includes(rel) || matchAny(files, rel))) return null;
   return alt(`${agent.slice(8)} no escribe ${rel} (test o config de tests) sin autorización. ${ALT_IMPL}`);
 }
@@ -103,5 +113,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return roleRule({ input, env, cwd, file: path.resolve(cwd, target) }) || { exit: 0 };
+  return roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
 };
