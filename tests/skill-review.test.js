@@ -102,9 +102,9 @@ test('review: pasa el modo solo-informe a judgment; resultado solo-informe segú
   assert.doesNotMatch(text, /the frozen check of step 2 says so/);
 });
 
-test('judgment: modo solo-informe (pasos 1-4, 7 y 8; sin test-writer ni fixer); pedido directo = solo-informe salvo un sí explícito', () => {
+test('judgment: modo solo-informe (pasos 0-4, 7 y 8; sin test-writer ni fixer); pedido directo = solo-informe salvo un sí explícito', () => {
   const { text } = readSkill('judgment');
-  assert.match(text, /\*\*Report-only mode\*\*[^\n]*only steps 1 to 4, 7 and 8[^\n]*no test-writer and no fixer[^\n]*never commit/);
+  assert.match(text, /\*\*Report-only mode\*\*[^\n]*only steps 0 to 4, 7 and 8[^\n]*no test-writer and no fixer[^\n]*never commit/);
   assert.match(text, /asks for Judgment Day directly[^\n]*report-only unless they said an explicit yes to changing code/);
 });
 

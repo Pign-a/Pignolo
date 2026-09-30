@@ -52,3 +52,9 @@ test('daily: el paso del merge avisa que live-check no corrió si project.md lo 
   const { text } = readSkill('daily');
   assert.match(text, /\*\*Merge\*\*[^\n]*gates\.live-check[^\n]*not run/);
 });
+
+// Confirmación 3b (B): trivial manda a daily con el árbol sucio; el merge no debe chocar con trabajo del humano.
+test('daily: antes del merge mira el árbol de <main>; con cambios del humano no mergea ni hace stash ni commit', () => {
+  const { text } = readSkill('daily');
+  assert.match(text, /\*\*Merge\*\*[^\n]*cd "<main>" && git status --porcelain[^\n]*do not merge[^\n]*category `scope`[^\n]*never stash or commit their work/);
+});
