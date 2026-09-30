@@ -14,8 +14,8 @@ const ALTERNATIVES = {
   TREE_CHANGED: 'el comando modificó el árbol; agregá a .gitignore lo que genera la compuerta o corregí el comando.',
   FAIL: 'el comando terminó con error; corregilo y volvé a correr la compuerta.',
   INTEGRITY: 'cambiaron tests o su configuración; revertilos o pedí autorización de tests.',
-  NO_MUTATION_TOOL: '`mutation: true` y el diff toca `high-risk-paths`, pero no hay `gates.mutation`. Alternativa: el humano agrega la herramienta y su comando a `project.md`, o pone `mutation: false`.',
-  MUTATION: 'sobrevivieron mutantes. Alternativa: un test nuevo que los mate, un equivalente justificado aprobado por un revisor, o deuda registrada.',
+  NO_MUTATION_TOOL: '`mutation: true` y el diff toca `high-risk-paths`, pero no hay `gates.mutation`; el humano agrega la herramienta y su comando a `project.md`, o pone `mutation: false`.',
+  MUTATION: 'sobrevivieron mutantes: un test nuevo que los mate, un equivalente justificado aprobado por un revisor, o deuda registrada.',
   SCOPE: 'hay cambios fuera de los archivos de la tarea o archivos vaciados; revertilos.',
   NO_TESTS: 'ningún test cambió; pasá --no-tests-reason <archivo> con el motivo o agregá tests.',
 };

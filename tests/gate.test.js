@@ -281,6 +281,16 @@ test('mutación: no corre si el comando de pre-merge falla, si el cambio no toca
   assert.equal(s.checks.mutation, null);
 });
 
+// Protects: el mensaje del CLI · Breaks if: NO_MUTATION_TOOL o MUTATION imprimen "Alternativa:" dos veces.
+test('CLI: NO_MUTATION_TOOL y MUTATION dicen "Alternativa:" una sola vez', () => {
+  for (const cmd of [null, 'node mutate.js']) {
+    const { cwd, base } = riskSetup(cmd);
+    const r = spawnSync(process.execPath, [CLI, '--level', 'pre-merge', '--cwd', cwd, '--base', base], { encoding: 'utf8' });
+    assert.equal(JSON.parse(r.stdout).status, cmd ? 'MUTATION' : 'NO_MUTATION_TOOL');
+    assert.equal(r.stderr.match(/Alternativa:/g).length, 1, r.stderr);
+  }
+});
+
 test('CLI: --seed inválido y --base inexistente salen 2', () => {
   const { cwd } = setup();
   let r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--seed', 'abc'], { encoding: 'utf8' });
