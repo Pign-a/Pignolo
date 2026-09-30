@@ -70,7 +70,7 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 | refuter | refuter-false-finding | no medido (WSL2 sin preparar) | — | — | — | — |
 | fixer | fixer-confirmed-finding | no medido (WSL2 sin preparar) | — | — | — | — |
 
-Freno: los graders de texto buscan el informe del subagente en eventos `assistant` con `parent_tool_use_id`, y en los traces reales de Claude Code 2.1.285 ese informe llega solo como `tool_result` de la sesión principal. Hasta corregirlos (decisión del autor), no corren ni la calibración, ni la completa en opus, ni la rama sonnet. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
+Freno: los graders de texto buscaban el informe del subagente en eventos `assistant` con `parent_tool_use_id`, y en los traces reales de Claude Code 2.1.285 ese informe llega solo como `tool_result` de la sesión principal. Corregidos en 0.4.1: ahora leen ese `tool_result` (el del `Agent` del caso) y el test determinista usa el trace real de la sonda 2, donde `finds-planted-defect` aprueba. Falta repetir la sonda con los graders nuevos; hasta entonces no corren ni la calibración, ni la completa en opus, ni la rama sonnet. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
 ## Guardia de shell
 
