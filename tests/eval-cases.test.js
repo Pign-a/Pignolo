@@ -40,8 +40,9 @@ const REAL_RESULT_TEXT = REAL.find(isResult).message.content[0].content[0].text;
 const FRAME_HEAD = REAL_RESULT_TEXT.slice(0, REAL_RESULT_TEXT.indexOf('The report follows:\n') + 'The report follows:\n'.length);
 const FRAME_TAIL = REAL_RESULT_TEXT.slice(REAL_RESULT_TEXT.indexOf('\nagentId: '));
 
-function dispatch(c) {
+function dispatch(c, id = AGENT_ID) {
   const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === null && x.message.content[0].type === 'tool_use');
+  e.message.content[0].id = id;
   const input = e.message.content[0].input;
   input.subagent_type = `pignolo:${c.agent}`;
   input.prompt = c.brief;
@@ -61,9 +62,10 @@ function toolUse(name, input, parent) {
   e.parent_tool_use_id = parent;
   return e;
 }
-function agentResult(c, report) {
+function agentResult(c, report, id = AGENT_ID) {
   // El tool_result de la sesión principal, con el marco y la sangría que pone el harness.
   const e = find(isResult);
+  e.message.content[0].tool_use_id = id;
   const framed = `${FRAME_HEAD}${report.split('\n').map((l) => `  ${l}`).join('\n')}${FRAME_TAIL}`;
   e.message.content[0].content[0].text = framed;
   e.tool_use_result.prompt = c.brief;
@@ -81,16 +83,30 @@ function mainSays(text) {
   e.message.content[0].text = text;
   return e;
 }
+// Un tool_result del Agent que no es un informe: error de la herramienta (content string).
+function agentError(message) {
+  const e = find(isResult);
+  e.message.content[0] = { tool_use_id: AGENT_ID, type: 'tool_result', content: `<tool_use_error>${message}</tool_use_error>`, is_error: true };
+  delete e.tool_use_result;
+  return e;
+}
+// El aviso que devuelve Agent con run_in_background: true (el informe no llega en el tool_result).
+function agentLaunched(c) {
+  const e = agentResult(c, '');
+  e.message.content[0].content[0].text = 'Async agent launched successfully. agentId: a0 (runs in background; you will be notified when it completes)';
+  return e;
+}
 const RESULT_EVENT = find((x) => x.type === 'result');
 
 // Una corrida: la sesión principal despacha, el subagente trabaja (tools, con su parent) y
 // devuelve `report` (null: no hay tool_result del Agent); la principal contesta `main`.
-function run(c, { report, tools = [], main = 'RELAYED' }) {
-  return [
-    dispatch(c), ...subEvents(c), ...tools,
-    ...(report === null ? [] : [notification(report), agentResult(c, report)]),
-    mainSays(main), RESULT_EVENT,
-  ];
+// `result` reemplaza al tool_result del Agent (un error, un aviso de background). `before`
+// son eventos de la sesión principal antes del despacho (otro despacho y su tool_result).
+function run(c, { report, tools = [], main = 'RELAYED', result, before = [] }) {
+  let back = [];
+  if (result) back = [result];
+  else if (report !== null) back = [notification(report), agentResult(c, report)];
+  return [...before, dispatch(c), ...subEvents(c), ...tools, ...back, mainSays(main), RESULT_EVENT];
 }
 
 const out = makeTempDir('pignolo-evals-');
@@ -106,6 +122,7 @@ for (const c of CASES) {
     for (const content of Object.values(c.files)) assert.ok(sh.includes(content.replace(/\n$/, '')));
     const prompt = fs.readFileSync(path.join(out, c.name, 'prompt.md'), 'utf8');
     assert.match(prompt, new RegExp(`subagent_type pignolo:${c.agent}`));
+    assert.match(prompt, /run_in_background false/);
     assert.ok(fs.existsSync(path.join(out, c.name, 'graders', 'dispatched.md')));
   });
 
@@ -130,25 +147,51 @@ for (const c of CASES) {
     // su propio assistant, con el subagente devolviendo el informe malo: todo grader que exige
     // algo del subagente reprueba.
     const fromMain = { trace: run(c, { report: c.samples.fail, tools: mainTools, main: c.samples.pass }), files: fixed };
-    for (const g of onTrace.filter((x) => !ABSENT.includes(x.name) && x.name !== 'subagent-returned')) {
+    for (const g of onTrace.filter((x) => !ABSENT.includes(x.name) && !['subagent-returned', 'single-dispatch'].includes(x.name))) {
       assert.ok(!grade(g, fromMain), `${c.name}: ${g.name} aprueba el informe bueno escrito por la sesión principal`);
     }
 
-    // (c) Sin tool_result del Agent (aunque la sesión principal escriba el informe bueno), los
-    // graders de ausencia y el de "hubo informe" reprueban: no aprueban en vacío.
+    // (c) Sin informe real del subagente (aunque la sesión principal escriba el informe bueno),
+    // los graders de ausencia y el de "hubo informe" reprueban: no aprueban en vacío. Sin
+    // tool_result del Agent, con un error de la herramienta, con el aviso de background o con un
+    // informe vacío.
     assert.ok(gs.some((g) => g.name === 'subagent-returned'), `${c.name}: falta el grader subagent-returned`);
-    const silent = { trace: run(c, { report: null, tools: subTools, main: c.samples.pass }), files: fixed };
-    for (const g of onTrace.filter((x) => ABSENT.includes(x.name) || x.name === 'subagent-returned')) {
-      assert.ok(!grade(g, silent), `${c.name}: ${g.name} aprueba sin tool_result del Agent`);
+    const empties = {
+      'sin tool_result del Agent': run(c, { report: null, tools: subTools, main: c.samples.pass }),
+      'con un error del Agent': run(c, { report: null, tools: subTools, main: c.samples.pass, result: agentError('Agent type not found') }),
+      'con el aviso de background': run(c, { report: null, main: c.samples.pass, result: agentLaunched(c) }),
+      'con un informe vacío': run(c, { report: '', tools: subTools, main: c.samples.pass }),
+    };
+    for (const [why, trace] of Object.entries(empties)) {
+      for (const g of onTrace.filter((x) => ABSENT.includes(x.name) || x.name === 'subagent-returned')) {
+        assert.ok(!grade(g, { trace, files: fixed }), `${c.name}: ${g.name} aprueba ${why}`);
+      }
     }
 
     // Un informe de OTRO subagente (otro subagent_type) no cuenta.
     const other = { ...c, agent: c.agent === 'refuter' ? 'fixer' : 'refuter' };
     const wrongAgent = { trace: run(c, { report: null }).slice(0, -2).concat([agentResult(other, c.samples.pass), mainSays('RELAYED')]), files: fixed };
     wrongAgent.trace[0].message.content[0].input.subagent_type = `pignolo:${other.agent}`;
-    for (const g of onTrace.filter((x) => !/^subagent-(edited|ran)/.test(x.name))) {
+    for (const g of onTrace.filter((x) => !/^subagent-(edited|ran)/.test(x.name) && x.name !== 'single-dispatch')) {
       assert.ok(!grade(g, wrongAgent), `${c.name}: ${g.name} aprueba el informe de pignolo:${other.agent}`);
     }
+
+    // Dos despachos, primero OTRO agente y después el del caso: cada grader elige el tool_result
+    // del agente del caso (el del otro no suma ni resta).
+    const otherFirst = (mine, theirs) => {
+      const d = dispatch(other, 'toolu_OTHER');
+      return run(c, { report: mine, tools: subTools, before: [d, agentResult(other, theirs, 'toolu_OTHER')] });
+    };
+    const text = onTrace.filter((x) => !/^subagent-(edited|ran)/.test(x.name) && x.name !== 'single-dispatch');
+    for (const g of text) assert.ok(grade(g, { trace: otherFirst(c.samples.pass, c.samples.fail), files: fixed }), `${c.name}: ${g.name} no elige el informe del agente del caso (despachado segundo)`);
+    for (const g of text.filter((x) => !grade(x, bad))) {
+      assert.ok(!grade(g, { trace: otherFirst(c.samples.fail, c.samples.pass), files: fixed }), `${c.name}: ${g.name} toma el informe bueno del otro agente`);
+    }
+
+    // Dos despachos del mismo agente: single-dispatch reprueba (si no, aprobaría el mejor).
+    assert.ok(gs.some((g) => g.name === 'single-dispatch'), `${c.name}: falta el grader single-dispatch`);
+    const twice = run(c, { report: c.samples.pass, tools: subTools, before: [dispatch(c, 'toolu_FIRST'), agentResult(c, c.samples.fail, 'toolu_FIRST')] });
+    assert.ok(!grade(gs.find((g) => g.name === 'single-dispatch'), { trace: twice, files: fixed }), `${c.name}: single-dispatch aprueba dos despachos`);
   });
 }
 
@@ -167,10 +210,40 @@ test('eval: el trace real de la sonda 2 (review-reliability-defect) aprueba find
   }
 });
 
+test('eval: la palabra final es la última línea del informe (tolera énfasis, backticks y "Final word:")', () => {
+  const clean = CASES.find((x) => x.name === 'review-reliability-clean');
+  const approve = graders(clean.name).find((x) => x.name === 'verdict-approve');
+  const body = clean.samples.pass.replace(/APPROVE$/, '');
+  const verdictOf = (tail) => grade(approve, { trace: run(clean, { report: `${body}${tail}` }), files: {} });
+  for (const ok of ['APPROVE', '**APPROVE**', '`APPROVE`', '*APPROVE*', 'Final word: APPROVE', 'Final word: `APPROVE`', '**Final word: APPROVE**', 'APPROVE\n\n']) {
+    assert.ok(verdictOf(ok), `verdict-approve reprueba ${JSON.stringify(ok)}`);
+  }
+  for (const no of ['APPROVE\n\nREQUEST_CHANGES', 'APPROVE\nmore notes', 'APPROVED', 'I would APPROVE', 'NOT APPROVE', '**APPROVE** with notes']) {
+    assert.ok(!verdictOf(no), `verdict-approve aprueba ${JSON.stringify(no)}`);
+  }
+  const fixer = CASES.find((x) => x.name === 'fixer-confirmed-finding');
+  const done = graders(fixer.name).find((x) => x.name === 'done');
+  const doneOf = (report) => grade(done, { trace: run(fixer, { report }), files: {} });
+  assert.ok(doneOf('RED: x\nGREEN: y\n`DONE`'));
+  assert.ok(doneOf('RED: x\nGREEN: y\nFinal word: **DONE**'));
+  assert.ok(!doneOf('RED: x\nDONE\nmore notes'));
+  assert.ok(!doneOf('DONE\n\nBLOCKED'));
+});
+
+test('eval: la ubicación plantada con severidad SUGGESTION no aprueba finds-planted-defect', () => {
+  for (const name of ['review-reliability-defect', 'judge-a-defect']) {
+    const c = CASES.find((x) => x.name === name);
+    const g = graders(name).find((x) => x.name === 'finds-planted-defect');
+    const soft = c.samples.pass.replace(/"severity": "(BLOCKER|CRITICAL)"/, '"severity": "SUGGESTION"');
+    assert.notStrictEqual(soft, c.samples.pass);
+    assert.ok(!grade(g, { trace: run(c, { report: soft }), files: {} }), `${name}: finds-planted-defect aprueba con SUGGESTION`);
+  }
+});
+
 test('eval: todo grader sobre el trace exige el tool_result del Agent del caso o un evento del subagente (SUB)', () => {
   assert.strictEqual(typeof evals.reportHead, 'function');
   for (const c of CASES) {
-    for (const g of graders(c.name).filter((x) => x.target === 'trace')) {
+    for (const g of graders(c.name).filter((x) => x.target === 'trace' && x.name !== 'single-dispatch')) {
       assert.ok(g.pattern.startsWith(evals.reportHead(c.agent)) || g.pattern.startsWith(SUB), `${c.name}: ${g.name} no se ata al subagente`);
     }
   }

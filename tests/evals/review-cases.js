@@ -136,6 +136,8 @@ function diff(file, a, b) {
 // Evento de un subagente (assistant con parent_tool_use_id no nulo): sus tool_use.
 const SUB = '^(?=[^\\n]*"type":"assistant")(?=[^\\n]*"parent_tool_use_id":"[^"]+")[^\\n]*';
 // Un carácter dentro de un string JSON serializado (una secuencia de escape cuenta como uno).
+// Excluir `"` es lo que mantiene lineal la regex: ningún CH puede salir del string ni solaparse
+// con otra alternativa, así que no hay backtracking combinatorio sobre el trace.
 const CH = String.raw`(?:[^"\\\n]|\\.)`;
 // Hasta el comienzo del texto del informe del subagente: el tool_use de Agent de la sesión
 // principal con el subagent_type del caso (su id se captura) y, más adelante, el tool_result
@@ -148,16 +150,27 @@ const key = (k, v) => `\\\\"${k}\\\\":\\s*\\\\"${v}\\\\"`;
 const trace = (name, pattern) => ({ name, type: 'regex', target: 'trace', flags: 'm', pattern: SUB + pattern });
 // `pattern` aparece dentro del informe que devolvió el subagente `agent`.
 const said = (agent, name, pattern) => ({ name, type: 'regex', target: 'trace', pattern: `${reportHead(agent)}${CH}*?${pattern}` });
-// El subagente devolvió un informe y `pattern` NO aparece en él. Es `contains` a propósito:
-// sin tool_result del Agent reprueba (un `not_contains` aprobaría en vacío).
-const saidNot = (agent, name, pattern) => ({ name, type: 'regex', target: 'trace', pattern: `${reportHead(agent)}(?:(?!${pattern})${CH})*"` });
-// Hubo informe del subagente (al menos un carácter en el tool_result de su Agent).
-const returned = (agent) => ({ name: 'subagent-returned', type: 'regex', target: 'trace', pattern: `${reportHead(agent)}${CH}` });
+// El subagente devolvió un informe con su bloque ```json y `pattern` NO aparece en él. Es
+// `contains` a propósito: sin tool_result del Agent, con un error de la herramienta, con el
+// aviso de background o con un informe vacío reprueba (un `not_contains` aprobaría en vacío).
+const saidNot = (agent, name, pattern) => ({ name, type: 'regex', target: 'trace', pattern: `${reportHead(agent)}(?=${CH}*?\`\`\`json)(?:(?!${pattern})${CH})*"` });
 const finding = (file, lines, sev) => `${key('location', `${file.replace(/\./g, '\\.')}:(${lines})`)}${SEP}${key('severity', `(${sev})`)}`;
-// Última línea del informe. El harness 2.1.285 sangra cada línea del informe y agrega después
-// "\nagentId: ..."; sin ese marco, la última línea cierra el string.
-const lastLine = (word) => String.raw`\\n *${word} *(?:\\n *)*(?:"|\\nagentId: )`;
+// Última línea del informe: la palabra sola, con énfasis markdown o backticks alrededor
+// (`**APPROVE**`, `` `DONE` ``) y el prefijo `Final word:` opcional; después solo líneas vacías.
+// El harness 2.1.285 sangra cada línea del informe y agrega después "\nagentId: ..."; sin ese
+// marco, la última línea cierra el string.
+const MARK = '[*_`]{0,2}';
+const lastLine = (word) => String.raw`\\n *${MARK}(?:Final word: *${MARK})?${word}${MARK} *(?:\\n *)*(?:"|\\nagentId: )`;
 const verdict = (agent, word) => said(agent, `verdict-${word.toLowerCase()}`, lastLine(word));
+// Hubo informe del subagente: su bloque ```json (lentes, jueces, refuter) o, en el fixer, su
+// palabra final como última línea. Un error, el aviso de background o un informe vacío no cuentan.
+const returned = (agent) => ({
+  name: 'subagent-returned', type: 'regex', target: 'trace',
+  pattern: `${reportHead(agent)}${CH}*?${agent === 'fixer' ? lastLine('(?:DONE|BLOCKED|NEEDS_CONTEXT)') : '```json'}`,
+});
+// Un solo despacho de Agent en la corrida: con dos, los graders de texto aprobarían el mejor
+// de los dos informes. `not_contains` basta: `dispatched` ya exige al menos uno.
+const singleDispatch = { name: 'single-dispatch', type: 'regex', target: 'trace', pattern: String.raw`"name":"Agent","input":\{[\s\S]*"name":"Agent","input":\{`, match: 'not_contains' };
 const dispatched = (agent, model) => [
   { name: 'dispatched', type: 'tool_used', tool: 'Agent', input_match: `"subagent_type":"pignolo:${agent}"` },
   ...(model ? [{ name: 'model', type: 'tool_used', tool: 'Agent', input_match: `"model":"${model}"` }] : []),
@@ -313,7 +326,7 @@ function promptMd(c, caseDir, reviewerModel) {
     `allowed_tools: [${tools.join(', ')}]`,
     '---',
     '',
-    `Dispatch the pignolo:${c.agent} agent (${how}) with exactly the brief between the two lines of dashes. Do not read, run or change anything yourself. When the agent returns, reply with only the word RELAYED.`,
+    `Dispatch the pignolo:${c.agent} agent (${how}) with run_in_background false and exactly the brief between the two lines of dashes. Do not read, run or change anything yourself. When the agent returns, reply with only the word RELAYED.`,
     '',
     '----------',
     c.brief,
@@ -331,7 +344,7 @@ function build({ out, reviewerModel = 'opus' }) {
     fs.writeFileSync(path.join(dir, 'case.yaml'), `schema_version: "1.1"\nname: ${c.name}\ncontext:\n  scaffold_script: fixture.sh\n`);
     fs.writeFileSync(path.join(dir, 'fixture.sh'), fixtureSh(c.files));
     fs.writeFileSync(path.join(dir, 'prompt.md'), promptMd(c, dir, reviewerModel));
-    const graders = [...dispatched(c.agent, c.reviewer ? reviewerModel : null), returned(c.agent), ...c.graders];
+    const graders = [...dispatched(c.agent, c.reviewer ? reviewerModel : null), singleDispatch, returned(c.agent), ...c.graders];
     for (const g of graders) fs.writeFileSync(path.join(dir, 'graders', `${g.name}.md`), graderMd(g));
   }
   return CASES.map((c) => c.name);
