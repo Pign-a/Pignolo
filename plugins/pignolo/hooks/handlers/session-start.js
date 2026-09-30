@@ -8,6 +8,7 @@ const { recoverAll } = require('../../lib/sabotage');
 
 const LAUNCHER = path.join(__dirname, '..', 'launcher.js');
 const SEEDER = path.join(__dirname, '..', '..', 'scripts', 'shadow-seed.js');
+const SABOTAGE_CLI = path.join(__dirname, '..', '..', 'scripts', 'sabotage.js');
 const CANARY_MARK = /pignolo bloqueó/;
 const FAMILY_LABEL = {
   catastrophic: 'catastrófico',
@@ -80,9 +81,12 @@ exports.run = (input, ctx = {}) => {
   }
   if (!st.guardOff) {
     // Sabotaje interrumpido (spec §11.6): sin candado no lanza git; callado si no hubo nada.
+    // Con /pignolo:off no restaura (decisión del autor, 2026-09-30): solo avisa.
     try {
-      const rec = recoverAll({ cwd });
+      const rec = recoverAll({ cwd, env, restore: !st.hooksOff });
       for (const r of rec.recovered) lines.push(`pignolo restauró ${r.files.length} archivos que un sabotaje interrumpido dejó rotos en ${r.worktree} (${r.files.join(', ')}).`);
+      for (const p of rec.pending) lines.push(`⚠ pignolo: quedó un sabotaje interrumpido en ${p.worktree} (${p.files.join(', ')}) y no se restauró porque pignolo está apagado con /pignolo:off. Corré: node "${SABOTAGE_CLI}" --recover --cwd "${p.worktree}"`);
+      for (const b of rec.busy) lines.push(`⚠ pignolo: hay un sabotaje en curso en ${b.worktree} (pid ${b.pid}); no se tocó. Si no hay ninguno corriendo, en 30 s el candado queda viejo: corré node "${SABOTAGE_CLI}" --recover --cwd "${b.worktree}"`);
       for (const e of rec.errors) lines.push(`⚠ pignolo: no se pudo recuperar un sabotaje interrumpido (${e.message}).`);
     } catch (e) {
       lines.push(`⚠ pignolo: no se pudo revisar si quedó un sabotaje interrumpido (${e.message}).`);

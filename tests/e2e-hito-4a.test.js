@@ -90,6 +90,10 @@ async function interrupt(t, cwd, patch) {
   const t1 = Date.now();
   while (alive(grandchild) && Date.now() - t1 < 5000) await pause(100);
   assert.equal(alive(grandchild), false, 'el comando (nieto) sigue vivo');
+  // Latido viejo: el candado es viejo aunque Windows ya haya reutilizado el pid muerto.
+  const lock = lockPath(gitdirOf(cwd));
+  const old = new Date(Date.now() - 120e3);
+  fs.utimesSync(lock, old, old);
 }
 
 test('§15 sabotage: interrumpido a mitad, --recover restaura el árbol', async (t) => {

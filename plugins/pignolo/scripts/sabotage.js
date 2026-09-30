@@ -2,8 +2,10 @@
 // CLI del sabotaje (spec §4, §11.6): rojo demostrado sobre código commiteado.
 // Uso: node sabotage.js --patch <archivo> [--gate on-edit|on-done] [--cwd <dir>] [--timeout-min <n>]
 //      node sabotage.js --recover [--cwd <dir>]
-// Exit: 0 rojo demostrado y restaurado; 1 el test siguió verde; 2 uso inválido o negativa;
-// 3 no se pudo restaurar.
+// Plazo por defecto: 8 min (debajo de los 10 de la herramienta Bash).
+// Exit: 0 rojo demostrado y restaurado; 1 el test siguió verde; 2 uso inválido o negativa
+// (con --recover: hay un sabotaje en curso); 3 no se pudo restaurar (con --recover: los
+// archivos cambiaron después del corte y no se tocó nada).
 const path = require('node:path');
 const { sabotage, recover, DEFAULT_TIMEOUT_MS } = require('../lib/sabotage');
 
@@ -40,7 +42,8 @@ async function main() {
     const r = recover({ cwd });
     process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
     for (const x of r.recovered) process.stderr.write(`pignolo sabotage: restauré ${x.files.length} archivos en ${x.worktree}.\n`);
-    return 0;
+    for (const b of r.busy) process.stderr.write(`pignolo sabotage: hay un sabotaje en curso en ${b.worktree} (pid ${b.pid}, candado ${b.gitdir}); no se tocó nada. Alternativa: esperá a que termine; si no hay ninguno corriendo, el candado queda viejo en 30 s sin latido y --recover lo restaura.\n`);
+    return r.busy.length ? 2 : 0;
   }
   const r = await sabotage({
     cwd, patchFile: path.resolve(process.cwd(), o.patch), level: o.gate, env: process.env,

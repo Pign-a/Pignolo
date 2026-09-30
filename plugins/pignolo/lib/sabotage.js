@@ -1,18 +1,24 @@
 'use strict';
 // Sabotaje (spec §4, §11.6): demuestra el rojo sobre código commiteado. Aplica un parche,
-// corre el comando declarado y restaura con `git restore --source=HEAD`. El candado vive
-// en el git-dir del worktree: git no lo muestra ni lo commitea, y SessionStart lo
-// encuentra sin lanzar git para restaurar un sabotaje interrumpido.
+// corre el comando declarado y restaura con `git restore --source=HEAD`. El candado (con
+// latido) y una copia del parche viven en el git-dir del worktree: git no los muestra ni
+// los commitea, y SessionStart los encuentra sin lanzar git. Un sabotaje interrumpido se
+// deshace aplicando la copia al revés, nunca desde HEAD.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, spawnSync, execFileSync } = require('node:child_process');
 const { readProjectConfig } = require('./project-config');
 const { matchAny } = require('./globs');
-const { projectRoot } = require('./disabled');
 
 const LEVELS = ['on-edit', 'on-done'];
-const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
+// Por debajo de los 10 min de la herramienta Bash: si la herramienta mata el proceso, el
+// candado queda y el árbol con el parche (lo recupera SessionStart o `--recover`).
+const DEFAULT_TIMEOUT_MS = 8 * 60 * 1000;
 const LOCK_GRACE_MS = 10 * 60 * 1000;
+// Latido: mientras el sabotaje vive renueva el mtime del candado; sin latido por más de
+// HEARTBEAT_STALE_MS el candado es viejo aunque su pid exista.
+const HEARTBEAT_MS = 5000;
+const HEARTBEAT_STALE_MS = 30000;
 const GIT_MS = 120000;
 const TAIL_LINES = 40;
 const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
@@ -28,6 +34,7 @@ class SabotageError extends Error {
 
 const lockPath = (gitdir) => path.join(gitdir, 'pignolo-sabotage.json');
 const logPath = (gitdir) => path.join(gitdir, 'pignolo-sabotage.log');
+const patchCopyPath = (gitdir) => path.join(gitdir, 'pignolo-sabotage.patch');
 
 // Pathspecs literales: un archivo con * o [ en el nombre no se expande. Sin trim (gitRun
 // recorta, y la primera línea de `status --porcelain` puede empezar con espacio).
@@ -50,10 +57,20 @@ function statusPaths(root) {
   return paths;
 }
 
+// Raíz del repo sin git: el primer directorio hacia arriba con .git (archivo o carpeta).
+// No usa projectRoot: un .pignolo/project.md anidado sin .git lo detendría antes.
+function gitTop(cwd) {
+  for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    if (path.dirname(dir) === dir) return null;
+  }
+}
+
 // git-dir del worktree del cwd y el común, sin git (la lógica de gitCommon).
 function gitDirs(cwd) {
   try {
-    const root = projectRoot(cwd);
+    const root = gitTop(cwd);
+    if (!root) return null;
     const dotGit = path.join(root, '.git');
     if (fs.statSync(dotGit).isDirectory()) return { gitdir: dotGit, common: dotGit };
     const m = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
@@ -65,17 +82,27 @@ function gitDirs(cwd) {
   } catch (_) { return null; }
 }
 
-// Vivo: process.kill(pid, 0) no lanza o lanza EPERM (proceso ajeno). Viejo: ESRCH, o
-// ya pasó `expires` (el pid pudo reutilizarse).
+// Candado del worktree del cwd (la guardia niega commit y add mientras exista), o null.
+// Sin git: un existsSync.
+function lockedAt(cwd) {
+  const d = gitDirs(cwd);
+  return d && fs.existsSync(lockPath(d.gitdir)) ? lockPath(d.gitdir) : null;
+}
+
+// Vivo: latido reciente (mtime del candado) y process.kill(pid, 0) no lanza o lanza EPERM
+// (proceso ajeno). Viejo: ESRCH, latido de más de HEARTBEAT_STALE_MS (Windows reutiliza
+// pids: un pid vivo no prueba nada) o ya pasó `expires`.
 function lockState(gitdir) {
   const file = lockPath(gitdir);
-  if (!fs.existsSync(file)) return { state: 'none' };
+  let st;
+  try { st = fs.statSync(file); } catch (_) { return { state: 'none' }; }
   let lock;
   try { lock = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) {
     throw new SabotageError(`candado ilegible en ${file} (${e.message}); revisá el worktree y borralo a mano.`, 3);
   }
   const expires = Date.parse(lock.expires);
   if (Number.isFinite(expires) && Date.now() > expires) return { state: 'stale', lock };
+  if (Date.now() - st.mtimeMs > HEARTBEAT_STALE_MS) return { state: 'stale', lock };
   try {
     process.kill(lock.pid, 0);
     return { state: 'alive', lock };
@@ -103,35 +130,61 @@ function restore({ root, head, files = [], added = [] }) {
   return { notRestored, newFiles, clean: notRestored.length === 0 && newFiles.length === 0 };
 }
 
-// Restaura un candado viejo. null si no había nada que restaurar (se borra igual).
-function recoverLock(gitdir, lock) {
+const dropLock = (gitdir) => {
+  fs.rmSync(lockPath(gitdir), { force: true });
+  fs.rmSync(patchCopyPath(gitdir), { force: true });
+};
+
+// Restaura un candado viejo aplicando al revés la copia del parche (nunca desde HEAD ni
+// sobre el índice): si el usuario editó esos archivos después del corte, `git apply -R
+// --check` falla y no se toca nada (exit 3, el candado queda). Antes de restaurar, una
+// instantánea WIP (best-effort). null si no había nada que restaurar (se borra igual).
+function recoverLock(gitdir, lock, env) {
   const root = lock.worktree;
   if (!root || !fs.existsSync(root)) throw new SabotageError(`el candado ${lockPath(gitdir)} nombra un worktree que no existe (${root}); borralo a mano.`, 3);
   const files = Array.isArray(lock.files) ? lock.files : [];
   const added = Array.isArray(lock.added) ? lock.added : [];
   const mine = new Set([...files, ...added]);
   const broken = statusPaths(root).filter((p) => mine.has(p));
-  const r = restore({ root, head: lock.head || 'HEAD', files, added });
-  if (r.notRestored.length) {
-    throw new SabotageError(`no se pudo restaurar el sabotaje interrumpido en ${root}: ${r.notRestored.join(', ')}. Corré: git restore --source=HEAD -- ${r.notRestored.join(' ')}`, 3, { notRestored: r.notRestored, worktree: root });
+  if (!broken.length) { dropLock(gitdir); return null; } // el parche no llegó a aplicarse
+  const copy = patchCopyPath(gitdir);
+  const untouched = `no se tocó nada. Revisalos: si el cambio es solo el sabotaje, corré en ${root}: git apply -R "${copy}"; si son tuyos, dejalos. Después borrá a mano ${lockPath(gitdir)} y ${copy}.`;
+  const extra = { notRestored: broken, worktree: root };
+  if (!fs.existsSync(copy)) {
+    throw new SabotageError(`sabotaje interrumpido en ${root} sin copia del parche: ${broken.join(', ')} difieren de HEAD y ${untouched}`, 3, extra);
   }
-  fs.rmSync(lockPath(gitdir), { force: true });
-  return broken.length ? { worktree: root, files: broken } : null;
+  try { gitRaw(['apply', '-R', '--check', copy], root); } catch (_) {
+    throw new SabotageError(`sabotaje interrumpido en ${root}: ${broken.join(', ')} cambiaron después del corte (el parche ya no se deshace limpio); ${untouched}`, 3, extra);
+  }
+  try {
+    require('./git-backup').snapshotWip({ cwd: root, reason: 'antes-de-recuperar-sabotaje', timeoutMs: 10000, env });
+  } catch (_) { /* best-effort: la restauración deshace solo el parche */ }
+  try { gitRaw(['apply', '-R', copy], root); } catch (e) {
+    throw new SabotageError(`no se pudo deshacer el sabotaje interrumpido en ${root} (${(e.stderr || e.message).toString().trim()}); ${untouched}`, 3, extra);
+  }
+  dropLock(gitdir);
+  return { worktree: root, files: broken };
 }
 
-function recoverGitdir(gitdir) {
+// Con restore: false (pignolo apagado con /pignolo:off) no toca nada: devuelve el
+// candado viejo en `pending` para avisar.
+function recoverGitdir(gitdir, { restore: doRestore = true, env } = {}) {
   const st = lockState(gitdir);
-  if (st.state === 'none') return { recovered: null, busy: null };
-  if (st.state === 'alive') return { recovered: null, busy: { gitdir, pid: st.lock.pid, worktree: st.lock.worktree } };
-  return { recovered: recoverLock(gitdir, st.lock), busy: null };
+  if (st.state === 'none') return {};
+  if (st.state === 'alive') return { busy: { gitdir, pid: st.lock.pid, worktree: st.lock.worktree } };
+  if (!doRestore) {
+    const files = [...(Array.isArray(st.lock.files) ? st.lock.files : []), ...(Array.isArray(st.lock.added) ? st.lock.added : [])];
+    return { pending: { gitdir, worktree: st.lock.worktree, files } };
+  }
+  return { recovered: recoverLock(gitdir, st.lock, env) };
 }
 
 // Solo el worktree del cwd.
-function recover({ cwd = process.cwd() } = {}) {
+function recover({ cwd = process.cwd(), env = process.env } = {}) {
   const d = gitDirs(cwd);
   const out = { recovered: [], busy: [] };
   if (!d) return out;
-  const r = recoverGitdir(d.gitdir);
+  const r = recoverGitdir(d.gitdir, { env });
   if (r.recovered) out.recovered.push(r.recovered);
   if (r.busy) out.busy.push(r.busy);
   return out;
@@ -139,8 +192,8 @@ function recover({ cwd = process.cwd() } = {}) {
 
 // El git-dir del cwd, el común y <common>/worktrees/*/. Sin candado no lanza git.
 // Un error en un worktree no frena a los demás: va a `errors`.
-function recoverAll({ cwd = process.cwd() } = {}) {
-  const out = { recovered: [], busy: [], errors: [] };
+function recoverAll({ cwd = process.cwd(), env = process.env, restore: doRestore = true } = {}) {
+  const out = { recovered: [], busy: [], pending: [], errors: [] };
   const d = gitDirs(cwd);
   if (!d) return out;
   const dirs = [d.gitdir, d.common];
@@ -156,9 +209,10 @@ function recoverAll({ cwd = process.cwd() } = {}) {
     seen.add(key);
     if (!fs.existsSync(lockPath(gd))) continue;
     try {
-      const r = recoverGitdir(gd);
+      const r = recoverGitdir(gd, { restore: doRestore, env });
       if (r.recovered) out.recovered.push(r.recovered);
       if (r.busy) out.busy.push(r.busy);
+      if (r.pending) out.pending.push(r.pending);
     } catch (e) {
       out.errors.push({ gitdir: gd, message: e.message });
     }
@@ -227,7 +281,7 @@ function patchPaths(root, patch) {
   return [...new Set(paths.filter(Boolean))];
 }
 
-async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEFAULT_TIMEOUT_MS, env = process.env } = {}) {
+async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEFAULT_TIMEOUT_MS, env = process.env, heartbeatMs = HEARTBEAT_MS } = {}) {
   if (!patchFile) throw new SabotageError('falta --patch <archivo> con un diff unificado.');
   if (level !== undefined && !LEVELS.includes(level)) throw new SabotageError(`--gate debe ser ${LEVELS.join(' | ')}`);
   let root;
@@ -242,7 +296,7 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
   if (!fs.existsSync(patch)) throw new SabotageError(`no existe el parche ${patch}`);
 
   // 1. Un candado viejo se restaura antes de seguir; uno vivo es otro sabotaje en curso.
-  const prev = recoverGitdir(gitdir);
+  const prev = recoverGitdir(gitdir, { env });
   if (prev.busy) throw new SabotageError(`otro sabotaje en curso (pid ${prev.busy.pid}, candado ${lockPath(gitdir)}); esperá a que termine.`);
 
   // 2. Árbol limpio.
@@ -272,9 +326,10 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
   const logFile = logPath(gitdir);
   let child = null;
   let applied = false;
+  let beat = null;
   const finish = () => {
     const r = restore({ root, head, files, added });
-    if (r.notRestored.length === 0) fs.rmSync(lockPath(gitdir), { force: true });
+    if (r.notRestored.length === 0) dropLock(gitdir);
     return r;
   };
   // Señal durante el comando: matar el árbol, restaurar si hay parche y salir con 130.
@@ -308,7 +363,14 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
       expires: new Date(startedAt + timeoutMs + LOCK_GRACE_MS).toISOString(),
       head, worktree: root, files, added,
     };
+    // La copia del parche va antes que el candado: la recuperación la aplica al revés.
+    fs.copyFileSync(patch, patchCopyPath(gitdir));
     fs.writeFileSync(lockPath(gitdir), JSON.stringify(lock, null, 2));
+    beat = setInterval(() => {
+      const t = new Date();
+      try { fs.utimesSync(lockPath(gitdir), t, t); } catch (_) { /* el candado ya no está */ }
+    }, heartbeatMs);
+    beat.unref();
     applied = true;
     try { git(['apply', patch], root); } catch (e) {
       const r = finish();
@@ -334,8 +396,9 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
     }
     throw e;
   } finally {
+    clearInterval(beat);
     for (const s of SIGNALS) process.removeListener(s, onSignal);
   }
 }
 
-module.exports = { sabotage, recover, recoverAll, lockPath, logPath, SabotageError, DEFAULT_TIMEOUT_MS };
+module.exports = { sabotage, recover, recoverAll, lockedAt, lockPath, logPath, patchCopyPath, SabotageError, DEFAULT_TIMEOUT_MS };
