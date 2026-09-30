@@ -11,7 +11,7 @@ const path = require('node:path');
 const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { projectState, readRun } = require('../../lib/project');
-const { resolveClean, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
+const { resolveClean, cleanPath, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
 
 const BLOCKED = 'pignolo bloqueó la escritura: los flags del interruptor solo los escribe /pignolo:off y /pignolo:on. Alternativa: pedile al humano que escriba el comando.\n';
 const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins. Alternativa: usá comandos git; lo que haya que cambiar ahí lo hace el humano.\n';
@@ -23,7 +23,8 @@ const HOLDOUT_DIR = '.pignolo/tmp/holdout/';
 const alt = (m) => ({ exit: 2, stderr: `pignolo bloqueó la escritura: ${m}
 ` });
 const ALT_IMPL = 'Alternativa: un test cambia solo con test-authorization: devolvé BLOCKED y nombrá el test.';
-const ALT_TW = 'Alternativa: escribí solo en test-paths o en .pignolo/tmp/holdout/; lo demás lo pide el hilo principal.';
+const ALT_TW = 'Alternativa: escribí solo en test-paths o, para el holdout, en .pignolo/tmp/holdout/ del checkout principal; lo demás lo pide el hilo principal.';
+const ALT_HOLDOUT = 'Alternativa: escribilo en <checkout principal>/.pignolo/tmp/holdout/<plan>/ (ruta absoluta), que git ignora y el hilo principal guarda con holdout.js save.';
 
 // Raíz del worktree que contiene `file` (ruta cruda, con sus mayúsculas). Con tarea, solo
 // el worktree de la tarea (spec §8.3): una ruta de otro repo no toma su configuración. Sin
@@ -80,7 +81,13 @@ function roleRule({ input, env, cwd, file }) {
   const isProt = rel === PROJECT_MD || matchAny(config.protectedTestConfig.map(lc), rel);
   if (agent === 'pignolo:test-writer') {
     if (isProt) return alt(`el test-writer no escribe ${rel} (config de tests protegida). ${ALT_TW}`);
-    if (!isTest && !rel.startsWith(HOLDOUT_DIR)) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
+    if (rel.startsWith(HOLDOUT_DIR)) {
+      // El .gitignore de .pignolo no llega a los worktrees de tarea: ahí el holdout entraría al
+      // diff (SCOPE en la compuerta y en el handback-gate). Solo en el checkout principal.
+      if (cleanPath(wt) !== cleanPath(state.main)) return alt(`el holdout en preparación no va en el worktree de la tarea (${rel}): ahí git lo ve. ${ALT_HOLDOUT}`);
+      return null;
+    }
+    if (!isTest) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
     return null;
   }
   if (rel === PROJECT_MD) return alt(`${agent.slice(8)} no escribe ${PROJECT_MD}. ${ALT_IMPL}`);

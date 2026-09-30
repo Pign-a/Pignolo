@@ -60,14 +60,16 @@ test('an absolute path into the worktree is resolved against it even when cwd is
   assert.strictEqual(protect.run(payload(repo, path.join(wt, 'tests', 'a.test.js'), IMPL), { env: env() }).exit, 2);
 });
 
-test('test-writer writes only in test-paths or the holdout dir', () => {
-  const { wt } = setup();
-  const w = (p) => protect.run(payload(wt, path.join(wt, p), 'pignolo:test-writer'), { env: env() });
+test('test-writer writes only in test-paths or the holdout dir of the main checkout', () => {
+  const { repo, wt } = setup();
+  const w = (p, root = wt) => protect.run(payload(wt, path.join(root, p), 'pignolo:test-writer'), { env: env() });
   const r = w('src/a.js');
   assert.strictEqual(r.exit, 2);
   assert.match(r.stderr, /Alternativa:.*holdout/);
   assert.strictEqual(w('tests/b.test.js').exit, 0);
-  assert.strictEqual(w('.pignolo/tmp/holdout/p1/acc.test.js').exit, 0);
+  // Hito 4b: en el worktree de la tarea el holdout entraría al diff; solo en el checkout principal.
+  assert.strictEqual(w('.pignolo/tmp/holdout/p1/acc.test.js').exit, 2);
+  assert.strictEqual(w('.pignolo/tmp/holdout/p1/acc.test.js', repo).exit, 0);
   assert.strictEqual(w('.pignolo/project.md').exit, 2);
 });
 
