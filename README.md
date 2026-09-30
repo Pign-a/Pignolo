@@ -60,17 +60,28 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 
 ## Métricas de las evals
 
-**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Primera corrida (2026-09-30): frenada antes de medir, sin resultados de calidad todavía.** Corrieron dos pruebas de un solo caso. En la segunda, el revisor encontró bien el defecto plantado, pero la regla automática que lo califica buscaba la respuesta en un lugar del registro donde Claude Code no la escribe, y lo dio como fallado. Como estaba previsto, se frenó para corregir esa regla antes de gastar más. Dos casos (refuter y fixer) necesitan WSL2 y todavía no se midieron. Costo: 0,17 USD.
+**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Primera corrida (2026-09-30): frenada en la calibración, antes de la medición completa.** Primero se corrigió la regla automática que califica las respuestas. Con esa regla nueva, cada agente corrió una vez sobre sus casos de prueba en Windows, y aprobaron 9 de 12. Todos los defectos plantados se encontraron. Los 3 tropiezos fueron sobre cambios limpios: dos revisores bloquearon por problemas que el cambio no introducía (uno anterior al cambio, otro de durabilidad ante un corte de luz), y un juez aprobó bien pero no cerró con la palabra final sola. Como estaba previsto, la medición completa (5 corridas por caso, en opus y en sonnet) espera la decisión del autor. Dos casos (refuter y fixer) necesitan WSL2 y todavía no se midieron. Costo: 1,43 USD.
 
 **Detalle técnico.** Umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. Claude Code 2.1.285, Windows nativo.
 
 | Agente | Caso | Aciertos / corridas | Modelo | Costo por corrida (USD) | Fecha | Umbral 4/5 |
 | --- | --- | --- | --- | --- | --- | --- |
-| review-reliability | review-reliability-defect (2 sondas) | 0/2 según el grader (hallazgo correcto en la sonda 2, leído a mano) | revisor opus, sesión principal sonnet | 0,097 y 0,075 | 2026-09-30 | sin veredicto (sondas) |
-| refuter | refuter-false-finding | no medido (WSL2 sin preparar) | — | — | — | — |
-| fixer | fixer-confirmed-finding | no medido (WSL2 sin preparar) | — | — | — | — |
+| review-reliability | defecto | 1/1 | opus | 0,080 | 2026-09-30 | calibración (1 corrida) |
+| review-reliability | limpio | 1/1 | opus | 0,092 | 2026-09-30 | calibración |
+| review-resilience | defecto | 1/1 | opus | 0,106 | 2026-09-30 | calibración |
+| review-resilience | limpio | **0/1** (CRITICAL por falta de fsync) | opus | 0,152 | 2026-09-30 | calibración |
+| review-risk | defecto | 1/1 | opus | 0,092 | 2026-09-30 | calibración |
+| review-risk | limpio | 1/1 | opus | 0,097 | 2026-09-30 | calibración |
+| review-readability | defecto | 1/1 | opus | 0,084 | 2026-09-30 | calibración |
+| review-readability | limpio | **0/1** (CRITICAL por un defecto anterior al diff) | opus | 0,118 | 2026-09-30 | calibración |
+| judge-a | defecto | 1/1 | opus | 0,082 | 2026-09-30 | calibración |
+| judge-a | limpio | **0/1** (APPROVE sin ser la última línea) | opus | 0,094 | 2026-09-30 | calibración |
+| judge-b | defecto | 1/1 | opus | 0,075 | 2026-09-30 | calibración |
+| judge-b | limpio | 1/1 | opus | 0,093 | 2026-09-30 | calibración |
+| refuter | falso hallazgo | no medido (WSL2 sin preparar) | — | — | — | — |
+| fixer | hallazgo confirmado | no medido (WSL2 sin preparar) | — | — | — | — |
 
-Freno: los graders de texto buscaban el informe del subagente en eventos `assistant` con `parent_tool_use_id`, y en los traces reales de Claude Code 2.1.285 ese informe llega solo como `tool_result` de la sesión principal. Corregidos en 0.4.1: ahora leen ese `tool_result` (el del `Agent` del caso) y el test determinista usa el trace real de la sonda 2, donde `finds-planted-defect` aprueba. Falta repetir la sonda con los graders nuevos; hasta entonces no corren ni la calibración, ni la completa en opus, ni la rama sonnet. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
+Sesión principal en sonnet, revisor en opus, Claude Code 2.1.285, Windows nativo. Son corridas de calibración (1 por caso): todavía no hay veredicto contra el umbral 4/5. Freno iii (todos los casos aprobados en la calibración): 9/12, así que no corrieron la completa en opus ni la rama sonnet. Los graders 0.4.1 (leen el `tool_result` del `Agent` del caso) calificaron de acuerdo con lo que cada agente dijo. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
 ## Guardia de shell
 
