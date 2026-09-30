@@ -141,3 +141,21 @@ test('CLI: exit 0 sin problemas, 1 con problemas, 2 sin --plan; salida JSON', ()
   assert.strictEqual(cli([]).status, 2);
   assert.strictEqual(cli(['--plan', path.join(dir, 'nada.md')]).status, 2);
 });
+
+test('rutas: un prefijo omitido (lib/a.js por pkg/lib/a.js) cuenta; ramas y rutas sin extensión no se verifican', () => {
+  const root = makeRoot({ 'pkg/lib/a.js': '' });
+  const res = checkPlan({
+    planText: plan('Toca `lib/a.js` en la rama `core/hito-4a` y en `scripts/sabotage`.', '**Files:** Create `pkg/lib/new.js`.', 'Usa `lib/new.js` y `lib/zzz.js`.'),
+    root,
+  });
+  assert.strictEqual(refOf(res, 'lib/a.js').ok, true);
+  assert.strictEqual(refOf(res, 'core/hito-4a'), undefined);
+  assert.strictEqual(refOf(res, 'scripts/sabotage'), undefined);
+  assert.strictEqual(refOf(res, 'lib/new.js').ok, true); // lo crea el plan con el prefijo
+  assert.strictEqual(refOf(res, 'lib/zzz.js').ok, false);
+});
+
+test('símbolos: un mensaje de commit convencional no es un símbolo', () => {
+  const res = checkPlan({ planText: plan('Commit `feat(tests): detectar cosas` y `fix(gate): otra`.'), root: makeRoot(BASE) });
+  assert.deepStrictEqual(res.refs, []);
+});

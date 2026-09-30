@@ -154,14 +154,16 @@ function findDefinitions(name, idx) {
 
 function pathLike(v) {
   if (/\s|[(<>*$~|"']/.test(v) || v.startsWith('-') || v.includes('://') || /^([A-Za-z]:|\/)/.test(v)) return false;
-  return v.includes('/') || PATH_EXT_RE.test(v);
+  // Sin extensión y sin barra final no se sabe si es archivo, carpeta o rama: no se verifica.
+  return PATH_EXT_RE.test(v) || (v.includes('/') && v.endsWith('/'));
 }
 
 function pathOk(v, idx, created) {
   const p = v.replace(/:\d+(-\d+)?$/, '').replace(/^\.\//, '');
   if (idx.exists(p)) return true;
-  for (const c of created) if (p === c || (c.endsWith('/') && p.startsWith(c))) return true;
-  return !p.includes('/') && idx.files.some((f) => f === p || f.endsWith(`/${p}`));
+  for (const c of created) if (p === c || c.endsWith(`/${p}`) || (c.endsWith('/') && p.startsWith(c))) return true;
+  // Un plan suele omitir el prefijo (`lib/x.js` por `plugins/p/lib/x.js`).
+  return idx.files.some((f) => f === p || f.endsWith(`/${p}`));
 }
 
 function checkSpan(span, ctx) {
@@ -181,6 +183,7 @@ function checkSpan(span, ctx) {
     return { ...base, kind: 'command', value: v, ok, why: ok ? 'ok' : `package.json no tiene el script "${npm[1]}"` };
   }
   const sym = /^([A-Za-z_$][\w$]*)\(/.exec(v);
+  if (sym && /^[a-z]+\([\w-]+\)!?:\s/.test(v)) return null; // mensaje de commit convencional
   if (sym) {
     const name = sym[1];
     if (BUILTINS.has(name)) return null;
