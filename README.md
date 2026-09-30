@@ -60,15 +60,17 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 
 ## Métricas de las evals
 
-**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Primera corrida (2026-09-30): se frenó en la sonda, sin resultados de calidad todavía.** De los 14 casos corrió uno solo, de prueba, y no se pudo confirmar que la medición viera el trabajo del revisor. Por eso, como estaba previsto, no se siguió. Costo: 0,10 USD.
+**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Primera corrida (2026-09-30): frenada antes de medir, sin resultados de calidad todavía.** Corrieron dos pruebas de un solo caso. En la segunda, el revisor encontró bien el defecto plantado, pero la regla automática que lo califica buscaba la respuesta en un lugar del registro donde Claude Code no la escribe, y lo dio como fallado. Como estaba previsto, se frenó para corregir esa regla antes de gastar más. Dos casos (refuter y fixer) necesitan WSL2 y todavía no se midieron. Costo: 0,17 USD.
 
 **Detalle técnico.** Umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. Claude Code 2.1.285, Windows nativo.
 
 | Agente | Caso | Aciertos / corridas | Modelo | Costo por corrida (USD) | Fecha | Umbral 4/5 |
 | --- | --- | --- | --- | --- | --- | --- |
-| review-reliability | review-reliability-defect (sonda) | 0/1 | revisor opus, sesión principal sonnet | 0,097 | 2026-09-30 | sin veredicto (1 corrida) |
+| review-reliability | review-reliability-defect (2 sondas) | 0/2 según el grader (hallazgo correcto en la sonda 2, leído a mano) | revisor opus, sesión principal sonnet | 0,097 y 0,075 | 2026-09-30 | sin veredicto (sondas) |
+| refuter | refuter-false-finding | no medido (WSL2 sin preparar) | — | — | — | — |
+| fixer | fixer-confirmed-finding | no medido (WSL2 sin preparar) | — | — | — | — |
 
-La sonda cortó por el freno i: no se pudo contar ningún evento del subagente, porque el runner borra el trace al terminar. La calibración, la corrida completa en opus y la rama sonnet no corrieron. WSL2 tampoco tiene `claude`. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
+Freno: los graders de texto buscan el informe del subagente en eventos `assistant` con `parent_tool_use_id`, y en los traces reales de Claude Code 2.1.285 ese informe llega solo como `tool_result` de la sesión principal. Hasta corregirlos (decisión del autor), no corren ni la calibración, ni la completa en opus, ni la rama sonnet. Comandos, frenos y notas en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
 ## Guardia de shell
 
