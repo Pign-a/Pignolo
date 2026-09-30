@@ -68,20 +68,26 @@ function runLauncher(handler, payload, env = {}) {
   return { status: res.status, stdout: res.stdout, stderr: res.stderr };
 }
 
-// La guardia toma la instantánea con un plazo real de 2 s (dentro de los 3 s del
-// launcher). Con la suite corriendo en paralelo, una máquina cargada lo vence de a
-// ratos; el hook lo avisa por systemMessage, nunca en silencio. Para los tests que
-// no prueban ese plazo se reintenta el hook hasta 3 veces solo en ese caso;
-// cualquier otro resultado vuelve en el primer intento.
-const SNAPSHOT_DEADLINE_RE = /la instantánea WIP falló \((?:se agotó el plazo|spawnSync git ETIMEDOUT)/;
+// El handler de la guardia con la instantánea real, pero sin el plazo de 2 s de
+// producción. Ese plazo es de reloj: con la suite en paralelo una máquina cargada
+// lo vence (medido: con 24 copias la instantánea tarda 2,5 s de mediana), el hook
+// la saltea con systemMessage (spec §11.6, a propósito) y un test que después
+// busca la instantánea no tiene qué recuperar. Reintentar no lo arregla: bajo
+// carga fallan los tres intentos. Para los tests de lo que la instantánea guarda
+// se corre el handler sin launcher y con un plazo holgado; el plazo y el camino
+// completo por el launcher los prueban tests/guard-handler.test.js con runLauncher.
+const TEST_SNAPSHOT_TIMEOUT_MS = 60000;
 
-function runGuard(payload, env = {}, tries = 3) {
-  let r;
-  for (let i = 0; i < tries; i += 1) {
-    r = runLauncher('guard', payload, env);
-    if (!SNAPSHOT_DEADLINE_RE.test(r.stdout)) return r;
-  }
-  return r;
+function runGuard(payload, env = {}) {
+  const guard = require(path.join(PLUGIN_ROOT, 'hooks', 'handlers', 'guard.js'));
+  const { snapshotWip } = require(path.join(PLUGIN_ROOT, 'lib', 'git-backup.js'));
+  const home = env.PIGNOLO_HOME || makeTempDir('pignolo-home-');
+  const ctx = {
+    env: { ...process.env, PIGNOLO_DISABLED: '', ...env, PIGNOLO_HOME: home },
+    snapshot: (o) => snapshotWip({ ...o, timeoutMs: TEST_SNAPSHOT_TIMEOUT_MS }),
+  };
+  const r = guard.run(typeof payload === 'string' ? JSON.parse(payload) : payload, ctx);
+  return { status: r.exit, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') };
 }
 
 module.exports = { PLUGIN_ROOT, LAUNCHER, makeTempDir, makeRepo, runLauncher, runGuard, git };
