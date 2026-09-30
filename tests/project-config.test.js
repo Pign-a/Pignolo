@@ -126,3 +126,36 @@ test('M2: un plazo vencido no se presenta como ref inexistente ni como project.m
     assert.throws(() => readProjectConfig({ root, ref: 'no-existe-esta-ref' }), /no existe/);
   });
 });
+
+test('gates.mutation: se lee como texto, sin aviso de clave desconocida, también desde una ref', async (t) => {
+  await t.test('en el árbol de trabajo', () => {
+    const root = makeRepo();
+    write(root, fm('gates:\n  mutation: "npx stryker run"'));
+    const c = readProjectConfig({ root });
+    assert.strictEqual(c.gates.mutation, 'npx stryker run');
+    assert.ok(!c.warnings.some((w) => /desconocida/.test(w)), c.warnings.join(' | '));
+  });
+  await t.test('desde una ref', () => {
+    const root = makeRepo();
+    write(root, fm('gates:\n  mutation: "npx stryker run"'));
+    git(['add', '-A'], root);
+    git(['commit', '-m', 'p'], root);
+    fs.rmSync(path.join(root, '.pignolo'), { recursive: true });
+    const c = readProjectConfig({ root, ref: 'HEAD' });
+    assert.strictEqual(c.gates.mutation, 'npx stryker run');
+  });
+  await t.test('ausente queda ausente; vacía avisa y se ignora', () => {
+    const root = makeRepo();
+    write(root, fm('gates:\n  on-done: "npm test"'));
+    assert.strictEqual(readProjectConfig({ root }).gates.mutation, undefined);
+    write(root, fm('gates:\n  mutation: ""'));
+    const c = readProjectConfig({ root });
+    assert.strictEqual(c.gates.mutation, undefined);
+    assert.ok(c.warnings.some((w) => /gates\.mutation/.test(w)));
+  });
+  await t.test('sigue avisando por claves desconocidas', () => {
+    const root = makeRepo();
+    write(root, fm('gates:\n  otra: "x"'));
+    assert.ok(readProjectConfig({ root }).warnings.some((w) => /desconocida "otra"/.test(w)));
+  });
+});

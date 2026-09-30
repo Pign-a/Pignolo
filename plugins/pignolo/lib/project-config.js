@@ -7,7 +7,7 @@ const { parseFrontmatter, YamlLiteError } = require('./yaml-lite');
 const PROJECT_MD = '.pignolo/project.md';
 const DEFAULT_TEST_PATHS = Object.freeze(['*test*', '*spec*', '__snapshots__/', '__mocks__/', 'fixtures/', 'test/', 'tests/']);
 const TYPES = Object.freeze(['code-tested', 'code-untested', 'docs', 'script']);
-const GATE_KEYS = ['on-edit', 'on-done', 'pre-merge', 'live-check'];
+const GATE_KEYS = ['on-edit', 'on-done', 'pre-merge', 'live-check', 'mutation'];
 const LIST_KEYS = {
   'test-paths': 'testPaths',
   'protected-test-config': 'protectedTestConfig',
@@ -58,7 +58,7 @@ function buildConfig(text) {
     c.type = data.type;
   }
   if (data.gates !== undefined && data.gates !== null) {
-    if (typeof data.gates !== 'object' || Array.isArray(data.gates)) throw invalid('gates: se esperaba un mapa (on-edit, on-done, pre-merge, live-check)');
+    if (typeof data.gates !== 'object' || Array.isArray(data.gates)) throw invalid('gates: se esperaba un mapa (on-edit, on-done, pre-merge, live-check, mutation)');
     for (const [k, v] of Object.entries(data.gates)) {
       if (!GATE_KEYS.includes(k)) c.warnings.push(`gates: clave desconocida "${k}" (se ignora)`);
       else if (typeof v !== 'string' || v.trim() === '') c.warnings.push(`gates.${k}: se esperaba un comando (se ignora)`);
