@@ -122,3 +122,30 @@ test('review: un archivo de test nuevo por hallazgo; solo esos se borran si no d
   assert.match(text, /one new test file per finding[^\n]*does not exist at `<SHA>`/);
   assert.match(text, /remove the new test files that did not go red[^\n]*never an existing test/);
 });
+
+// Hito 4b: review-testability con el comando de tests y la test-card; un test decorativo se
+// confirma con sabotage.js (sigue verde con la rotura), no con un test nuevo, y antes de que
+// cualquier test-writer de reproducción toque el árbol.
+test('review: testability recibe el comando y las test-cards; el decorativo se confirma con sabotage.js antes del test-writer de reproducción', () => {
+  const { text } = readSkill('review');
+  assert.match(text, /`pignolo:review-testability` also gets[^\n]*`gates\.on-done`[^\n]*`Test-card`/);
+  const order = [
+    /7\. \*\*Decorative tests first, then repro tests\*\*/,
+    /\*\*Decorative tests\.\*\*/,
+    /sabotage\.js" --patch "<main>\/\.pignolo\/tmp\/review-<sha7>\/sabotage-<id>\.patch" --gate on-done --cwd "<wt>" --timeout-min 4/,
+    /\*\*Repro tests\*\* for every finding[^\n]*except the decorative ones/,
+    /--agent pignolo:test-writer/,
+  ];
+  let at = text.indexOf('6. **Refuters');
+  for (const re of order) {
+    const m = re.exec(text.slice(at));
+    assert.ok(m, `falta o está fuera de orden: ${re}`);
+    at += m.index + m[0].length;
+  }
+  assert.match(text, /exit 1 \(the test stayed green with the break\) → `node "<P>\/scripts\/ledger\.js" repro --ledger "<L>" --id <id> --red`/);
+  assert.match(text, /exit 0 \(it went red\) → `--no-red`/);
+  // F3: timedOut y greenBefore:false no son veredicto y nunca van a --no-red.
+  assert.match(text, /exit 1 with `timedOut: true`, or exit 2 with `greenBefore: false`, is not a verdict[^\n]*never map it to `--no-red`/);
+  assert.match(text, /A decorative finding never goes to the repro test-writer/);
+  assert.doesNotMatch(text, /holdout\.js/);
+});
