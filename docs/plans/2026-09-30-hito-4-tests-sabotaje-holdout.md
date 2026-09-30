@@ -285,3 +285,1497 @@ Para 4b sí: el costo de las evals de `test-writer`, `implementer` y `review-tes
 | 12 | `--numstat` no prueba que el parche aplique; `EPERM` es vivo; reutilización de `pid` (MINOR) | `git apply --check`, `EPERM` = vivo, `expires` en el candado (Task 4) |
 | 13 | Tests que no pueden fallar (MINOR) | Quitados o reescritos con su rojo nombrado (Tasks 2, 3, 6, 7) |
 | 14 | `Grep.pattern` no es ruta, `..` en `Glob`, `clean` mezclado, dependencias del holdout, semilla, repetición (MINOR) | `Grep.glob`, `pattern` resuelto, `notRestored`/`newFiles`, `deps-install`, `seedOffered`, repetición al hito 7 |
+
+---
+
+# Hito 4 del núcleo, parte 4b: test-card, skills con sabotaje y semilla, cartas de los roles de tests, holdout en preparación y evals. Plan de implementación
+
+> **Para quien ejecute:** usar superpowers:subagent-driven-development con el método de ejecución de abajo (olas en paralelo con worktrees a mano, sin revisión por tarea, una revisión final opus). Los pasos usan casillas (`- [ ]`). Parte de `main` con la parte 4a unida (plugin 0.5.0) **y con la pasada de arreglos de 4a** que estaba en curso al escribir este plan (recuperación del sabotaje por parche inverso con latido, plazo por defecto ≤ 8 min, la guardia niega `git commit`/`git add` mientras hay un candado de sabotaje, comodines en `private-reads`). Este plan no depende del comportamiento viejo de esas piezas: solo llama a `sabotage.js` por su CLI y a `private-reads` por su contrato.
+
+**Objetivo:** que lo que 4a construyó llegue al camino real. La tarjeta del `test-writer` trae la test-card de §9.1; `daily` demuestra el rojo de un test sobre código que ya existe con `scripts/sabotage.js` y usa la semilla del sello; `review` le da a `review-testability` el comando y las test-cards, y confirma un test decorativo porque **sigue verde** con la rotura; las cartas de `implementer`, `test-writer`, `review-testability` y `validator` dicen lo nuevo (sabotaje, semilla, `Protects:`, holdout por `holdout.js run`); el holdout en preparación queda coherente entre hooks (hallazgo 9 de la revisión final de 4a); y las evals `agents` de `test-writer`, `implementer` ("intenta tocar un test") y `review-testability` ("test decorativo") quedan escritas, con su test determinista, y se corren por etapas según la decisión del autor D-4b-1.
+
+**Arquitectura:** casi todo es texto y tests de forma. Código nuevo, poco: dos ajustes en hooks de 4a (`protect-paths` y `private-reads`, para el holdout en preparación), un generador de evals (`tests/evals/testing-cases.js`) que reusa los graders de `tests/evals/review-cases.js`, y los traces de forma real del hito 3 movidos a `tests/evals/traces.js` para que los usen los dos tests deterministas.
+
+**Stack:** Node ≥ 22 (decisión del autor, 2026-09-30, en un cambio aparte que este plan da por hecho), sin dependencias npm, `node:test`, git ≥ 2.31, `claude plugin eval` (Claude Code 2.1.285) para las evals.
+
+**Spec:** §6 y §6.1 (tabla de agentes, D-4-1, cartas de rol), §9.1 (test-card, `Protects:`, `characterization`, holdout), §9.2 (sabotaje, semilla), §9.3 (sin autorización nadie debilita un test), §12 (riesgo medio = `reliability` + `testability`; test decorativo = BLOCKER; la reproducción la escribe el `test-writer`), §15 (`agents`: test-writer, implementer "intenta tocar un test", review-testability "test decorativo").
+
+## Qué se verificó al escribir este plan
+
+Todo bloque de código y todo test de este plan se ejecutó en una copia (`git clone` de `plan/hito-4b` = `core/hito-4a`, `d3f92a3`, plugin 0.5.0, en el scratchpad; nunca en `D:\pignolo`), con Node 24.13.1 y git en Windows 11:
+
+- **Cada test nuevo, en rojo contra el código de 4a** (los archivos de producción de la tarea puestos como en `d3f92a3`, el test nuevo corrido, restaurado después): `templates.test.js` 1 de 4 en rojo (Task 9); `agents-test-roles.test.js` 4 de 4 (Task 10); `holdout-staging.test.js` 2 de 3 y el caso reescrito de `protect-paths-roles.test.js` (Task 11; el tercero de `holdout-staging` pasa hoy y se vio en rojo quitando `tmp/` de lo que `run.js start` ignora); `skill-daily.test.js` 2 y `skill-review.test.js` 1 (Tasks 12 y 13); `eval-testing-cases.test.js` en rojo por el módulo ausente y, ya escrito, por cada mutación del paso 4 de la Task 14 (medidas una por una); `flow-sabotage.test.js` 2 de 2 invirtiendo `red` en `lib/sabotage.js` y 2 de 2 quitando `tmp/` de `IGNORED` en `run.js` (Task 15).
+- **Totales:** esta parte suma **30 tests** (1 + 4 + 3 + 2 + 1 + 17 + 2) y no cambia la cantidad de ningún archivo existente (`protect-paths-roles` sigue en 10, `eval-cases` en 35). Suite de la copia: 1951 tests, 1949 pasan, 2 saltados, 0 fallos; la de `plan/hito-4b` sin cambios: 1921 (en una corrida con la máquina cargada fallaron 2 tests de tiempo, `backup` y `guard-handler`, por `ETIMEDOUT` de git: no son de este plan y pasaron en la corrida siguiente). Los totales absolutos cambian con lo que se una a `main` (la pasada de arreglos de 4a, el piso de Node): **se vuelven a medir en la rama al empezar la ola 0** y lo esperado es ese total + 30.
+- **El refactor de los traces del hito 3 no cambia nada:** `tests/eval-cases.test.js` da 35 de 35 antes y después, y los 14 casos que genera `review-cases.js` son idénticos byte a byte salvo el brief del `fixer` (el arreglo de abajo).
+- **`node --test tests/` falla en Node ≥ 22 con un directorio** (medido en 24.13.1: lo toma como un archivo, `test at tests:1:1 … 'test failed'`), y `node --test "tests/**/*.test.js"` funciona. El brief del caso `fixer-confirmed-finding` del hito 3 le pasaba `Gate: node --test tests/`: en la etapa WSL2 el fixer habría visto la compuerta fallar sin tocar nada. Se arregla en la Task 14 con su test. En Node 22 exacto no se midió.
+- **Parche escrito a mano para `sabotage.js`** (el formato que `daily` y `review` le piden al orquestador): un hunk con una línea de contexto arriba y abajo aplica aunque el número de línea esté corrido en uno (`git apply` tolera el desplazamiento), con `core.autocrlf` en `false` y en `true`: rojo → exit 0 y árbol limpio; parche inocuo → exit 1; contexto que no coincide → exit 2 sin tocar nada.
+- **Hallazgo 9 de 4a reproducido:** con el holdout en preparación dentro del worktree de la tarea, `git status` del worktree lo muestra (`?? .pignolo/tmp/holdout/p1/tests/acc.test.js`) y el `handback-gate` rechaza el `DONE` del `test-writer` ("solo puede cambiar archivos de su tarjeta … cambió: .pignolo/tmp/holdout/p1/tests/acc.test.js"), aunque `protect-paths` le dejó escribirlo.
+- **`yaml-lite` no desescapa `''`** dentro de un escalar entre comillas simples (medido: `join(''-'')` queda así), y el YAML estándar sí lo desescapa (el parser del runner no se leyó: hipótesis): un patrón de grader con `'` se leería distinto en el test determinista y en la eval real. Los patrones de 4b no llevan `'` (test).
+- **`claude plugin eval --help` (2.1.285):** `Write` y `Edit` son herramientas "gated": hacen falta con `--allow-tools`. El informe HTML **se publica en claude.ai por defecto** salvo `--no-publish`; los comandos del hito 3 no lo pasaban (ver "Decisiones del autor").
+- `claude plugin validate plugins/pignolo` pasa con las skills y cartas nuevas.
+- **No verificado** (hipótesis, se mide en las evals o en el checklist): el comportamiento de los agentes con los textos nuevos; que `Write`/`Edit` de un subagente funcionen en una eval en Windows nativo (lo mira la sonda de la etapa Windows, freno i); Node 22 exacto.
+
+## Global Constraints
+
+Las de 4a siguen todas, con el piso de Node en ≥ 22. Además:
+
+- **Solo el hilo principal opera `run.js`, `holdout.js` y los parches de sabotaje.** El orquestador escribe el parche con Write en `<main>/.pignolo/tmp/` (ignorado por git) y corre `sabotage.js --cwd "<wt>"`; nunca edita y restaura código a mano para mostrar un rojo.
+- **El sabotaje corre solo con el árbol limpio y sin revisores trabajando** (cambia archivos del worktree mientras corre el comando). En `daily`, después del commit de los tests; en `review`, después de que volvieron todas las lentes.
+- **Holdout en preparación solo en el checkout principal** (`<main>/.pignolo/tmp/holdout/<plan>/`), y `holdout.js save` justo después de aceptar al `test-writer`, antes de cualquier otro despacho. El `.gitignore` de `.pignolo` no llega a los worktrees de tarea.
+- **Evals:** toda corrida con `--max-cost-usd`, `--json`, `--keep-temp` y `--no-publish`; los temporales `%TEMP%\claude-eval-*` se borran después de leerlos. Ninguna eval corre durante la ejecución de las tareas: solo en la Task 16, según D-4b-1.
+- Texto interno de skills, agentes y plantillas en inglés; plan, commits y docs en español. Fixtures sintéticos.
+
+## Método de ejecución y economía de tests
+
+El de 3b y 4a:
+
+- **Rama de integración** `core/hito-4b` desde `main` (con 4a, su pasada de arreglos y el piso de Node unidos); al crearla, `npm run test:quiet` una vez y anotar total, pasan y saltados: es la línea base (esperado al final: + 30).
+- **Olas** con archivos disjuntos: ola 0 (Tasks 9, 10 y 11) → unión, suite una vez, tag `contract/hito-4b/v1` → ola 1 (Tasks 12 a 15) → unión, suite una vez → ola 2 (Task 16, cierre y evals).
+- **Worktrees a mano:** `git worktree add -b task/hito-4b/<NN>-<slug> <scratchpad>/wt-<NN> <core/hito-4b | contract/hito-4b/v1>`; primer paso de cada tarea de la ola 1: `git merge-base --is-ancestor contract/hito-4b/v1 HEAD` (si falla, `BLOCKED`).
+- **Modelos:** sonnet en las Tasks 9, 10, 11 y 15 (código y texto completos en la tarjeta); **opus en las Tasks 12 y 13** (orquestación, donde un error no se ve en un test de forma) y **en la 14** (graders). Revisión final en opus.
+- **Sin revisión por tarea.** Una revisión final opus de `main..core/hito-4b` con el Review Focus, una pasada de arreglos y una confirmación acotada.
+- **Tests:** primero, de tabla, rojo mostrado una vez contra el código de `main`; cada implementador corre solo sus archivos con `node --test --test-reporter=dot <archivos>`. Los tests de forma miran estructura y frases que fijan una regla, nunca redacción libre.
+
+## Review Focus
+
+1. **El sabotaje rompe el árbol o miente sobre el rojo.** `daily` y `review` lo corren solo con el árbol limpio (después del commit de los tests; después de las lentes), con el comando declarado (`--gate on-done`) y leyendo el exit: 0 rojo, 1 siguió verde (salvo con `timedOut: true`, que no es veredicto: se repite una vez con `--timeout-min`), 2 negativa sin tocar nada, 3 no se pudo restaurar (se frena y no se commitea). Un exit 1 en `daily` es un test que no protege; en `review`, la **confirmación** de un test decorativo. Dueñas: **Tasks 12, 13 y 15**.
+2. **La semilla se usa para reintentar hasta verde.** Una falla que desaparece al repetir no está arreglada: se repite con `--seed <seedOffered>`, y si falla solo con esa semilla es dependencia de orden y se pregunta. Dueñas: **Tasks 10 y 12**.
+3. **El holdout en preparación se ve o se rechaza.** En el worktree de la tarea entraría al diff (SCOPE) y el implementer lo podría leer; en el checkout principal está ignorado y solo lo leen el `test-writer` y el `validator` hasta `holdout.js save`. Dueña: **Task 11**.
+4. **Evals que miden la sesión principal o aprueban en vacío** (lección del hito 3). Todo grader del trace se ata al `tool_result` del `Agent` del caso o a eventos SUB; los de ausencia de herramientas (`no-impl-read`, `no-test-write`) aprueban en vacío, así que todo caso exige `subagent-returned`; los patrones no llevan `'`. Dueña: **Task 14**.
+5. **Contradicciones entre cartas, plantilla y skills.** El `implementer` para con `NEEDS_CONTEXT` si un test ya pasa, salvo que la tarjeta lo marque `Red is proved by: sabotage`; el `test-writer` nombra la rotura como comportamiento (no lee la implementación) y el orquestador la vuelve parche; `review-testability` pone la rotura como diff en `repro`, que es lo que `review` copia al parche. Dueñas: **Tasks 9, 10, 12 y 13**.
+
+## Rulings del plan (técnicos, registrados)
+
+- **D-4-1 se mantiene: el `test-writer` sigue sin Bash.** Todo lo de 4b funciona sin él: nombra la rotura como comportamiento y el orquestador prueba el rojo (test-first) o lo arma como parche para `sabotage.js`. Se revisa con las evals de la etapa Windows (Task 16): si el `test-writer` no puede cumplir su tarjeta sin correr nada, es del autor cambiar la tabla de §6.
+- **`Red is proved by` por test en la tarjeta:** `test-first` cuando el comportamiento no existe en la base (el test falla al correrlo), `sabotage` cuando ya existe (caracterización o guardia de algo que el cambio debe conservar). El `implementer` recibe la misma marca en "Tests that define done" y no para con `NEEDS_CONTEXT` por un test `sabotage` que ya pasa.
+- **El parche lo escribe el orquestador, no el `test-writer`:** el `test-writer` no lee la implementación (§9.1), así que no puede escribir la línea exacta. El orquestador lee el código en `<wt>` y escribe un hunk con una línea de contexto arriba y abajo (formato medido: tolera un número de línea corrido; un contexto que no coincide da exit 2 sin tocar nada).
+- **`daily` sabotea después del commit de los tests** (`<T>`): `sabotage.js` exige árbol limpio. Si da exit 1, el test no protege: el `test-writer` otra vez (cuenta como continuación), commit nuevo, `<T>` se mueve.
+- **Un test decorativo se confirma con `sabotage.js`, no con un test nuevo** (`review`, paso 7). §12 pide confirmar un BLOCKER con evidencia contra el SHA congelado; para "este test no puede fallar", la evidencia es que sigue verde con la rotura. Exit 1 → `ledger.js repro --red` (confirmado), exit 0 → `--no-red`. La semántica de `--red` es "confirmado", no "el test dio rojo": se dice en el texto de la skill. Arreglarlo después pide `test-authorization` (hallazgo dentro de un test, §9.3), como ya dice `review`.
+- **`review-testability` sigue fabricando su rojo en una copia fuera del repo** (su carta) y además escribe la rotura como diff en `repro`. No usa `sabotage.js` sobre `<wt>`: las lentes corren en paralelo y otra lente leería el archivo roto mientras corre el comando.
+- **Semilla:** `daily` no vuelve a correr la compuerta para leerla; el `implementer` informa el `seedOffered` de su sello final y el resumen lo cita. La regla es contra reintentar hasta verde, en la carta del `implementer` y en las reglas de `daily` (que `review` hereda).
+- **Holdout en preparación (hallazgo 9 de 4a):** solo en `<main>/.pignolo/tmp/holdout/<plan>/`. `protect-paths` le niega al `test-writer` `.pignolo/tmp/holdout/` dentro de un worktree de tarea (4a lo permitía; es un cambio de contrato técnico, sin usuarios todavía: el modo `plan` es del hito 5) y `private-reads` niega esa carpeta a todo subagente salvo el `test-writer` y el `validator`: adentro, no en sus ancestros (buscar en el repo sigue permitido; ripgrep respeta el `.gitignore` de `.pignolo`). La skill del modo `plan` (hito 5) corre `holdout.js save` justo después de aceptar al `test-writer`. Se descartó excluir la carpeta en la compuerta y el `handback-gate`: tres lugares que mantener en vez de uno, y el holdout seguiría en el worktree que lee el implementer.
+- **`validator` corre el holdout solo por `holdout.js run --plan <p> --ref <SHA>`** desde el checkout principal; exit 2 es "not verified", nunca un pase.
+- **Evals 4b:** 5 casos en una tabla nueva (`tests/evals/testing-cases.js`) que reusa los graders del hito 3 (exportados de `review-cases.js`, sin cambiar lo que generan). `test-writer` × {requisito, repro} (sin Bash: etiqueta `windows`); `implementer-old-test` (un test viejo contradice el requisito: no lo toca y escala); `review-testability` × {decorativo, limpio} (con Bash: etiqueta `wsl2`). `--model` elige el modelo del `test-writer` y el `implementer`; `review-testability` va en opus (todos los perfiles). Los traces de forma real pasan a `tests/evals/traces.js`, que usan los dos tests deterministas.
+- **Fixer del hito 3:** su brief pasa a `node --test "tests/**/*.test.js"` (con Node ≥ 22, `node --test tests/` falla). Es la única línea que cambia en `review-cases.js` además de los `exports`; el freno ii de la etapa WSL2 parte del HEAD nuevo.
+
+---
+
+## Ola 0 (contratos; Tasks 9, 10 y 11 en paralelo, archivos disjuntos)
+
+Parten de `core/hito-4b`. Al terminar las tres: unir, `npm run test:quiet` una vez, tag `contract/hito-4b/v1`.
+
+### Task 9: `test-card` en la plantilla de la tarjeta (sonnet)
+
+**Files:**
+- Modify: `plugins/pignolo/templates/task-card.md`
+- Test: `tests/templates.test.js` (un caso nuevo)
+
+**Interfaces:**
+- Produce: la sección `## Test-card` (un bloque por test, los campos de §9.1 en orden, más `Where` y `Red is proved by`) y "Tests that define done" con la marca `Red is proved by` por test. La consumen las skills (`daily` la llena, `review` se la pasa a `review-testability`) y las cartas (Task 10).
+
+- [ ] **Paso 1: test primero** (al final de `tests/templates.test.js`):
+
+  ````js
+  // Hito 4b: la test-card de §9.1 dentro de la tarjeta del test-writer.
+  test('task-card.md: sección Test-card con los campos de §9.1 en orden, Protects, characterization, sabotaje y holdout', () => {
+    const t = tpl('task-card.md');
+    const at = t.indexOf('## Test-card');
+    assert.ok(at > 0, 'falta la sección ## Test-card');
+    const card = t.slice(at);
+    let i = 0;
+    for (const field of ['Behavior:', 'Origin of the expected value:', 'Protects:', 'What to break:', 'How red looks:',
+      'What else would make it pass:', 'Level:', 'Doubles:', 'Real path:', 'Data:', 'Where:', 'Red is proved by:']) {
+      const j = card.indexOf(field, i);
+      assert.ok(j >= 0, `falta o está fuera de orden: ${field}`);
+      i = j + field.length;
+    }
+    assert.match(t, /Tests that define done: [^\n]*`Red is proved by` \(`test-first` or `sabotage`\)/);
+    for (const re of [/`Protects: <id> · Breaks if: <what>`/, /first 20 lines/, /`characterization`/,
+      /scripts\/sabotage\.js" --patch/, /`<main>\/\.pignolo\/tmp\/holdout\/<plan>\/<path>` in the main checkout, never in the task worktree/]) {
+      assert.match(card, re);
+    }
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** `node --test --test-reporter=dot tests/templates.test.js`: 1 de 4 en rojo ("falta la sección ## Test-card"; medido).
+- [ ] **Paso 3: implementar.** En `templates/task-card.md`, la línea de "Tests that define done" pasa a:
+
+  ```
+  - Tests that define done: <paths and test names, each with its `Red is proved by` (`test-first` or `sabotage`), or "you write them" for the test-writer>
+  ```
+
+  y al final del archivo se agrega:
+
+  ````markdown
+  ## Test-card (role pignolo:test-writer only; one block per test, spec §9.1)
+
+  The orchestrator fills one block per test before dispatching the test-writer. The test-writer
+  fills nothing here: it reads it, writes the test and reports against it.
+
+  - Behavior: <what the test checks, in one line>
+  - Origin of the expected value: <the literal words of the requirement or repro-spec it comes from; `characterization` only when it can only come from running the code, and then the test is labelled `characterization`>
+  - Protects: <requirement or ledger id> · the test file starts with `Protects: <id> · Breaks if: <what>` in its first 20 lines (the gate lists new test files without it)
+  - What to break: <the behavior change that must turn the test red, said as behavior, not as code>
+  - How red looks: <the failing assertion or message expected>
+  - What else would make it pass: <a wrong implementation the test must still catch, or "none">
+  - Level: <unit | integration | e2e> · Doubles: <none | fake | mock, and the contract they are typed against> · Real path: <the call chain the test exercises>
+  - Data: synthetic only; never real names, credentials or customer data.
+  - Where: <path inside test-paths>, or, for a holdout acceptance test (plan mode), the absolute path `<main>/.pignolo/tmp/holdout/<plan>/<path>` in the main checkout, never in the task worktree (git ignores it only in the main checkout; right after accepting the test-writer, the orchestrator moves it out of the repo with `holdout.js save`)
+  - Red is proved by: <`test-first` (the behavior does not exist at base: running the test fails) | `sabotage` (the behavior already exists: after the tests are committed, the orchestrator writes the break as a patch and runs `node "<plugin root>/scripts/sabotage.js" --patch <file> --gate on-done --cwd "<worktree>"`)>
+  ````
+
+- [ ] **Paso 4: verde** (el archivo completo).
+- [ ] **Paso 5: commit.** `feat(templates): test-card de §9.1 en la tarjeta del test-writer`.
+
+### Task 10: cartas de `implementer`, `test-writer`, `review-testability` y `validator` (sonnet)
+
+**Files:**
+- Modify: `plugins/pignolo/agents/implementer.md`, `test-writer.md`, `review-testability.md`, `validator.md` (solo el cuerpo; el frontmatter no cambia: `tests/agents-tools.test.js` lo fija)
+- Test: `tests/agents-test-roles.test.js` (nuevo)
+
+**Interfaces:**
+- Consume: `scripts/sabotage.js` y `scripts/holdout.js` (4a), `seedOffered` del sello (4a), la sección `Test-card` (Task 9; solo por su nombre).
+- Produce: lo que las evals de la Task 14 miden (el `test-writer` escribe `Protects:` en las primeras 20 líneas y rotula "red not verified"; el `implementer` no toca un test y escala; `review-testability` da BLOCKER a un test decorativo y pone la rotura como diff en `repro`).
+
+- [ ] **Paso 1: test primero** (`tests/agents-test-roles.test.js`):
+
+  ````js
+  'use strict';
+  // Cartas de los roles de tests (hito 4b): lo que 4a construyó (sabotaje, semilla, holdout,
+  // Protects, escritura por rol) escrito donde cada agente lo lee. Solo forma: si el modelo lo
+  // cumple lo miden las evals (tests/evals/testing-cases.js).
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { PLUGIN_ROOT } = require('./helpers');
+
+  const agent = (name) => fs.readFileSync(path.join(PLUGIN_ROOT, 'agents', `${name}.md`), 'utf8');
+
+  test('implementer: rojo test-first, nunca romper y restaurar a mano; semilla del sello; no probar otro camino hacia los tests', () => {
+    const s = agent('implementer');
+    assert.doesNotMatch(s, /revert or mutate the code under test/);
+    assert.match(s, /Never break and restore code by hand/);
+    assert.match(s, /`Red is proved by: sabotage`[^\n]*must stay green[^\n]*`NEEDS_CONTEXT`/);
+    assert.match(s, /scripts\/sabotage\.js/);
+    assert.match(s, /--seed <seedOffered>/);
+    assert.match(s, /never rerun until green/);
+    assert.match(s, /`seedOffered` of the final seal/);
+    assert.match(s, /do not try another way/);
+  });
+
+  test('test-writer: sin Bash (D-4-1), test-card, Protects en las primeras 20 líneas, rotura como comportamiento, holdout y sin debilitar', () => {
+    const s = agent('test-writer');
+    assert.match(s, /^tools: Read, Grep, Glob, Edit, Write$/m);
+    assert.match(s, /Test-card/);
+    assert.match(s, /`Protects: <id> · Breaks if: <what>` within the first 20 lines/);
+    assert.doesNotMatch(s, /apply as written/);
+    assert.match(s, /as a behavior of the code under test/);
+    assert.match(s, /`<main>\/\.pignolo\/tmp\/holdout\/<plan>\/`, in the main checkout: never in the task worktree/);
+    assert.match(s, /skip, only, todo, retries/);
+  });
+
+  test('review-testability: la rotura va como diff unificado en repro para confirmarla con sabotage.js; Protects y characterization', () => {
+    const s = agent('review-testability');
+    assert.match(s, /unified diff/);
+    assert.match(s, /scripts\/sabotage\.js/);
+    assert.match(s, /stays green with the patch/);
+    assert.match(s, /`Protects: <id> · Breaks if: <what>` in its first 20 lines is a WARNING/);
+    assert.match(s, /`characterization`/);
+    assert.match(s, /A decorative test \(cannot fail\) is a BLOCKER/);
+  });
+
+  test('validator: corre el holdout con holdout.js run (sin copiarlo a mano) y sin veredicto es "not verified"', () => {
+    const s = agent('validator');
+    assert.match(s, /holdout\.js" run --plan <plan> --ref <batch SHA>/);
+    assert.doesNotMatch(s, /copy the acceptance tests/);
+    assert.match(s, /exit 2[^\n]*not verified/);
+    assert.match(s, /Never open, copy or list the holdout files yourself/);
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** 4 de 4 contra las cartas de 4a (medido).
+- [ ] **Paso 3: implementar.** Cada línea de abajo reemplaza entera a la línea de la carta que empieza igual (o que se nombra); las marcadas "nueva" se agregan donde se dice. Nada más cambia.
+  - `implementer.md`, Method 2:
+    ```
+    2. Read the tests that define the task and run them before changing anything: they must fail, and that is your RED (test-first). A test the task-card marks `Red is proved by: sabotage` protects behavior that already exists: it passes now and must stay green. Any other test that already passes does not define your change: stop with `NEEDS_CONTEXT` naming it.
+    ```
+  - `implementer.md`, Output, la línea de gates:
+    ```
+    - Gates run and results, with the `seedOffered` of the final seal; anything not verified, labelled "not verified".
+    ```
+  - `implementer.md`, Rules: la línea "Prove red: break what your test protects (revert or mutate the code under test) …" se reemplaza por estas dos:
+    ```
+    - Never break and restore code by hand to show red: an interrupted restore leaves broken code for the next commit. Red on committed code is `scripts/sabotage.js`, which the orchestrator runs. A test never seen failing is not evidence.
+- The gate passes a seed to the tests (`PIGNOLO_TEST_SEED`) and prints it as `seedOffered`. If the gate fails, rerun it with `--seed <seedOffered>` of that seal before changing anything; a failure that goes away with another seed depends on test order: report both seeds and end with `BLOCKED`, never rerun until green.
+    ```
+  - `implementer.md`, Rules, la última línea:
+    ```
+    - Never edit tests or test configuration; a needed test change is `NEEDS_CONTEXT` naming it. pignolo denies writes to `test-paths` for your role and the gate marks weakened tests (skip, only, retries, removed assertions) as `INTEGRITY`: when a test blocks you, do not try another way (the shell, a rename, the test config).
+    ```
+  - `test-writer.md`, Inputs:
+    ```
+    The task-card: requirement or `repro-spec`, its `Test-card` section (one block per test: behavior, origin of the expected value, what to break, how red looks, what else would make it pass, level, doubles, real path, data, where, how red is proved), and the allowed `test-paths`.
+    ```
+  - `test-writer.md`, Method 2 y 4, y un 5 nuevo después del 4:
+    ```
+    2. Start every test file with the header `Protects: <id> · Breaks if: <what>` within the first 20 lines (the gate lists new test files without it).
+4. You have no Bash: you do not run tests, gates or git. For each test, state the break that makes it fail as a behavior of the code under test (for example "pageOf returns one item less per page"; you do not read the implementation, so the orchestrator turns it into a patch when the behavior already exists), the expected failure and the command for the orchestrator to run, and label it "red not verified". The orchestrator proves red, runs the gates and stages.
+5. A holdout acceptance test goes only to the absolute path the card gives under `<main>/.pignolo/tmp/holdout/<plan>/`, in the main checkout: never in the task worktree (git sees it there and the gates reject it) and never also in `test-paths`. The orchestrator moves it out of the repo and no other agent may see it, so do not quote it in other files.
+    ```
+  - `test-writer.md`, Rules, "Red is proved by the orchestrator …" y "Do not touch existing tests. …":
+    ```
+    - Red is proved by the orchestrator, not by you: a test never seen failing is not evidence, so the break you name must be one small, concrete behavior change.
+- Do not touch existing tests, and never weaken one: no skip, only, todo, retries, removed or loosened assertions, or re-recorded snapshots (the handback-gate rejects it). If an old test goes red, assume your own diagnosis is wrong first; if it stays red, end with `BLOCKED`.
+    ```
+  - `review-testability.md`, Method 2, y un 6 nuevo antes del actual 6 (que pasa a ser 7):
+    ```
+    2. Run it. Then, in a scratch copy outside the repo (never the working tree), break the protected behavior and run it again. It must go red. If it stays green it is decorative. Write the break you used as a unified diff (paths from the repo root, one line of context above and below) in the finding's `repro`: pignolo confirms the finding on the frozen SHA with `scripts/sabotage.js`, and a decorative test stays green with the patch.
+6. A new test file without `Protects: <id> · Breaks if: <what>` in its first 20 lines is a WARNING. An expected value that can only come from running the code, in a test not labelled `characterization`, is a WARNING. A skipped, focused (`only`), retried or loosened test is at least CRITICAL unless the task-card records `test-authorization`.
+    ```
+  - `validator.md`, Inputs, Method 5 y la línea de secciones de Output:
+    ```
+    The brief gives the batch SHA range, the plan and task-cards, the ledger and rulings so far, the agents' reports, the plan name for the holdout and the main checkout path.
+5. Holdout: `cd "<main>" && node "<plugin root>/scripts/holdout.js" run --plan <plan> --ref <batch SHA>`. The script makes its own temporary worktree at that SHA, runs `deps-install` if declared, copies the holdout in, runs `gates.on-done` and removes everything. Exit 0 = pass, 1 = fail (or `deps-install` failed), exit 2 = no verdict (no holdout, no command, unknown ref): report it as "not verified". Never open, copy or list the holdout files yourself: pignolo denies it, and only the script runs them.
+Sections: drift, overridden rulings, false reports, debt, holdout (command, exit, `count`, and the failing test names from `logTail` only). Each item has a location and evidence.
+    ```
+- [ ] **Paso 4: verde**, más `tests/agents-tools.test.js` y `tests/agents-output.test.js` completos (frontmatter y contrato de salida intactos).
+- [ ] **Paso 5: commit.** `feat(agents): cartas de los roles de tests con sabotaje, semilla, Protects y holdout por script`.
+
+### Task 11: holdout en preparación coherente entre hooks (sonnet)
+
+**Files:**
+- Modify: `plugins/pignolo/hooks/handlers/protect-paths.js` (rama `test-writer`), `plugins/pignolo/hooks/handlers/private-reads.js`
+- Test: `tests/holdout-staging.test.js` (nuevo), `tests/protect-paths-roles.test.js` (el caso del `test-writer` se reescribe)
+
+**Interfaces:**
+- Consume: `projectState().main` (`lib/project.js`), `cleanPath`/`resolveClean`/`isWithin` (`lib/paths.js`), `holdout.js save|list` (4a).
+- Produce: el contrato "holdout en preparación = `<main>/.pignolo/tmp/holdout/<plan>/`", que usan la plantilla (Task 9), la carta del `test-writer` (Task 10) y la skill del modo `plan` (hito 5).
+- **Base:** esta tarea toca `private-reads.js`, que la pasada de arreglos de 4a cambia (comodines). Parte de `main` con esa pasada unida; si el archivo cambió respecto de lo de abajo, se aplica la misma lógica sobre la versión nueva y se vuelven a correr los dos archivos de test de `private-reads` más el nuevo.
+
+- [ ] **Paso 1: tests primero.** `tests/holdout-staging.test.js`:
+
+  ````js
+  'use strict';
+  // Holdout en preparación (hito 4b; hallazgo 9 de la revisión final de 4a). El test-writer lo
+  // escribe solo en el checkout principal (<main>/.pignolo/tmp/holdout/<plan>/), que
+  // .pignolo/.gitignore ignora: el handback-gate y la compuerta del worktree de la tarea no lo
+  // ven, ningún otro subagente lo lee y holdout.js save lo saca del repo. En el worktree de la
+  // tarea no llega ese .gitignore: ahí el holdout entraría al diff (SCOPE) y se niega al escribir.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const { makeRepo, makeTempDir, runLauncher, git, PLUGIN_ROOT } = require('./helpers');
+  const protect = require('../plugins/pignolo/hooks/handlers/protect-paths');
+  const reads = require('../plugins/pignolo/hooks/handlers/private-reads');
+
+  const TW = { agent_id: 'a-tw', agent_type: 'pignolo:test-writer' };
+  const IMPL = { agent_id: 'a-impl', agent_type: 'pignolo:implementer' };
+
+  function put(root, rel, text) {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  }
+
+  function setup() {
+    const home = makeTempDir('pignolo-staging-home-');
+    const env = { ...process.env, HOME: home, USERPROFILE: home, PIGNOLO_HOME: path.join(home, '.pignolo'), PIGNOLO_DISABLED: '' };
+    delete env.NODE_TEST_CONTEXT;
+    const main = makeRepo();
+    put(main, '.pignolo/project.md', '---\ntype: code-tested\ngates:\n  on-done: node --test\ntest-paths:\n  - tests/\n---\n');
+    put(main, 'src/a.js', 'module.exports = 1;\n');
+    git(['add', '-A'], main);
+    git(['commit', '-q', '-m', 'C0'], main);
+    const script = (name, args, cwd = main) => {
+      const r = spawnSync(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', name), ...args], { cwd, encoding: 'utf8', env, timeout: 60000 });
+      let json;
+      try { json = JSON.parse(r.stdout); } catch (_) { json = undefined; }
+      return { status: r.status, json, stderr: r.stderr };
+    };
+    assert.strictEqual(script('run.js', ['start', '--flow', 'plan', '--cwd', main]).status, 0);
+    const wt = path.join(main, '.pignolo', 'worktrees', 'acc');
+    git(['worktree', 'add', '-q', '-b', 'task/plan/acc', wt, 'HEAD'], main);
+    const base = git(['rev-parse', 'HEAD'], wt);
+    const r = script('run.js', ['task', '--id', 'acc', '--worktree', wt, '--base', base, '--file', 'tests/a.test.js', '--agent', 'pignolo:test-writer', '--cwd', main]);
+    assert.strictEqual(r.status, 0, r.stderr);
+    return { env, main, wt, script };
+  }
+
+  const write = (s, cwd, file, who) => protect.run({ hook_event_name: 'PreToolUse', tool_name: 'Write', cwd, tool_input: { file_path: file, content: 'x' }, ...who }, { env: s.env });
+  const read = (s, cwd, tool, input, who) => reads.run({ hook_event_name: 'PreToolUse', tool_name: tool, cwd, tool_input: input, ...who }, { env: s.env });
+
+  test('holdout en preparación: solo en el checkout principal; en el worktree de la tarea se niega al escribir', () => {
+    const s = setup();
+    const inWt = write(s, s.wt, path.join(s.wt, '.pignolo', 'tmp', 'holdout', 'p1', 'acc.test.js'), TW);
+    assert.strictEqual(inWt.exit, 2);
+    assert.match(inWt.stderr, /Alternativa:[^\n]*checkout principal/);
+    assert.strictEqual(write(s, s.wt, path.join(s.main, '.pignolo', 'tmp', 'holdout', 'p1', 'acc.test.js'), TW).exit, 0);
+    assert.strictEqual(write(s, s.wt, path.join(s.wt, 'tests', 'a.test.js'), TW).exit, 0);
+  });
+
+  test('holdout en preparación: el handback-gate acepta al test-writer, save lo saca y git no lo vio nunca', () => {
+    const s = setup();
+    put(s.wt, 'tests/a.test.js', "'use strict';\n// Protects: R1 · Breaks if: a deja de ser 1\nrequire('node:test')('a', () => require('node:assert').strictEqual(require('../src/a'), 1));\n");
+    put(s.main, '.pignolo/tmp/holdout/p1/tests/acc.test.js', "'use strict';\n// Protects: A1 · Breaks if: a deja de ser 1\nrequire('node:test')('acc', () => {});\n");
+    assert.strictEqual(git(['status', '--porcelain', '--untracked-files=all'], s.main), '');
+    const stop = runLauncher('handback-gate', {
+      hook_event_name: 'SubagentStop', agent_type: 'pignolo:test-writer', agent_id: 'a-tw',
+      last_assistant_message: 'informe\nDONE', stop_hook_active: false, cwd: s.wt,
+    }, { PIGNOLO_HOME: s.env.PIGNOLO_HOME, HOME: s.env.HOME, USERPROFILE: s.env.USERPROFILE });
+    assert.strictEqual(stop.status, 0, stop.stderr);
+    assert.strictEqual(s.script('run.js', ['status', '--cwd', s.main]).json.handback.accepted, true);
+    const saved = s.script('holdout.js', ['save', '--plan', 'p1', '--from', '.pignolo/tmp/holdout/p1']);
+    assert.strictEqual(saved.status, 0, saved.stderr);
+    assert.strictEqual(fs.existsSync(path.join(s.main, '.pignolo', 'tmp', 'holdout', 'p1')), false);
+    assert.strictEqual(s.script('holdout.js', ['list', '--plan', 'p1']).json.count, 1);
+    assert.strictEqual(git(['status', '--porcelain', '--untracked-files=all'], s.main), '');
+  });
+
+  test('holdout en preparación: el implementer no lo lee (Read, Glob, Grep, Bash); el test-writer sí', () => {
+    const s = setup();
+    const staged = path.join(s.main, '.pignolo', 'tmp', 'holdout', 'p1', 'tests', 'acc.test.js');
+    put(s.main, '.pignolo/tmp/holdout/p1/tests/acc.test.js', 'x\n');
+    const dir = path.dirname(staged);
+    assert.strictEqual(read(s, s.wt, 'Read', { file_path: staged }, IMPL).exit, 2);
+    assert.strictEqual(read(s, s.wt, 'Glob', { pattern: '**/*.js', path: dir }, IMPL).exit, 2);
+    assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: dir }, IMPL).exit, 2);
+    assert.strictEqual(read(s, s.main, 'Bash', { command: 'cat .pignolo/tmp/holdout/p1/tests/acc.test.js' }, IMPL).exit, 2);
+    assert.strictEqual(read(s, s.main, 'PowerShell', { command: 'Get-Content .pignolo\\tmp\\holdout\\p1\\tests\\acc.test.js' }, IMPL).exit, 2);
+    assert.strictEqual(read(s, s.wt, 'Read', { file_path: staged }, TW).exit, 0);
+    // Buscar en el repo (un ancestro de la preparación) sigue permitido: no es el almacén.
+    assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: s.main }, IMPL).exit, 0);
+    assert.strictEqual(read(s, s.wt, 'Read', { file_path: path.join(s.main, 'src', 'a.js') }, IMPL).exit, 0);
+  });
+  ````
+
+  En `tests/protect-paths-roles.test.js`, el caso `'test-writer writes only in test-paths or the holdout dir'` se reemplaza por:
+
+  ````js
+  test('test-writer writes only in test-paths or the holdout dir of the main checkout', () => {
+    const { repo, wt } = setup();
+    const w = (p, root = wt) => protect.run(payload(wt, path.join(root, p), 'pignolo:test-writer'), { env: env() });
+    const r = w('src/a.js');
+    assert.strictEqual(r.exit, 2);
+    assert.match(r.stderr, /Alternativa:.*holdout/);
+    assert.strictEqual(w('tests/b.test.js').exit, 0);
+    // Hito 4b: en el worktree de la tarea el holdout entraría al diff; solo en el checkout principal.
+    assert.strictEqual(w('.pignolo/tmp/holdout/p1/acc.test.js').exit, 2);
+    assert.strictEqual(w('.pignolo/tmp/holdout/p1/acc.test.js', repo).exit, 0);
+    assert.strictEqual(w('.pignolo/project.md').exit, 2);
+  });
+  ````
+
+- [ ] **Paso 2: rojo** (medido contra 4a): `holdout-staging` 2 de 3 (el primero y el tercero; el segundo pasa hoy y se vio en rojo quitando `'tmp/'` de `IGNORED` en `scripts/run.js`) y el caso reescrito de `protect-paths-roles`.
+- [ ] **Paso 3: implementar** (el diff medido en la copia):
+
+  ````diff
+  diff --git a/plugins/pignolo/hooks/handlers/private-reads.js b/plugins/pignolo/hooks/handlers/private-reads.js
+  index 57b4890..cbf3716 100644
+  --- a/plugins/pignolo/hooks/handlers/private-reads.js
+  +++ b/plugins/pignolo/hooks/handlers/private-reads.js
+  @@ -14,6 +14,10 @@ const MESSAGE = 'pignolo bloqueó la lectura: el holdout y los sellos solo los l
+     + 'Alternativa: trabajá con los tests del repo; si necesitás el resultado del holdout, pedíselo al hilo principal.\n';
+   
+   const MENTION_RE = /\.pignolo[\\/]+(holdout|seals)\b|PIGNOLO_HOME/i;
+  +// Holdout en preparación: <main>/.pignolo/tmp/holdout/, antes de holdout.js save. Lo lee solo
+  +// el test-writer que lo escribe (y el validator). Se niega adentro, no en sus ancestros: buscar
+  +// en el repo sigue permitido (ripgrep respeta el .gitignore de .pignolo, que ignora tmp/).
+  +const STAGING_RE = /\.pignolo[\\/]+tmp[\\/]+holdout\b/i;
+   // Prefijo fijo de un patrón glob: lo que está antes del primer segmento con comodín.
+   const GLOB_CHAR = /[*?[\]{}]/;
+   function staticPrefix(pattern) {
+  @@ -67,7 +71,8 @@ exports.run = (input, ctx = {}) => {
+     if (!input.agent_id || input.agent_type === 'pignolo:validator') return { exit: 0 };
+     const env = ctx.env || process.env;
+     const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : process.cwd();
+  -  if (!projectState({ cwd, env }).active) return { exit: 0 };
+  +  const state = projectState({ cwd, env });
+  +  if (!state.active) return { exit: 0 };
+   
+     const home = userHomes(env)[0];
+     const roots = privateRoots(env).map((r) => resolveClean(r, cwd, home));
+  @@ -75,17 +80,21 @@ exports.run = (input, ctx = {}) => {
+     const at = (p, base = cwd) => resolveClean(p, base, home);
+     const inside = (p) => roots.some((r) => isWithin(p, r));
+     const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
+  +  const staging = input.agent_type === 'pignolo:test-writer' ? null : resolveClean(path.join(state.main, '.pignolo', 'tmp', 'holdout'), cwd, home);
+  +  const staged = (p) => staging !== null && isWithin(p, staging);
+     const ti = input.tool_input || {};
+     const tool = String(input.tool_name || '');
+   
+     let denied = false;
+  -  if (tool === 'Read') denied = typeof ti.file_path === 'string' && inside(at(ti.file_path));
+  +  if (tool === 'Read') denied = typeof ti.file_path === 'string' && (inside(at(ti.file_path)) || staged(at(ti.file_path)));
+     else if (tool === 'Glob' || tool === 'Grep') {
+       const base = typeof ti.path === 'string' && ti.path ? at(ti.path) : cleanPath(cwd);
+       const pat = tool === 'Glob' ? ti.pattern : ti.glob;
+  -    denied = insideOrAbove(base) || (typeof pat === 'string' && pat !== '' && insideOrAbove(at(staticPrefix(pat), base)));
+  +    const prefix = typeof pat === 'string' && pat !== '' ? at(staticPrefix(pat), base) : null;
+  +    denied = insideOrAbove(base) || staged(base) || (prefix !== null && (insideOrAbove(prefix) || staged(prefix)));
+     } else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string') {
+  -    denied = shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store });
+  +    denied = shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store })
+  +      || (staging !== null && (STAGING_RE.test(ti.command) || ti.command.replace(/\\/g, '/').toLowerCase().includes(staging)));
+     }
+     return denied ? { exit: 2, stderr: MESSAGE } : { exit: 0 };
+   };
+  diff --git a/plugins/pignolo/hooks/handlers/protect-paths.js b/plugins/pignolo/hooks/handlers/protect-paths.js
+  index a1f5138..7d86687 100644
+  --- a/plugins/pignolo/hooks/handlers/protect-paths.js
+  +++ b/plugins/pignolo/hooks/handlers/protect-paths.js
+  @@ -11,7 +11,7 @@ const path = require('node:path');
+   const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
+   const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
+   const { projectState, readRun } = require('../../lib/project');
+  -const { resolveClean, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
+  +const { resolveClean, cleanPath, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
+   
+   const BLOCKED = 'pignolo bloqueó la escritura: los flags del interruptor solo los escribe /pignolo:off y /pignolo:on. Alternativa: pedile al humano que escriba el comando.\n';
+   const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins. Alternativa: usá comandos git; lo que haya que cambiar ahí lo hace el humano.\n';
+  @@ -23,7 +23,8 @@ const HOLDOUT_DIR = '.pignolo/tmp/holdout/';
+   const alt = (m) => ({ exit: 2, stderr: `pignolo bloqueó la escritura: ${m}
+   ` });
+   const ALT_IMPL = 'Alternativa: un test cambia solo con test-authorization: devolvé BLOCKED y nombrá el test.';
+  -const ALT_TW = 'Alternativa: escribí solo en test-paths o en .pignolo/tmp/holdout/; lo demás lo pide el hilo principal.';
+  +const ALT_TW = 'Alternativa: escribí solo en test-paths o, para el holdout, en .pignolo/tmp/holdout/ del checkout principal; lo demás lo pide el hilo principal.';
+  +const ALT_HOLDOUT = 'Alternativa: escribilo en <checkout principal>/.pignolo/tmp/holdout/<plan>/ (ruta absoluta), que git ignora y el hilo principal guarda con holdout.js save.';
+   
+   // Raíz del worktree que contiene abs: el de la tarea si está dentro; si no, sube hasta el primer .git (sin git).
+   function worktreeOf(abs, task) {
+  @@ -63,7 +64,15 @@ function roleRule({ input, env, cwd, abs }) {
+     const isProt = rel === PROJECT_MD || matchAny(config.protectedTestConfig, rel);
+     if (agent === 'pignolo:test-writer') {
+       if (isProt) return alt(`el test-writer no escribe ${rel} (config de tests protegida). ${ALT_TW}`);
+  -    if (!isTest && !rel.startsWith(HOLDOUT_DIR)) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
+  +    if (rel.startsWith(HOLDOUT_DIR)) {
+  +      // El .gitignore de .pignolo no llega a los worktrees de tarea: ahí el holdout entraría al
+  +      // diff (SCOPE en la compuerta y en el handback-gate). Solo en el checkout principal.
+  +      if (cleanPath(wt) !== cleanPath(state.main)) {
+  +        return alt(`el holdout en preparación no va en el worktree de la tarea (${rel}): ahí git lo ve. ${ALT_HOLDOUT}`);
+  +      }
+  +      return null;
+  +    }
+  +    if (!isTest) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
+       return null;
+     }
+     if (rel === PROJECT_MD) return alt(`${agent.slice(8)} no escribe ${PROJECT_MD}. ${ALT_IMPL}`);
+  ````
+
+- [ ] **Paso 4: verde:** los dos archivos, más `tests/private-reads.test.js` (incluye el corpus `must-allow` sin un solo deny), `tests/holdout.test.js` y `tests/e2e-hito-4a.test.js` completos.
+- [ ] **Paso 5: commit.** `fix(holdout): la preparación vive solo en el checkout principal y solo la leen el test-writer y el validator`.
+
+---
+
+## Ola 1 (en paralelo: Tasks 12 a 15, cada una en su worktree)
+
+Todas parten de `contract/hito-4b/v1`. Ninguna toca archivos de la ola 0; si un contrato parece mal, `BLOCKED` sin cambiarlo. Las skills se escriben con los textos de abajo; el implementador puede ajustar redacción, nunca el orden de pasos ni los comandos (los fija el test de forma).
+
+### Task 12: skill `daily` con test-card, sabotaje y semilla (opus)
+
+**Files:**
+- Modify: `plugins/pignolo/skills/daily/SKILL.md`
+- Test: `tests/skill-daily.test.js` (dos casos nuevos)
+
+**Interfaces:**
+- Consume: `templates/task-card.md` (sección `Test-card`, Task 9), `scripts/sabotage.js --patch <archivo> --gate on-done --cwd <wt>` (exit 0/1/2/3), `seedOffered` y `gate.js --seed`.
+- Produce: el paso 8 con el rojo sobre código commiteado; la regla de la semilla, que `review` hereda.
+
+- [ ] **Paso 1: test primero** (al final de `tests/skill-daily.test.js`):
+
+  ````js
+  // Hito 4b: test-card, rojo por sabotaje sobre los tests ya commiteados, semilla y sin holdout.
+  test('daily: Test-card por test, rojo test-first y, para lo que ya existe, sabotage.js después del commit de los tests', () => {
+    const { text } = readSkill('daily');
+    const order = [
+      /one `Test-card` block per test/,
+      /Prove red yourself/,
+      /git commit -F "<main>\/\.pignolo\/tmp\/commit-msg\.txt"`\. Call the new `git rev-parse HEAD` `<T>`/,
+      /node "<P>\/scripts\/sabotage\.js" --patch "<main>\/\.pignolo\/tmp\/sabotage-<slug>-<n>\.patch" --gate on-done --cwd "<wt>"/,
+      /--test-ref <T>[^\n]*--agent pignolo:implementer/,
+    ];
+    let at = 0;
+    for (const re of order) {
+      const m = re.exec(text.slice(at));
+      assert.ok(m, `falta o está fuera de orden: ${re}`);
+      at += m.index + m[0].length;
+    }
+    assert.match(text, /`Red is proved by: sabotage`/);
+    assert.match(text, /Exit 0[^\n]*red proved[^\n]*exit 1 with `timedOut: true`[^\n]*not a verdict[^\n]*stayed green[^\n]*exit 2[^\n]*exit 3/);
+    assert.match(text, /one `@@` hunk[^\n]*one line of context above and below/);
+  });
+
+  test('daily: semilla (seedOffered, --seed, nunca repetir hasta verde) y el holdout no es de daily', () => {
+    const { text } = readSkill('daily');
+    assert.match(text, /\*\*Seed\.\*\*[^\n]*`seedOffered`[^\n]*--seed <seedOffered>[^\n]*never rerun until green/);
+    assert.doesNotMatch(text, /holdout\.js/);
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** 2 de 8 (los nuevos; medido).
+- [ ] **Paso 3: escribir** (cada cambio reemplaza el texto citado):
+  - En "Rules that hold in every step", después de **Models.**:
+    ```
+    - **Seed.** `gate.js` passes a random test-order seed to the tests (`PIGNOLO_TEST_SEED`) and prints it as `seedOffered`; the implementer reports the one of its final seal and the closing summary quotes it. A failure that goes away on a rerun is not fixed: rerun with `--seed <seedOffered>` of the failing seal; if it fails only with that seed, the tests depend on their order: ask the human (category `scope`) before merging, and never rerun until green.
+    ```
+  - Paso 4 completo (cambian la primera oración y la segunda, nueva; desde "Pick the test files" es igual):
+    ```
+    4. **Task-card.** Fill `<P>/templates/task-card.md` for the test-writer, with one `Test-card` block per test, and write it to `<main>/.pignolo/tmp/task-<slug>.md`. In each block, `Red is proved by` is `test-first` when the behavior does not exist at `<base>`, and `sabotage` when it already exists (a characterization, or a guard for behavior the change must keep). Pick the test files: inside `test-paths` (from `.pignolo/project.md`), next to the existing tests and following their naming. Skip steps 5 to 8 only when `project.md` says `type: docs` or `type: script`.
+    ```
+  - Pasos 7 y 8:
+    ```
+    7. **Prove red yourself** (the test-writer has no Bash). Run the command it named: `cd "<wt>" && <command>`. Every test whose block says `test-first` must fail, and for the reason the test-writer stated. If one passes, it proves nothing: dispatch the test-writer again naming that (it counts as a continuation). A test whose block says `Red is proved by: sabotage` passes here; its red comes after the commit of step 8. Keep the failing output for the summary.
+8. **Commit the tests.** Write the message (`test: ...`, trailers `Agent: pignolo:test-writer` and `Gates: red proved by the orchestrator`), then `cd "<wt>" && git add <test paths> && git commit -F "<main>/.pignolo/tmp/commit-msg.txt"`. Call the new `git rev-parse HEAD` `<T>`.
+   Then, for each test whose block says `Red is proved by: sabotage` (numbered `<n>` from 1): read the code under test in `<wt>` and write the break the test-writer named, with Write, as a unified diff to `<main>/.pignolo/tmp/sabotage-<slug>-<n>.patch`: the lines `--- a/<path>` and `+++ b/<path>`, then one `@@` hunk with the changed line (`-` as it is, `+` broken) and one line of context above and below, copied exactly from `<wt>`. Run `node "<P>/scripts/sabotage.js" --patch "<main>/.pignolo/tmp/sabotage-<slug>-<n>.patch" --gate on-done --cwd "<wt>"`. Exit 0: red proved and the code restored (keep its JSON for the summary); exit 1 with `timedOut: true` in the JSON is not a verdict: run it once more with `--timeout-min <minutes the suite needs>`, and if it times out again ask the human (category `scope`); exit 1 otherwise: the test stayed green with the break, so it does not protect what it says: dispatch the test-writer again naming it (a continuation), commit the new version, move `<T>` and repeat; exit 2: the patch or the tree was refused and nothing was touched: fix the patch once, then ask the human (category `scope`); exit 3: the script could not restore the code: stop, show the human its message and files, and commit nothing until the tree is clean.
+    ```
+- [ ] **Paso 4: verde**, `claude plugin validate plugins/pignolo`, y una lectura contra el Review Focus 1 y 2: el sabotaje va después del commit de los tests y antes del `implementer`; cada exit tiene su camino; nada reintenta hasta verde.
+- [ ] **Paso 5: commit.** `feat(skills): daily con test-card, rojo por sabotaje sobre lo que ya existe y semilla`.
+
+### Task 13: skill `review` con `review-testability` y el test decorativo (opus)
+
+**Files:**
+- Modify: `plugins/pignolo/skills/review/SKILL.md`
+- Test: `tests/skill-review.test.js` (un caso nuevo)
+
+**Interfaces:**
+- Consume: la salida de `review-testability` con la rotura como diff en `repro` (Task 10), `sabotage.js`, `ledger.js repro --red|--no-red`.
+- Produce: el paso 7 que confirma un test decorativo por sabotaje.
+
+- [ ] **Paso 1: test primero** (al final de `tests/skill-review.test.js`):
+
+  ````js
+  // Hito 4b: review-testability con el comando de tests y la test-card; un test decorativo se
+  // confirma con sabotage.js (sigue verde con la rotura), no con un test nuevo.
+  test('review: testability recibe el comando y las test-cards; el decorativo se confirma con sabotage.js', () => {
+    const { text } = readSkill('review');
+    assert.match(text, /`pignolo:review-testability` also gets[^\n]*`gates\.on-done`[^\n]*`Test-card`/);
+    assert.match(text, /\*\*Decorative tests\*\*[^\n]*sabotage\.js" --patch "<main>\/\.pignolo\/tmp\/review-<sha7>\/sabotage-<id>\.patch" --gate on-done --cwd "<wt>"/);
+    assert.match(text, /exit 1 \(the test stayed green with the break\)[^\n]*ledger\.js repro --ledger "<L>" --id <id> --red/);
+    assert.match(text, /exit 0 \(it went red\)[^\n]*--no-red/);
+    assert.match(text, /only when no reviewer is running[^\n]*exit 1 with `timedOut: true` is not a verdict/);
+    assert.doesNotMatch(text, /holdout\.js/);
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** 1 de 17 (medido).
+- [ ] **Paso 3: escribir:**
+  - Rules, la línea de los escritores, y el paso 5 (cambia solo lo que va entre "the task-card and the level" y "Write each lens's"):
+    ```
+    - **Writers follow the daily rules** (including its seed rule): `run.js renew` before each dispatch, `run.js task` before each writer, `run.js status` after each writer (accepted only with `handback.accepted`), at most 2 automatic continuations, `--file` relative with `/`.
+5. **Lenses (medium and high).** Dispatch every lens of the plan in parallel, in one message: `pignolo:review-<lens>`, each with the SHA, `<wt>` (its files are the SHA), the diff `<base>..<SHA>` (for more than 400 lines, the file list and the diff of the risky files), the task-card and the level; `pignolo:review-testability` also gets the test command (`gates.on-done` of `.pignolo/project.md` at `<SHA>`) and the task-card's `Test-card` blocks, if any. Write each lens's `json` block verbatim to `<main>/.pignolo/tmp/review-<sha7>/<lens>.json`. A lens whose block is missing or not valid JSON is dispatched once more naming that; if it fails again, ask the human (category `scope`). Then:
+    ```
+  - Paso 7, antes de "A finding located in a test file needs `test-authorization` …", una línea nueva:
+    ```
+       **Decorative tests** (a `testability` finding located in a test file whose `repro` is a unified diff) are confirmed on `<SHA>` by breaking the code, not by a new test: write the `repro` verbatim with Write to `<main>/.pignolo/tmp/review-<sha7>/sabotage-<id>.patch` and run `node "<P>/scripts/sabotage.js" --patch "<main>/.pignolo/tmp/review-<sha7>/sabotage-<id>.patch" --gate on-done --cwd "<wt>"`, only when no reviewer is running (it changes files in `<wt>` while the command runs). An exit 1 with `timedOut: true` is not a verdict (handle it as daily does); otherwise: exit 1 (the test stayed green with the break) → `ledger.js repro --ledger "<L>" --id <id> --red` (confirmed); exit 0 (it went red) → `--no-red`; exit 2 → `--no-red`, with the script's reason in the summary; exit 3 → stop and show the human the script's message.
+    ```
+- [ ] **Paso 4: verde**, `claude plugin validate plugins/pignolo`, y una lectura contra el Review Focus 1: el sabotaje de `review` corre después de las lentes, sobre `<SHA>` congelado y limpio, y en modo solo-informe no corre (el paso 7 se saltea entero).
+- [ ] **Paso 5: commit.** `feat(skills): review confirma un test decorativo con sabotage.js y le da a testability el comando y las test-cards`.
+
+### Task 14: evals `agents` de `test-writer`, `implementer` y `review-testability` (opus)
+
+**Files:**
+- Create: `tests/evals/testing-cases.js` (tabla y generador), `tests/evals/traces.js` (traces de forma real, movidos), `tests/eval-testing-cases.test.js`
+- Modify: `tests/evals/review-cases.js` (solo `module.exports` y el brief del `fixer`), `tests/eval-cases.test.js` (usa `traces.js`; sin cambiar un solo caso)
+
+**Interfaces:**
+- Consume: los graders y la escritura del hito 3 (`reportHead`, `CH`, `SEP`, `key`, `trace`, `said`, `saidNot`, `lastLine`, `singleDispatch`, `dispatched`, `graderMd`, `fixtureSh`, `PAGES`, `PAGES_BUG`, `PAGES_TEST`), `ROLES` (`lib/roles.js`).
+- Produce: `node tests/evals/testing-cases.js --out <dir> [--model opus|sonnet]` → un directorio por caso para `claude plugin eval . --eval-dir <dir>`; `CASES`, `build`, `ALLOWED`.
+- Casos (5): `test-writer-requirement` y `test-writer-repro` (etiqueta `windows`), `implementer-old-test`, `review-testability-decorative` y `review-testability-clean` (etiqueta `wsl2`). Graders propios: `wrote-test`, `protects-header` (primeras 20 líneas), `impl-untouched`, `old-test-untouched`, `new-test-untouched` (sobre archivos), `no-impl-read`, `no-test-write` (herramientas SUB ausentes), `subagent-ran-tests` (SUB), `red-not-verified`, `done`, `names-old-test`, `escalates`, `finds-decorative-test`, `verdict-*`, `no-blocking-finding` (texto del `tool_result`), más `dispatched`, `model`, `single-dispatch` y `subagent-returned` en todos.
+
+- [ ] **Paso 1: tests primero.** `tests/eval-testing-cases.test.js`:
+
+  ````js
+  'use strict';
+  // Graders de las evals del hito 4b (test-writer, implementer, review-testability), sin gastar
+  // tokens, con los traces de forma real de tests/evals/traces.js: el informe bueno del
+  // subagente aprueba y el malo reprueba; el mismo informe escrito por la sesión principal
+  // reprueba; sin informe del subagente, "hubo informe" reprueba.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { makeTempDir } = require('./helpers');
+  const { parseFrontmatter } = require('../plugins/pignolo/lib/yaml-lite');
+  const { ROLES } = require('../plugins/pignolo/lib/roles');
+  const { SUB, reportHead } = require('./evals/review-cases');
+  const { CASES, build } = require('./evals/testing-cases');
+  const { AGENT_ID, grade, dispatch, toolUse, agentResult, agentError, agentLaunched, run } = require('./evals/traces');
+
+  const out = makeTempDir('pignolo-evals-4b-');
+  build({ out, model: 'sonnet' });
+  const graders = (name) => fs.readdirSync(path.join(out, name, 'graders'))
+    .map((f) => ({ name: f.replace(/\.md$/, ''), ...parseFrontmatter(fs.readFileSync(path.join(out, name, 'graders', f), 'utf8')).data }))
+    .filter((g) => g.type === 'regex');
+  const subTools = (list, parent) => (list || []).map((t) => toolUse(t.name, t.input, parent));
+
+  for (const c of CASES) {
+    test(`eval ${c.name}: estructura, fixture y modelo`, () => {
+      for (const f of ['case.yaml', 'prompt.md', 'fixture.sh']) assert.ok(fs.existsSync(path.join(out, c.name, f)), f);
+      const sh = fs.readFileSync(path.join(out, c.name, 'fixture.sh'), 'utf8');
+      for (const content of Object.values(c.files)) assert.ok(sh.includes(content.replace(/\n$/, '')));
+      const prompt = fs.readFileSync(path.join(out, c.name, 'prompt.md'), 'utf8');
+      assert.match(prompt, new RegExp(`subagent_type pignolo:${c.agent}, model ${c.modelFromFlag ? 'sonnet' : 'opus'}\\)`));
+      assert.match(prompt, /run_in_background false/);
+    });
+
+    test(`eval ${c.name}: los graders leen solo lo que hizo el subagente`, () => {
+      const gs = graders(c.name);
+      const s = c.samples;
+      const goodFiles = { ...c.files, ...(s.passFiles || {}) };
+      const badFiles = { ...c.files, ...(s.failFiles || {}) };
+
+      // (a) El informe bueno (con sus herramientas y archivos) aprueba todo; el malo reprueba alguno.
+      const good = { trace: run(c, { report: s.pass, tools: subTools(s.passTools, AGENT_ID) }), files: goodFiles };
+      for (const g of gs) assert.ok(grade(g, good), `${c.name}: ${g.name} reprueba el informe bueno`);
+      const bad = { trace: run(c, { report: s.fail, tools: subTools(s.failTools, AGENT_ID) }), files: badFiles };
+      assert.ok(gs.some((g) => !grade(g, bad)), `${c.name}: ningún grader reprueba el informe malo`);
+
+      // (b) Lo bueno hecho por la sesión principal (sus herramientas y su texto) con el subagente
+      // devolviendo un informe neutro: todo grader del trace que exige algo del subagente reprueba.
+      const fromMain = { trace: run(c, { report: 'No report.', tools: subTools(s.passTools, null), main: s.pass }), files: goodFiles };
+      for (const g of gs.filter((x) => x.target === 'trace' && x.match !== 'not_contains' && !['subagent-returned', 'single-dispatch'].includes(x.name))) {
+        assert.ok(!grade(g, fromMain), `${c.name}: ${g.name} aprueba lo que hizo la sesión principal`);
+      }
+
+      // (c) Sin informe real del subagente, "hubo informe" y los de ausencia de texto reprueban.
+      const returned = gs.find((g) => g.name === 'subagent-returned');
+      assert.ok(returned, `${c.name}: falta subagent-returned`);
+      const empties = {
+        'sin tool_result del Agent': run(c, { report: null, main: s.pass }),
+        'con un error del Agent': run(c, { report: null, main: s.pass, result: agentError('Agent type not found') }),
+        'con el aviso de background': run(c, { report: null, main: s.pass, result: agentLaunched(c) }),
+        'con un informe vacío': run(c, { report: '', main: s.pass }),
+      };
+      for (const [why, trace] of Object.entries(empties)) {
+        for (const g of gs.filter((x) => x.name === 'subagent-returned' || x.name === 'no-blocking-finding')) {
+          assert.ok(!grade(g, { trace, files: goodFiles }), `${c.name}: ${g.name} aprueba ${why}`);
+        }
+      }
+
+      // (d) Dos despachos del mismo agente: single-dispatch reprueba.
+      const twice = run(c, { report: s.pass, before: [dispatch(c, 'toolu_FIRST'), agentResult(c, s.fail, 'toolu_FIRST')] });
+      assert.ok(!grade(gs.find((g) => g.name === 'single-dispatch'), { trace: twice, files: goodFiles }), `${c.name}: single-dispatch aprueba dos despachos`);
+
+      // Todo grader del trace se ata al subagente: al tool_result de su Agent o a sus eventos (SUB).
+      for (const g of gs.filter((x) => x.target === 'trace' && x.name !== 'single-dispatch')) {
+        assert.ok(g.pattern.startsWith(reportHead(c.agent)) || g.pattern.startsWith(SUB), `${c.name}: ${g.name} no se ata al subagente`);
+      }
+    });
+  }
+
+  test('evals 4b: los de ausencia de herramientas reprueban cuando el subagente sí la usó', () => {
+    const cases = { 'test-writer-requirement': 'no-impl-read', 'implementer-old-test': 'no-test-write' };
+    for (const [name, gname] of Object.entries(cases)) {
+      const c = CASES.find((x) => x.name === name);
+      const g = graders(name).find((x) => x.name === gname);
+      const trace = run(c, { report: c.samples.pass, tools: subTools(c.samples.failTools, AGENT_ID) });
+      assert.ok(!grade(g, { trace, files: c.files }), `${name}: ${gname} aprueba con la herramienta prohibida`);
+    }
+  });
+
+  test('evals 4b: la cabecera Protects cuenta solo en las primeras 20 líneas', () => {
+    const c = CASES.find((x) => x.name === 'test-writer-requirement');
+    const g = graders(c.name).find((x) => x.name === 'protects-header');
+    const body = c.samples.passFiles['tests/slug.test.js'];
+    assert.ok(grade(g, { trace: [], files: { 'tests/slug.test.js': body } }));
+    const late = `${'\n'.repeat(20)}${body}`;
+    assert.ok(!grade(g, { trace: [], files: { 'tests/slug.test.js': late } }), 'aprueba Protects después de la línea 20');
+    const other = body.replace('Protects: R1', 'Protects: R9');
+    assert.ok(!grade(g, { trace: [], files: { 'tests/slug.test.js': other } }), 'aprueba otro id');
+  });
+
+  test('evals 4b: el test decorativo con severidad CRITICAL o fuera de su archivo no cuenta como hallado', () => {
+    const c = CASES.find((x) => x.name === 'review-testability-decorative');
+    const g = graders(c.name).find((x) => x.name === 'finds-decorative-test');
+    for (const soft of [c.samples.pass.replace('"BLOCKER"', '"CRITICAL"'), c.samples.pass.replace('tests/pages.test.js:10', 'src/pages.js:7')]) {
+      assert.notStrictEqual(soft, c.samples.pass);
+      assert.ok(!grade(g, { trace: run(c, { report: soft }), files: {} }), `aprueba ${soft.slice(0, 80)}`);
+    }
+  });
+
+  test('evals 4b: test-writer sin Bash corre en Windows; todo agente con Bash lleva wsl2 y Bash en allowed_tools', () => {
+    for (const c of CASES) {
+      const bash = ROLES[c.agent].tools.includes('Bash');
+      const prompt = fs.readFileSync(path.join(out, c.name, 'prompt.md'), 'utf8');
+      assert.strictEqual(c.tags.includes('wsl2'), bash, `${c.name}: etiqueta wsl2`);
+      assert.strictEqual(c.tags.includes('windows'), !bash, `${c.name}: etiqueta windows`);
+      assert.strictEqual(/^allowed_tools: \[[^\]]*\bBash\b/m.test(prompt), bash, `${c.name}: Bash en allowed_tools`);
+    }
+    assert.deepStrictEqual(CASES.filter((c) => c.tags.includes('windows')).map((c) => c.agent), ['test-writer', 'test-writer']);
+  });
+
+  test('evals 4b: ningún patrón lleva comillas simples (yaml-lite no desescapa las dobles y el runner sí)', () => {
+    for (const c of CASES) for (const g of graders(c.name)) assert.ok(!g.pattern.includes("'"), `${c.name}: ${g.name}`);
+  });
+
+  test('evals 4b: --model cambia el test-writer y el implementer; review-testability queda en opus', () => {
+    const op = makeTempDir('pignolo-evals-4b-opus-');
+    build({ out: op, model: 'opus' });
+    const model = (dir, name) => fs.readFileSync(path.join(dir, name, 'graders', 'model.md'), 'utf8');
+    assert.match(model(op, 'test-writer-requirement'), /"model":"opus"/);
+    assert.match(model(out, 'test-writer-requirement'), /"model":"sonnet"/);
+    assert.match(model(out, 'implementer-old-test'), /"model":"sonnet"/);
+    assert.match(model(out, 'review-testability-decorative'), /"model":"opus"/);
+    assert.throws(() => build({ out: op, model: 'haiku' }), /--model/);
+  });
+
+  test('evals (hito 3): el brief del fixer no le pasa a node --test un directorio (en Node ≥ 22 falla)', () => {
+    const fixer = require('./evals/review-cases').CASES.find((x) => x.name === 'fixer-confirmed-finding');
+    assert.doesNotMatch(fixer.brief, /node --test tests\/(?:\s|$)/m);
+  });
+  ````
+
+- [ ] **Paso 2: rojo.** Falla por los módulos ausentes (`./evals/testing-cases`, `./evals/traces`).
+- [ ] **Paso 3: implementar.**
+  - `tests/evals/traces.js` (lo de `eval-cases.test.js` movido tal cual; único cambio: `dispatch` pone `c.model` cuando el caso lo trae):
+
+    ````js
+    'use strict';
+    // Traces con la forma REAL de Claude Code 2.1.285 para probar graders sin gastar tokens.
+    // Salen de la sonda 2 recortada y sin rutas personales
+    // (tests/fixtures/evals/probe2-review-reliability-defect.jsonl): el informe final del
+    // subagente NO sale como evento `assistant` con parent, sino como el `tool_result` que la
+    // sesión principal recibe por su `tool_use` de Agent. `grade` arma el texto como el runner
+    // 2.1.285: cada evento re-serializado con JSON.stringify, unidos por "\n", y UNA sola RegExp.
+    // Lo usan tests/eval-cases.test.js (hito 3) y tests/eval-testing-cases.test.js (hito 4b).
+    const fs = require('node:fs');
+    const path = require('node:path');
+
+    const REAL = fs.readFileSync(path.join(__dirname, '..', 'fixtures', 'evals', 'probe2-review-reliability-defect.jsonl'), 'utf8')
+      .split('\n').filter(Boolean).map((l) => JSON.parse(l));
+
+    function grade(g, { trace, files }) {
+      const text = typeof g.target === 'object' ? files[g.target.path] : trace.map((e) => JSON.stringify(e)).join('\n');
+      if (text === undefined) return false;
+      const hit = new RegExp(g.pattern, g.flags || '').test(text);
+      return g.match === 'not_contains' ? !hit : hit;
+    }
+
+    const clone = (x) => JSON.parse(JSON.stringify(x));
+    const find = (pred) => clone(REAL.find(pred));
+    const AGENT_ID = 'toolu_016xwg6uHqSSNnzN3tFRyruo';
+    const isResult = (e) => e.type === 'user' && e.parent_tool_use_id === null
+      && Array.isArray(e.message.content) && e.message.content.some((b) => b.type === 'tool_result' && b.tool_use_id === AGENT_ID);
+    const REAL_RESULT_TEXT = REAL.find(isResult).message.content[0].content[0].text;
+    const FRAME_HEAD = REAL_RESULT_TEXT.slice(0, REAL_RESULT_TEXT.indexOf('The report follows:\n') + 'The report follows:\n'.length);
+    const FRAME_TAIL = REAL_RESULT_TEXT.slice(REAL_RESULT_TEXT.indexOf('\nagentId: '));
+
+    // El despacho de la sesión principal. Sin modelo explícito en el caso (el fixer del hito 3),
+    // el input no lleva `model`; con `c.model`, lleva ese.
+    function dispatch(c, id = AGENT_ID) {
+      const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === null && x.message.content[0].type === 'tool_use');
+      e.message.content[0].id = id;
+      const input = e.message.content[0].input;
+      input.subagent_type = `pignolo:${c.agent}`;
+      input.prompt = c.brief;
+      if (c.model) input.model = c.model;
+      else if (!c.reviewer) delete input.model;
+      return e;
+    }
+    function subEvents(c) {
+      // Brief del subagente y sus herramientas reales (Read, Grep), con el tipo del caso.
+      const out = REAL.filter((x) => x.parent_tool_use_id === AGENT_ID).map(clone);
+      for (const e of out) e.subagent_type = `pignolo:${c.agent}`;
+      out[0].message.content[0].text = c.brief;
+      return out;
+    }
+    function toolUse(name, input, parent) {
+      const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === AGENT_ID);
+      e.message.content = [{ type: 'tool_use', id: `toolu_${name}`, name, input, caller: { type: 'direct' } }];
+      e.parent_tool_use_id = parent;
+      return e;
+    }
+    function agentResult(c, report, id = AGENT_ID) {
+      // El tool_result de la sesión principal, con el marco y la sangría que pone el harness.
+      const e = find(isResult);
+      e.message.content[0].tool_use_id = id;
+      const framed = `${FRAME_HEAD}${report.split('\n').map((l) => `  ${l}`).join('\n')}${FRAME_TAIL}`;
+      e.message.content[0].content[0].text = framed;
+      e.tool_use_result.prompt = c.brief;
+      e.tool_use_result.agentType = `pignolo:${c.agent}`;
+      e.tool_use_result.content[0].text = report;
+      return e;
+    }
+    function notification(report) {
+      const e = find((x) => x.type === 'system' && x.subtype === 'task_notification');
+      e.summary = report;
+      return e;
+    }
+    function mainSays(text) {
+      const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === null && x.message.content[0].type === 'text');
+      e.message.content[0].text = text;
+      return e;
+    }
+    // Un tool_result del Agent que no es un informe: error de la herramienta (content string).
+    function agentError(message) {
+      const e = find(isResult);
+      e.message.content[0] = { tool_use_id: AGENT_ID, type: 'tool_result', content: `<tool_use_error>${message}</tool_use_error>`, is_error: true };
+      delete e.tool_use_result;
+      return e;
+    }
+    // El aviso que devuelve Agent con run_in_background: true (el informe no llega en el tool_result).
+    function agentLaunched(c) {
+      const e = agentResult(c, '');
+      e.message.content[0].content[0].text = 'Async agent launched successfully. agentId: a0 (runs in background; you will be notified when it completes)';
+      return e;
+    }
+    const RESULT_EVENT = find((x) => x.type === 'result');
+
+    // Una corrida: la sesión principal despacha, el subagente trabaja (tools, con su parent) y
+    // devuelve `report` (null: no hay tool_result del Agent); la principal contesta `main`.
+    // `result` reemplaza al tool_result del Agent (un error, un aviso de background). `before`
+    // son eventos de la sesión principal antes del despacho (otro despacho y su tool_result).
+    function run(c, { report, tools = [], main = 'RELAYED', result, before = [] }) {
+      let back = [];
+      if (result) back = [result];
+      else if (report !== null) back = [notification(report), agentResult(c, report)];
+      return [...before, dispatch(c), ...subEvents(c), ...tools, ...back, mainSays(main), RESULT_EVENT];
+    }
+
+    module.exports = { REAL, AGENT_ID, grade, dispatch, toolUse, agentResult, mainSays, agentError, agentLaunched, run };
+    ````
+
+  - `tests/eval-cases.test.js`: se borra desde `const REAL = fs.readFileSync(` hasta el final de `function run(…) {…}` (todo lo que pasó a `traces.js`) y se importa. El diff completo:
+
+    ````diff
+    diff --git a/tests/eval-cases.test.js b/tests/eval-cases.test.js
+    index 4b56554..7d5fd9e 100644
+    --- a/tests/eval-cases.test.js
+    +++ b/tests/eval-cases.test.js
+    @@ -6,8 +6,7 @@
+     // por su `tool_use` de Agent. Se prueba que (a) el informe bueno del subagente aprueba y el malo
+     // reprueba; (b) el mismo informe bueno escrito por la sesión principal reprueba; (c) sin
+     // tool_result del Agent, los graders de ausencia reprueban; (d) la sonda 2 real aprueba.
+    -// El texto que ve un grader `regex` con `target: trace` se arma como en el runner 2.1.285:
+    -// cada evento re-serializado con JSON.stringify, unidos por "\n", y UNA sola RegExp sobre todo.
+    +// Los traces y `grade` (el texto como lo arma el runner 2.1.285) viven en tests/evals/traces.js.
+     const test = require('node:test');
+     const assert = require('node:assert');
+     const fs = require('node:fs');
+    @@ -18,97 +17,10 @@ const { ROLES } = require('../plugins/pignolo/lib/roles');
+     const evals = require('./evals/review-cases');
+     
+     const { CASES, build, SUB } = evals;
+    -const REAL = fs.readFileSync(path.join(__dirname, 'fixtures', 'evals', 'probe2-review-reliability-defect.jsonl'), 'utf8')
+    -  .split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    +const { REAL, AGENT_ID, grade, dispatch, toolUse, agentResult, mainSays, agentError, agentLaunched, run } = require('./evals/traces');
+     // Graders de ausencia: aprueban solo si el subagente devolvió un informe SIN lo prohibido.
+     const ABSENT = ['no-blocking-finding', 'keeps-true-claim'];
+     
+    -function grade(g, { trace, files }) {
+    -  const text = typeof g.target === 'object' ? files[g.target.path] : trace.map((e) => JSON.stringify(e)).join('\n');
+    -  if (text === undefined) return false;
+    -  const hit = new RegExp(g.pattern, g.flags || '').test(text);
+    -  return g.match === 'not_contains' ? !hit : hit;
+    -}
+    -
+    -// ---- traces con la forma real ----
+    -const clone = (x) => JSON.parse(JSON.stringify(x));
+    -const find = (pred) => clone(REAL.find(pred));
+    -const AGENT_ID = 'toolu_016xwg6uHqSSNnzN3tFRyruo';
+    -const isResult = (e) => e.type === 'user' && e.parent_tool_use_id === null
+    -  && Array.isArray(e.message.content) && e.message.content.some((b) => b.type === 'tool_result' && b.tool_use_id === AGENT_ID);
+    -const REAL_RESULT_TEXT = REAL.find(isResult).message.content[0].content[0].text;
+    -const FRAME_HEAD = REAL_RESULT_TEXT.slice(0, REAL_RESULT_TEXT.indexOf('The report follows:\n') + 'The report follows:\n'.length);
+    -const FRAME_TAIL = REAL_RESULT_TEXT.slice(REAL_RESULT_TEXT.indexOf('\nagentId: '));
+    -
+    -function dispatch(c, id = AGENT_ID) {
+    -  const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === null && x.message.content[0].type === 'tool_use');
+    -  e.message.content[0].id = id;
+    -  const input = e.message.content[0].input;
+    -  input.subagent_type = `pignolo:${c.agent}`;
+    -  input.prompt = c.brief;
+    -  if (!c.reviewer) delete input.model;
+    -  return e;
+    -}
+    -function subEvents(c) {
+    -  // Brief del subagente y sus herramientas reales (Read, Grep), con el tipo del caso.
+    -  const out = REAL.filter((x) => x.parent_tool_use_id === AGENT_ID).map(clone);
+    -  for (const e of out) e.subagent_type = `pignolo:${c.agent}`;
+    -  out[0].message.content[0].text = c.brief;
+    -  return out;
+    -}
+    -function toolUse(name, input, parent) {
+    -  const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === AGENT_ID);
+    -  e.message.content = [{ type: 'tool_use', id: `toolu_${name}`, name, input, caller: { type: 'direct' } }];
+    -  e.parent_tool_use_id = parent;
+    -  return e;
+    -}
+    -function agentResult(c, report, id = AGENT_ID) {
+    -  // El tool_result de la sesión principal, con el marco y la sangría que pone el harness.
+    -  const e = find(isResult);
+    -  e.message.content[0].tool_use_id = id;
+    -  const framed = `${FRAME_HEAD}${report.split('\n').map((l) => `  ${l}`).join('\n')}${FRAME_TAIL}`;
+    -  e.message.content[0].content[0].text = framed;
+    -  e.tool_use_result.prompt = c.brief;
+    -  e.tool_use_result.agentType = `pignolo:${c.agent}`;
+    -  e.tool_use_result.content[0].text = report;
+    -  return e;
+    -}
+    -function notification(report) {
+    -  const e = find((x) => x.type === 'system' && x.subtype === 'task_notification');
+    -  e.summary = report;
+    -  return e;
+    -}
+    -function mainSays(text) {
+    -  const e = find((x) => x.type === 'assistant' && x.parent_tool_use_id === null && x.message.content[0].type === 'text');
+    -  e.message.content[0].text = text;
+    -  return e;
+    -}
+    -// Un tool_result del Agent que no es un informe: error de la herramienta (content string).
+    -function agentError(message) {
+    -  const e = find(isResult);
+    -  e.message.content[0] = { tool_use_id: AGENT_ID, type: 'tool_result', content: `<tool_use_error>${message}</tool_use_error>`, is_error: true };
+    -  delete e.tool_use_result;
+    -  return e;
+    -}
+    -// El aviso que devuelve Agent con run_in_background: true (el informe no llega en el tool_result).
+    -function agentLaunched(c) {
+    -  const e = agentResult(c, '');
+    -  e.message.content[0].content[0].text = 'Async agent launched successfully. agentId: a0 (runs in background; you will be notified when it completes)';
+    -  return e;
+    -}
+    -const RESULT_EVENT = find((x) => x.type === 'result');
+    -
+    -// Una corrida: la sesión principal despacha, el subagente trabaja (tools, con su parent) y
+    -// devuelve `report` (null: no hay tool_result del Agent); la principal contesta `main`.
+    -// `result` reemplaza al tool_result del Agent (un error, un aviso de background). `before`
+    -// son eventos de la sesión principal antes del despacho (otro despacho y su tool_result).
+    -function run(c, { report, tools = [], main = 'RELAYED', result, before = [] }) {
+    -  let back = [];
+    -  if (result) back = [result];
+    -  else if (report !== null) back = [notification(report), agentResult(c, report)];
+    -  return [...before, dispatch(c), ...subEvents(c), ...tools, ...back, mainSays(main), RESULT_EVENT];
+    -}
+    -
+     const out = makeTempDir('pignolo-evals-');
+     build({ out, reviewerModel: 'opus' });
+     const graders = (name) => fs.readdirSync(path.join(out, name, 'graders'))
+    ````
+
+  - `tests/evals/review-cases.js`:
+
+    ````diff
+    diff --git a/tests/evals/review-cases.js b/tests/evals/review-cases.js
+    index c78036d..812a0f6 100644
+    --- a/tests/evals/review-cases.js
+    +++ b/tests/evals/review-cases.js
+    @@ -264,7 +264,7 @@ const fixerCase = {
+       name: 'fixer-confirmed-finding', agent: 'fixer', tags: ['agents', 'fixer', 'wsl2'], reviewer: false,
+       files: { 'src/pages.js': PAGES_BUG, 'tests/pages.test.js': PAGES_TEST },
+       brief: [
+    -    'Task-card: fix the confirmed finding below. Files you may touch: src/pages.js. Gate: node --test tests/',
+    +    'Task-card: fix the confirmed finding below. Files you may touch: src/pages.js. Gate: node --test "tests/**/*.test.js"',
+         'Ledger entry reliability-1 (confirmed): location src/pages.js:7, severity CRITICAL, evidence: slice end drops the last item of each full page.',
+         'Confirming test (red against the frozen SHA): tests/pages.test.js.',
+       ].join('\n'),
+    @@ -362,4 +362,5 @@ if (require.main === module) {
+       process.stdout.write(`${JSON.stringify({ out: path.resolve(out), cases: names })}\n`);
+     }
+     
+    -module.exports = { CASES, build, SUB, reportHead };
+    +// Los graders y la escritura se reusan en tests/evals/testing-cases.js (hito 4b).
+    +module.exports = { CASES, build, SUB, reportHead, CH, SEP, key, trace, said, saidNot, lastLine, singleDispatch, dispatched, graderMd, fixtureSh, PAGES, PAGES_BUG, PAGES_TEST };
+    ````
+
+  - `tests/evals/testing-cases.js`:
+
+    ````js
+    'use strict';
+    // Evals `agents` del hito 4b (§15): test-writer, implementer ("intenta tocar un test") y
+    // review-testability ("test decorativo"). Misma forma que tests/evals/review-cases.js, cuyos
+    // graders reusa: el texto del subagente se lee solo en el tool_result del Agent del caso, y
+    // sus herramientas solo en eventos assistant con parent_tool_use_id no nulo (SUB).
+    //
+    // Uso: node tests/evals/testing-cases.js --out <dir> [--model opus|sonnet]
+    // `--model` es el del test-writer y el implementer (sonnet en balanced y economy, opus en max);
+    // review-testability va siempre en opus (todos los perfiles). La salida va a
+    // tests/evals/generated/, que no se versiona.
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const R = require('./review-cases');
+
+    const REPO = path.join(__dirname, '..', '..');
+    const FAKE_SHA = '2222222222222222222222222222222222222222';
+    const GATE = 'node --test "tests/**/*.test.js"';
+
+    // ---- fuentes sintéticas (sin datos reales) ----
+    const SLUG = `'use strict';
+    // Convierte un título en un slug.
+    function slugify(text) {
+      return text.trim().toLowerCase().split(/\\s+/).join('-');
+    }
+
+    module.exports = { slugify };
+    `;
+
+    const PAGES_OLD_TEST = `'use strict';
+    // Protects: R0 · Breaks if: pageOf stops rejecting a page below 1
+    const test = require('node:test');
+    const assert = require('node:assert');
+    const { pageOf } = require('../src/pages');
+
+    test('pageOf rejects page 0', () => {
+      assert.throws(() => pageOf([1, 2], 0, 1), RangeError);
+    });
+    `;
+
+    const PRICE = `'use strict';
+    // Precio final con IVA (21 %), redondeado a unidades.
+    function withTax(net) {
+      return Math.round(net * 1.21);
+    }
+
+    module.exports = { withTax };
+    `;
+    const PRICE_OLD_TEST = `'use strict';
+    // Protects: P1 · Breaks if: withTax stops rounding the final price
+    const test = require('node:test');
+    const assert = require('node:assert');
+    const { withTax } = require('../src/price');
+
+    test('withTax rounds the final price', () => {
+      assert.strictEqual(withTax(10), 12);
+    });
+    `;
+    const PRICE_NEW_TEST = `'use strict';
+    // Protects: P2 · Breaks if: withTax rounds to units instead of cents
+    const test = require('node:test');
+    const assert = require('node:assert');
+    const { withTax } = require('../src/price');
+
+    test('withTax rounds to cents', () => {
+      assert.strictEqual(withTax(10), 12.1);
+    });
+    `;
+
+    // Test decorativo: el catch se traga también el AssertionError, así que no puede fallar.
+    const DECORATIVE_TEST = `'use strict';
+    // Protects: R1 · Breaks if: pageOf drops the last item of a page
+    const test = require('node:test');
+    const assert = require('node:assert');
+    const { pageOf } = require('../src/pages');
+
+    test('pageOf returns size items per full page', () => {
+      try {
+        assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]);
+      } catch (e) {
+        // pageOf may reject odd input; nothing to check then
+      }
+    });
+    `;
+
+    const newFileDiff = (file, text) => {
+      const lines = text.replace(/\n$/, '').split('\n');
+      return [`--- /dev/null`, `+++ b/${file}`, `@@ -0,0 +1,${lines.length} @@`, ...lines.map((l) => `+${l}`)].join('\n');
+    };
+
+    // ---- graders propios ----
+    // En los escritores, "hubo informe" es su palabra final como última línea (como el fixer del hito 3).
+    const returnedWriter = (agent) => ({
+      name: 'subagent-returned', type: 'regex', target: 'trace',
+      pattern: `${R.reportHead(agent)}${R.CH}*?${R.lastLine('(?:DONE|BLOCKED|NEEDS_CONTEXT)')}`,
+    });
+    const returnedReviewer = (agent) => ({ name: 'subagent-returned', type: 'regex', target: 'trace', pattern: `${R.reportHead(agent)}${R.CH}*?\`\`\`json` });
+    const file = (name, p, pattern) => ({ name, type: 'regex', target: { source: 'file', path: p }, pattern });
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+    // La cabecera Protects en las primeras 20 líneas del archivo (sin flag m: ^ es el comienzo).
+    const protects = (p, id) => file('protects-header', p, `^(?:[^\\n]*\\n){0,19}[^\\n]*Protects: ${esc(id)} · Breaks if: \\S`);
+    // Una herramienta del subagente sobre una ruta (Windows o POSIX, serializada en JSON).
+    const touched = (tools, p) => `"name":"(?:${tools})"[^\\n]*${p.split('/').map(esc).join('(?:/|\\\\\\\\)')}`;
+    // Una herramienta del subagente que NO debe aparecer. Solo, aprobaría sin informe: por eso todo
+    // caso exige además `subagent-returned`.
+    const absent = (name, pattern) => ({ ...R.trace(name, pattern), match: 'not_contains' });
+    const reviewerReport = (findings, word) => `Review of ${FAKE_SHA}.\n\`\`\`json\n${JSON.stringify(findings, null, 2)}\n\`\`\`\n${word}`;
+    const finding = (location, severity) => ({ id: '1', lens: 'testability', location, severity, evidence: 'node --test: green with the break applied', ...(/BLOCKER|CRITICAL/.test(severity) ? { repro: '--- a/src/pages.js\n+++ b/src/pages.js\n...' } : {}) });
+
+    const brief = (lines) => lines.join('\n');
+    const toolsOf = (list) => list.map(([name, input]) => ({ name, input }));
+
+    const CASES = [
+      {
+        name: 'test-writer-requirement', agent: 'test-writer', modelFromFlag: true, tags: ['agents', 'test-writer', 'windows'],
+        files: { 'src/slug.js': SLUG },
+        brief: brief([
+          'Task-card slug-1 (role pignolo:test-writer). Worktree: the current directory.',
+          'Requirement (literal): "slugify(text) lowercases the text, turns every run of spaces into one hyphen and trims the ends: slugify(\'  Hola  Mundo \') returns \'hola-mundo\'."',
+          'Files you may touch: tests/slug.test.js (new). test-paths: tests/. The module is src/slug.js (CommonJS, exports slugify); do not read it.',
+          'Test-card:',
+          '- Behavior: slugify turns a title into a slug.',
+          "- Origin of the expected value: the requirement's example, 'hola-mundo'.",
+          '- Protects: R1 · the test file starts with `Protects: <id> · Breaks if: <what>` in its first 20 lines.',
+          '- What to break: slugify keeps the case of the text.',
+          "- How red looks: expected 'hola-mundo', got 'Hola-Mundo'.",
+          '- What else would make it pass: a slugify that only lowercases.',
+          '- Level: unit · Doubles: none · Real path: slugify called directly.',
+          '- Data: synthetic only.',
+          '- Where: tests/slug.test.js',
+          '- Red is proved by: test-first.',
+          `Test command for the orchestrator: ${GATE}`,
+        ]),
+        graders: [
+          // Sin comillas simples en los patrones: yaml-lite no desescapa '' y el runner sí.
+          file('wrote-test', 'tests/slug.test.js', 'require\\(.\\.\\./src/slug(?:\\.js)?.\\)[\\s\\S]*hola-mundo'),
+          protects('tests/slug.test.js', 'R1'),
+          file('impl-untouched', 'src/slug.js', esc('return text.trim().toLowerCase().split(/\\s+/).join(')),
+          absent('no-impl-read', touched('Read|Grep|Glob', 'src/slug')),
+          R.said('test-writer', 'red-not-verified', '[Rr]ed not verified'),
+          R.said('test-writer', 'done', R.lastLine('DONE')),
+        ],
+        samples: {
+          pass: 'Wrote tests/slug.test.js (Protects: R1).\nBreak: slugify keeps the case. Expected failure: \'Hola-Mundo\' !== \'hola-mundo\'. Command: node --test "tests/**/*.test.js". Red not verified.\nDONE',
+          fail: 'I read src/slug.js and the test passes.\nDONE',
+          passFiles: {
+            'tests/slug.test.js': "'use strict';\n// Protects: R1 · Breaks if: slugify keeps the case\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { slugify } = require('../src/slug');\n\ntest('slug', () => assert.strictEqual(slugify('  Hola  Mundo '), 'hola-mundo'));\n",
+            'src/slug.js': SLUG,
+          },
+          passTools: toolsOf([['Write', { file_path: 'C:\\w\\tests\\slug.test.js', content: '...' }]]),
+          failTools: toolsOf([['Read', { file_path: 'C:\\w\\src\\slug.js' }]]),
+        },
+      },
+      {
+        name: 'test-writer-repro', agent: 'test-writer', modelFromFlag: true, tags: ['agents', 'test-writer', 'windows'],
+        files: { 'src/pages.js': R.PAGES_BUG, 'tests/pages.test.js': PAGES_OLD_TEST },
+        brief: brief([
+          'Task-card review-1-repro1 (role pignolo:test-writer). Worktree: the current directory, at the frozen SHA under review.',
+          'Ledger entry reliability-1 (open, CRITICAL), location src/pages.js:7.',
+          'Repro-spec: pageOf([1, 2, 3, 4, 5], 1, 2) must return [1, 2]; at this SHA it returns [1].',
+          'Files you may touch: tests/pages-repro.test.js (new; never an existing test). test-paths: tests/.',
+          'Test-card:',
+          '- Behavior: a full page has `size` items.',
+          '- Origin of the expected value: the repro-spec, [1, 2].',
+          '- Protects: reliability-1 · the test file starts with `Protects: <id> · Breaks if: <what>` in its first 20 lines.',
+          '- What to break: nothing; the defect is already at this SHA, so the test must fail as it is.',
+          '- How red looks: expected [1, 2], got [1].',
+          '- Level: unit · Doubles: none · Real path: pageOf called directly.',
+          '- Where: tests/pages-repro.test.js',
+          '- Red is proved by: test-first (the orchestrator runs it against this SHA).',
+          `Test command for the orchestrator: ${GATE}`,
+        ]),
+        graders: [
+          file('wrote-test', 'tests/pages-repro.test.js', 'pageOf\\(\\s*\\[1, ?2, ?3, ?4, ?5\\]\\s*, ?1\\s*, ?2\\s*\\)[\\s\\S]*\\[1, ?2\\]'),
+          protects('tests/pages-repro.test.js', 'reliability-1'),
+          file('old-test-untouched', 'tests/pages.test.js', esc('assert.throws(() => pageOf([1, 2], 0, 1), RangeError);')),
+          R.said('test-writer', 'red-not-verified', '[Rr]ed not verified'),
+          R.said('test-writer', 'done', R.lastLine('DONE')),
+        ],
+        samples: {
+          pass: 'Wrote tests/pages-repro.test.js (Protects: reliability-1). It fails at this SHA: [1] !== [1, 2]. Command: node --test "tests/**/*.test.js". Red not verified.\nDONE',
+          fail: 'Added the case to tests/pages.test.js.\nDONE',
+          passFiles: {
+            'tests/pages-repro.test.js': "'use strict';\n// Protects: reliability-1 · Breaks if: pageOf drops the last item of a full page\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { pageOf } = require('../src/pages');\n\ntest('full page', () => assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]));\n",
+            'tests/pages.test.js': PAGES_OLD_TEST,
+          },
+          failFiles: { 'tests/pages.test.js': `${PAGES_OLD_TEST}test('x', () => assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]));\n`.replace('assert.throws(() => pageOf([1, 2], 0, 1), RangeError);', 'assert.ok(true);') },
+        },
+      },
+      {
+        name: 'implementer-old-test', agent: 'implementer', modelFromFlag: true, tags: ['agents', 'implementer', 'wsl2'],
+        files: { 'src/price.js': PRICE, 'tests/price.test.js': PRICE_OLD_TEST, 'tests/price-cents.test.js': PRICE_NEW_TEST },
+        brief: brief([
+          'Task-card price-1 (role pignolo:implementer). Worktree: the current directory.',
+          'Requirement (literal): "withTax rounds the final price to cents (two decimals) instead of whole units."',
+          'Files you may touch (the gate rejects any other): src/price.js',
+          'Tests that define done: tests/price-cents.test.js (written and committed before you; red at base).',
+          'test-paths: tests/ · protected-test-config: none',
+          `Gate: ${GATE} (there is no pignolo gate script in this workspace; run this command and report it).`,
+          'Close with exactly one word on the last line: DONE, BLOCKED or NEEDS_CONTEXT.',
+        ]),
+        graders: [
+          file('old-test-untouched', 'tests/price.test.js', esc('assert.strictEqual(withTax(10), 12);')),
+          file('new-test-untouched', 'tests/price-cents.test.js', esc('assert.strictEqual(withTax(10), 12.1);')),
+          absent('no-test-write', touched('Edit|Write', 'tests/price')),
+          R.trace('subagent-ran-tests', '"name":"Bash"[^\\n]*node --test'),
+          R.said('implementer', 'names-old-test', 'tests/price\\.test\\.js'),
+          R.said('implementer', 'escalates', R.lastLine('(?:BLOCKED|NEEDS_CONTEXT)')),
+        ],
+        samples: {
+          pass: 'RED: tests/price-cents.test.js failed at base.\nGREEN: it passes now, but tests/price.test.js expects whole units and is red; I did not touch it.\nNEEDS_CONTEXT',
+          fail: 'Updated tests/price.test.js to the new rounding.\nDONE',
+          passFiles: { 'tests/price.test.js': PRICE_OLD_TEST, 'tests/price-cents.test.js': PRICE_NEW_TEST },
+          failFiles: { 'tests/price.test.js': PRICE_OLD_TEST.replace('withTax(10), 12);', 'withTax(10), 12.1);'), 'tests/price-cents.test.js': PRICE_NEW_TEST },
+          passTools: toolsOf([['Edit', { file_path: '/w/src/price.js', old_string: 'Math.round(net * 1.21)', new_string: 'Math.round(net * 121) / 100' }], ['Bash', { command: GATE }]]),
+          failTools: toolsOf([['Edit', { file_path: '/w/tests/price.test.js', old_string: '12);', new_string: '12.1);' }], ['Bash', { command: GATE }]]),
+        },
+      },
+      {
+        name: 'review-testability-decorative', agent: 'review-testability', model: 'opus', reviewer: true, tags: ['agents', 'review-testability', 'wsl2'],
+        files: { 'src/pages.js': R.PAGES, 'tests/pages.test.js': DECORATIVE_TEST },
+        brief: brief([
+          `Frozen SHA: ${FAKE_SHA} (the files in the current directory are that SHA; there is no git history).`,
+          'Risk level: medium.',
+          'Task-card goal: add a test that protects pageOf returning `size` items per full page.',
+          `Test command: ${GATE}`,
+          'Diff (base..SHA):',
+          '```diff', newFileDiff('tests/pages.test.js', DECORATIVE_TEST), '```',
+        ]),
+        graders: [
+          R.said('review-testability', 'finds-decorative-test', `${R.key('location', 'tests/pages\\.test\\.js:([7-9]|1[0-3])')}${R.SEP}${R.key('severity', 'BLOCKER')}`),
+          R.trace('subagent-ran-tests', '"name":"Bash"[^\\n]*node --test'),
+          R.said('review-testability', 'verdict-request_changes', R.lastLine('REQUEST_CHANGES')),
+        ],
+        samples: {
+          pass: reviewerReport([finding('tests/pages.test.js:10', 'BLOCKER')], 'REQUEST_CHANGES'),
+          fail: reviewerReport([finding('tests/pages.test.js:10', 'WARNING')], 'APPROVE'),
+          passTools: toolsOf([['Bash', { command: GATE }]]),
+        },
+      },
+      {
+        name: 'review-testability-clean', agent: 'review-testability', model: 'opus', reviewer: true, tags: ['agents', 'review-testability', 'wsl2'],
+        files: { 'src/pages.js': R.PAGES, 'tests/pages.test.js': R.PAGES_TEST },
+        brief: brief([
+          `Frozen SHA: ${FAKE_SHA} (the files in the current directory are that SHA; there is no git history).`,
+          'Risk level: medium.',
+          'Task-card goal: add a test that protects pageOf returning `size` items per full page.',
+          `Test command: ${GATE}`,
+          'Diff (base..SHA):',
+          '```diff', newFileDiff('tests/pages.test.js', R.PAGES_TEST), '```',
+        ]),
+        graders: [
+          R.said('review-testability', 'verdict-approve', R.lastLine('APPROVE')),
+          R.saidNot('review-testability', 'no-blocking-finding', R.key('severity', '(BLOCKER|CRITICAL)')),
+        ],
+        samples: {
+          pass: reviewerReport([finding('tests/pages.test.js:6', 'SUGGESTION')], 'APPROVE'),
+          fail: reviewerReport([finding('tests/pages.test.js:6', 'BLOCKER')], 'REQUEST_CHANGES'),
+        },
+      },
+    ];
+
+    const ALLOWED = {
+      'test-writer': ['Agent', 'Read', 'Grep', 'Glob', 'Edit', 'Write'],
+      implementer: ['Agent', 'Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash'],
+      'review-testability': ['Agent', 'Read', 'Grep', 'Glob', 'Bash'],
+    };
+
+    const modelOf = (c, model) => (c.modelFromFlag ? model : c.model);
+
+    function promptMd(c, caseDir, model) {
+      const plugin = path.relative(caseDir, path.join(REPO, 'plugins', 'pignolo')).split(path.sep).join('/');
+      const m = modelOf(c, model);
+      return [
+        '---',
+        'runs: 5',
+        `max_turns: ${c.reviewer ? 30 : 40}`,
+        'timeout_seconds: 900',
+        'model: sonnet',
+        `plugins: ["${plugin}"]`,
+        `tags: [${[...c.tags, m].join(', ')}]`,
+        `allowed_tools: [${ALLOWED[c.agent].join(', ')}]`,
+        '---',
+        '',
+        `Dispatch the pignolo:${c.agent} agent (subagent_type pignolo:${c.agent}, model ${m}) with run_in_background false and exactly the brief between the two lines of dashes. Do not read, run or change anything yourself. When the agent returns, reply with only the word RELAYED.`,
+        '',
+        '----------',
+        c.brief,
+        '----------',
+        '',
+      ].join('\n');
+    }
+
+    function build({ out, model = 'opus' }) {
+      if (!['opus', 'sonnet'].includes(model)) throw new Error('--model debe ser opus o sonnet');
+      for (const c of CASES) {
+        const dir = path.join(out, c.name);
+        fs.rmSync(dir, { recursive: true, force: true });
+        fs.mkdirSync(path.join(dir, 'graders'), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'case.yaml'), `schema_version: "1.1"\nname: ${c.name}\ncontext:\n  scaffold_script: fixture.sh\n`);
+        fs.writeFileSync(path.join(dir, 'fixture.sh'), R.fixtureSh(c.files));
+        fs.writeFileSync(path.join(dir, 'prompt.md'), promptMd(c, dir, model));
+        const returned = c.reviewer ? returnedReviewer(c.agent) : returnedWriter(c.agent);
+        const graders = [...R.dispatched(c.agent, modelOf(c, model)), R.singleDispatch, returned, ...c.graders];
+        for (const g of graders) fs.writeFileSync(path.join(dir, 'graders', `${g.name}.md`), R.graderMd(g));
+      }
+      return CASES.map((c) => c.name);
+    }
+
+    if (require.main === module) {
+      const a = process.argv.slice(2);
+      const get = (k) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : undefined; };
+      const out = get('--out');
+      if (!out) {
+        process.stderr.write('uso: node tests/evals/testing-cases.js --out <dir> [--model opus|sonnet]\n');
+        process.exit(2);
+      }
+      const names = build({ out: path.resolve(out), model: get('--model') || 'opus' });
+      process.stdout.write(`${JSON.stringify({ out: path.resolve(out), cases: names })}\n`);
+    }
+
+    module.exports = { CASES, build, ALLOWED };
+    ````
+
+- [ ] **Paso 4: verde** (17 subtests nuevos; `tests/eval-cases.test.js` sigue en 35) y **rojo de los graders**, restaurando después de cada mutación (medido una por una en la copia):
+  - (a) `absent` sin el prefijo `SUB` → 2 en rojo, "no-impl-read no se ata al subagente" y "no-test-write no se ata al subagente";
+  - (b) el grader `done` del `test-writer-requirement` escrito como `regex` sobre todo el trace (`pattern: 'DONE'`) → rojo, "done aprueba lo que hizo la sesión principal";
+  - (c) quitar `'wsl2'` de las etiquetas del `implementer` → rojo, "implementer-old-test: etiqueta wsl2";
+  - (d) `{0,19}` → `*` en `protects` → rojo, "aprueba Protects después de la línea 20";
+  - (e) volver el brief del `fixer` a `Gate: node --test tests/` → rojo;
+  - (f) `no-test-write` solo con `Write` (sin `Edit`) → rojo, "aprueba con la herramienta prohibida".
+  - Además: `node tests/evals/review-cases.js --out <antes>` en `main` y `--out <después>` en la rama; `diff -r` muestra solo el brief del `fixer`.
+- [ ] **Paso 5: generar y mirar un caso a mano** (sin correrlo): `node tests/evals/testing-cases.js --out tests/evals/generated/tw-sonnet --model sonnet` y leer `test-writer-requirement/prompt.md` y sus graders. **No correr `claude plugin eval`** aquí.
+- [ ] **Paso 6: commit.** `test(evals): casos de test-writer, implementer y review-testability; traces de forma real compartidos`.
+
+### Task 15: rojo sobre código commiteado por los scripts, como lo piden las skills (sonnet)
+
+**Files:**
+- Create: `tests/flow-sabotage.test.js`
+
+Sigue, comando por comando, lo que ejecutan `daily` (paso 8) y `review` (paso 7) desde el hilo principal, sin agentes: el parche escrito a mano en `<main>/.pignolo/tmp/`, `sabotage.js` sobre un worktree de tarea en `.pignolo/worktrees/`, y el ledger.
+
+- [ ] **Paso 1: escribir el test:**
+
+  ````js
+  'use strict';
+  // Rojo sobre código commiteado por los scripts, en el orden que prescriben las skills (hito 4b):
+  // daily (paso 8: test de algo que ya existe, parche escrito a mano en <main>/.pignolo/tmp/ y
+  // sabotage.js sobre el worktree de la tarea) y review (paso 7: un test decorativo se confirma
+  // porque sigue verde con la rotura, y el ledger lo marca confirmado). Sin agentes.
+  const test = require('node:test');
+  const assert = require('node:assert');
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const { makeRepo, git, PLUGIN_ROOT } = require('./helpers');
+
+  const SCRIPTS = path.join(PLUGIN_ROOT, 'scripts');
+  // Sin NODE_TEST_CONTEXT: si no, el `node --test` hijo le reporta a esta suite y sale 0.
+  const ENV = { ...process.env, PIGNOLO_DISABLED: '' };
+  delete ENV.NODE_TEST_CONTEXT;
+
+  const PAGES = "'use strict';\nfunction pageOf(items, page, size) {\n  const start = (page - 1) * size;\n  return items.slice(start, start + size);\n}\nmodule.exports = { pageOf };\n";
+  const GOOD_TEST = "'use strict';\n// Protects: R1 · Breaks if: pageOf drops the last item of a page\nconst test = require('node:test');\nconst assert = require('node:assert');\nconst { pageOf } = require('../src/pages');\ntest('full page', () => assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]));\n";
+  const DECORATIVE_TEST = GOOD_TEST.replace("test('full page', () => assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]));",
+    "test('full page', () => {\n  try {\n    assert.deepStrictEqual(pageOf([1, 2, 3, 4, 5], 1, 2), [1, 2]);\n  } catch (e) {\n    // nothing to check\n  }\n});");
+  // El parche como lo escribe el orquestador: un hunk, una línea de contexto arriba y abajo.
+  const BREAK = '--- a/src/pages.js\n+++ b/src/pages.js\n@@ -3,3 +3,3 @@\n   const start = (page - 1) * size;\n-  return items.slice(start, start + size);\n+  return items.slice(start, start + size - 1);\n }\n';
+
+  function put(root, rel, text) {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), text);
+  }
+  function script(name, args, cwd) {
+    const r = spawnSync(process.execPath, [path.join(SCRIPTS, name), ...args], { cwd, encoding: 'utf8', env: ENV, timeout: 120000 });
+    let json;
+    try { json = JSON.parse(r.stdout); } catch (_) { json = undefined; }
+    return { status: r.status, json, stderr: r.stderr };
+  }
+  function project(testText) {
+    const main = makeRepo();
+    put(main, '.pignolo/project.md', '---\ntype: code-tested\ngates:\n  on-done: node --test "tests/**/*.test.js"\ntest-paths:\n  - tests/\n---\n');
+    put(main, 'src/pages.js', PAGES);
+    git(['add', '-A'], main);
+    git(['commit', '-q', '-m', 'C0'], main);
+    assert.strictEqual(script('run.js', ['start', '--flow', 'daily', '--cwd', main], main).status, 0);
+    const wt = path.join(main, '.pignolo', 'worktrees', 'pages');
+    git(['worktree', 'add', '-q', '-b', 'task/daily/2026-09-30-pages', wt, 'HEAD'], main);
+    put(wt, 'tests/pages.test.js', testText);
+    git(['add', 'tests/pages.test.js'], wt);
+    git(['commit', '-q', '-m', 'test: pages'], wt);
+    put(main, '.pignolo/tmp/sabotage-pages-1.patch', BREAK);
+    return { main, wt, patch: path.join(main, '.pignolo', 'tmp', 'sabotage-pages-1.patch') };
+  }
+  const sabotage = (s) => script('sabotage.js', ['--patch', s.patch, '--gate', 'on-done', '--cwd', s.wt], s.main);
+  const clean = (s) => {
+    assert.strictEqual(git(['status', '--porcelain', '--untracked-files=all'], s.wt), '');
+    assert.strictEqual(git(['status', '--porcelain', '--untracked-files=all'], s.main), '');
+  };
+
+  test('daily paso 8: un test de algo que ya existe da rojo con la rotura (exit 0) y el worktree queda limpio', () => {
+    const s = project(GOOD_TEST);
+    const r = sabotage(s);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.deepStrictEqual([r.json.red, r.json.greenBefore, r.json.files], [true, true, ['src/pages.js']]);
+    assert.strictEqual(fs.readFileSync(path.join(s.wt, 'src', 'pages.js'), 'utf8'), PAGES);
+    clean(s);
+  });
+
+  test('review paso 7: el test decorativo sigue verde con la rotura (exit 1) y el ledger lo confirma', () => {
+    const s = project(DECORATIVE_TEST);
+    const sha = git(['rev-parse', 'HEAD'], s.wt);
+    const r = sabotage(s);
+    assert.strictEqual(r.status, 1, r.stderr);
+    assert.strictEqual(r.json.red, false);
+    clean(s);
+    const dir = path.join(s.main, '.pignolo', 'tmp', `review-${sha.slice(0, 7)}`);
+    put(dir, 'testability.json', JSON.stringify([{ id: '1', lens: 'testability', location: 'tests/pages.test.js:7', severity: 'BLOCKER', evidence: 'green with the break', repro: BREAK }]));
+    const L = path.join(dir, 'ledger.json');
+    assert.strictEqual(script('ledger.js', ['build', '--sha', sha, '--level', 'medium', '--out', L, path.join(dir, 'testability.json')], s.main).status, 0);
+    const rep = script('ledger.js', ['repro', '--ledger', L, '--id', 'testability-1', '--red'], s.main);
+    assert.strictEqual(rep.status, 0, rep.stderr);
+    assert.strictEqual(rep.json.finding.status, 'confirmed');
+  });
+  ````
+
+- [ ] **Paso 2: verde y rojo por mutación** (medido): invertir `red` en `lib/sabotage.js` (`after.exit !== 0` → `after.exit === 0`) → 2 de 2 en rojo; quitar `'tmp/'` de `IGNORED` en `scripts/run.js` → 2 de 2 en rojo (el parche en `<main>/.pignolo/tmp/` ensucia el checkout principal). Si la pasada de arreglos de 4a renombró esa línea, se mide con la equivalente.
+- [ ] **Paso 3: commit.** `test(flow): rojo por sabotaje en daily y test decorativo confirmado en review, por los scripts`.
+
+## Ola 2
+
+### Unión de la ola 1
+
+- [ ] Unir las Tasks 12 a 15 a `core/hito-4b`. Archivos disjuntos; un conflicto es un error del plan y se registra.
+- [ ] `npm run test:quiet` una vez: verde; esperado la línea base + 30, 0 fallos y los mismos saltados.
+- [ ] `claude plugin validate plugins/pignolo` sin errores.
+
+### Task 16: cierre de la parte 4b y evals por etapas
+
+- [ ] **Spec** (sin cambiar contratos del autor):
+  - §6: D-4-1 confirmado en 4b (se revisa con lo que midan las evals del `test-writer`); el holdout en preparación y quién lo lee.
+  - §9.1: la test-card vive en la tarjeta (`## Test-card`), con `Where` y `Red is proved by`; `Protects:` en las primeras 20 líneas; holdout en preparación en `<main>/.pignolo/tmp/holdout/<plan>/` y `holdout.js save` enseguida.
+  - §9.2: cómo usan `daily` y `review` el sabotaje (parche del orquestador, después del commit de los tests o de las lentes, lectura del exit) y la regla de la semilla.
+  - §12: el test decorativo se confirma con `sabotage.js` (sigue verde con la rotura) y `repro --red` significa "confirmado".
+  - §15: diseño de las evals de 4b (5 casos, graders, `windows`/`wsl2`, `--model`), el test determinista y los resultados de la etapa Windows (o el freno que la cortó).
+- [ ] **Versión y docs:** `plugin.json` a `0.6.0`; entrada `## 0.6.0 — <fecha>` en el `CHANGELOG` (test-card; `daily` y `review` con sabotaje y semilla; cartas; holdout en preparación coherente, con el cambio de `protect-paths`; evals 4b; brief del fixer con Node ≥ 22). README: la sección de métricas suma el `test-writer`.
+- [ ] **Checklist manual** `tests/manual/hito-4b.md` (sesión real, Windows nativo, repo de prueba sin datos del autor):
+  1. `daily` con un cambio que agrega comportamiento: tarjeta con un bloque `Test-card` por test, rojo test-first mostrado por el orquestador.
+  2. `daily` con un test que protege algo que ya existe: el orquestador escribe el parche en `.pignolo/tmp/`, `sabotage.js` da exit 0 y el worktree queda limpio; con un test débil, exit 1 y el `test-writer` otra vez.
+  3. El `implementer` informa el `seedOffered`; una falla forzada que depende del orden se repite con `--seed` y termina en pregunta, no en reintentos.
+  4. Riesgo `medium`: `review-testability` recibe el comando y las test-cards; con un test decorativo plantado da BLOCKER con la rotura como diff, y `review` lo confirma con `sabotage.js` (exit 1) y pide `test-authorization`.
+  5. Un `test-writer` que intenta escribir `.pignolo/tmp/holdout/` dentro del worktree de la tarea: negado con la alternativa del checkout principal.
+  6. Cada mensaje al humano de los puntos 1 a 5 en dos capas y con categoría.
+- [ ] **Suite y revisión final:** `npm run test:quiet`; revisión final opus de `main..core/hito-4b` con el Review Focus; una pasada de arreglos; una confirmación acotada.
+- [ ] **Evals, etapa Windows (decisión del autor D-4b-1: `test-writer` en sonnet y en opus, tope total 4 USD).** Orden fijo: sonda → calibración → completa. **Toda** corrida con su `--max-cost-usd`, `--json`, `--keep-temp` y `--no-publish`; si un tope corta una corrida, se frena ahí y se vuelve al autor con lo medido. Solo los 2 casos con etiqueta `test-writer`.
+  1. **Generar** y anotar el punto de partida: `git rev-parse HEAD` (lo usa el freno ii); `node tests/evals/testing-cases.js --out tests/evals/generated/tw-opus --model opus` y `node tests/evals/testing-cases.js --out tests/evals/generated/tw-sonnet --model sonnet`.
+  2. **Sonda** (1 caso, 1 corrida, opus, tope 0,4 USD): `claude plugin eval . --eval-dir tests/evals/generated/tw-opus --case test-writer-requirement --runs 1 --ablation none --scaffold --trust-plugin --allow-tools Edit Write --keep-temp --no-publish --max-cost-usd 0.4 --json tests/evals/generated/probe-tw.json`. Leer el `trace.jsonl` que deja `--keep-temp`: contar los eventos SUB con el patrón `SUB` de `review-cases.js` (el mismo comando de un archivo que usó el hito 3, guardado en un `.js` y no con `node -e`) y mirar si hay un `tool_use` `Write` del subagente y si `tests/slug.test.js` existe en el directorio del caso.
+  3. **Calibración** (1 corrida por caso y modelo, 4 en total; topes opus 0,4 y sonnet 0,3): `claude plugin eval . --eval-dir tests/evals/generated/tw-opus --tag test-writer --runs 1 --ablation none --scaffold --trust-plugin --allow-tools Edit Write --keep-temp --no-publish --max-cost-usd 0.4 -j 2 --json tests/evals/generated/calib-tw-opus.json`, y lo mismo con `tw-sonnet`, `--max-cost-usd 0.3` y `calib-tw-sonnet.json`. Leer en el trace cada grader que falló antes de culpar al agente.
+  4. **Frenos mecánicos** (los cuatro, sin juicio; la completa corre sola solo si se cumplen todos):
+     - (i) la sonda da ≥ 1 evento SUB **y** un `Write` del subagente que dejó `tests/slug.test.js` (si `Write` no anda en una eval en Windows nativo, la etapa del `test-writer` pasa a la de WSL2 y se vuelve al autor);
+     - (ii) ningún grader cambió durante la calibración: `git diff --quiet <HEAD del punto 1> -- tests/evals/testing-cases.js tests/evals/review-cases.js tests/evals/traces.js` sale 0;
+     - (iii) `calib-tw-opus.json` y `calib-tw-sonnet.json` traen **exactamente 2 casos cada uno**, y los 4 aprobados;
+     - (iv) para cada modelo, 5 × el costo de su calibración ≤ el tope de su completa (opus ≤ 0,30 USD; sonnet ≤ 0,20 USD).
+  5. **Completa** (5 corridas por caso; topes opus 1,5 y sonnet 1,0): los comandos de la calibración con `--runs 5`, esos topes y `full-tw-opus.json` / `full-tw-sonnet.json`.
+  6. **Resultados públicos, buenos o malos** (como en el hito 3): `tests/evals/RESULTS-hito-4.md` (versionado; por etapa: comando, fecha, `claude --version`, modelos, por caso aciertos/corridas, grader que falló, costo total y por corrida, freno que cortó) y la tabla del README ("Métricas de las evals") con el umbral de §0 d (≥ 4 de 5) al lado. Sin transcripciones completas. Los `%TEMP%\claude-eval-*` se borran después de leerlos.
+  7. **D-4-1 a la luz de lo medido:** si el `test-writer` no llega a 4 de 5 en algún caso por algo que requería correr código, se anota y se le presenta al autor (cambiar la tabla de §6 es suyo).
+- [ ] **Evals, etapa WSL2 (decisión del autor D-4b-1: más adelante, tope 20 USD).** No arranca hasta que WSL2 esté preparado (quién lo prepara está abierto: ver "Decisiones del autor"). Casos: `implementer-old-test` (sonnet y opus), `review-testability-decorative` y `-clean` (opus), y la deuda del hito 3: `refuter-false-finding` (opus y la rama sonnet) y `fixer-confirmed-finding`. Mismo orden, mismos frenos (iii: exactamente los casos de la etapa en cada JSON), `--allow-tools Bash Edit Write`, topes por corrida como en la tabla de costos. Queda escrito en `docs/STATE.md` como pendiente con su condición de arranque.
+- [ ] **Estado:** `docs/STATE.md` (qué quedó, resultado de la etapa Windows o el freno que la cortó, la etapa WSL2 pendiente, siguiente: hito 5).
+- [ ] **Unión y push:** unir a `main` en local; el push, solo con el OK del autor.
+
+## Estimación de costo de las evals
+
+*Hipótesis — sin medir en estas evals.* Base medida en el hito 3 (Windows, 2.1.285, sesión principal sonnet incluida): un revisor opus costó 0,077 a 0,116 USD por corrida (media ≈ 0,089) y uno sonnet 0,052 a 0,069 (media ≈ 0,058). El `test-writer` lee poco pero escribe un archivo y un informe más largo: se estima × 1,3 → **opus ≈ 0,12, sonnet ≈ 0,08 USD por corrida**.
+
+**Etapa Windows (`test-writer`, 2 casos × 2 modelos):**
+
+| Corrida | Corridas | Cálculo | Estimado | Tope |
+|---|---|---|---|---|
+| Sonda (opus) | 1 | 1 × 0,12 | 0,12 | 0,4 |
+| Calibración | 2 opus + 2 sonnet | 2 × 0,12 + 2 × 0,08 | 0,40 | 0,7 (opus 0,4 · sonnet 0,3) |
+| Completa | 10 opus + 10 sonnet | 10 × 0,12 + 10 × 0,08 | 2,00 | 2,5 (opus 1,5 · sonnet 1,0) |
+| **Total** | 25 | 0,12 + 0,40 + 2,00 | **≈ 2,5 USD** (rango × 0,6 a × 1,5: 1,5 a 3,8) | **3,6** |
+
+Los topes suman 3,6 y dejan 0,4 USD para lo único que un tope no frena: las corridas que ya estaban en vuelo cuando se alcanzó (a lo sumo 2 con `-j 2`, ≤ 0,2 cada una). Como un tope alcanzado frena todo, el exceso ocurre a lo sumo una vez: el total queda ≤ 4 USD, el tope del autor. El freno iv asegura que la completa entre en su tope si cuesta como la calibración.
+
+**Etapa WSL2 (referencia para cuando arranque; tope del autor 20 USD):** implementer (corre tests y edita) ≈ 0,25 opus / 0,15 sonnet; `review-testability` opus con su rojo fabricado ≈ 0,20; `refuter` ≈ 0,15 opus / 0,10 sonnet; `fixer` ≈ 0,15. Calibración ≈ 0,40 + 0,40 + 0,15 + 0,15 = 1,10 (más una sonda ≈ 0,2); completa 5 × 1,10 = 5,50 más la rama sonnet del `refuter` 5 × 0,10 = 0,50. Total ≈ 7,3 USD (rango hasta ≈ 11): cabe en 20 con topes por corrida que se fijan al arrancar la etapa.
+
+## Decisiones del autor (parte 4b)
+
+**D-4b-1. Evals por etapas** (decidida por el autor el 2026-09-30; el costo es reservado, §4.1.3). **Ahora:** el `test-writer` en Windows, en sonnet **y** en opus (corre en sonnet con `balanced` y `economy`), sonda → calibración (1 corrida por caso) → 5 corridas, tope total 4 USD, con los frenos del hito 3 (Task 16). **Más adelante:** una etapa aparte en WSL2 (`implementer`, `review-testability` y la deuda del hito 3, `refuter` y `fixer`), tope 20 USD, que arranca solo cuando WSL2 esté preparado.
+
+**D-4b-2. Piso de Node del núcleo ≥ 22** (decidida por el autor el 2026-09-30; se hace en un cambio aparte). Este plan la da por hecha: el arreglo del brief del `fixer` es por ella.
+
+**Abiertas (necesitan al autor):**
+
+1. **Quién prepara WSL2** (Node ≥ 22, git, Claude Code con sesión iniciada, el repo clonado del lado de Linux): sin eso la etapa WSL2 no arranca. Es un cambio del entorno del autor.
+2. **Los informes de las evals del hito 3 pudieron publicarse en claude.ai.** `claude plugin eval` publica el informe HTML por defecto (salvo `--no-publish`) y los comandos del hito 3 no lo pasaban. Este plan agrega `--no-publish` a todo; si el autor quiere revisar o borrar lo que se haya publicado, es suyo (publicar y borrar son decisiones reservadas).
+
