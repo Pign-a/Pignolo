@@ -97,3 +97,19 @@ test('linear cost: 2000 nested elements with links and metas stay fast', async (
   await runCheck({ project, files: ['index.html'], design: 'DESIGN.md' });
   assert.ok(Date.now() - start < 5000, `took ${Date.now() - start} ms`);
 });
+
+test('SEO-09: an a inside Link (passHref, legacyBehavior), a skip target or a role other than link is not a fail', async () => {
+  const ok = {
+    'LegacyLink.tsx': 'export const A = () => <Link href="/about" passHref legacyBehavior><a onClick={go}>About</a></Link>;\n',
+    'Target.tsx': 'export const B = () => <a id="main" tabIndex={-1}>target</a>;\n',
+    'Toggle.tsx': 'export const C = () => <a role="button" onClick={go}>Toggle</a>;\n',
+  };
+  const bad = {
+    'RoleLink.tsx': 'export const D = () => <a onClick={go} role="link">x</a>;\n',
+    'Focusable.tsx': 'export const E = () => <a tabIndex={0}>x</a>;\n',
+  };
+  const project = writeTree(makeTempDir(), { 'DESIGN.md': DMW, ...ok, ...bad });
+  const r = await runCheck({ project, files: [...Object.keys(ok), ...Object.keys(bad)], design: 'DESIGN.md' });
+  const status = Object.fromEntries(Object.keys({ ...ok, ...bad }).map((f) => [f, of(r.entries, 'SEO-09').filter((e) => e.file === f).map((e) => e.status)]));
+  assert.deepEqual(status, { 'LegacyLink.tsx': ['pass'], 'Target.tsx': ['pass'], 'Toggle.tsx': ['pass'], 'RoleLink.tsx': ['fail'], 'Focusable.tsx': ['fail'] });
+});

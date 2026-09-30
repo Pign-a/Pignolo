@@ -134,6 +134,21 @@ function seo06All(pctx) {
 }
 
 // ---- SEO-09: crawlable links --------------------------------------------------------------
+// An a without href is a non-crawlable link when it acts as one: onClick, role="link" or a
+// tabindex >= 0. Not when a Link component gives it the href (Next.js passHref/legacyBehavior),
+// when its role is another one (role="button"), or when tabindex < 0 (a skip-link target).
+function hrefFromParent(page, el) {
+  const parent = el.parent === null ? null : page.markup.elements[el.parent];
+  return Boolean(parent && parent.component && (/(^|\.)Link$/.test(parent.tag) || parent.attrs.has('passhref') || parent.attrs.has('legacybehavior')));
+}
+function actsAsLink(el) {
+  const role = el.attrs.get('role');
+  if (role && !role.dynamic && (role.value ?? '').trim().toLowerCase() !== 'link') return false;
+  const tab = el.attrs.get('tabindex');
+  const focusable = Boolean(tab) && (tab.dynamic || !(Number(tab.value) < 0));
+  const roleLink = Boolean(role) && !role.dynamic;
+  return el.attrs.has('onclick') || roleLink || focusable;
+}
 function seo09(page) {
   const out = [];
   for (const el of page.markup.elements) {
@@ -141,8 +156,7 @@ function seo09(page) {
     if (el.spread) { out.push(unverified('spread attributes on a link', at(page, { line: el.line }))); continue; }
     const href = el.attrs.get('href');
     if (!href) {
-      const used = ['onclick', 'role', 'tabindex'].some((n) => el.attrs.has(n));
-      if (used) out.push(fail('a without href', at(page, { line: el.line, selector: 'a', reason: 'a without href used as a link (not crawlable)' })));
+      if (!hrefFromParent(page, el) && actsAsLink(el)) out.push(fail('a without href', at(page, { line: el.line, selector: 'a', reason: 'a without href used as a link (not crawlable)' })));
       continue;
     }
     if (href.dynamic) { out.push(unverified('dynamic href', at(page, { line: el.line }))); continue; }
