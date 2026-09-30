@@ -1,6 +1,22 @@
 # Pignolo
 
-Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.4 en construcción (hito 3 de 8 completo: compuertas, revisión y los carriles `trivial` y `daily`).
+Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.5 en construcción (hitos 1 a 3 y la parte 4a de 8: guardia, respaldos, agentes, compuertas, revisión, carriles, sabotaje y holdout).
+
+## Qué está medido
+
+Pignolo no le cree a un agente que dice "anda": lo verifica. Aplicamos lo mismo a pignolo: cada cifra de esta tabla sale de una corrida real, publicada con el comando, el costo y los casos que fallaron. Las malas también.
+
+| Qué | Resultado | Evidencia |
+|---|---|---|
+| Guardia de git contra comandos destructivos | De 186 comandos destructivos o indirectos (bash y PowerShell) del corpus de una auditoría independiente: 173 negados, 1 pedido de confirmación, 12 que pasan, todos declarados en el registro de riesgo residual | [auditoría 3](docs/audits/2026-09-29-auditoria-3-plan-hito-1.md), [riesgo residual](tests/guard/residual-risk.md) |
+| Guardia sin molestar | Sobre 5.981 comandos reales de uso diario: 0 bloqueos falsos en los comandos de todos los días (`git status/diff/log/add/commit`, `npm test`, `grep`); 0,65 % de confirmaciones de más en modo interactivo | [spec §15](docs/specs/2026-09-26-pignolo-v1-design.md) |
+| Revisores de código | 60 de 60 corridas aprobadas con opus y 58 de 60 con sonnet (5 corridas por caso); los dos encontraron 30 de 30 defectos plantados y no bloquearon ningún cambio limpio (0 de 30) | [RESULTS-hito-3.md](tests/evals/RESULTS-hito-3.md) |
+| Agentes de lectura e investigación | explorer 5/5 y researcher 5/5 | [RESULTS.md](tests/evals/RESULTS.md) |
+| Validación de planes antes de construir | En un plan real con 14 errores conocidos, el método de pignolo (dos pasos, con verificación obligada) encuentra 38–45 % con opus, contra 33 % de un revisor común, por 1 a 1,5 USD y 2 a 5 minutos, sin construir el plan dos veces | [RESULTS-planes.md](tests/evals/RESULTS-planes.md), [investigación](docs/research/2026-09-30-validar-planes-sin-implementar-dos-veces.md) |
+| Revisión independiente de cada hito | Cada hito pasa por una revisión final opus antes de unirse. La del hito 4a encontró 1 problema crítico y 4 importantes; se arreglaron con un test que falla sin el arreglo, y una re-revisión lo confirmó | [CHANGELOG 0.5.0](CHANGELOG.md), [plan del hito 4](docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md) |
+| Suite propia | 2.007 tests en verde, sin dependencias npm; todo test nuevo se ve fallar antes rompiendo lo que protege | `npm test` |
+
+**Lo que todavía no está medido:** los agentes que corren comandos (`refuter`, `fixer`, `implementer`, `review-testability`) esperan su etapa de evals en WSL2; los casos de las evals son chicos y sintéticos, así que no dicen cómo les va con cambios grandes; los checklists manuales en una sesión real están pendientes.
 
 Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
 
