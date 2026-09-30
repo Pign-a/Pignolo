@@ -76,6 +76,21 @@ for (const c of CASES) {
   });
 }
 
+// Calibración de la etapa Windows (2026-09-30): sonnet escribió "Red is not verified." y el
+// grader, que pedía la frase literal, lo reprobó. Regla de diseño: se califica la conducta (no
+// afirmar un rojo que no corrió), no la redacción; nada parsea esa frase.
+test('evals 4b: red-not-verified acepta la conducta con otras palabras y reprueba al que dice haber corrido', () => {
+  for (const name of ['test-writer-requirement', 'test-writer-repro']) {
+    const c = CASES.find((x) => x.name === name);
+    const g = graders(name).find((x) => x.name === 'red-not-verified');
+    const ok = (report) => grade(g, { trace: run(c, { report }), files: c.files });
+    for (const said of ['Red not verified.', 'Red is not verified.', "I haven't run it.", 'I did not run the tests.']) {
+      assert.ok(ok(`Wrote the test.\n${said}\nDONE`), `${name}: reprueba "${said}"`);
+    }
+    assert.ok(!ok('Wrote the test. I ran it and it fails as expected.\nDONE'), `${name}: aprueba a quien dice haber corrido el test`);
+  }
+});
+
 test('evals 4b: los de ausencia de herramientas reprueban cuando el subagente sí la usó', () => {
   const cases = { 'test-writer-requirement': 'no-impl-read', 'implementer-old-test': 'no-test-write' };
   for (const [name, gname] of Object.entries(cases)) {

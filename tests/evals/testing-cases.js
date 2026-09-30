@@ -15,6 +15,10 @@ const R = require('./review-cases');
 const REPO = path.join(__dirname, '..', '..');
 const FAKE_SHA = '2222222222222222222222222222222222222222';
 const GATE = 'node --test "tests/**/*.test.js"';
+// El test-writer no tiene Bash: se califica que no afirme un rojo que no corrió, con sus
+// palabras ("Red is not verified", "I haven't run it"), no la frase literal: nada la parsea
+// (calibración 2026-09-30). Sin comillas en el patrón (el YAML del runner): `.` por el apóstrofo.
+const NOT_VERIFIED = '(?:[Rr]ed (?:is )?not verified|[Hh]aven.t run|[Dd]id not run|[Dd]idn.t run)';
 
 // ---- fuentes sintéticas (sin datos reales) ----
 const SLUG = `'use strict';
@@ -138,7 +142,7 @@ const CASES = [
       protects('tests/slug.test.js', 'R1'),
       file('impl-untouched', 'src/slug.js', esc('return text.trim().toLowerCase().split(/\\s+/).join(')),
       absent('no-impl-read', touched('Read|Grep|Glob', 'src/slug')),
-      R.said('test-writer', 'red-not-verified', '[Rr]ed not verified'),
+      R.said('test-writer', 'red-not-verified', NOT_VERIFIED),
       R.said('test-writer', 'done', R.lastLine('DONE')),
     ],
     samples: {
@@ -175,7 +179,7 @@ const CASES = [
       file('wrote-test', 'tests/pages-repro.test.js', 'pageOf\\(\\s*\\[1, ?2, ?3, ?4, ?5\\]\\s*, ?1\\s*, ?2\\s*\\)[\\s\\S]*\\[1, ?2\\]'),
       protects('tests/pages-repro.test.js', 'reliability-1'),
       file('old-test-untouched', 'tests/pages.test.js', esc('assert.throws(() => pageOf([1, 2], 0, 1), RangeError);')),
-      R.said('test-writer', 'red-not-verified', '[Rr]ed not verified'),
+      R.said('test-writer', 'red-not-verified', NOT_VERIFIED),
       R.said('test-writer', 'done', R.lastLine('DONE')),
     ],
     samples: {
