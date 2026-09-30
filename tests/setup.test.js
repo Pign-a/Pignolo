@@ -373,3 +373,25 @@ test('SKILL de setup: nombra conflicts --check, --record y el archivo de conflic
   assert.match(text, /conflicts --record/);
   assert.match(text, /rule-conflicts\.json/);
 });
+
+test('config --profile economy incluye el aviso con la cifra medida; otros perfiles no', () => {
+  const sb = sandbox();
+  const r = run(['config', '--profile', 'economy'], { env: sb.env, cwd: sb.cwd });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.json.notice.plain, /sonnet/);
+  assert.match(r.json.notice.technical, /30\/30/);
+  assert.match(r.json.notice.technical, /0\/30/);
+  assert.match(r.json.notice.technical, /2026-09-30/);
+  assert.match(r.json.notice.technical, /review-testability/);
+  for (const p of ['balanced', 'max']) {
+    const o = run(['config', '--profile', p], { env: sb.env, cwd: sb.cwd });
+    assert.equal(o.json.notice, undefined, p);
+  }
+});
+
+test('check con perfil economy ya guardado incluye el aviso', () => {
+  const sb = sandbox();
+  run(['config', '--profile', 'economy'], { env: sb.env, cwd: sb.cwd });
+  const r = run(['check'], { env: sb.env, cwd: sb.cwd });
+  assert.ok(r.json.notice && r.json.notice.plain);
+});

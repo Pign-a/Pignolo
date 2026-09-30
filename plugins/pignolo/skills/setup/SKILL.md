@@ -33,6 +33,7 @@ Guide the human through pignolo's setup. Speak to them in their language. Never 
      - `economy`: sonnet where it is safe; parallelism 1; presentation defaults to text.
      - Reviewers and auditors run on opus in every profile, `economy` included (author decision), because a weaker reviewer approves silently.
    Write the choice with `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" config --profile <profile>` (optionally `--presentation ask|artifact|text` and `--language <language>`).
+   When the profile is `economy` (just chosen, or already set per `check`), the JSON carries a `notice` with `plain` and `technical` text (measured figures, spec §7). Show it verbatim, plain first and then technical; for other profiles there is no `notice`.
 3. **Permissions.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" permissions --target user` (and again with `--target project` if they want it there). Nothing is written yet.
    - Plain: what the rules do in simple terms (commands that lose work are blocked; push, merge and deleting branches ask first), and the question: for all projects, only this one, or none.
    - Technical: the counts from the JSON (`add.deny.length`, `add.ask.length`, `already`), the target paths, the rules grouped by purpose, and the side effects (for example, the broad MCP `ask` rules).

@@ -10,6 +10,7 @@ const { spawnSync } = require('node:child_process');
 const { claudeDirs, userHomes, pignoloHome } = require('../lib/home');
 const { readConfig, writeConfig, resolveModel } = require('../lib/profiles');
 const { ROLES } = require('../lib/roles');
+const { economyNotice } = require('../lib/economy-notice');
 
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'permissions.json');
 const PROBE_TIMEOUT = 8000;
@@ -103,6 +104,11 @@ function envValue(chain, key) {
   return undefined;
 }
 
+// Aviso de §7: solo con el perfil economy. setup es un comando explícito del usuario, así que puede hablar.
+function noticeFor(cfg) {
+  return cfg.profile === 'economy' ? { notice: economyNotice() } : {};
+}
+
 function check(env, cwd) {
   const chain = settingsChain(env, cwd);
   const teams = envValue(chain, 'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS') ?? env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
@@ -119,6 +125,7 @@ function check(env, cwd) {
     subagentModelForce: force === '1',
     availableModels: models ?? null,
     config: readConfig({ env }),
+    ...noticeFor(readConfig({ env })),
   };
 }
 
@@ -176,7 +183,8 @@ function config(args, env) {
   if (args.profile !== undefined) partial.profile = args.profile;
   if (args.presentation !== undefined) partial.presentation = args.presentation;
   if (args.language !== undefined) partial.language = args.language;
-  return writeConfig({ env }, partial);
+  const written = writeConfig({ env }, partial);
+  return { ...written, ...noticeFor(written) };
 }
 
 const RESOLUTIONS = ['human', 'pignolo', 'custom'];
