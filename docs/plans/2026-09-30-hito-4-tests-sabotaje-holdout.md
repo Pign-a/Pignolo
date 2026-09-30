@@ -369,7 +369,7 @@ El de 3b y 4a:
 
 ## Ola 0 (contratos; Tasks 9, 10 y 11 en paralelo, archivos disjuntos)
 
-Parten de `core/hito-4b`. La Task 11 corre solo con D-4b-3 resuelta por el autor (si no, queda `BLOCKED` y la ola sigue con las otras dos). Al terminar las que corrieron: unir, `npm run test:quiet` una vez, tag `contract/hito-4b/v1`.
+Parten de `core/hito-4b`. La Task 11 corre: D-4b-3 fue aprobada por el autor el 2026-09-30. Al terminar las que corrieron: unir, `npm run test:quiet` una vez, tag `contract/hito-4b/v1`.
 
 ### Task 9: `test-card` en la plantilla de la tarjeta (sonnet)
 
@@ -1895,7 +1895,7 @@ Los topes suman 3,6 y dejan 0,4 USD para lo único que un tope no frena: las cor
 
 **D-4b-2. Piso de Node del núcleo ≥ 22** (decidida por el autor el 2026-09-30; se hace en un cambio aparte). Este plan la da por hecha: el arreglo del brief del `fixer` es por ella.
 
-**D-4b-3. Cambio de contrato en `protect-paths` (ABIERTA, reservada al autor: "cambiar un contrato").** 4a deja al `test-writer` escribir `.pignolo/tmp/holdout/` en cualquier raíz, y eso choca con el `handback-gate` cuando la raíz es el worktree de la tarea (hallazgo 9 de la revisión final de 4a, reproducido: `git status` lo muestra y el `DONE` se rechaza). La Task 11 cambia `protect-paths` para que solo lo permita en el checkout principal, y `private-reads` para que los demás subagentes no lo lean. Es un cambio de lo que un hook permite, como los que el spec registra como decisiones del autor (§8.3). **Recomendación: aprobarla** (sin usuarios todavía, el modo `plan` es del hito 5, y la alternativa, excluir la carpeta en la compuerta y en el `handback-gate`, son tres lugares que mantener y deja el holdout a la vista del implementer). **La Task 11 no corre hasta que el autor la resuelva** (y sin ella el checklist manual 5 y el §8.3 nuevo quedan fuera); el resto del plan no depende de ella.
+**D-4b-3. Cambio de contrato en `protect-paths` (APROBADA por el autor el 2026-09-30: el holdout se prepara solo en el checkout principal; la Task 11 corre).** 4a deja al `test-writer` escribir `.pignolo/tmp/holdout/` en cualquier raíz, y eso choca con el `handback-gate` cuando la raíz es el worktree de la tarea (hallazgo 9 de la revisión final de 4a, reproducido: `git status` lo muestra y el `DONE` se rechaza). La Task 11 cambia `protect-paths` para que solo lo permita en el checkout principal, y `private-reads` para que los demás subagentes no lo lean. Es un cambio de lo que un hook permite, como los que el spec registra como decisiones del autor (§8.3). **Recomendación: aprobarla** (sin usuarios todavía, el modo `plan` es del hito 5, y la alternativa, excluir la carpeta en la compuerta y en el `handback-gate`, son tres lugares que mantener y deja el holdout a la vista del implementer). **La Task 11 no corre hasta que el autor la resuelva** (y sin ella el checklist manual 5 y el §8.3 nuevo quedan fuera); el resto del plan no depende de ella.
 
 **Abiertas (necesitan al autor):**
 
