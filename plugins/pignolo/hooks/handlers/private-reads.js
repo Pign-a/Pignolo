@@ -13,13 +13,23 @@ const { cleanPath, resolveClean, isWithin } = require('../../lib/paths');
 const MESSAGE = 'pignolo bloqueó la lectura: el holdout y los sellos solo los lee el validator por los scripts de pignolo. '
   + 'Alternativa: trabajá con los tests del repo; si necesitás el resultado del holdout, pedíselo al hilo principal.\n';
 
-const MENTION_RE = /\.pignolo[\\/]+(holdout|seals)\b|PIGNOLO_HOME/i;
+// PIGNOLO_HOME cuenta solo usado como ruta ($PIGNOLO_HOME, ${PIGNOLO_HOME}, %PIGNOLO_HOME%,
+// $env:PIGNOLO_HOME): `grep -rn PIGNOLO_HOME plugins/` es texto y pasa.
+const MENTION_RE = /\.pignolo[\\/]+(holdout|seals)\b|\$\{?(env:)?PIGNOLO_HOME\b|%PIGNOLO_HOME%/i;
 // Prefijo fijo de un patrón glob: lo que está antes del primer segmento con comodín.
 const GLOB_CHAR = /[*?[\]{}]/;
 function staticPrefix(pattern) {
   const segs = String(pattern).replace(/\\/g, '/').split('/');
   const i = segs.findIndex((s) => GLOB_CHAR.test(s));
   return (i < 0 ? segs : segs.slice(0, i)).join('/') || '.';
+}
+// Lo mismo para un argumento de la shell: `/*` es la raíz, no el cwd; `--opt=<ruta>` mira la ruta.
+const SHELL_GLOB = /[*?[]/;
+function shellPrefix(tok) {
+  const segs = tok.replace(/^-[^=]*=/, '').replace(/\\/g, '/').split('/');
+  const i = segs.findIndex((x) => SHELL_GLOB.test(x));
+  if (i === 0) return '.';
+  return segs.slice(0, i).join('/') || '/';
 }
 
 // Búsquedas recursivas por la shell: programa -> ¿es recursiva con estos argumentos?
@@ -47,8 +57,13 @@ function shellDenied(command, ps, { cwd, home, roots, store }) {
   if (roots.some((r) => text.includes(r) || text.includes(gitBash(r)))) return true;
   // Un recorrido recursivo cuya raíz es un ancestro del almacén (o la raíz del disco).
   const broad = (p) => isWithin(store, p) || roots.some((r) => isWithin(r, p));
+  // Un comodín cuyo prefijo fijo está dentro del almacén privado o es un ancestro
+  // (`cat ~/.pign*/hold*/*/*/*`): la shell lo expande sin que el texto nombre la ruta.
+  const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
+  const globHit = (tok) => SHELL_GLOB.test(tok) && insideOrAbove(resolveClean(expand(shellPrefix(tok), home), cwd, home));
   for (const seg of command.replace(/\$\{(\w+)\}/g, '$$$1').split(/[;&|\n\r(){}`]+/)) {
     const toks = seg.replace(/["']/g, ' ').trim().split(/\s+/).filter(Boolean);
+    if (toks.some(globHit)) return true;
     for (let i = 0; i < toks.length; i += 1) {
       const prog = path.basename(toks[i].replace(/\\/g, '/')).toLowerCase().replace(/\.exe$/, '');
       if (!SEARCHERS.has(prog)) continue;

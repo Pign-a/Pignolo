@@ -3,7 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { makeTempDir, runLauncher } = require('./helpers');
+const { spawnSync } = require('node:child_process');
+const { makeTempDir, runLauncher, LAUNCHER } = require('./helpers');
 const reads = require('../plugins/pignolo/hooks/handlers/private-reads');
 
 const CORPUS = require('./guard/must-allow.json');
@@ -75,6 +76,58 @@ test('private-reads lets the must-allow corpus through for an implementer', () =
   const s = setup();
   const denied = CORPUS.filter((c) => reads.run(payload(s, c.shell === 'powershell' ? 'PowerShell' : 'Bash', { command: c.command }), { env: s.env }).exit !== 0);
   assert.deepEqual(denied.map((c) => c.command), []);
+});
+
+// Protects: comodines de shell · Breaks if: un comodín en la ruta (~/.pignolo/*/..., ~/.pign*/...)
+// llega al almacén sin nombrar "holdout" ni "seals" en el texto.
+test('private-reads denies shell wildcards whose static prefix is the store or an ancestor', async (t) => {
+  const s = setup();
+  const rows = [
+    ['cat ~/.pignolo/*/*/*/*.js', 'Bash', 2],
+    ['cat ~/.pign*/hold*/*/*/*', 'Bash', 2],
+    ['head -n 5 $HOME/.pignolo/h*/*/*/*', 'Bash', 2],
+    ['Get-Content $HOME/.pignolo/h*/*/*/*', 'PowerShell', 2],
+    ['Get-Content $env:USERPROFILE\\.pignolo\\s*\\*\\*', 'PowerShell', 2],
+    ['cat ../.pign*/*/*/*/*', 'Bash', 2],
+    ['cat src/*.js', 'Bash', 0],
+    ['grep -n "a.*b" src/a.js', 'Bash', 0],
+    ['ls tests/*.test.js', 'Bash', 0],
+  ];
+  for (const [command, tool, exit] of rows) {
+    await t.test(command, () => assert.equal(reads.run(payload(s, tool, { command }), { env: s.env }).exit, exit));
+  }
+});
+
+// Protects: falso positivo · Breaks if: la palabra PIGNOLO_HOME sola (sin usarla como ruta) se niega.
+test('private-reads lets the bare word PIGNOLO_HOME through and denies it as a path', async (t) => {
+  const s = setup();
+  const rows = [
+    ['grep -rn PIGNOLO_HOME plugins/', 'Bash', 0],
+    ['rg PIGNOLO_HOME', 'Bash', 0],
+    ['cat $PIGNOLO_HOME/holdout/x', 'Bash', 2],
+    ['cat ${PIGNOLO_HOME}/x', 'Bash', 2],
+    ['type %PIGNOLO_HOME%\\x', 'Bash', 2],
+    ['Get-Content $env:PIGNOLO_HOME/x', 'PowerShell', 2],
+  ];
+  for (const [command, tool, exit] of rows) {
+    await t.test(command, () => assert.equal(reads.run(payload(s, tool, { command }), { env: s.env }).exit, exit));
+  }
+});
+
+// Protects: el hilo principal bajo carga · Breaks if: el launcher carga el worker y el handler
+// para un payload sin agent_id (si el plazo de 3 s vence antes, niega en cualquier proyecto).
+test('launcher lets private-reads without agent_id through without loading the handler', () => {
+  const dir = makeTempDir('pignolo-fastpath-');
+  fs.mkdirSync(path.join(dir, 'hooks', 'handlers'), { recursive: true });
+  fs.copyFileSync(LAUNCHER, path.join(dir, 'hooks', 'launcher.js'));
+  fs.writeFileSync(path.join(dir, 'hooks', 'handlers', 'private-reads.js'), "throw new Error('no se debía cargar');\n");
+  const run = (p) => spawnSync(process.execPath, [path.join(dir, 'hooks', 'launcher.js'), 'private-reads'], { input: JSON.stringify(p), encoding: 'utf8', timeout: 20000 });
+  const main = run({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: 'x' } });
+  assert.equal(main.status, 0, main.stderr);
+  assert.equal(main.stdout + main.stderr, '');
+  const sub = run({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: 'x' }, agent_id: 'a1' });
+  assert.equal(sub.status, 2);
+  assert.match(sub.stderr, /no se pudo cargar el hook private-reads/);
 });
 
 test('private-reads blocks through the launcher (exit 2 with the message)', () => {

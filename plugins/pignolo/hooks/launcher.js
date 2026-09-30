@@ -70,6 +70,13 @@ function main() {
     fail(`entrada JSON inválida (${e.message})`);
   }
   if (!input || typeof input !== 'object' || Array.isArray(input)) fail('entrada JSON inválida (se esperaba un objeto)');
+  // private-reads solo rige para subagentes: el hilo principal (sin agent_id) pasa sin
+  // cargar el worker ni el handler, para que el plazo no lo niegue con la máquina cargada.
+  if (name === 'private-reads' && !input.agent_id) {
+    done = true;
+    process.exitCode = 0;
+    return;
+  }
 
   const ms = deadlineFor(name);
   const timer = setTimeout(() => fail(`se venció el plazo interno de ${ms} ms; se niega por las dudas`), ms);
