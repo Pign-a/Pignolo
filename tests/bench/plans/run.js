@@ -2,7 +2,7 @@
 'use strict';
 // Runner de la prueba de metodologías de validación de planes.
 //   node tests/bench/plans/run.js [--dry-run] [--cases real,p1,p2,p3,clean]
-//     [--methods M1,M2,M3,M4,M5,M0] [--models sonnet,opus] [--reps 3] [--cap 25]
+//     [--methods M1,M2,M3,M4,M5,M6,M7,M0] [--models sonnet,opus] [--reps 3] [--cap 25]
 //     [--per-run-cap <usd>] [--mode isolated|bare] [--claude <cmd> [--claude-arg <a>]...]
 //     [--probe] [--out <dir>] [--results-md <archivo>]
 // Cada corrida llama a `claude -p` en una copia temporal del repo del caso, sin pignolo.
@@ -14,24 +14,28 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
 const { checkPlan, toFindings } = require('../../../plugins/pignolo/lib/plan-check');
-const { grade } = require('./grade');
+const { grade, extractFindings } = require('./grade');
+const { PROBES, runProbes } = require('./probes');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 const FIXTURE = path.join(__dirname, 'fixture');
 const REAL = { commit: '794b009', plan: 'docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md' };
 const CASES = ['real', 'p1', 'p2', 'p3', 'clean'];
-const METHODS = ['M1', 'M2', 'M3', 'M4', 'M5', 'M0'];
+const METHODS = ['M1', 'M2', 'M3', 'M4', 'M5', 'M6', 'M7', 'M0'];
 const MODELS = ['sonnet', 'opus'];
-const TOOLS = { M3: 'Read,Grep,Glob', M4: 'Read,Grep,Glob', M5: 'Read,Grep,Glob,Bash,Write', M0: 'Read,Grep,Glob,Edit,Write,Bash' };
-const PROMPT = { M3: 'reviewer.md', M4: 'layered.md', M5: 'experiments.md', M0: 'replay.md' };
+// M6 y M7: TOOLS y PROMPT son los del paso A; el paso B de M6 usa los de EXPERIMENTER.
+const TOOLS = { M3: 'Read,Grep,Glob', M4: 'Read,Grep,Glob', M5: 'Read,Grep,Glob,Bash,Write', M6: 'Read,Grep,Glob', M7: 'Read,Grep,Glob', M0: 'Read,Grep,Glob,Edit,Write,Bash' };
+const PROMPT = { M3: 'reviewer.md', M4: 'layered.md', M5: 'experiments.md', M6: 'twostep-review.md', M7: 'twostep-review.md', M0: 'replay.md' };
+const EXPERIMENTER = { tools: 'Read,Grep,Glob,Bash,Write', prompt: 'experimenter.md' };
+const HOOK = path.join(__dirname, 'hooks', 'require-experiments.js');
 // Estimaciones por corrida (USD) antes de tener medidas; la sonda de B4 las reemplaza.
-const EST = { M3: { sonnet: 0.25, opus: 0.6 }, M4: { sonnet: 0.3, opus: 0.7 }, M5: { sonnet: 0.8, opus: 2 }, M0: { sonnet: 1.5, opus: 4 } };
+const EST = { M3: { sonnet: 0.25, opus: 0.6 }, M4: { sonnet: 0.3, opus: 0.7 }, M5: { sonnet: 0.8, opus: 2 }, M6: { sonnet: 0.9, opus: 2.2 }, M7: { sonnet: 0.5, opus: 1.2 }, M0: { sonnet: 1.5, opus: 4 } };
 const REAL_MULT = 2; // el plan real es ~8 veces más largo que un sintético y su repo más grande
 // Tope de gasto por corrida (--max-budget-usd), antes de acotarlo con lo que queda del tope global.
-const PER_RUN_CAP = { M3: { sonnet: 1, opus: 2.5 }, M4: { sonnet: 1.25, opus: 3 }, M5: { sonnet: 3, opus: 5 }, M0: { sonnet: 4, opus: 8 } };
+const PER_RUN_CAP = { M3: { sonnet: 1, opus: 2.5 }, M4: { sonnet: 1.25, opus: 3 }, M5: { sonnet: 3, opus: 5 }, M6: { sonnet: 3.5, opus: 7 }, M7: { sonnet: 1.5, opus: 3 }, M0: { sonnet: 4, opus: 8 } };
 const DEFAULT_CAP = 25;
 
-const isAi = (method) => method === 'M3' || method === 'M4' || method === 'M5' || method === 'M0';
+const isAi = (method) => ['M3', 'M4', 'M5', 'M6', 'M7', 'M0'].includes(method);
 
 // M1 y M2 son deterministas (una vez por caso). M3 y M4 van por modelo y repetición;
 // M0, una vez por modelo. Orden por repetición: si el tope corta, quedan las primeras
@@ -95,17 +99,50 @@ function prepareCase(caseName, tmpDir) {
 }
 
 // ---------- llamada a claude ----------
-function claudeArgs({ method, model, budget, mode, scratch }) {
+// `step: 'B'` es el experimentador de M6: herramientas con Bash y el settings con el hook Stop.
+function claudeArgs({ method, model, budget, mode, scratch, step = 'A', settings = null }) {
   const args = ['-p', '--model', model, '--output-format', 'json', '--max-budget-usd', String(Number(budget.toFixed(2))),
     '--no-session-persistence', '--strict-mcp-config', '--disable-slash-commands'];
   args.push(...(mode === 'bare' ? ['--bare'] : ['--setting-sources', 'project,local']));
-  args.push('--allowedTools', TOOLS[method]);
+  args.push('--allowedTools', step === 'B' ? EXPERIMENTER.tools : TOOLS[method]);
   if (method === 'M0') args.push('--permission-mode', 'acceptEdits');
-  // M5 corre Bash de verdad en Windows (sin sandbox): va con la guardia de pignolo de este repo.
-  // Sin acceptEdits ni --add-dir, en -p no puede escribir el archivo del experimento fuera del cwd.
-  if (method === 'M5') args.push('--plugin-dir', path.join(REPO_ROOT, 'plugins', 'pignolo'), '--permission-mode', 'acceptEdits', '--add-dir', scratch);
+  // M5 y el paso B de M6 corren Bash de verdad en Windows (sin sandbox): van con la guardia de
+  // pignolo de este repo. Sin acceptEdits ni --add-dir, en -p no pueden escribir el archivo
+  // del experimento fuera del cwd.
+  if (method === 'M5' || step === 'B') args.push('--plugin-dir', path.join(REPO_ROOT, 'plugins', 'pignolo'), '--permission-mode', 'acceptEdits', '--add-dir', scratch);
+  // Los hooks de --settings corren aunque --setting-sources sea project,local (verificado con
+  // una llamada real, Claude Code 2.1.285; ver RESULTS-planes.md).
+  if (settings) args.push('--settings', settings);
   return args;
 }
+
+// Settings por corrida del paso B de M6: el hook cuenta los Bash (PostToolUse) y no deja
+// terminar (Stop) mientras falten experimentos. Rutas con / para cualquier shell.
+function writeExperimentSettings(scratch) {
+  const hook = { type: 'command', command: 'node', args: [HOOK, scratch].map((p) => p.replace(/\\/g, '/')), timeout: 30 };
+  const file = path.join(scratch, 'settings.json');
+  fs.writeFileSync(file, `${JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Bash', hooks: [hook] }], Stop: [{ hooks: [hook] }] } }, null, 2)}\n`);
+  return file;
+}
+
+// Salida del paso A de M6/M7: el último bloque json, un objeto { findings, claims }.
+function extractReview(text) {
+  const blocks = [...String(text || '').matchAll(/```json\s*\n([\s\S]*?)```/g)];
+  if (!blocks.length) return { findings: [], claims: [], error: 'paso A: no hay bloque json en el informe' };
+  let parsed;
+  try { parsed = JSON.parse(blocks[blocks.length - 1][1]); } catch (e) { return { findings: [], claims: [], error: `paso A: json mal formado: ${e.message}` }; }
+  if (Array.isArray(parsed)) return { findings: parsed, claims: [], error: null };
+  const findings = Array.isArray(parsed && parsed.findings) ? parsed.findings : [];
+  const claims = (Array.isArray(parsed && parsed.claims) ? parsed.claims : [])
+    .filter((c) => c && typeof c.claim === 'string')
+    .map((c, i) => ({ id: c.id || `C${i + 1}`, task: c.task, claim: c.claim, how: c.how || '' }));
+  return { findings, claims, error: null };
+}
+
+const sumCalls = (a, b) => ({
+  error: a.error || b.error, costUsd: a.costUsd + b.costUsd, durationSeconds: a.durationSeconds + b.durationSeconds,
+  tokens: { input: a.tokens.input + b.tokens.input, output: a.tokens.output + b.tokens.output, cache: a.tokens.cache + b.tokens.cache },
+});
 
 function callClaude({ claude, args, cwd, prompt, env, timeoutMs }) {
   const t0 = Date.now();
@@ -129,6 +166,52 @@ function callClaude({ claude, args, cwd, prompt, env, timeoutMs }) {
   };
 }
 
+const readJsonOr = (file, fallback) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return fallback; } };
+
+// Paso B de M6 (experimentador con el hook Stop) o de M7 (sondas fijas, sin IA).
+// Hallazgos = los del paso A + los del paso B; costo, tiempo y tokens = la suma de los pasos.
+function twoStep(run, { opts, work, scratch, budget, stepA }) {
+  const review = extractReview(stepA.text);
+  const base = {
+    error: stepA.error || review.error, costUsd: stepA.costUsd, durationSeconds: stepA.durationSeconds, tokens: stepA.tokens,
+    claims: review.claims.length, findings: review.findings, raw: stepA.text,
+  };
+  if (run.method === 'M7') {
+    const t0 = Date.now();
+    const probed = runProbes({ claims: review.claims, planText: work.planText, probes: opts.probes });
+    return {
+      ...base, durationSeconds: base.durationSeconds + (Date.now() - t0) / 1000,
+      findings: [...review.findings, ...probed.findings], probeFindings: probed.findings.length,
+    };
+  }
+  // Sin afirmaciones (o con el paso A roto) no hay nada que experimentar: queda el paso A.
+  if (!review.claims.length || base.error) return { ...base, bashCalls: 0, hookBlocks: 0 };
+  const left = budget - stepA.costUsd;
+  if (left < 0.05) return { ...base, bashCalls: 0, hookBlocks: 0, error: 'paso B: no queda presupuesto de la corrida' };
+  fs.writeFileSync(path.join(scratch, 'claims.json'), `${JSON.stringify(review.claims, null, 2)}\n`);
+  const settings = writeExperimentSettings(scratch);
+  const prompt = fs.readFileSync(path.join(__dirname, 'prompts', EXPERIMENTER.prompt), 'utf8')
+    .replace('{{CLAIMS}}', () => JSON.stringify(review.claims, null, 2))
+    .replace('{{FINDINGS}}', () => JSON.stringify(review.findings, null, 2))
+    .replace(/{{SCRATCH}}/g, () => scratch);
+  const b = callClaude({
+    claude: opts.claude, args: claudeArgs({ method: run.method, model: run.model, budget: left, mode: opts.mode, scratch, step: 'B', settings }),
+    cwd: work.dir, prompt, env: opts.env, timeoutMs: opts.timeoutMs,
+  });
+  const state = readJsonOr(path.join(scratch, 'hook-state.json'), {});
+  let logged = 0;
+  try { logged = fs.readFileSync(path.join(scratch, 'bash-calls.log'), 'utf8').split('\n').filter((l) => l.trim()).length; } catch (_) { /* ningún Bash */ }
+  const parsed = extractFindings(b.text);
+  const sum = sumCalls(stepA, b);
+  return {
+    ...sum, error: sum.error || (parsed.error ? `paso B: ${parsed.error}` : null),
+    // Si el paso B no dejó su arreglo, quedan los hallazgos del paso A (y el error anotado).
+    findings: parsed.error ? review.findings : parsed.findings,
+    claims: review.claims.length, bashCalls: Math.max(logged, state.lastCount || 0), hookBlocks: state.blocks || 0,
+    raw: `${stepA.text}\n\n----- paso B -----\n\n${b.text}`,
+  };
+}
+
 function runOne(run, opts, truth, budget) {
   const work = prepareCase(run.case, opts.tmpDir);
   const t0 = Date.now();
@@ -140,23 +223,29 @@ function runOne(run, opts, truth, budget) {
     } else {
       let report = '';
       let scratch = null;
-      if (run.method === 'M5') scratch = fs.mkdtempSync(path.join(opts.tmpDir, 'plan-bench-scratch-'));
-      if (run.method === 'M4' || run.method === 'M5') {
+      if (run.method === 'M5' || run.method === 'M6') scratch = fs.mkdtempSync(path.join(opts.tmpDir, 'plan-bench-scratch-'));
+      if (['M4', 'M5', 'M6', 'M7'].includes(run.method)) {
         report = JSON.stringify(toFindings(checkPlan({ planText: work.planText, root: work.dir, runTests: true, tmpDir: opts.tmpDir })), null, 2);
       }
-      const prompt = fs.readFileSync(path.join(__dirname, 'prompts', PROMPT[run.method]), 'utf8').replace('{{REPORT}}', () => report).replace('{{SCRATCH}}', () => scratch || '');
-      const called = callClaude({
-        claude: opts.claude, args: claudeArgs({ method: run.method, model: run.model, budget, mode: opts.mode, scratch }),
-        cwd: work.dir, prompt, env: opts.env, timeoutMs: opts.timeoutMs,
-      });
-      out = { ...called, findings: called.text };
-      if (scratch) fs.rmSync(scratch, { recursive: true, force: true });
+      try {
+        const prompt = fs.readFileSync(path.join(__dirname, 'prompts', PROMPT[run.method]), 'utf8').replace('{{REPORT}}', () => report).replace('{{SCRATCH}}', () => scratch || '');
+        const called = callClaude({
+          claude: opts.claude, args: claudeArgs({ method: run.method, model: run.model, budget, mode: opts.mode, scratch }),
+          cwd: work.dir, prompt, env: opts.env, timeoutMs: opts.timeoutMs,
+        });
+        if (run.method === 'M6' || run.method === 'M7') out = twoStep(run, { opts, work, scratch, budget, stepA: called });
+        else out = { ...called, findings: called.text };
+      } finally {
+        if (scratch) fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+      }
     }
     const g = grade({ findings: out.findings, truth, plan: run.case });
+    const extra = {};
+    for (const k of ['claims', 'bashCalls', 'hookBlocks', 'probeFindings']) if (out[k] !== undefined) extra[k] = out[k];
     return {
       ...run, total: truth[run.case].length, found: g.found, missed: g.missed, falsePositives: g.falsePositives.length,
       falsePositiveFindings: g.falsePositives, costUsd: out.costUsd, durationSeconds: out.durationSeconds, tokens: out.tokens,
-      error: out.error || g.error, raw: typeof out.findings === 'string' ? out.findings : undefined,
+      ...extra, error: out.error || g.error, raw: typeof out.findings === 'string' ? out.findings : (out.raw || undefined),
     };
   } finally {
     work.cleanup();
@@ -204,7 +293,7 @@ function runBench(options = {}) {
     // con los conteos validados, y una corrida nueva no debe pisarlo.
     resultsMd: path.join(__dirname, 'results', 'last-table.md'),
     tmpDir: os.tmpdir(), env: process.env, log: (l) => process.stdout.write(`${l}\n`), now: new Date(),
-    timeoutMs: 30 * 60 * 1000, dryRun: false, perRunCap: null, ...options,
+    timeoutMs: 30 * 60 * 1000, dryRun: false, perRunCap: null, probes: PROBES, ...options,
   };
   const matrix = buildMatrix(opts);
   const est = estimate(matrix);

@@ -14,6 +14,8 @@
 | M2 | M1 + rojo de los tests del plan (capa 3): cada bloque de test del plan se corre contra el código actual y tiene que fallar | no | — | 1 |
 | M3 | Solo revisor: un agente de solo lectura con el plan y el repo | sí | sonnet, opus | 3 |
 | M4 | Capas: M2 y después un revisor que recibe el informe de M2 | sí | sonnet, opus | 3 |
+| M6 | Dos pasos: revisor de solo lectura (con el informe de M2) que lista afirmaciones a verificar ejecutando; experimentador con Bash forzado por un hook Stop (una llamada a Bash por afirmación, hasta 2 bloqueos) | sí | sonnet, opus | 3 |
+| M7 | Dos pasos: el mismo revisor y sondas fijas de Windows y Node sin IA (salen de errores ya vistos, incluido el caso real) | sí (paso A) | sonnet, opus | 3 |
 | M0 | Replay: implementar el plan en una copia y reportar lo que no funcionó (el método viejo, como referencia) | sí | sonnet, opus | 1 |
 
 ## Casos
