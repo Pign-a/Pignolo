@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-09-30
+
+- Evals de revisión: los graders de texto (`finds-planted-defect`, `verdict-*`, `no-blocking-finding`, `refutes-false-claim`, `keeps-true-claim`, `done`) leen ahora solo el `tool_result` que la sesión principal recibe por su `tool_use` de `Agent` con el `subagent_type` del caso. Motivo: en la sonda 2 (Claude Code 2.1.285) el informe final del subagente nunca salió como `assistant` con `parent_tool_use_id`, así que los graders positivos no podían aprobar y los `not_contains` aprobaban siempre; el revisor había hallado bien `src/pages.js:7` BLOCKER y el grader lo dio como fallado.
+- Los graders de ausencia (`no-blocking-finding`, `keeps-true-claim`) reprueban si el subagente no devolvió informe, y todo caso suma `subagent-returned`. `subagent-edited-source` y `subagent-ran-tests` siguen mirando los `tool_use` del subagente.
+- El test determinista (`tests/eval-cases.test.js`) usa traces con la forma real, a partir de la sonda 2 recortada y sin rutas personales (`tests/fixtures/evals/`): aprueba el informe bueno, reprueba el mismo informe escrito por la sesión principal, reprueba sin `tool_result` del `Agent` y aprueba el hallazgo real de la sonda 2.
+
 ## 0.4.0 — 2026-09-29
 
 - Hito 3b (los carriles): las skills `entry`, `trivial`, `daily`, `review` y `judgment`. Motivo: los scripts de 3a (`risk`, `gate`, `run`, `ledger`) y el handback-gate existían pero ningún flujo los usaba; ahora hay un camino real de un pedido a un commit verificado fuera del agente.
