@@ -21,7 +21,7 @@ The brief gives a frozen SHA, the tests and code changed, the requirement they p
 6. Apply N1 to N4 to the tests: N1 the test exercises the real path; N2 no fail-open (a test that passes when its setup fails); N3 names and comments are true; N4 declare what is not covered.
 
 ## Output
-One block per finding: id, lens (testability), location, severity, evidence (the command you ran and its output, including the forged red), repro-spec.
+Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`testability`), `location` (`path:line`, a single line number), `severity`, `evidence` (the command you ran and its output, including the forged red), `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). With no findings the block is `[]`. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
 
 A decorative test (cannot fail) is a BLOCKER. A test whose old-shape double hides a broken contract is CRITICAL. Missing coverage of a named edge case is WARNING. Naming or structure is SUGGESTION.
 

@@ -12,11 +12,16 @@ const { ensureIgnored } = require('../lib/pignolo-gitignore');
 const { repoIdFor } = require('../lib/seals');
 const { withDeadline } = require('../lib/git');
 const { readProjectConfig } = require('../lib/project-config');
+const { matchAny } = require('../lib/globs');
 
 const FLOWS = ['trivial', 'daily', 'review', 'plan'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 // Contador de los DONE rechazados con run.json ilegible (handback-gate).
 const MALFORMED = '_malformed';
+// .pignolo/.gitignore: él mismo (sin commitear, contaría como un archivo más del diff y
+// ningún cambio sería trivial), la marca, el flag, los temporales de las skills y sus worktrees.
+const IGNORED = ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/'];
+const WRITERS_NO_TESTS = ['pignolo:implementer', 'pignolo:fixer'];
 const VERBS = {
   start: { value: ['flow', 'ttl-min', 'cwd'], bool: ['replace'] },
   task: { value: ['id', 'worktree', 'base', 'test-ref', 'cwd'], multi: ['file', 'agent'], bool: ['test-authorization'] },
@@ -86,7 +91,7 @@ function start(o, main, env) {
   clearCounter(env, main, MALFORMED);
   const now = Date.now();
   const run = { v: 1, flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
-  ensureIgnored(main, ['run.json', '.disabled']);
+  ensureIgnored(main, IGNORED);
   writeRun(st.file, run);
   out({ ok: true, run });
 }
@@ -100,6 +105,28 @@ function commitOf(git, worktree, what, ref) {
     throw new Fail(`${what} ${ref} no es ancestro de HEAD de ${worktree}`);
   }
   return sha;
+}
+
+// --file: relativa a la raíz de la worktree y con '/' (las rutas de git). Se normaliza
+// '\' y un './' inicial; una ruta absoluta o con '..' es un error de uso.
+function normFile(p) {
+  const s = String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+  if (s === '' || /^([a-zA-Z]:|\/)/.test(s) || s.split('/').includes('..')) {
+    throw new Usage(`--file debe ser una ruta relativa a la worktree, sin '..': ${p}`);
+  }
+  return s;
+}
+
+// Cada rol escribe solo donde el gate y el handback-gate lo van a aceptar (Review Focus 5
+// de 3a: fallar al registrar, no tras 8 rechazos).
+function checkFiles(t, cfg) {
+  const tests = t.files.filter((f) => matchAny(cfg.testPaths, f) || matchAny(cfg.protectedTestConfig, f));
+  if (t.agents.includes('pignolo:test-writer')) {
+    const bad = t.files.filter((f) => !matchAny(cfg.testPaths, f) || matchAny(cfg.protectedTestConfig, f));
+    if (bad.length) throw new Fail(`el test-writer solo escribe en test-paths y fuera de protected-test-config: ${bad.join(', ')}. Alternativa: elegí rutas de test-paths o registrá esos archivos para el implementer`);
+  } else if (!t.testAuthorization && t.agents.some((a) => WRITERS_NO_TESTS.includes(a)) && tests.length) {
+    throw new Fail(`el implementer y el fixer no tocan tests ni su configuración sin --test-authorization: ${tests.join(', ')}. Alternativa: registrá esos archivos para el test-writer`);
+  }
 }
 
 function task(o, main, env) {
@@ -129,9 +156,10 @@ function task(o, main, env) {
 
   const t = { id: o.id, worktree, base };
   if (testRef) t.testRef = testRef;
-  t.files = o.multi.file || (prev && prev.files) || [];
+  t.files = o.multi.file ? o.multi.file.map(normFile) : ((prev && prev.files) || []);
   t.agents = o.multi.agent || (prev && prev.agents) || [];
   if (o['test-authorization'] || (prev && prev.testAuthorization)) t.testAuthorization = true;
+  checkFiles(t, cfg);
   const run = { ...st.run, task: t };
   const errs = validateRun(run);
   if (errs.length) throw new Fail(`la tarea no valida: ${errs.join('; ')}`);

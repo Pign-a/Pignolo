@@ -1,6 +1,6 @@
 # Pignolo
 
-Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.3 en construcción (hito 3a de 8: compuertas y revisión; las skills de los carriles llegan con el 3b).
+Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.4 en construcción (hito 3 de 8 completo: compuertas, revisión y los carriles `trivial` y `daily`).
 
 Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
 
@@ -34,7 +34,7 @@ El plugin trae 19 agentes con herramientas, esfuerzo y modelo fijados por rol (`
 
 ## Compuertas y revisión (hito 3a)
 
-Tres scripts que todavía no usa ningún comando tuyo: los usarán las skills de los carriles (hito 3b). Todo actúa solo durante un flujo de pignolo (`.pignolo/run.json` vigente); en un pedido suelto no cambia nada.
+Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo actúa solo durante un flujo de pignolo (`.pignolo/run.json` vigente); en un pedido suelto no cambia nada.
 
 - `scripts/risk.js`: mira qué archivos o qué diff se van a tocar y da un piso de riesgo y de carril (`trivial`, `daily`, `plan`), con la categoría de decisión reservada cuando salta un tripwire. El modelo puede subir el piso, nunca bajarlo.
 - `scripts/gate.js`: corre las compuertas de `project.md` (`on-done`, `pre-merge`) fuera de los hooks y deja un sello del árbol de trabajo en `~/.pignolo/seals/`. Si el árbol cambia después, el sello ya no vale.
@@ -42,6 +42,27 @@ Tres scripts que todavía no usa ningún comando tuyo: los usarán las skills de
 - Un hook nuevo, el handback-gate, frena el `DONE` de `implementer`, `fixer` y `test-writer` si no hay sello o si tocaron tests que no eran suyos; tras 8 rechazos deja pasar y marca la tarea como `BLOCKED`.
 - `scripts/ledger.js` lleva el ledger de hallazgos de la revisión y el Judgment Day.
 - Checklist manual: `tests/manual/hito-3a.md`.
+
+## Carriles (hito 3b)
+
+**En pocas palabras.** Le pedís un cambio a Claude en un proyecto con pignolo activo y pignolo elige cuánto cuidado poner. Si el cambio es una línea o algo mecánico, lo hace directo y lo verifica. Si es más, lo hace en una copia de trabajo aparte, primero con una prueba que falla, y te pide el OK antes de unirlo. Según el riesgo, además lo hace revisar. Si tu pedido es una pregunta o no queda claro que autorizás un cambio, solo lee y te pregunta.
+
+**Detalle técnico.**
+
+- Requisito: `.pignolo/project.md` **commiteado**, con `type` y `gates.on-done`. Sin eso un flujo no arranca.
+- `pignolo:entry` se dispara sola por su descripción (no hay hook que la fuerce) y decide dos cosas: si el pedido autoriza un cambio y el carril, a partir de `scripts/risk.js`. El modelo puede subir el carril, nunca bajarlo. Las cinco skills de flujo (`entry`, `trivial`, `daily`, `review`, `judgment`) son invocables por el modelo (decisión del autor, spec §2); `setup`, `on`, `off`, `status` e `init` solo las dispara el humano.
+- `trivial`: cambia en el checkout principal y en la rama actual, corre la compuerta `on-done`, re-chequea el riesgo del diff real y commitea. Sin revisión. Si el riesgo sube, deshace su cambio, no commitea y te pregunta si pasarlo a `daily`. Si tenés cambios sin commitear en el checkout principal, no lo usa (los mezclaría con los suyos): pasa a `daily` o te pregunta.
+- `daily`: rama y worktree en `.pignolo/worktrees/<slug>`; `test-writer` escribe la prueba y el orquestador demuestra el rojo; `implementer` cambia y sella la compuerta; revisión según riesgo; merge a la rama de origen solo con tu confirmación. Cada escritor cuenta como terminado únicamente si `run.js status` lo acepta (sello y tests intactos), no por lo que diga su informe.
+- `review`: lentes por riesgo (medio: dos; alto: según el perfil), `refuter` antes de la reproducción, reproducción con test en rojo, `fixer` en un máximo de 2 rondas. `judgment` (Judgment Day, perfil `max` en riesgo alto o a pedido): dos jueces ciegos sobre el mismo SHA. El ledger queda en `~/.pignolo/reviews/<repo-id>/`, también vacío. Una revisión o un Judgment Day que pedís vos es solo de lectura (sin `test-writer` ni `fixer`, no commitea) salvo que digas explícitamente que querés cambios.
+- Límite declarado: la compuerta `live-check` (spec §9) todavía no existe (llega en un hito posterior). Si `project.md` la declara, `daily` mergea sin correrla y lo avisa en la pregunta del merge.
+- `.pignolo/worktrees/` y `.pignolo/tmp/` son de pignolo: `run.js start` los agrega a `.pignolo/.gitignore` (que se ignora a sí mismo) y git no los ve. Si `.pignolo/.gitignore` ya está versionado sin esas líneas, queda modificado y puede subir un `trivial` a `daily`. Un runner que recorre el árbol (vitest, jest) puede levantar los tests de `.pignolo/worktrees/`.
+- Checklist manual: `tests/manual/hito-3b.md`.
+
+## Métricas de las evals
+
+**En pocas palabras.** Pignolo mide si sus revisores encuentran un defecto plantado, si dejan pasar un cambio limpio sin inventar problemas y si el resto de los agentes de revisión hace su parte. Los resultados se publican tal como salgan, buenos o malos. **Pendiente de la primera corrida.**
+
+**Detalle técnico.** Pendiente de la primera corrida: cuando exista, acá va una tabla por agente y caso (aciertos sobre corridas, modelo opus o sonnet, costo medido por corrida, fecha y versión de Claude Code) y, al lado, el umbral de la spec (§0 d): al menos 4 aciertos de 5 corridas por caso. El detalle completo, con el comando de cada etapa, vive en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
 ## Guardia de shell
 

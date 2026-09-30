@@ -25,7 +25,7 @@ The brief gives a frozen SHA, the diff or file list, the task-card or spec, and 
 5. Write a repro-spec for every BLOCKER or CRITICAL: input, action and the wrong observable result, so a test-writer can turn it into a failing test.
 
 ## Output
-One block per finding with these fields: id, lens (reliability), location (path:line), severity, evidence, repro-spec.
+Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`reliability`), `location` (`path:line`, a single line number), `severity`, `evidence`, `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). With no findings the block is `[]`. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
 
 Severity rubric:
 - BLOCKER: wrong result, data loss, security hole or broken contract on a normal path; must not ship.
@@ -33,7 +33,7 @@ Severity rubric:
 - WARNING: real weakness with limited impact or an unlikely trigger.
 - SUGGESTION: improvement with no defect.
 
-With no findings, write "no findings" and say what you covered. End with one word on its own line: APPROVE (no BLOCKER or CRITICAL), REQUEST_CHANGES (at least one) or ESCALATE (a reserved decision or missing input stops the review; name it).
+With no findings, say below the block what you covered. End with one word on its own line: APPROVE (no BLOCKER or CRITICAL), REQUEST_CHANGES (at least one) or ESCALATE (a reserved decision or missing input stops the review; name it).
 
 ## Rules
 - Do not report style or taste outside your lens.
