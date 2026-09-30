@@ -22,6 +22,7 @@ const path = require('node:path');
 const { parseBash, ParseError, mentionsGit } = require('./shell-parse');
 const { parsePsAst, PsUnavailable } = require('./ps-ast');
 const { cleanPath, resolveClean, isWithin, isProtectedWrite, FLAG_RE, GIT_DIR_RE } = require('./paths');
+const { lockedAt } = require('./sabotage');
 
 const DIRECT = 'ejecutá el comando directamente, con el programa y sus argumentos escritos literalmente';
 const RULES = {
@@ -57,6 +58,8 @@ const RULES = {
   'protected-flag': ['deny', 'los flags del interruptor solo los escribe /pignolo:off y /pignolo:on', 'pedile al humano que escriba /pignolo:off o /pignolo:on'],
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
   'pignolo-run': ['deny', 'un subagente no opera el flujo de pignolo (scripts/run.js): solo el hilo principal lo registra, lo renueva o lo cierra', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el flujo'],
+  'pignolo-holdout': ['deny', 'solo el hilo principal y el validator ejecutan el holdout de pignolo (scripts/holdout.js)', 'el holdout lo corre el validator; pedile el resultado al hilo principal'],
+  'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
   push: ['ask', 'pignolo pide confirmación: push al remoto'],
@@ -295,6 +298,7 @@ function evaluate(command, opts = {}) {
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
     onlyCatastrophic: Boolean(opts.onlyCatastrophic),
     subagent: Boolean(opts.subagent), // el payload trae agent_id
+    agentType: typeof opts.agentType === 'string' ? opts.agentType : null, // agent_type del payload
     trace: [],
   };
   const found = [];
@@ -608,6 +612,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   }
   checkLauncher(name, words, st, ctx, out);
   checkRunScript(name, words, st, ctx, out);
+  checkHoldoutScript(name, words, st, ctx, out);
   if ((name === 'claude' || name === 'claude-code') && claudePluginOff(args)) out.push(hit('protected-flag'));
   checkPathArgs(name, args, st, ctx, out);
   if (name === 'robocopy' && args.some((w) => /^\/(mir|purge|move|mov)$/i.test(w.value))) {
@@ -854,6 +859,26 @@ function checkRunScript(name, words, st, ctx, out) {
   }
 }
 
+// El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el
+// implementer no ve los tests de aceptación. Misma detección que checkRunScript.
+const PIGNOLO_HOLDOUT_JS = `${cleanPath(path.join(__dirname, '..'))}/scripts/holdout.js`;
+const HOLDOUT_JS_RE = /(^|\/)pignolo\/(?:[^/]+\/)*scripts\/holdout\.js$/;
+function checkHoldoutScript(name, words, st, ctx, out) {
+  if (!ctx.subagent || ctx.agentType === 'pignolo:validator') return;
+  const executes = (w) => w === words[0] || INTERP.has(name);
+  for (const w of words) {
+    if (!executes(w)) continue;
+    let is;
+    if (w.dyn) is = /(^|[\\/])scripts[\\/]holdout\.js$/i.test(w.value);
+    else {
+      const p = resolveAt(w.value, st, ctx);
+      const c = p === null ? cleanPath(w.value) : p;
+      is = c === PIGNOLO_HOLDOUT_JS || HOLDOUT_JS_RE.test(c);
+    }
+    if (is) { out.push(hit('pignolo-holdout')); return; }
+  }
+}
+
 // `claude plugin disable|uninstall|remove pignolo` (y `plugin marketplace remove pignolo`)
 // apaga pignolo en las sesiones siguientes: es cosa del humano, como el interruptor (M8).
 function claudePluginOff(args) {
@@ -948,6 +973,9 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   if (longIs(o, 'upload-pack') || longIs(o, 'receive-pack') || (['push', 'archive', 'send-pack'].includes(sub) && longIs(o, 'exec'))
     || (['clone', 'ls-remote'].includes(sub) && o.shorts.has('u'))) out.push(hit('git-shell'));
   for (const r of gitRules(sub, o, args, ctx, inner)) out.push(hit(r));
+  // Con un candado de sabotaje en el worktree (§11.6), commit y add guardarían el código
+  // saboteado. Un existsSync por directorio: sin git, dentro del plazo de 3 s.
+  if ((sub === 'commit' || sub === 'add') && realDirs(st).some((d) => lockedAt(d))) out.push(hit('sabotage-lock'));
   // git apply --directory=<dir> escribe los archivos del parche debajo de <dir> (M3).
   if (sub === 'apply') {
     args.forEach((w, k) => {

@@ -50,3 +50,8 @@ test('handback-gate is registered on SubagentStop (pignolo writers), PreToolUse 
   const postHooks = handlersFor('PostToolUse').filter((h) => h.args[1] === 'handback-gate');
   assert.deepStrictEqual(postHooks.map((h) => h.matcher), ['Agent']);
 });
+
+test('private-reads is registered on PreToolUse for Read, Grep, Glob, Bash and PowerShell', () => {
+  const p = handlersFor('PreToolUse').filter((h) => h.args[1] === 'private-reads');
+  assert.deepStrictEqual(p.map((h) => h.matcher), ['Read|Grep|Glob|Bash|PowerShell']);
+});

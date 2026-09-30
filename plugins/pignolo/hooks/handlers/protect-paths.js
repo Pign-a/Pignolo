@@ -6,15 +6,89 @@
 //   la guardia en las sesiones siguientes). Cubre bypassPermissions, donde la
 //   protección nativa no rige. `~` sale del HOME/USERPROFILE del entorno del hook.
 // - Flags del interruptor (§3.3): apagable solo con PIGNOLO_DISABLED.
+const fs = require('node:fs');
 const path = require('node:path');
 const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
+const { projectState, readRun } = require('../../lib/project');
 const { resolveClean, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
 
 const BLOCKED = 'pignolo bloqueó la escritura: los flags del interruptor solo los escribe /pignolo:off y /pignolo:on. Alternativa: pedile al humano que escriba el comando.\n';
 const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins. Alternativa: usá comandos git; lo que haya que cambiar ahí lo hace el humano.\n';
 
 const RUN_BLOCKED = 'pignolo bloqueó la escritura: .pignolo/run.json lo escriben solo las skills de pignolo desde la conversación principal. Alternativa: devolvé BLOCKED y nombrá lo que haga falta cambiar.\n';
+
+const PROJECT_MD = '.pignolo/project.md';
+const HOLDOUT_DIR = '.pignolo/tmp/holdout/';
+const alt = (m) => ({ exit: 2, stderr: `pignolo bloqueó la escritura: ${m}
+` });
+const ALT_IMPL = 'Alternativa: un test cambia solo con test-authorization: devolvé BLOCKED y nombrá el test.';
+const ALT_TW = 'Alternativa: escribí solo en test-paths o en .pignolo/tmp/holdout/; lo demás lo pide el hilo principal.';
+
+// Raíz del worktree que contiene `file` (ruta cruda, con sus mayúsculas). Con tarea, solo
+// el worktree de la tarea (spec §8.3): una ruta de otro repo no toma su configuración. Sin
+// tarea, sube hasta el primer .git (sin git). path.relative compara sin mayúsculas en win32.
+function worktreeOf(file, task) {
+  if (task) {
+    if (typeof task.worktree !== 'string' || !task.worktree) return null;
+    const r = path.relative(task.worktree, file);
+    return r !== '' && !r.startsWith('..') && !path.isAbsolute(r) ? task.worktree : null;
+  }
+  let dir = path.dirname(file);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, '.git'))) return dir;
+    const up = path.dirname(dir);
+    if (up === dir) return null;
+    dir = up;
+  }
+}
+
+// Como resolveClean pero conservando las mayúsculas (los globs las distinguen): expande
+// ~ y, en Windows, /c/... (Git Bash).
+function rawResolve(target, cwd, home) {
+  let t = target;
+  if (home && (t === '~' || /^~[\\/]/.test(t))) t = home + t.slice(1);
+  if (process.platform === 'win32') t = t.replace(/^[\\/]([a-zA-Z])(?=[\\/]|$)/, '$1:/');
+  return path.resolve(cwd, t);
+}
+
+// Escritura de tests por rol en el momento (spec §6/§11): espejo previo del handback-gate.
+// `file` es la ruta cruda resuelta contra el cwd: los globs son sensibles a mayúsculas y
+// resolveClean las pierde.
+function roleRule({ input, env, cwd, file }) {
+  const agent = input.agent_type;
+  if (agent !== 'pignolo:implementer' && agent !== 'pignolo:fixer' && agent !== 'pignolo:test-writer') return null;
+  const state = projectState({ env, cwd });
+  if (!state.active) return null;
+  const { run } = readRun(state.main);
+  const task = run && run.task ? run.task : null;
+  const wt = worktreeOf(file, task);
+  if (!wt) return null;
+  const lc = (x) => (process.platform === 'win32' ? x.toLowerCase() : x); // NTFS no distingue mayúsculas
+  const rel = lc(path.relative(wt, file).split(path.sep).join('/'));
+  let config;
+  try {
+    const { readProjectConfig } = require('../../lib/project-config');
+    config = task
+      ? readProjectConfig({ root: task.worktree, ref: task.testRef || task.base })
+      : readProjectConfig({ root: state.main });
+  } catch (e) {
+    return alt(`no se pudo leer ${PROJECT_MD} para decidir si se puede escribir ${rel} (${e.message}). Alternativa: respondé BLOCKED con este motivo.`);
+  }
+  const { matchAny } = require('../../lib/globs');
+  const isTest = matchAny(config.testPaths.map(lc), rel);
+  const isProt = rel === PROJECT_MD || matchAny(config.protectedTestConfig.map(lc), rel);
+  if (agent === 'pignolo:test-writer') {
+    if (isProt) return alt(`el test-writer no escribe ${rel} (config de tests protegida). ${ALT_TW}`);
+    if (!isTest && !rel.startsWith(HOLDOUT_DIR)) return alt(`el test-writer no escribe ${rel}, que está fuera de test-paths. ${ALT_TW}`);
+    return null;
+  }
+  if (rel === PROJECT_MD) return alt(`${agent.slice(8)} no escribe ${PROJECT_MD}. ${ALT_IMPL}`);
+  if (!isTest && !isProt) return null;
+  const files = task && Array.isArray(task.files) ? task.files.map(lc) : [];
+  if (task && task.testAuthorization === true && (files.includes(rel) || matchAny(files, rel))) return null;
+  return alt(`${agent.slice(8)} no escribe ${rel} (test o config de tests) sin autorización. ${ALT_IMPL}`);
+}
 
 exports.run = (input, ctx = {}) => {
   const env = ctx.env || process.env;
@@ -39,5 +113,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return { exit: 0 };
+  return roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
 };

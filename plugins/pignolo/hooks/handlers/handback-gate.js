@@ -196,6 +196,13 @@ function verify({ input, ctx, env, now, task }) {
     if (bad.length) {
       return `el test-writer solo puede cambiar archivos de su tarjeta (--file) que estén en test-paths, y ninguno de protected-test-config; cambió: ${bad.join(', ')}. Alternativa: deshacé esos cambios o respondé BLOCKED con el motivo.`;
     }
+    if (task.testAuthorization !== true) {
+      const { weakenings } = require('../../lib/test-integrity');
+      const weak = weakenings({ cwd: wt, base: ref, tree, timeoutMs: Math.max(1, deadline - MARGIN_MS - Date.now()), testPaths: config.testPaths, protectedTestConfig: config.protectedTestConfig });
+      if (weak.length) {
+        return `el test-writer debilitó tests: ${weak.map((w) => `${w.kind} en ${w.path}:${w.line}`).join(', ')}. Alternativa: escribí tests nuevos; no debilites los existentes.`;
+      }
+    }
     return null;
   }
   // Con test-authorization, los tests pueden cambiar; project.md sigue protegido (Review Focus 2).
