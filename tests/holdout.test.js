@@ -108,6 +108,19 @@ test('run passes a holdout that passes against HEAD and leaves no worktree or te
   assertNoLeftovers(cwd, env);
 });
 
+// Protects: los worktrees ajenos del repo · Breaks if: run poda (`git worktree prune`) otros worktrees
+// cuya carpeta falta (y con ellos sus candados de sabotaje).
+test('run does not prune other missing worktrees of the repo', () => {
+  const cwd = setup();
+  const env = envFor();
+  const other = path.join(makeTempDir('pignolo-holdout-other-'), 'wt');
+  git(cwd, 'worktree', 'add', '-q', '--detach', other);
+  fs.rmSync(other, { recursive: true, force: true });
+  assert.equal(cli(cwd, env, 'save', '--plan', 'p1', '--from', stage(cwd, 'p1', { 'acc/check.js': 'process.exit(0);\n' })).status, 0);
+  assert.equal(cli(cwd, env, 'run', '--plan', 'p1').status, 0);
+  assert.equal(git(cwd, 'worktree', 'list').split('\n').filter(Boolean).length, 2);
+});
+
 test('run fails (exit 1) with a failing holdout, and cleans up', () => {
   const cwd = setup();
   const env = envFor();

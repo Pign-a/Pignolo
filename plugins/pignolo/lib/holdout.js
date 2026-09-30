@@ -151,11 +151,16 @@ function runHoldout({ cwd, env = process.env, plan, ref, gate = 'on-done', timeo
     return result;
   } finally {
     try { result.logTail = tailOf(fs.readFileSync(logFile, 'utf8')); } catch (_) { /* sin log */ }
+    let removeFailed = false;
     if (added) {
-      try { gitRun(['worktree', 'remove', '--force', wt], root, { timeout: GIT_MS }); } catch (_) { /* lo poda prune */ }
+      try { gitRun(['worktree', 'remove', '--force', wt], root, { timeout: GIT_MS }); } catch (_) { removeFailed = true; }
     }
-    try { gitRun(['worktree', 'prune'], root, { timeout: GIT_MS }); } catch (_) { /* nada más que hacer */ }
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    // prune solo si remove falló: poda también los worktrees ajenos cuya carpeta falta
+    // (y con ellos sus candados de sabotaje).
+    if (removeFailed) {
+      try { gitRun(['worktree', 'prune'], root, { timeout: GIT_MS }); } catch (_) { /* nada más que hacer */ }
+    }
   }
 }
 
