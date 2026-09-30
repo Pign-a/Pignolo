@@ -362,3 +362,26 @@ test('el plazo mata el árbol del comando y no cuenta como rojo', async () => {
     for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch (_) { /* ya muerto */ } }
   }
 });
+
+// Protects: el índice del usuario · Breaks if: tras deshacer el parche en el árbol, el índice
+// conserva el sabotaje (el humano lo había agregado con git add) y la recuperación borra el
+// candado y dice "restauré"; o si, una vez desagregado a mano, --recover no cierra el candado.
+test('sabotaje agregado al índice: se restaura el árbol, el candado queda y se avisa del paso manual', () => {
+  const PAD = '//\n'.repeat(6); // más de 3 líneas de contexto entre el sabotaje y la edición del usuario
+  const { cwd, head } = setup({ a: `${A_OK}${PAD}// fin\n` });
+  const gd = interrupted(cwd, head, { text: `module.exports = () => 2;\n${PAD}// fin\n`, expires: PAST() });
+  git(cwd, 'add', 'src/a.js'); // el índice toma el sabotaje
+  write(cwd, 'src/a.js', `module.exports = () => 2;\n${PAD}// mío\n`); // y el usuario edita otra línea
+  const r = cli(['--recover', '--cwd', cwd]);
+  assert.equal(r.status, 3, r.stderr);
+  assert.match(r.stderr, /src\/a\.js/);
+  assert.match(r.stderr, /git restore --staged/);
+  assert.equal(read(cwd, 'src/a.js'), `${A_OK}${PAD}// mío\n`);
+  assert.equal(fs.existsSync(lockPath(gd)), true);
+  git(cwd, 'restore', '--staged', 'src/a.js');
+  const again = cli(['--recover', '--cwd', cwd]);
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(fs.existsSync(lockPath(gd)), false);
+  assert.equal(fs.existsSync(copyPath(gd)), false);
+  assert.equal(read(cwd, 'src/a.js'), `${A_OK}${PAD}// mío\n`);
+});

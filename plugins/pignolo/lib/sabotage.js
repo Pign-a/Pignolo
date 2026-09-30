@@ -148,6 +148,9 @@ function recoverLock(gitdir, lock, env) {
   const broken = statusPaths(root).filter((p) => mine.has(p));
   if (!broken.length) { dropLock(gitdir); return null; } // el parche no llegó a aplicarse
   const copy = patchCopyPath(gitdir);
+  const applies = (args) => { try { gitRaw(['apply', ...args, copy], root); return true; } catch (_) { return false; } };
+  // El sabotaje ya no está ni en el árbol ni en el índice (el humano lo desagregó): solo cierra el candado.
+  if (fs.existsSync(copy) && applies(['--check']) && applies(['--check', '--cached'])) { dropLock(gitdir); return { worktree: root, files: broken }; }
   const untouched = `no se tocó nada. Revisalos: si el cambio es solo el sabotaje, corré en ${root}: git apply -R "${copy}"; si son tuyos, dejalos. Después borrá a mano ${lockPath(gitdir)} y ${copy}.`;
   const extra = { notRestored: broken, worktree: root };
   if (!fs.existsSync(copy)) {
@@ -161,6 +164,11 @@ function recoverLock(gitdir, lock, env) {
   } catch (_) { /* best-effort: la restauración deshace solo el parche */ }
   try { gitRaw(['apply', '-R', copy], root); } catch (e) {
     throw new SabotageError(`no se pudo deshacer el sabotaje interrumpido en ${root} (${(e.stderr || e.message).toString().trim()}); ${untouched}`, 3, extra);
+  }
+  // El árbol quedó limpio del sabotaje, pero el humano lo había agregado al índice: no se toca
+  // el índice (es suyo); el candado queda (la guardia sigue negando commit y add).
+  if (applies(['-R', '--check', '--cached'])) {
+    throw new SabotageError(`sabotaje interrumpido en ${root}: el árbol quedó restaurado pero el índice conserva el sabotaje en ${broken.join(', ')}. El humano debe correr en ${root}: git restore --staged ${broken.map((p) => `"${p}"`).join(' ')}; después corré --recover otra vez (el candado queda, y la guardia niega commit y add hasta entonces).`, 3, extra);
   }
   dropLock(gitdir);
   return { worktree: root, files: broken };
