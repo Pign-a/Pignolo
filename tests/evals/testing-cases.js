@@ -132,7 +132,9 @@ const CASES = [
     ]),
     graders: [
       // Sin comillas simples en los patrones: yaml-lite no desescapa '' y el runner sí.
-      file('wrote-test', 'tests/slug.test.js', 'require\\(.\\.\\./src/slug(?:\\.js)?.\\)[\\s\\S]*hola-mundo'),
+      // require('../src/slug') o require(path.join(__dirname, '..', 'src', 'slug.js')); sin comillas
+      // en el patrón (el YAML del runner), por eso `.` en su lugar.
+      file('wrote-test', 'tests/slug.test.js', 'require\\((?:.\\.\\./src/slug(?:\\.js)?.|path\\.join\\([^)]*.src.[^)]*.slug(?:\\.js)?.\\))\\)[\\s\\S]*hola-mundo'),
       protects('tests/slug.test.js', 'R1'),
       file('impl-untouched', 'src/slug.js', esc('return text.trim().toLowerCase().split(/\\s+/).join(')),
       absent('no-impl-read', touched('Read|Grep|Glob', 'src/slug')),

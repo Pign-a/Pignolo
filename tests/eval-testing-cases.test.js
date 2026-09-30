@@ -97,6 +97,17 @@ test('evals 4b: la cabecera Protects cuenta solo en las primeras 20 líneas', ()
   assert.ok(!grade(g, { trace: [], files: { 'tests/slug.test.js': other } }), 'aprueba otro id');
 });
 
+// Sonda de la etapa Windows (2026-09-30): el test-writer real importó con path.join y el
+// grader, que solo aceptaba require('../src/slug'), lo reprobó con un test correcto.
+test('evals 4b: wrote-test acepta require literal o con path.join, y exige el esperado del requisito', () => {
+  const g = graders('test-writer-requirement').find((x) => x.name === 'wrote-test');
+  const ok = (body) => grade(g, { trace: [], files: { 'tests/slug.test.js': body } });
+  assert.ok(ok("const { slugify } = require('../src/slug');\nassert.equal(slugify('  Hola  Mundo '), 'hola-mundo');"));
+  assert.ok(ok("const { slugify } = require(path.join(__dirname, '..', 'src', 'slug.js'));\nassert.equal(slugify('  Hola  Mundo '), 'hola-mundo');"));
+  assert.ok(!ok("const { slugify } = require('../src/other');\nassert.equal(slugify('  Hola  Mundo '), 'hola-mundo');"), 'aprueba sin importar src/slug');
+  assert.ok(!ok("const { slugify } = require('../src/slug');\nassert.equal(slugify('x'), 'x');"), 'aprueba sin el esperado del requisito');
+});
+
 test('evals 4b: el test decorativo con severidad CRITICAL o fuera de su archivo no cuenta como hallado', () => {
   const c = CASES.find((x) => x.name === 'review-testability-decorative');
   const g = graders(c.name).find((x) => x.name === 'finds-decorative-test');
