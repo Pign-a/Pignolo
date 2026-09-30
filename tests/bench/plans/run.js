@@ -95,14 +95,15 @@ function prepareCase(caseName, tmpDir) {
 }
 
 // ---------- llamada a claude ----------
-function claudeArgs({ method, model, budget, mode }) {
+function claudeArgs({ method, model, budget, mode, scratch }) {
   const args = ['-p', '--model', model, '--output-format', 'json', '--max-budget-usd', String(Number(budget.toFixed(2))),
     '--no-session-persistence', '--strict-mcp-config', '--disable-slash-commands'];
   args.push(...(mode === 'bare' ? ['--bare'] : ['--setting-sources', 'project,local']));
   args.push('--allowedTools', TOOLS[method]);
   if (method === 'M0') args.push('--permission-mode', 'acceptEdits');
   // M5 corre Bash de verdad en Windows (sin sandbox): va con la guardia de pignolo de este repo.
-  if (method === 'M5') args.push('--plugin-dir', path.join(REPO_ROOT, 'plugins', 'pignolo'));
+  // Sin acceptEdits ni --add-dir, en -p no puede escribir el archivo del experimento fuera del cwd.
+  if (method === 'M5') args.push('--plugin-dir', path.join(REPO_ROOT, 'plugins', 'pignolo'), '--permission-mode', 'acceptEdits', '--add-dir', scratch);
   return args;
 }
 
@@ -145,7 +146,7 @@ function runOne(run, opts, truth, budget) {
       }
       const prompt = fs.readFileSync(path.join(__dirname, 'prompts', PROMPT[run.method]), 'utf8').replace('{{REPORT}}', () => report).replace('{{SCRATCH}}', () => scratch || '');
       const called = callClaude({
-        claude: opts.claude, args: claudeArgs({ method: run.method, model: run.model, budget, mode: opts.mode }),
+        claude: opts.claude, args: claudeArgs({ method: run.method, model: run.model, budget, mode: opts.mode, scratch }),
         cwd: work.dir, prompt, env: opts.env, timeoutMs: opts.timeoutMs,
       });
       out = { ...called, findings: called.text };

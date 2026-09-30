@@ -150,6 +150,8 @@ test('M5: revisor con experimentos puntuales; recibe el informe de M2, puede cor
   const [m5] = got;
   assert.strictEqual(argOf(m5, '--allowedTools'), 'Read,Grep,Glob,Bash,Write');
   assert.match(argOf(m5, '--plugin-dir'), /plugins[\\/]pignolo$/);
+  assert.strictEqual(argOf(m5, '--permission-mode'), 'acceptEdits');
+  assert.match(argOf(m5, '--add-dir'), /plan-bench-scratch-/); // puede escribir el experimento en la carpeta temporal
   assert.match(m5.prompt, /roundCents/); // el informe de M2 va en el prompt
   assert.match(m5.prompt, /experiment/i);
   assert.doesNotMatch(m5.prompt, /{{SCRATCH}}/); // la carpeta temporal está resuelta
