@@ -1,9 +1,10 @@
 'use strict';
 // Evals `agents` del hito 3b (§15): lentes, refuter, jueces y fixer. Una sola tabla genera
 // los casos de `claude plugin eval` (prompt.md, case.yaml, fixture.sh, graders/*.md).
-// Los graders miran lo que hizo el SUBAGENTE, no la sesión principal: una línea del
-// trace (un evento stream-json) cuenta solo si es de tipo assistant y trae un
-// parent_tool_use_id no nulo. La sesión principal solo despacha y contesta RELAYED.
+// Los graders miran lo que hizo el SUBAGENTE, no la sesión principal: su texto se lee solo
+// en el tool_result que la sesión principal recibe por el tool_use de Agent del caso, y sus
+// herramientas solo en eventos assistant con parent_tool_use_id no nulo (SUB). La sesión
+// principal solo despacha y contesta RELAYED.
 //
 // Uso: node tests/evals/review-cases.js --out <dir> [--reviewer-model opus|sonnet]
 // (la salida va a tests/evals/generated/, que no se versiona).
@@ -126,14 +127,50 @@ function diff(file, a, b) {
 }
 
 // ---- graders ----
-// Línea de trace de un subagente (evento assistant con parent_tool_use_id no nulo).
+// El runner de `claude plugin eval` 2.1.285 arma el texto de `target: trace` re-serializando
+// cada evento stream-json (JSON.stringify) y uniéndolos con "\n"; corre UNA RegExp sobre todo
+// ese texto (con `m`, `^` es inicio de evento). Medido en la sonda 2: el subagente aparece
+// solo en sus eventos con parent_tool_use_id (brief, tool_use, tool_result), y su informe
+// final llega a la sesión principal como el tool_result de su tool_use de Agent.
+//
+// Evento de un subagente (assistant con parent_tool_use_id no nulo): sus tool_use.
 const SUB = '^(?=[^\\n]*"type":"assistant")(?=[^\\n]*"parent_tool_use_id":"[^"]+")[^\\n]*';
+// Un carácter dentro de un string JSON serializado (una secuencia de escape cuenta como uno).
+// Excluir `"` es lo que mantiene lineal la regex: ningún CH puede salir del string ni solaparse
+// con otra alternativa, así que no hay backtracking combinatorio sobre el trace.
+const CH = String.raw`(?:[^"\\\n]|\\.)`;
+// Hasta el comienzo del texto del informe del subagente: el tool_use de Agent de la sesión
+// principal con el subagent_type del caso (su id se captura) y, más adelante, el tool_result
+// con ese mismo id (\1). El texto de la sesión principal nunca matchea: sus comillas van
+// escapadas y no puede fabricar un tool_result con ese id.
+const reportHead = (agent) => String.raw`"type":"tool_use","id":"([^"]+)","name":"Agent","input":\{(?:[^{}"\n]|"${CH}*")*?"subagent_type":"pignolo:${agent}"[\s\S]*?"tool_use_id":"\1","type":"tool_result","content":(?:"|\[\{"type":"text","text":")`;
 // Separadores entre dos claves JSON dentro del texto del subagente (serializado: \" y \n).
 const SEP = '(?:,|\\s|\\\\[rn])*';
 const key = (k, v) => `\\\\"${k}\\\\":\\s*\\\\"${v}\\\\"`;
-const trace = (name, pattern, match = 'contains') => ({ name, type: 'regex', target: 'trace', flags: 'm', pattern: SUB + pattern, match });
+const trace = (name, pattern) => ({ name, type: 'regex', target: 'trace', flags: 'm', pattern: SUB + pattern });
+// `pattern` aparece dentro del informe que devolvió el subagente `agent`.
+const said = (agent, name, pattern) => ({ name, type: 'regex', target: 'trace', pattern: `${reportHead(agent)}${CH}*?${pattern}` });
+// El subagente devolvió un informe con su bloque ```json y `pattern` NO aparece en él. Es
+// `contains` a propósito: sin tool_result del Agent, con un error de la herramienta, con el
+// aviso de background o con un informe vacío reprueba (un `not_contains` aprobaría en vacío).
+const saidNot = (agent, name, pattern) => ({ name, type: 'regex', target: 'trace', pattern: `${reportHead(agent)}(?=${CH}*?\`\`\`json)(?:(?!${pattern})${CH})*"` });
 const finding = (file, lines, sev) => `${key('location', `${file.replace(/\./g, '\\.')}:(${lines})`)}${SEP}${key('severity', `(${sev})`)}`;
-const verdict = (word) => trace(`verdict-${word.toLowerCase()}`, `\\\\n${word}(\\\\n)*"`);
+// Última línea del informe: la palabra sola, con énfasis markdown o backticks alrededor
+// (`**APPROVE**`, `` `DONE` ``) y el prefijo `Final word:` opcional; después solo líneas vacías.
+// El harness 2.1.285 sangra cada línea del informe y agrega después "\nagentId: ..."; sin ese
+// marco, la última línea cierra el string.
+const MARK = '[*_`]{0,2}';
+const lastLine = (word) => String.raw`\\n *${MARK}(?:Final word: *${MARK})?${word}${MARK} *(?:\\n *)*(?:"|\\nagentId: )`;
+const verdict = (agent, word) => said(agent, `verdict-${word.toLowerCase()}`, lastLine(word));
+// Hubo informe del subagente: su bloque ```json (lentes, jueces, refuter) o, en el fixer, su
+// palabra final como última línea. Un error, el aviso de background o un informe vacío no cuentan.
+const returned = (agent) => ({
+  name: 'subagent-returned', type: 'regex', target: 'trace',
+  pattern: `${reportHead(agent)}${CH}*?${agent === 'fixer' ? lastLine('(?:DONE|BLOCKED|NEEDS_CONTEXT)') : '```json'}`,
+});
+// Un solo despacho de Agent en la corrida: con dos, los graders de texto aprobarían el mejor
+// de los dos informes. `not_contains` basta: `dispatched` ya exige al menos uno.
+const singleDispatch = { name: 'single-dispatch', type: 'regex', target: 'trace', pattern: String.raw`"name":"Agent","input":\{[\s\S]*"name":"Agent","input":\{`, match: 'not_contains' };
 const dispatched = (agent, model) => [
   { name: 'dispatched', type: 'tool_used', tool: 'Agent', input_match: `"subagent_type":"pignolo:${agent}"` },
   ...(model ? [{ name: 'model', type: 'tool_used', tool: 'Agent', input_match: `"model":"${model}"` }] : []),
@@ -165,7 +202,7 @@ function lensCases() {
     out.push({
       name: `${agent}-defect`, agent, tags: ['agents', 'review', 'defect'], reviewer: true,
       files: { [c.file]: c.bug }, brief: reviewBrief(c.goal, c.file, c.base, c.bug),
-      graders: [trace('finds-planted-defect', finding(c.file, c.lines, c.sev))],
+      graders: [said(agent, 'finds-planted-defect', finding(c.file, c.lines, c.sev))],
       samples: {
         pass: report([f(c.lens, `${c.file}:${c.sample}`, c.lens === 'readability' ? 'WARNING' : 'CRITICAL')], 'REQUEST_CHANGES'),
         fail: report([f(c.lens, `src/other.js:7`, 'CRITICAL')], 'REQUEST_CHANGES'),
@@ -174,7 +211,7 @@ function lensCases() {
     out.push({
       name: `${agent}-clean`, agent, tags: ['agents', 'review', 'clean'], reviewer: true,
       files: { [c.file]: c.clean }, brief: reviewBrief(c.goal, c.file, c.base, c.clean),
-      graders: [verdict('APPROVE'), trace('no-blocking-finding', `${SEP}${key('severity', '(BLOCKER|CRITICAL)')}`, 'not_contains')],
+      graders: [verdict(agent, 'APPROVE'), saidNot(agent, 'no-blocking-finding', key('severity', '(BLOCKER|CRITICAL)'))],
       samples: {
         pass: report([f(c.lens, `${c.file}:3`, 'SUGGESTION')], 'APPROVE'),
         fail: report([f(c.lens, `${c.file}:3`, 'CRITICAL')], 'REQUEST_CHANGES'),
@@ -190,13 +227,13 @@ function judgeCases() {
     out.push({
       name: `${j}-defect`, agent: j, tags: ['agents', 'judges', 'defect'], reviewer: true,
       files: { 'src/pages.js': PAGES_BUG }, brief: reviewBrief(LENS_CASES[0].goal, 'src/pages.js', PAGES, PAGES_BUG),
-      graders: [trace('finds-planted-defect', finding('src/pages.js', '[4-9]|10', 'BLOCKER|CRITICAL')), verdict('REQUEST_CHANGES')],
+      graders: [said(j, 'finds-planted-defect', finding('src/pages.js', '[4-9]|10', 'BLOCKER|CRITICAL')), verdict(j, 'REQUEST_CHANGES')],
       samples: { pass: report([f(j, 'src/pages.js:7', 'BLOCKER')], 'REQUEST_CHANGES'), fail: report([], 'APPROVE') },
     });
     out.push({
       name: `${j}-clean`, agent: j, tags: ['agents', 'judges', 'clean'], reviewer: true,
       files: { 'src/pages.js': PAGES_CLEAN }, brief: reviewBrief(LENS_CASES[0].goal, 'src/pages.js', PAGES, PAGES_CLEAN),
-      graders: [verdict('APPROVE'), trace('no-blocking-finding', `${SEP}${key('severity', '(BLOCKER|CRITICAL)')}`, 'not_contains')],
+      graders: [verdict(j, 'APPROVE'), saidNot(j, 'no-blocking-finding', key('severity', '(BLOCKER|CRITICAL)'))],
       samples: { pass: report([], 'APPROVE'), fail: report([f(j, 'src/pages.js:7', 'CRITICAL')], 'REQUEST_CHANGES') },
     });
   }
@@ -215,7 +252,7 @@ const refuterCase = {
     'C1. src/pages.js:6 — pageOf(items, 0, 2) computes a negative start and returns the wrong items. Repro-spec: call pageOf([1,2,3], 0, 2) and observe a non-empty result.',
     'C2. src/token.js:4 — isExpired returns true when expiresAt equals now. Repro-spec: isExpired({ expiresAt: 5 }, 5) returns true.',
   ].join('\n'),
-  graders: [trace('refutes-false-claim', claim('C1', 'REFUTED')), trace('keeps-true-claim', claim('C2', 'REFUTED'), 'not_contains')],
+  graders: [said('refuter', 'refutes-false-claim', claim('C1', 'REFUTED')), saidNot('refuter', 'keeps-true-claim', claim('C2', 'REFUTED'))],
   samples: {
     pass: `\`\`\`json\n${JSON.stringify([{ claim: 'C1', verdict: 'REFUTED', reason: 'line 5 throws' }, { claim: 'C2', verdict: 'CONFIRMED', reason: '<=' }], null, 2)}\n\`\`\``,
     fail: `\`\`\`json\n${JSON.stringify([{ claim: 'C1', verdict: 'CONFIRMED', reason: 'x' }, { claim: 'C2', verdict: 'REFUTED', reason: 'y' }], null, 2)}\n\`\`\``,
@@ -237,7 +274,7 @@ const fixerCase = {
     { name: 'test-untouched', type: 'regex', target: { source: 'file', path: 'tests/pages.test.js' }, pattern: 'pageOf\\(\\[1, 2, 3, 4, 5\\], 3, 2\\), \\[5\\]' },
     trace('subagent-edited-source', '"name":"(Edit|Write)"[^\\n]*src/pages\\.js'),
     trace('subagent-ran-tests', '"name":"Bash"[^\\n]*node --test'),
-    trace('done', '\\\\nDONE(\\\\n)*"'),
+    said('fixer', 'done', lastLine('DONE')),
   ],
   samples: { pass: 'RED: ... GREEN: ...\nDONE', fail: 'I could not run it.\nBLOCKED' },
 };
@@ -289,7 +326,7 @@ function promptMd(c, caseDir, reviewerModel) {
     `allowed_tools: [${tools.join(', ')}]`,
     '---',
     '',
-    `Dispatch the pignolo:${c.agent} agent (${how}) with exactly the brief between the two lines of dashes. Do not read, run or change anything yourself. When the agent returns, reply with only the word RELAYED.`,
+    `Dispatch the pignolo:${c.agent} agent (${how}) with run_in_background false and exactly the brief between the two lines of dashes. Do not read, run or change anything yourself. When the agent returns, reply with only the word RELAYED.`,
     '',
     '----------',
     c.brief,
@@ -307,7 +344,7 @@ function build({ out, reviewerModel = 'opus' }) {
     fs.writeFileSync(path.join(dir, 'case.yaml'), `schema_version: "1.1"\nname: ${c.name}\ncontext:\n  scaffold_script: fixture.sh\n`);
     fs.writeFileSync(path.join(dir, 'fixture.sh'), fixtureSh(c.files));
     fs.writeFileSync(path.join(dir, 'prompt.md'), promptMd(c, dir, reviewerModel));
-    const graders = [...dispatched(c.agent, c.reviewer ? reviewerModel : null), ...c.graders];
+    const graders = [...dispatched(c.agent, c.reviewer ? reviewerModel : null), singleDispatch, returned(c.agent), ...c.graders];
     for (const g of graders) fs.writeFileSync(path.join(dir, 'graders', `${g.name}.md`), graderMd(g));
   }
   return CASES.map((c) => c.name);
@@ -325,4 +362,4 @@ if (require.main === module) {
   process.stdout.write(`${JSON.stringify({ out: path.resolve(out), cases: names })}\n`);
 }
 
-module.exports = { CASES, build, SUB };
+module.exports = { CASES, build, SUB, reportHead };
