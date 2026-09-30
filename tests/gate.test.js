@@ -21,9 +21,10 @@ const write = (cwd, rel, text) => {
 };
 const commit = (cwd, msg) => { git(cwd, 'add', '-A'); git(cwd, 'commit', '-q', '-m', msg); return git(cwd, 'rev-parse', 'HEAD'); };
 
-function project(cwd, { type = 'code-tested', gate = 'node check.js', extra = '' } = {}) {
+function project(cwd, { type = 'code-tested', gate = 'node check.js', extra = '', mutationCmd = null } = {}) {
   const q = JSON.stringify(gate);
-  const gates = gate === null ? '' : `gates:\n  on-done: ${q}\n  pre-merge: ${q}\n  on-edit: ${q}\n`;
+  const mut = mutationCmd ? `  mutation: ${JSON.stringify(mutationCmd)}\n` : '';
+  const gates = gate === null ? '' : `gates:\n  on-done: ${q}\n  pre-merge: ${q}\n  on-edit: ${q}\n${mut}`;
   write(cwd, '.pignolo/project.md', `---\ntype: ${type}\n${gates}${extra}---\n# proyecto\n`);
 }
 function setup(opts = {}) {
@@ -182,4 +183,111 @@ test('CLI --task sin run.json sale 2 con el mensaje', () => {
   const r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--task', '--cwd', cwd], { encoding: 'utf8' });
   assert.equal(r.status, 2);
   assert.match(r.stderr, /no hay una tarea registrada en \.pignolo\/run\.json/);
+});
+
+// --- hito 4a, Task 3: debilitados, semilla ofrecida y mutación ---
+
+test('semilla: seed 42 llega al comando por PIGNOLO_TEST_SEED y queda en seal.seedOffered; sin seed es un entero de 32 bits', () => {
+  const { cwd } = setup({ check: 'console.log("seed=" + process.env.PIGNOLO_TEST_SEED);\n' });
+  const s = real(cwd, { seed: 42 });
+  assert.equal(s.seedOffered, 42);
+  const log = fs.readFileSync(path.join(sealDir(process.env, repoIdFor({ cwd })), 'logs', `${s.logHash}.log`), 'utf8');
+  assert.match(log, /seed=42/);
+  const r = real(cwd);
+  assert.ok(Number.isInteger(r.seedOffered) && r.seedOffered >= 0 && r.seedOffered < 2 ** 32);
+});
+
+test('debilitados: it.skip agregado por un test-writer da INTEGRITY con weakened[0].kind skip; con testAuthorization pasa', () => {
+  const { cwd, base } = setup();
+  write(cwd, 'tests/a.test.js', "// t\nit.skip('x', () => {});\n");
+  const t = { files: ['tests/a.test.js'], agents: ['pignolo:test-writer'] };
+  let s = gate(cwd, { task: task(cwd, base, t) });
+  assert.equal(s.status, 'INTEGRITY');
+  assert.equal(s.checks.weakened[0].kind, 'skip');
+  s = gate(cwd, { task: task(cwd, base, { ...t, testAuthorization: true }) });
+  assert.equal(s.status, 'PASS');
+});
+
+test('debilitados sin tarea: .only sin commitear da INTEGRITY; commiteado solo con --base', () => {
+  const { cwd, base } = setup();
+  write(cwd, 'tests/a.test.js', "// t\nit.only('x', () => {});\n");
+  let s = gate(cwd);
+  assert.equal(s.status, 'INTEGRITY');
+  assert.equal(s.checks.weakened[0].kind, 'only');
+  commit(cwd, 'only');
+  s = gate(cwd);
+  assert.equal(s.status, 'PASS');
+  s = gate(cwd, { base });
+  assert.equal(s.status, 'INTEGRITY');
+});
+
+test('noProtects: test nuevo sin Protects: se lista; con Protects: en la línea 1 no', () => {
+  const { cwd } = setup();
+  write(cwd, 'tests/new.test.js', "it('x', () => {});\n");
+  write(cwd, 'tests/ok.test.js', "// Protects: R1 · Breaks if: x\nit('y', () => {});\n");
+  write(cwd, 'tests/data.json', '{}\n');
+  const s = gate(cwd);
+  assert.equal(s.status, 'PASS');
+  assert.deepEqual(s.checks.noProtects, ['tests/new.test.js']);
+});
+
+function riskSetup(mutationCmd, { mutation = true, file = 'src/pay.js' } = {}) {
+  const extra = `mutation: ${mutation}\nhigh-risk-paths:\n  - src/pay.js\n`;
+  const s = setup({ project: { extra, mutationCmd } });
+  write(s.cwd, file, 'module.exports = 7;\n');
+  commit(s.cwd, 'cambio');
+  return s;
+}
+const mutExec = (exitCode, calls = []) => (command, { logFile, env }) => {
+  calls.push({ command, env });
+  fs.appendFileSync(logFile, command === 'node mutate.js' ? 'mutantes\n' : 'ok\n');
+  return { exit: command === 'node mutate.js' ? exitCode : 0 };
+};
+
+test('mutación en pre-merge: sin gates.mutation da NO_MUTATION_TOOL', () => {
+  const { cwd, base } = riskSetup(null);
+  const s = gate(cwd, { level: 'pre-merge', base });
+  assert.equal(s.status, 'NO_MUTATION_TOOL');
+});
+
+test('mutación en pre-merge: exit 1 da MUTATION; exit 0 da PASS con files, la semilla y el log agregado', () => {
+  const { cwd, base } = riskSetup('node mutate.js');
+  let s = gate(cwd, { level: 'pre-merge', base, exec: mutExec(1) });
+  assert.equal(s.status, 'MUTATION');
+  const calls = [];
+  s = gate(cwd, { level: 'pre-merge', base, seed: 7, exec: mutExec(0, calls) });
+  assert.equal(s.status, 'PASS');
+  assert.deepEqual(s.checks.mutation, { files: ['src/pay.js'], exit: 0 });
+  assert.equal(calls[1].command, 'node mutate.js');
+  assert.equal(calls[1].env.PIGNOLO_MUTATE_FILES, 'src/pay.js');
+  assert.equal(calls[1].env.PIGNOLO_TEST_SEED, '7');
+  const log = fs.readFileSync(path.join(sealDir(process.env, repoIdFor({ cwd })), 'logs', `${s.logHash}.log`), 'utf8');
+  assert.match(log, /--- mutation ---\nmutantes/);
+});
+
+test('mutación: no corre si el comando de pre-merge falla, si el cambio no toca high-risk-paths ni en on-done', () => {
+  const { cwd, base } = riskSetup('node mutate.js');
+  const calls = [];
+  const failing = (command) => { calls.push(command); return { exit: command === 'node check.js' ? 1 : 0 }; };
+  let s = gate(cwd, { level: 'pre-merge', base, exec: failing });
+  assert.equal(s.status, 'FAIL');
+  assert.deepEqual(calls, ['node check.js']);
+  s = gate(cwd, { level: 'on-done', base, exec: mutExec(1) });
+  assert.equal(s.status, 'PASS');
+  assert.equal(s.checks.mutation, null);
+  const other = riskSetup('node mutate.js', { file: 'src/b.js' });
+  s = gate(other.cwd, { level: 'pre-merge', base: other.base, exec: mutExec(1) });
+  assert.equal(s.status, 'PASS');
+  assert.equal(s.checks.mutation, null);
+});
+
+test('CLI: --seed inválido y --base inexistente salen 2', () => {
+  const { cwd } = setup();
+  let r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--seed', 'abc'], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--base', 'no-existe'], { encoding: 'utf8' });
+  assert.equal(r.status, 2);
+  r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--seed', '5'], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.equal(JSON.parse(r.stdout).seedOffered, 5);
 });

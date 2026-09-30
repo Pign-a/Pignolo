@@ -2,12 +2,14 @@
 // Compuerta fuera de hooks (spec §8.2, §9.2, §9.4): corre el comando del nivel, mide
 // que el árbol no cambie, alcance e integridad de tests, y escribe el sello.
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { readProjectConfig } = require('./project-config');
 const { matchAny } = require('./globs');
 const { workingTree, changedFiles, addedLines, headSha } = require('./changes');
+const { weakenings } = require('./test-integrity');
 const { repoIdFor, writeSeal } = require('./seals');
 
 const LEVELS = ['on-edit', 'on-done', 'pre-merge'];
@@ -15,6 +17,9 @@ const SEALED = ['on-done', 'pre-merge'];
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const GIT_MS = 120000;
 const TAIL_LINES = 40;
+// Extensiones de código para las que se pide `Protects:` en un test agregado (se registra, no bloquea).
+const CODE_EXT = /\.(?:js|mjs|cjs|ts|tsx|jsx|py|go|rs|java|kt|cs|rb|php)$/;
+const PROTECTS_LINES = 20;
 
 const ENV_DETECT = [
   /process\.env\.VITEST\b/,
@@ -26,10 +31,10 @@ const ENV_DETECT = [
 ];
 
 // Por defecto: la shell, con stdout y stderr a un archivo por fd (sin maxBuffer).
-function defaultExec(command, { cwd, timeoutMs, logFile }) {
+function defaultExec(command, { cwd, timeoutMs, logFile, env }) {
   const fd = fs.openSync(logFile, 'w');
   try {
-    const r = spawnSync(command, { cwd, shell: true, windowsHide: true, timeout: timeoutMs, stdio: ['ignore', fd, fd] });
+    const r = spawnSync(command, { cwd, env, shell: true, windowsHide: true, timeout: timeoutMs, stdio: ['ignore', fd, fd] });
     if (r.error || r.status === null) {
       fs.writeSync(fd, `\n[pignolo gate] el comando no terminó: ${r.error ? r.error.message : `señal ${r.signal}`}\n`);
       return { exit: 124 };
@@ -42,38 +47,66 @@ function defaultExec(command, { cwd, timeoutMs, logFile }) {
 
 const inFiles = (files, p) => files.includes(p) || matchAny(files, p);
 
-function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs = DEFAULT_TIMEOUT_MS, exec = defaultExec } = {}) {
+function hasProtects(cwd, rel) {
+  try {
+    return fs.readFileSync(path.join(cwd, rel), 'utf8').split(/\r?\n/, PROTECTS_LINES).some((l) => /\bProtects:/.test(l));
+  } catch (_) { return true; } // ilegible: no se acusa
+}
+
+function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs = DEFAULT_TIMEOUT_MS, exec = defaultExec, seed, base } = {}) {
   if (!LEVELS.includes(level)) throw new Error(`nivel inválido: ${level} (on-edit | on-done | pre-merge)`);
   const ref = task ? (task.testRef || task.base) : undefined;
   const config = readProjectConfig({ root: cwd, ref, timeoutMs: GIT_MS });
   const command = config.gates[level] || '';
   const gitOpts = { cwd, timeoutMs: GIT_MS };
+  const seedOffered = Number.isInteger(seed) ? seed : crypto.randomInt(0, 2 ** 32);
+  const runEnv = { ...process.env, PIGNOLO_TEST_SEED: String(seedOffered) };
 
   const treeHash = workingTree(gitOpts);
   const seal = {
     v: 1, repoId: repoIdFor({ cwd }), sha: headSha(gitOpts), treeHash, treeAfter: treeHash, level,
     command, exit: null, status: 'NO_GATE', time: new Date().toISOString(),
-    task: task ? task.id : null, noTestsReason: null,
-    checks: { scope: [], emptied: [], integrity: [], envDetect: [] },
+    task: task ? task.id : null, noTestsReason: null, seedOffered,
+    checks: { scope: [], emptied: [], integrity: [], envDetect: [], weakened: [], noProtects: [], mutation: null },
   };
   let log = '';
+  const baseRef = task ? task.base : (base || headSha(gitOpts));
+  // Cambiados contra la base que caen en high-risk-paths, si `mutation: true`.
+  const mutationFiles = () => {
+    if (!config.mutation || !baseRef || !config.highRiskPaths.length) return [];
+    return changedFiles({ ...gitOpts, base: baseRef, tree: treeHash, sizes: false })
+      .filter((f) => f.status !== 'D' && matchAny(config.highRiskPaths, f.path)).map((f) => f.path);
+  };
 
   if (command) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-gate-'));
     const logFile = path.join(dir, 'gate.log');
+    const c = seal.checks;
     try {
-      seal.exit = exec(command, { cwd, timeoutMs, logFile }).exit;
+      seal.exit = exec(command, { cwd, timeoutMs, logFile, env: runEnv }).exit;
       try { log = fs.readFileSync(logFile, 'utf8'); } catch (_) { log = ''; }
+      seal.treeAfter = workingTree(gitOpts);
+      const mutFiles = mutationFiles();
+      if (level === 'pre-merge' && mutFiles.length) {
+        if (!config.gates.mutation) c.mutation = { files: mutFiles, exit: null };
+        else if (seal.exit === 0 && seal.treeAfter === treeHash) {
+          const mutLog = path.join(dir, 'mutation.log');
+          const mutEnv = { ...runEnv, PIGNOLO_MUTATE_FILES: mutFiles.join('\n') };
+          const exit = exec(config.gates.mutation, { cwd, timeoutMs, logFile: mutLog, env: mutEnv }).exit;
+          let out = '';
+          try { out = fs.readFileSync(mutLog, 'utf8'); } catch (_) { out = ''; }
+          log += `${log === '' || log.endsWith('\n') ? '' : '\n'}--- mutation ---\n${out}`;
+          c.mutation = { files: mutFiles, exit };
+          seal.treeAfter = workingTree(gitOpts);
+        }
+      }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
-    seal.treeAfter = workingTree(gitOpts);
-    const c = seal.checks;
-    const flags = { treeChanged: seal.treeAfter !== treeHash, noRef: false, integrity: false, scope: false, noTests: false };
+    const flags = { treeChanged: seal.treeAfter !== treeHash, noRef: false, integrity: false, scope: false, noTests: false, noMutationTool: false, mutation: false };
 
     if (flags.treeChanged) c.scope.push(...changedFiles({ ...gitOpts, base: treeHash, tree: seal.treeAfter, sizes: false }).map((f) => f.path));
 
-    const baseRef = task ? task.base : headSha(gitOpts);
     if (task) {
       if (!ref) flags.noRef = true;
       else {
@@ -88,6 +121,13 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
         }
       }
     }
+    const weakRef = ref ?? baseRef;
+    if (weakRef) {
+      c.weakened.push(...weakenings({ ...gitOpts, base: weakRef, tree: treeHash, testPaths: config.testPaths, protectedTestConfig: config.protectedTestConfig }));
+      for (const f of changedFiles({ ...gitOpts, base: weakRef, tree: treeHash, sizes: false })) {
+        if (f.status === 'A' && CODE_EXT.test(f.path) && matchAny(config.testPaths, f.path) && !hasProtects(cwd, f.path)) c.noProtects.push(f.path);
+      }
+    }
     if (baseRef) {
       const added = addedLines({ ...gitOpts, base: baseRef, tree: treeHash });
       for (const l of added) {
@@ -98,7 +138,9 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
         flags.noTests = !changed.some((f) => matchAny(config.testPaths, f.path));
       }
     }
-    flags.integrity = c.integrity.length > 0;
+    flags.integrity = c.integrity.length > 0 || (c.weakened.length > 0 && !(task && task.testAuthorization === true));
+    flags.noMutationTool = !!c.mutation && c.mutation.exit === null && !config.gates.mutation;
+    flags.mutation = !!c.mutation && c.mutation.exit !== null && c.mutation.exit !== 0;
     flags.scope = c.scope.length > 0 || c.emptied.length > 0;
 
     const reason = typeof noTestsReason === 'string' && noTestsReason.trim() ? noTestsReason : null;
@@ -107,6 +149,8 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
     else if (seal.exit !== 0) seal.status = 'FAIL';
     else if (flags.integrity) seal.status = 'INTEGRITY';
     else if (flags.scope) seal.status = 'SCOPE';
+    else if (flags.noMutationTool) seal.status = 'NO_MUTATION_TOOL';
+    else if (flags.mutation) seal.status = 'MUTATION';
     else if (flags.noTests) { seal.status = 'NO_TESTS'; seal.noTestsReason = reason; } else seal.status = 'PASS';
   }
 

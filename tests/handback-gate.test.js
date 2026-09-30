@@ -335,6 +335,18 @@ test('test-writer DONE', async (t) => {
     edit(fx, 'tests/a.test.js', "require('../src/a'); // nuevo caso\n");
     assert.strictEqual(call(fx, { agent: 'pignolo:test-writer' }).exit, 0);
   });
+  await t.test('weakened test (it.skip) inside its card -> 2; testAuthorization lets it pass', () => {
+    const fx = flow({ taskOver: { files: ['tests/a.test.js'] } });
+    edit(fx, 'tests/a.test.js', "require('../src/a');\nit.skip('x', () => {});\n");
+    const r = call(fx, { agent: 'pignolo:test-writer' });
+    assert.strictEqual(r.exit, 2);
+    assert.match(r.stderr, /skip/);
+    assert.match(r.stderr, /tests\/a\.test\.js/);
+    assert.match(r.stderr, /Alternativa:/);
+    const ok = flow({ taskOver: { files: ['tests/a.test.js'], testAuthorization: true } });
+    edit(ok, 'tests/a.test.js', "require('../src/a');\nit.skip('x', () => {});\n");
+    assert.strictEqual(call(ok, { agent: 'pignolo:test-writer' }).exit, 0);
+  });
   await t.test('I4: an existing test outside its card -> 2', () => {
     const fx = flow({ files: { 'tests/b.test.js': "require('../src/a');\n" }, taskOver: { files: ['tests/a.test.js'] } });
     edit(fx, 'tests/b.test.js', '// vaciado\n');
