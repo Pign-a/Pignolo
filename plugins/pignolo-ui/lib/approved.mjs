@@ -3,12 +3,14 @@
 // a change creates <flow>-v2 (-v3...). DESIGN.md "## Decisions" registers the path and the
 // sha256 of the manifest; verify checks both before anything is implemented.
 //
-// checkScreens(dir) -> { files, problems }      saveApproved({ projectRoot, flow, from, date, leakValues })
+// checkScreens(dir, { allowFonts }) -> { files, problems }   screenProblems(html, { allowFonts, files }) -> [{ problem, href? }]
+// saveApproved({ projectRoot, flow, from, date, leakValues })   (copies every screen without the Google Fonts <link>, R-19)
 // decisionEntry({ path, manifestSha256, date, quote })   verifyApproved({ projectRoot, approvedPath })
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { checkLeaks } from './leak-check.mjs';
+import { stripRemoteFonts } from './remote-fonts.mjs';
 
 const FLOW = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREEN = /^[a-z0-9][a-z0-9-]*\.html$/;
@@ -25,7 +27,29 @@ const REMOTE_CSS = /url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?\/\/|@import\s+["']\s
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const posix = (p) => p.split(path.sep).join('/');
 
-export function checkScreens(dir) {
+// Pure per-screen checks (shared with the canvas converter). allowFonts: the allowed Google Fonts <link>
+// form (lib/remote-fonts.mjs) is not a remote resource; any other form or remote resource still is.
+// files: the screens of the flow, to check the links between them (omit it to skip broken-link).
+export function screenProblems(html, { allowFonts = false, files = null } = {}) {
+  const out = [];
+  const text = allowFonts ? stripRemoteFonts(html).html : html;
+  if (!/<meta\s[^>]*charset\s*=\s*["']?utf-8/i.test(text)) out.push({ problem: 'no-charset' });
+  if (/<script\b/i.test(text) || EVENT_HANDLER.test(text) || JS_URL.test(text)) out.push({ problem: 'script' });
+  const remoteTag = [...text.matchAll(RESOURCE_TAG)].some((m) => REMOTE_ATTR.test(m[0]));
+  const remoteSrcset = [...text.matchAll(SRCSET)].some((m) => (m[1] ?? m[2] ?? m[3]).split(',').some((c) => REMOTE_URL.test(c)));
+  if (remoteTag || remoteSrcset || BASE_HREF.test(text) || META_REFRESH.test(text) || REMOTE_CSS.test(text)) out.push({ problem: 'remote-resource' });
+  if (files) {
+    for (const m of text.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']*)["']/gi)) {
+      const href = m[1].trim().replace(/^(?:\.\/)+/, '');
+      if (href === '' || href.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) continue;
+      const target = href.split(/[?#]/)[0];
+      if (href.startsWith('/') || !files.includes(target)) out.push({ problem: 'broken-link', href });
+    }
+  }
+  return out;
+}
+
+export function checkScreens(dir, { allowFonts = false } = {}) {
   const problems = [];
   const files = [];
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -37,24 +61,15 @@ export function checkScreens(dir) {
   if (!files.length && !problems.length) problems.push({ file: '', problem: 'empty' });
   for (const f of files.sort()) {
     const html = fs.readFileSync(path.join(dir, f), 'utf8');
-    if (!/<meta\s[^>]*charset\s*=\s*["']?utf-8/i.test(html)) problems.push({ file: f, problem: 'no-charset' });
-    if (/<script\b/i.test(html) || EVENT_HANDLER.test(html) || JS_URL.test(html)) problems.push({ file: f, problem: 'script' });
-    const remoteTag = [...html.matchAll(RESOURCE_TAG)].some((m) => REMOTE_ATTR.test(m[0]));
-    const remoteSrcset = [...html.matchAll(SRCSET)].some((m) => (m[1] ?? m[2] ?? m[3]).split(',').some((c) => REMOTE_URL.test(c)));
-    if (remoteTag || remoteSrcset || BASE_HREF.test(html) || META_REFRESH.test(html) || REMOTE_CSS.test(html)) problems.push({ file: f, problem: 'remote-resource' });
-    for (const m of html.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']*)["']/gi)) {
-      const href = m[1].trim().replace(/^(?:\.\/)+/, '');
-      if (href === '' || href.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//')) continue;
-      const target = href.split(/[?#]/)[0];
-      if (href.startsWith('/') || !files.includes(target)) problems.push({ file: f, problem: 'broken-link', href });
-    }
+    for (const p of screenProblems(html, { allowFonts, files })) problems.push({ file: f, ...p });
   }
   return { files, problems };
 }
 
 export function saveApproved({ projectRoot, flow, from, date, leakValues = [] }) {
   if (!FLOW.test(flow || '')) return { ok: false, problems: [{ file: '', problem: 'bad-flow-name' }] };
-  const { files, problems } = checkScreens(from);
+  // the origin may carry the allowed Google Fonts <link> (R-19); the copy never does
+  const { files, problems } = checkScreens(from, { allowFonts: true });
   // leak check before saving as approved (spec §7.4); values are never echoed back
   for (const l of checkLeaks(from, leakValues).leaks) {
     const { file, kind, line } = l;
@@ -72,13 +87,22 @@ export function saveApproved({ projectRoot, flow, from, date, leakValues = [] })
   const dir = path.join(base, name);
   fs.mkdirSync(dir); // not recursive: fails instead of writing into a folder that appeared meanwhile
   const entries = [];
+  let fontsRemoved = 0;
   for (const f of files) {
-    fs.copyFileSync(path.join(from, f), path.join(dir, f), fs.constants.COPYFILE_EXCL);
+    const stripped = stripRemoteFonts(fs.readFileSync(path.join(from, f), 'utf8'));
+    fontsRemoved += stripped.removed;
+    if (stripped.removed === 0) fs.copyFileSync(path.join(from, f), path.join(dir, f), fs.constants.COPYFILE_EXCL);
+    else fs.writeFileSync(path.join(dir, f), stripped.html, { flag: 'wx' });
+    // what is stored must have no remote resource at all (spec §3.3)
+    if (screenProblems(fs.readFileSync(path.join(dir, f), 'utf8'), { allowFonts: false }).some((p) => p.problem === 'remote-resource')) {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return { ok: false, problems: [{ file: f, problem: 'remote-resource' }] };
+    }
     entries.push({ path: f, sha256: sha256(fs.readFileSync(path.join(dir, f))) });
   }
   const manifest = `${JSON.stringify({ flow, version, date, files: entries }, null, 2)}\n`;
   fs.writeFileSync(path.join(dir, 'manifest.json'), manifest, { flag: 'wx' });
-  return { ok: true, path: posix(path.relative(projectRoot, dir)), version, manifestSha256: sha256(fs.readFileSync(path.join(dir, 'manifest.json'))) };
+  return { ok: true, path: posix(path.relative(projectRoot, dir)), version, manifestSha256: sha256(fs.readFileSync(path.join(dir, 'manifest.json'))), fontsRemoved };
 }
 
 export function decisionEntry({ path: p, manifestSha256, date, quote }) {
