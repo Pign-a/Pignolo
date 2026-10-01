@@ -98,6 +98,32 @@ export function watchSignals({ proc = process, current, stdout = process.stdout,
   return guard;
 }
 
+// One browser per command, always closed: open(fn) runs fn(browser) and records the cleanup
+// (graceful, killed, profileRemoved, profile) in state.cleanup; state.current is the open browser
+// (for watchSignals). Shared with compare.mjs so both commands leave no process or profile behind.
+export function createOpener({ found, browserOptions = {} }) {
+  const state = { cleanup: null, current: null };
+  const open = async (fn) => {
+    if (!found.path) throw new BrowserUnavailable(`no browser: ${found.reason}`);
+    let browser;
+    try {
+      browser = await openBrowser({ executable: found.path, ...browserOptions });
+    } catch (e) {
+      // A browser that did not start still had a profile: say whether it could be removed.
+      if (e instanceof BrowserUnavailable && e.cleanup) state.cleanup = { ...e.cleanup, profile: e.profile };
+      throw e;
+    }
+    state.current = browser;
+    try {
+      return await fn(browser);
+    } finally {
+      state.cleanup = { ...(await browser.close()), profile: browser.profile };
+      state.current = null;
+    }
+  };
+  return { open, state };
+}
+
 // browserOptions: extra options for openBrowser (tests); stdout: where the result is printed.
 export async function main(argv, { cwd = process.cwd(), env = process.env, browserOptions = {}, stdout = process.stdout, proc = process } = {}) {
   let signals = null;
@@ -121,27 +147,9 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     const found = findBrowser({ env });
     // cleanup of the browser (§11.1) goes into the JSON: a profile that could not be removed is
     // said, with its path, instead of staying behind in silence.
-    let cleanup = null;
-    let current = null;
-    signals = watchSignals({ proc, current: () => current, stdout });
-    const open = async (fn) => {
-      if (!found.path) throw new BrowserUnavailable(`no browser: ${found.reason}`);
-      let browser;
-      try {
-        browser = await openBrowser({ executable: found.path, ...browserOptions });
-      } catch (e) {
-        // A browser that did not start still had a profile: say whether it could be removed.
-        if (e instanceof BrowserUnavailable && e.cleanup) cleanup = { ...e.cleanup, profile: e.profile };
-        throw e;
-      }
-      current = browser;
-      try {
-        return await fn(browser);
-      } finally {
-        cleanup = { ...(await browser.close()), profile: browser.profile };
-        current = null;
-      }
-    };
+    const opener = createOpener({ found, browserOptions });
+    signals = watchSignals({ proc, current: () => opener.state.current, stdout });
+    const open = opener.open;
 
     ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
     fs.mkdirSync(run, { recursive: true });
@@ -152,7 +160,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     if (opts.command === 'measure') {
       const r = await measurePage({ url, plan, open, before, page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
       out = path.join(run, 'browser.json');
-      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup, plan, entries: r.entries }, null, 2)}\n`);
+      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, plan, entries: r.entries }, null, 2)}\n`);
       const count = (s) => r.entries.filter((e) => e.status === s).length;
       const blockingNew = r.entries.filter((e) => e.status === 'fail' && e.severity === 'bloquea' && e.scope === 'new').length;
       exitCode = blockingNew ? 1 : 0;
@@ -160,15 +168,16 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     } else if (opts.command === 'capture') {
       const r = await capturePage({ url, plan, open, outDir: path.join(run, 'captures') });
       out = path.join(run, 'captures.json');
-      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup, captures: r.captures, unverified: r.unverified }, null, 2)}\n`);
+      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, captures: r.captures, unverified: r.unverified }, null, 2)}\n`);
       summary = { captures: r.captures.length, unverified: r.unverified.length };
     } else {
       const r = await dumpDom({ url, plan, open, outDir: run });
       out = path.join(run, 'dom.json');
-      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup, doms: r.doms, unverified: r.unverified }, null, 2)}\n`);
+      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, doms: r.doms, unverified: r.unverified }, null, 2)}\n`);
       summary = { doms: r.doms.map((d) => d.path), unverified: r.unverified.length };
     }
     const degraded = JSON.parse(fs.readFileSync(out, 'utf8')).degraded ?? null;
+    const cleanup = opener.state.cleanup;
     const leftover = cleanup && !cleanup.profileRemoved ? { leftoverProfile: cleanup.profile } : {};
     stdout.write(`${JSON.stringify({ out, degraded, ...leftover, ...summary, exitCode }, null, 2)}\n`);
     return exitCode;
