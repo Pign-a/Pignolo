@@ -5,7 +5,9 @@ const { withDeadline, isGitFailure } = require('./git');
 const { parseFrontmatter, YamlLiteError } = require('./yaml-lite');
 
 const PROJECT_MD = '.pignolo/project.md';
-const DEFAULT_TEST_PATHS = Object.freeze(['*test*', '*spec*', '__snapshots__/', '__mocks__/', 'fixtures/', 'test/', 'tests/']);
+// Anclados (A8D-01): `*test*` y `*spec*` sin ancla casaban cualquier segmento (docs/specs/, docs/research/latest.md).
+// Un proyecto con otra convención declara sus `test-paths` en project.md: lo declarado se respeta tal cual.
+const DEFAULT_TEST_PATHS = Object.freeze(['**/*.test.*', '**/*.spec.*', '**/*_test.*', '**/test_*.py', '__tests__/', '__snapshots__/', '__mocks__/', 'fixtures/', 'test/', 'tests/']);
 const TYPES = Object.freeze(['code-tested', 'code-untested', 'docs', 'script']);
 const GATE_KEYS = ['on-edit', 'on-done', 'pre-merge', 'live-check', 'mutation'];
 const LIST_KEYS = {
