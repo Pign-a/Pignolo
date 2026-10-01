@@ -78,8 +78,30 @@ Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pi
 | Revisión final de una parte de hito (5a, 14 tareas) | opus | ~188 mil | 6,6 min | 42 |
 | Pasada de arreglos de esa revisión (9 hallazgos, cada uno con rojo) | sonnet | ~152 mil | 8 min | 53 |
 | Investigar una decisión: convención, alternativas y un atacante por alternativa (D-7-7, 9 ataques reales) | opus | ~161 mil | 8,3 min | 34 |
+| Ejecutar un hito de flujos con agentes y skills (pignolo-ui hito 4, 12 tareas), un ejecutor en serie | sonnet | ~494 mil | 68 min | 201 |
+| Ejecutar una parte de hito que escribe en el repo del usuario (hito 8a, 12 tareas) | sonnet | ~419 mil | 53 min | 175 |
+| Terminar un hito desde la Task 8 (hito 6, 4 tareas más dos cierres) | opus | ~311 mil | 38 min | 141 |
+| Revisión final de un hito (hito 6 / pignolo-ui 4 / hito 8a) | opus | ~215 mil / ~263 mil / ~198 mil | 15 / 17 / 21 min | 51 / 73 / 34 |
+| Pasada de arreglos (hito 6: 1 crítico y 11 más / pignolo-ui 4: 1 crítico y 13 más) | sonnet | ~254 mil / ~210 mil | 38 / 19 min | 109 / 81 |
+| Poner una rama al día con `main` resolviendo conflictos (hito 8a sobre el hito 6) | sonnet | ~91 mil | 6 min | 14 |
+| Auditoría independiente de buenas prácticas de todo el proyecto, con fuentes | fable | ~399 mil | 10 min | 70 |
+| Debate a favor y en contra sobre esa auditoría (dos agentes) | opus | ~194 mil + ~206 mil | 5 min cada uno | 23 + 23 |
+| Evals pagas de tres agentes (hito 5: 35 corridas, 7 casos) | opus | 6,07 USD | — | — |
 
 **Lectura práctica:** un hito completo con el método liviano (plan ~250 mil, auditoría en dos pasos ~370 mil, corrección ~170 mil, ejecución ~280 mil por parte, revisión ~190 mil, arreglos ~150 mil) ronda 1,4 a 1,7 millones de tokens, contra los ~2,5 a 3 millones del método anterior con replay y revisión por tarea (sección 2). La revisión final del 5a, con el plan auditado antes, encontró 0 críticos y 3 importantes; la del 4a, sin auditoría con experimentos, 1 crítico y 4 importantes.
+
+## 2e. Opciones de UI: HTML local o lienzo "Design", sonnet u opus (2026-10-01)
+
+Cuatro pantallas con el mismo brief, un agente por brazo, una corrida cada uno. Detalle y tabla de funcionalidades: [`tests/evals/RESULTS-lienzo.md`](../tests/evals/RESULTS-lienzo.md).
+
+| Brazo | Tokens | Tiempo | Resultado |
+|---|---|---|---|
+| HTML local, sonnet | ~76 mil | 67 s | Completo, un reintento |
+| HTML local, opus | ~84 mil | 145 s | Completo al segundo intento (el primero informó archivos que no existían) |
+| Lienzo publicado, sonnet | ~91 mil | 53 s | Publicado sin rechazos |
+| Lienzo publicado, opus | ~106 mil | 170 s | Publicado sin rechazos |
+
+**Lectura práctica:** publicar en el lienzo cuesta ≈ 20–27 % más tokens que el HTML local y no tarda más; opus gasta 10–17 % más y tarda 2–3 veces más que sonnet, con opciones que el autor encontró algo mejor estructuradas. Una corrida por brazo: orden de magnitud.
 
 ## 3. Agentes que revisan código
 

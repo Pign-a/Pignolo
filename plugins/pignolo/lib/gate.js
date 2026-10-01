@@ -11,6 +11,7 @@ const { matchAny } = require('./globs');
 const { workingTree, changedFiles, addedLines, headSha } = require('./changes');
 const { weakenings } = require('./test-integrity');
 const { repoIdFor, writeSeal } = require('./seals');
+const { expandSeed } = require('./init-seed');
 
 const LEVELS = ['on-edit', 'on-done', 'pre-merge'];
 const SEALED = ['on-done', 'pre-merge'];
@@ -66,7 +67,7 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
   const seal = {
     v: 1, repoId: repoIdFor({ cwd }), sha: headSha(gitOpts), treeHash, treeAfter: treeHash, level,
     command, exit: null, status: 'NO_GATE', time: new Date().toISOString(),
-    task: task ? task.id : null, noTestsReason: null, seedOffered,
+    task: task ? task.id : null, noTestsReason: null, seedOffered, seedInCommand: command.includes('{seed}'),
     checks: { scope: [], emptied: [], integrity: [], envDetect: [], weakened: [], noProtects: [], mutation: null },
   };
   let log = '';
@@ -83,7 +84,7 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
     const logFile = path.join(dir, 'gate.log');
     const c = seal.checks;
     try {
-      seal.exit = exec(command, { cwd, timeoutMs, logFile, env: runEnv }).exit;
+      seal.exit = exec(expandSeed(command, seedOffered), { cwd, timeoutMs, logFile, env: runEnv }).exit;
       try { log = fs.readFileSync(logFile, 'utf8'); } catch (_) { log = ''; }
       seal.treeAfter = workingTree(gitOpts);
       const mutFiles = mutationFiles();
