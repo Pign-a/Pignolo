@@ -1,6 +1,6 @@
 # Pignolo
 
-Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.5 en construcción (hitos 1 a 3 y la parte 4a de 8: guardia, respaldos, agentes, compuertas, revisión, carriles, sabotaje y holdout).
+Plugin de Claude Code con una metodología de desarrollo con agentes. Estado: v0.6 en construcción (hitos 1 a 4 de 8 en el núcleo: guardia, respaldos, agentes, compuertas, revisión, carriles, sabotaje, holdout y tests verificados).
 
 ## Qué está medido
 
@@ -16,7 +16,7 @@ Pignolo no le cree a un agente que dice "anda": lo verifica. Aplicamos lo mismo 
 | Agentes que corren comandos (`implementer`, `review-testability`, `refuter`, `fixer`) | 35 de 35 corridas en el sandbox de Linux (WSL2): el implementer no toca un test viejo, review-testability detecta un test que no puede fallar, el refuter descarta un hallazgo falso | [RESULTS-hito-4.md](tests/evals/RESULTS-hito-4.md) |
 | Validación de planes antes de construir | En un plan real con 14 errores conocidos, el método de pignolo (dos pasos, con verificación obligada) encuentra 38–45 % con opus, contra 33 % de un revisor común, por 1 a 1,5 USD y 2 a 5 minutos, sin construir el plan dos veces | [RESULTS-planes.md](tests/evals/RESULTS-planes.md), [investigación](docs/research/2026-09-30-validar-planes-sin-implementar-dos-veces.md) |
 | Revisión independiente de cada hito | Cada hito pasa por una revisión final opus antes de unirse. La del hito 4a encontró 1 problema crítico y 4 importantes; se arreglaron con un test que falla sin el arreglo, y una re-revisión lo confirmó | [CHANGELOG 0.5.0](CHANGELOG.md), [plan del hito 4](docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md) |
-| Suite propia | 2.007 tests en verde, sin dependencias npm; todo test nuevo se ve fallar antes rompiendo lo que protege | `npm test` |
+| Suite propia | 2.047 tests en verde, sin dependencias npm; todo test nuevo se ve fallar antes rompiendo lo que protege | `npm test` |
 
 Para comparar con Claude Code sin plugins o con otros plugins de metodología, con cuánto cuesta y cuánto rinde cada forma de trabajar: [`docs/benchmarks.md`](docs/benchmarks.md).
 

@@ -33,6 +33,8 @@ Dos hitos de pignolo de tamaño parecido, 8 tareas cada uno, con implementadores
 | Ejecutar las 8 tareas | ~1,01 millones | ~0,78 millones | **≈ 23 % menos** |
 | Revisión final: hallazgos | 1 crítico, 4 importantes | **0 críticos, 2 importantes** | menos problemas llegan al final |
 
+| Ejecutar un hito cuyo plan ya trae el código verificado (pignolo-ui hito 3, 7 tareas) | — | **~145 mil tokens con un solo ejecutor en serie** (el plan costó ~405 mil) | frente a ~0,78 millones del 4b en paralelo |
+
 **Comparabilidad:** media. Los hitos no son idénticos y el 4b se benefició de lo aprendido en el 4a. Sirve como tendencia, no como A/B.
 
 ## 3. Agentes que revisan código
@@ -43,6 +45,7 @@ Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
 |---|---|---|---|---|
 | Revisores (4 lentes y 2 jueces) | 60/60 corridas, 30/30 defectos, 0 falsas alarmas | 58/60, 30/30, 0 | 0,08–0,12 / 0,05–0,07 USD | sonnet ≈ 37 % más rápido |
 | Agente que escribe tests | 10/10 | 10/10 | 0,08 / 0,06 USD | 23–26 s / 16–22 s |
+| Agentes que corren comandos (implementer, review-testability, refuter, fixer), en el sandbox de Linux | 25/25 | 10/10 | 0,09–0,17 / 0,09 USD | 26–52 s / 20 s |
 
 **Comparabilidad:** mide si los agentes cumplen su contrato, no si pignolo mejora a Claude Code. Evidencia: [`RESULTS-hito-3.md`](../tests/evals/RESULTS-hito-3.md), [`RESULTS-hito-4.md`](../tests/evals/RESULTS-hito-4.md).
 
