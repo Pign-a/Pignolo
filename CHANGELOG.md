@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.0 — 2026-10-01
+
+Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Parte de `core` 0.11.1; `main` ya trae 0.12.0 y 0.12.1 (reglas de brainstorming): al unir, esta entrada y el `plugin.json` quedan en 0.13.0.
+
+- **`run.json` v2** (D-7-2, aditivo): `run.js` escribe `v: 2` con `tasks: { <id>: tarea }`, suma `task-end`, `--branch` y `--plan`, tope de tareas por perfil (3/2/1, `too-many-tasks`) y un lock corto del archivo en `~/.pignolo/locks/` (escrituras concurrentes perdían tareas y fallaban con `EPERM`, medido). `v: 1` se sigue leyendo y `run.task` queda como alias de solo lectura con una sola tarea. `gate.js --task --id`; `handback-gate` resuelve la tarea por `Task: <id>` (contador `_notask`); `protect-paths` niega a un escritor escribir en el checkout principal con tareas registradas. `checks.scope` compara rutas normalizadas y, con `core.ignorecase`, sin distinguir mayúsculas.
+- **`lib/branches.js`, `lib/worktrees.js`, `scripts/worktree.js`:** nombres y tags de §11.1; `createTaskWorktree` (interfaz única; `MECHANISM = 'B'` hasta el A/B del 7b), `listTaskWorktrees`, `tagContract` (exige el orden `v<N>` y un `cp/` en la punta) y `resolveWorktree`; el instalador de dependencias se extrajo de `lib/holdout.js`.
+- **`lib/waves.js`, `scripts/waves.js`:** olas desde un plan en tarjetas (`Kind`, `Depends`, `External`, `Contract`, `Parallel`). Serial por defecto; en paralelo solo las tareas `judgment` con `Parallel: yes` sin archivos en común, retrabajo <= 1 y dentro del tope del perfil (G16).
+- **`lib/queue.js`, `scripts/queue.js`:** la cola de §11.3 (`sync`, `preview`, `merge`, `run`, `revert`, `status`). `pre-merge` sellado con la configuración de la punta de `int/<plan>`, repetición de lo fallado y de los tests tocados (D-7-3; `gates.pre-merge-files`), `FLAKY` sellable y no-PASS, avance por compare-and-swap (`merge --ff-only` si `int/` está en uso), tag `cp/`, `revert` con el mismo pipeline, lock por plan y conflictos triviales solo con una lista cerrada de expresiones. `runGate` gana `config`, `testAuthorization` y `afterRun`.
+- **Guardia:** reglas `pignolo-queue`, `pignolo-worktree-tools` y `pignolo-protected-refs` (detección estructural: leer un script no se niega).
+- **`lib/branch-cleanup.js`, `scripts/cleanup.js`:** limpieza de ramas y worktrees (D-7-5, D-7-7): propone lo ya unido a su destino, informa el resto, `apply --proposal` con respaldo de refs, sin `--force` ni `-D`, con `case-collision`, `not-in-head`, `partial-remove` (exit 3) y realpath antes de borrar. `SessionStart` suma un aviso corto con presupuesto de 1,5 s.
+- **`next` y `plan.js`:** `queue-conflict`, `queue-busy-dead`, `wave-partial`; `plan.js list` y `next` muestran todos los planes con su etapa (`next.plans`). `plan.json` acepta el campo aditivo `origin`.
+- **Límites declarados:** un script propio que haga `require` de `lib/queue.js` no lo ve la guardia (R-13); `protect-paths` no ata un escritor a su tarea exacta (lo hace el `scope` de la compuerta); `revert` de un proyecto `code-untested` queda en `NO_TESTS`; el mecanismo A de worktrees y las skills `execute-plan` y `cleanup` son del 7b.
+
 ## 0.11.1 — 2026-10-01
 
 - Arreglos de la revisión final del hito 8a (cada uno con un test que falla sin el arreglo).
