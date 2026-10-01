@@ -105,16 +105,16 @@ Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los a
 
 ## Métricas de las evals del modo plan
 
-**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). **Medición parcial del 2026-10-01:** solo se corrió la etapa de `spec-reviewer` (Windows, 1 corrida por caso, 0,28 USD). El caso con alcance agregado pasó; el caso limpio no: el agente señaló huecos del spec (muy corto) y pidió cambios en vez de aprobar, algo que el calificador no admite. Se frenó para que el autor decida si se ajusta el calificador o el caso. `plan-auditor` y `validator` (WSL2) todavía no se corrieron.
+**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). **Medición parcial del 2026-10-01:** `spec-reviewer` (Windows, 5 corridas por caso, 0,84 USD) aprobó 10 de 10 tras relajar por decisión del autor el calificador del caso limpio (aceptar REQUEST_CHANGES si no hay alcance agregado). `plan-auditor` y `validator` (WSL2) no se midieron: la calibración chocó con el límite de sesión de la cuenta (HTTP 429).
 
 **Detalle técnico.** Casos en `tests/evals/plan-cases.js`, calificadores probados en `tests/eval-plan-cases.test.js`. Todo en opus, Claude Code 2.1.285.
 
 | Agente | Caso | Aciertos / corridas | USD por corrida | Estado |
 | --- | --- | --- | --- | --- |
-| spec-reviewer | alcance agregado | 1/1 (calibración) | 0,086 | pasa; falta la corrida completa |
-| spec-reviewer | limpio | 0/1 (calibración) | 0,085 | **freno:** falló `verdict-approve` |
-| plan-auditor | 3 casos | no medido | — | pendiente (WSL2) |
-| validator | 2 casos | no medido | — | pendiente (WSL2) |
+| spec-reviewer | alcance agregado | 5/5 | 0,086 | pasa |
+| spec-reviewer | limpio | 5/5 | 0,081 | pasa (grader relajado por el autor) |
+| plan-auditor | 3 casos | no medido | — | pendiente (WSL2, límite de sesión) |
+| validator | 2 casos | no medido | — | pendiente (WSL2, límite de sesión) |
 
 Comandos, frenos y el motivo de la falla en [`tests/evals/RESULTS-hito-5.md`](tests/evals/RESULTS-hito-5.md).
 

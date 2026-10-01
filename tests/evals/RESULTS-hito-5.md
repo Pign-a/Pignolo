@@ -1,6 +1,6 @@
 # Resultados de las evals del hito 5b (spec-reviewer, plan-auditor, validator)
 
-Estado: **etapa Windows cortada por el freno iii en la calibración, 2026-10-01.** Gasto: **0,276 USD** de un tope total de 17 (decisión del autor D-5-2). La etapa WSL2 (`plan-auditor`, `validator`) y la corrida completa no se corrieron: frenaron a la espera del autor. La medición de la combinación 2a + 2b sobre el plan del hito 6 se omitió por pedido. Sin transcripciones completas; los fixtures son sintéticos. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
+Estado: **etapa Windows completa (10/10); WSL2 sin medir por el límite de sesión (HTTP 429), 2026-10-01.** Gasto: **1,482 USD** de un tope total de 17 (D-5-2). La combinación 2a + 2b sobre el plan del hito 6 se omitió por pedido. Sin transcripciones completas; los fixtures son sintéticos. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
 
 Diseño: spec §15 y `tests/evals/plan-cases.js`. Casos generados con `node tests/evals/plan-cases.js --out tests/evals/generated/plan`. Todo en opus. Umbral de la spec (§0 d): al menos 4 de 5 corridas por caso. Claude Code 2.1.285, Windows nativo, pignolo 0.8.1 (main en 4ac552d).
 
@@ -37,3 +37,19 @@ El agente entregó la tarjeta con `Added without being asked: none` y las ocho s
 ## Cambio de grader por decisión del autor (2026-10-01)
 
 Tras el freno iii el autor decidió relajar `verdict-approve` de `spec-reviewer-clean`, que pasa a llamarse `verdict-not-escalate`. Motivo: la carta del agente pide cambios cuando el spec es vago aunque no haya alcance agregado, y "limpio" significa sin ítems agregados, no sin huecos. Regla nueva: pasa si `Added without being asked` = `none` (el grader `added-none` sigue exigiéndolo) y la última línea es `APPROVE` o `REQUEST_CHANGES`; `ESCALATE` reprueba. Un `REQUEST_CHANGES` con un ítem agregado reprueba por `added-none`. Test determinista nuevo en `tests/eval-plan-cases.test.js`: rojo demostrado contra el grader viejo ("REQUEST_CHANGES con Added = none debe pasar"), verde con el nuevo. Como los graders cambiaron, la etapa Windows se recalibró (freno ii se mide desde este commit).
+
+## Recalibración Windows y completa (2026-10-01, con el grader relajado)
+
+| Etapa | Comando | Costo (USD) | Resultado |
+|---|---|---|---|
+| Recalibración | `… --tag windows --runs 1 -j 2 … --max-cost-usd 0.5 --json …/calib-win-2.json` | 0,192 | 2/2; `git diff --quiet` sobre los graders sale 0; 5 × 0,192 = 0,96 ≤ 2,1 |
+| Completa Windows | `… --tag windows --runs 5 -j 2 … --max-cost-usd 2.1 --json …/full-win.json` | 0,835 | 10/10 |
+
+| Agente | Caso | Aciertos / corridas | USD por corrida | Segundos por corrida | Umbral 4/5 |
+|---|---|---|---|---|---|
+| spec-reviewer | spec-reviewer-added-scope | 5/5 | 0,086 | 31 | pasa |
+| spec-reviewer | spec-reviewer-clean | 5/5 | 0,081 | 36 | pasa |
+
+## Etapa WSL2: calibración invalidada por el límite de sesión (2026-10-01)
+
+Comando (script `wsl5-calib.sh`, `PATH` mínimo, trazas copiadas fuera de `/tmp`): `claude plugin eval . --eval-dir tests/evals/generated/plan --tag wsl2 --runs 1 -j 2 --ablation none --scaffold --trust-plugin --allow-tools Bash Edit Write --keep-temp --no-publish --max-cost-usd 1.5 --json tests/evals/generated/calib-wsl.json`. Costo 0,179 USD. **Cortó el freno de entorno: HTTP 429 "You've hit your session limit, resets 9am (UTC)"** en las 5 corridas (cuatro sin despachar nada, una con el `plan-auditor` fallado). Las 5 reprobaron, pero por falta de servicio, no por conducta de los agentes: no miden nada. No se reintentó. Pendiente: recalibrar WSL2 (5 casos) y la completa tras el reinicio del límite; el gasto acumulado es 1,482 USD de 17.
