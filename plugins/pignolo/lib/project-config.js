@@ -19,8 +19,9 @@ const LIST_KEYS = {
   'pii-patterns': 'piiPatterns',
   'domain-rules': 'domainRules',
 };
+const PRESENTATIONS = ['ask', 'artifact', 'text'];
 const SCALAR_KEYS = { 'deps-install': 'depsInstall', language: 'language', profile: 'profile' };
-const KNOWN = new Set(['type', 'gates', 'mutation', ...Object.keys(LIST_KEYS), ...Object.keys(SCALAR_KEYS)]);
+const KNOWN = new Set(['type', 'gates', 'mutation', 'presentation', 'canvas-consent', ...Object.keys(LIST_KEYS), ...Object.keys(SCALAR_KEYS)]);
 
 const invalid = (msg) => new Error(`project.md inválido: ${msg}`);
 
@@ -30,7 +31,7 @@ function emptyConfig() {
     testPaths: [...DEFAULT_TEST_PATHS], testPathsDeclared: false,
     protectedTestConfig: [PROJECT_MD], highRiskPaths: [], contracts: [], serialPaths: [],
     costPaths: [], visiblePaths: [], piiPatterns: [], depsInstall: null, domainRules: [],
-    mutation: false, language: null, profile: null, warnings: [],
+    mutation: false, language: null, profile: null, presentation: null, canvasConsent: false, warnings: [],
   };
 }
 
@@ -68,6 +69,15 @@ function buildConfig(text) {
   if (data.mutation !== undefined && data.mutation !== null) {
     if (typeof data.mutation !== 'boolean') throw invalid('mutation: se esperaba true o false');
     c.mutation = data.mutation;
+  }
+  // Claves aditivas de la presentación (R-9): un valor inválido es un aviso, no un error.
+  if (data.presentation !== undefined && data.presentation !== null) {
+    if (PRESENTATIONS.includes(data.presentation)) c.presentation = data.presentation;
+    else c.warnings.push(`presentation: "${data.presentation}" no es ninguno de ${PRESENTATIONS.join(' | ')} (se ignora)`);
+  }
+  if (data['canvas-consent'] !== undefined && data['canvas-consent'] !== null) {
+    if (typeof data['canvas-consent'] === 'boolean') c.canvasConsent = data['canvas-consent'];
+    else c.warnings.push('canvas-consent: se esperaba true o false (se ignora)');
   }
   for (const [key, prop] of Object.entries(LIST_KEYS)) c[prop] = asList(key, data[key]);
   for (const [key, prop] of Object.entries(SCALAR_KEYS)) {
