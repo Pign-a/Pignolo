@@ -1,7 +1,9 @@
-// Presentation decision (spec §13): the Design canvas only when the setting is auto, the session
-// has the Artifact tool, an artifact type titled "Design" exists AND the project consented.
-// Anything else is a local compare.html, and nothing is ever published.
-export function decidePresentation({ presentation, artifact, designType, canvasConsent }) {
+// Presentation decision (spec §13). R10 (author, 2026-10-01): the Design canvas moved to v1.x, so
+// in v1 the answer is always the local compare.html and nothing is ever published. The decision
+// logic of the canvas stays, behind canvasAvailable (false in v1): the canvas needs the setting
+// auto, the Artifact tool, a type titled "Design" and the project's consent.
+export function decidePresentation({ presentation, artifact, designType, canvasConsent, canvasAvailable = false }) {
+  if (!canvasAvailable) return { mode: 'local', consentNeeded: false, reasons: ['canvas-not-in-v1'] };
   const reasons = [];
   if (presentation !== 'auto') reasons.push('presentation-local');
   if (artifact !== true) reasons.push('no-artifact-tool');

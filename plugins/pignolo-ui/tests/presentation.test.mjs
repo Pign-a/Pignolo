@@ -16,7 +16,7 @@ test('the 24 combinations match the table', () => {
     for (const artifact of [true, false]) {
       for (const designType of [true, false]) {
         for (const canvasConsent of [true, false, undefined]) {
-          const args = { presentation, artifact, designType, canvasConsent };
+          const args = { presentation, artifact, designType, canvasConsent, canvasAvailable: true };
           const got = decidePresentation(args);
           const want = expected(args);
           assert.equal(got.mode, want.mode, JSON.stringify(args));
@@ -31,7 +31,7 @@ test('the 24 combinations match the table', () => {
 });
 
 test('key cases and reasons', () => {
-  const all = { artifact: true, designType: true, canvasConsent: true };
+  const all = { artifact: true, designType: true, canvasConsent: true, canvasAvailable: true };
   assert.equal(decidePresentation({ presentation: 'local', ...all }).mode, 'local');
   assert.deepEqual(decidePresentation({ presentation: 'local', ...all }).reasons, ['presentation-local']);
   assert.deepEqual(decidePresentation({ presentation: 'auto', ...all, artifact: false }).reasons, ['no-artifact-tool']);
@@ -40,4 +40,11 @@ test('key cases and reasons', () => {
   assert.deepEqual([asking.mode, asking.consentNeeded, asking.reasons], ['local', true, ['no-consent']]);
   assert.deepEqual(decidePresentation({ presentation: 'auto', ...all, canvasConsent: false }).reasons, ['consent-declined']);
   assert.equal(decidePresentation({ presentation: 'auto', ...all }).mode, 'canvas');
+});
+
+test('v1 (R10): the canvas is not available, the answer is always local with the reason', () => {
+  for (const presentation of ['auto', 'local']) {
+    const r = decidePresentation({ presentation, artifact: true, designType: true, canvasConsent: true });
+    assert.deepEqual(r, { mode: 'local', consentNeeded: false, reasons: ['canvas-not-in-v1'] });
+  }
 });
