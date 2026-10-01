@@ -24,9 +24,9 @@ const graders = (name) => fs.readdirSync(path.join(out, name, 'graders'))
 const subTools = (list, parent) => (list || []).map((t) => toolUse(t.name, t.input, parent));
 const caseOf = (name) => CASES.find((c) => c.name === name);
 
-test('evals 5b: son siete casos, con los nombres del plan', () => {
+test('evals 5b: son ocho casos, con los nombres del plan (el de decisiones registradas se sumó en 0.12.0)', () => {
   assert.deepStrictEqual(CASES.map((c) => c.name), [
-    'spec-reviewer-added-scope', 'spec-reviewer-clean', 'plan-auditor-review-defect', 'plan-auditor-review-clean',
+    'spec-reviewer-added-scope', 'spec-reviewer-clean', 'spec-reviewer-recorded-decision', 'plan-auditor-review-defect', 'plan-auditor-review-clean',
     'plan-auditor-verify-claim', 'validator-drift', 'validator-no-holdout',
   ]);
 });
@@ -167,7 +167,7 @@ test('evals 5b: spec-reviewer corre en Windows (sin Bash); el resto en wsl2 con 
     assert.strictEqual(/^allowed_tools: \[[^\]]*\bBash\b/m.test(prompt), bash, `${c.name}: Bash en allowed_tools`);
     assert.ok(c.tags.includes('agents'));
   }
-  assert.deepStrictEqual(CASES.filter((c) => c.tags.includes('windows')).map((c) => c.name), ['spec-reviewer-added-scope', 'spec-reviewer-clean']);
+  assert.deepStrictEqual(CASES.filter((c) => c.tags.includes('windows')).map((c) => c.name), ['spec-reviewer-added-scope', 'spec-reviewer-clean', 'spec-reviewer-recorded-decision']);
   assert.strictEqual(CASES.filter((c) => c.agent === 'plan-auditor').length, 3);
   assert.strictEqual(CASES.filter((c) => c.agent === 'validator').length, 2);
 });
@@ -176,12 +176,12 @@ test('evals 5b: ningún patrón lleva comillas simples (yaml-lite no desescapa l
   for (const c of CASES) for (const g of graders(c.name)) assert.ok(!g.pattern.includes("'"), `${c.name}: ${g.name}`);
 });
 
-test('evals 5b: el CLI genera los 7 casos y cada carpeta trae lo que lee el runner', () => {
+test('evals 5b: el CLI genera los 8 casos y cada carpeta trae lo que lee el runner', () => {
   const dir = makeTempDir('pignolo-evals-5b-cli-');
   const r = spawnSync(process.execPath, [path.join(__dirname, 'evals', 'plan-cases.js'), '--out', dir], { encoding: 'utf8' });
   assert.strictEqual(r.status, 0, r.stderr);
   const names = JSON.parse(r.stdout).cases;
-  assert.strictEqual(names.length, 7);
+  assert.strictEqual(names.length, 8);
   for (const n of names) {
     for (const f of ['case.yaml', 'prompt.md', 'fixture.sh']) assert.ok(fs.existsSync(path.join(dir, n, f)), `${n}/${f}`);
     const head = fs.readFileSync(path.join(dir, n, 'prompt.md'), 'utf8').split('---')[1];
@@ -218,6 +218,17 @@ test('evals 5b (decisión del autor 2026-10-01): spec-reviewer-clean acepta REQU
   assert.ok(all(none.replace(/APPROVEs*$/, 'REQUEST_CHANGES')), 'REQUEST_CHANGES con Added = none debe pasar');
   assert.ok(!all(none.replace(/APPROVEs*$/, 'ESCALATE')), 'ESCALATE debe reprobar');
   assert.ok(!all(c.samples.fail), 'REQUEST_CHANGES con un ítem agregado debe reprobar');
+});
+
+test('evals 0.12.0: spec-reviewer-recorded-decision aprueba un ítem respaldado por una decisión registrada y reprueba si lo lista como agregado', () => {
+  const c = caseOf('spec-reviewer-recorded-decision');
+  assert.ok(Object.keys(c.files).includes('decisions.md'));
+  assert.match(c.brief, /Recorded author decisions[^\n]*decisions\.md/);
+  assert.match(c.files['decisions.md'], /Quote: "/);
+  const gs = graders(c.name);
+  const all = (report) => gs.every((g) => grade(g, { trace: run(c, { report }), files: c.files }));
+  assert.ok(all(c.samples.pass), 'el informe bueno debe pasar');
+  assert.ok(!all(c.samples.fail), 'listar el ítem respaldado como A1 debe reprobar');
 });
 
 // ---- arreglos de la revisión final de 5b (0.8.1): I4, I5, I6 y M1 ----

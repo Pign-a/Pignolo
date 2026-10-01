@@ -2,7 +2,7 @@
 // Evals `agents` del hito 5b (§15): spec-reviewer, plan-auditor (modos review y verify) y
 // validator. Misma forma que tests/evals/testing-cases.js, cuyos graders reusa (review-cases.js):
 // el texto del subagente se lee solo en el tool_result del Agent del caso y sus herramientas solo
-// en eventos assistant con parent_tool_use_id no nulo (SUB). Los siete casos van en opus (son
+// en eventos assistant con parent_tool_use_id no nulo (SUB). Los ocho casos van en opus (son
 // revisores y auditores: CLAUDE.md). Fixtures sintéticos, sin datos reales.
 //
 // Uso: node tests/evals/plan-cases.js --out <dir>
@@ -36,6 +36,15 @@ const SPEC_BRIEF_LINES = (specPath) => [
   `Spec: ${specPath} (in the current directory).`,
   'Profile: balanced. Reserved decisions of the author: identity and scope of the product, costs, dependencies, publishing, deleting, contract changes.',
 ];
+
+// Caso de la 0.12.0: el mismo spec con el Export, pero el autor lo decidió durante el brainstorming y
+// la decisión está registrada con su cita. El revisor recibe ese archivo como segunda fuente.
+const DECISIONS_MD = `# Recorded author decisions
+
+## D-1
+Quote: "yes, add an Export button that saves the visible list to a CSV file"
+The Tasks screen has an Export button that saves the visible list to a CSV file.
+`;
 
 const PLAN_DEFECT = `# Plan: slug helper (synthetic)
 
@@ -263,6 +272,27 @@ const CASES = [
     name: 'spec-reviewer-clean', agent: 'spec-reviewer', tags: ['agents', 'spec-reviewer', 'windows'], text: true,
     files: { 'spec.md': SPEC_CLEAN },
     brief: brief(SPEC_BRIEF_LINES('spec.md')),
+    graders: [
+      R.said('spec-reviewer', 'eight-headings', HEADINGS),
+      R.said('spec-reviewer', 'added-none', ADDED_NONE),
+      R.said('spec-reviewer', 'verdict-not-escalate', R.lastLine('(?:APPROVE|REQUEST_CHANGES)')),
+      noBlocking('spec-reviewer'),
+    ],
+    samples: {
+      pass: specReport(card({ added: '- none' }), 'APPROVE').replace('- IMPORTANT spec.md:5: the Export button was not requested.', '- none'),
+      fail: specReport(card({ added: '- A1: CSV export (not requested)' }), 'REQUEST_CHANGES'),
+    },
+    rejects: {
+      'eight-headings': specReport(card({ added: '- none' }), 'APPROVE').replace('## Out of scope', '## Out-of-scope'),
+      'added-none': specReport(card({ added: '- A1: CSV export (not requested)' }), 'APPROVE'),
+      'verdict-not-escalate': specReport(card({ added: '- none' }), 'ESCALATE'),
+      'no-blocking-finding': specReport(card({ added: '- none' }), 'APPROVE').replace('- IMPORTANT spec.md:5: the Export button was not requested.', '- BLOCKER spec.md:3: contradiction'),
+    },
+  },
+  {
+    name: 'spec-reviewer-recorded-decision', agent: 'spec-reviewer', tags: ['agents', 'spec-reviewer', 'windows'], text: true,
+    files: { 'spec.md': SPEC_ADDED, 'decisions.md': DECISIONS_MD },
+    brief: brief([...SPEC_BRIEF_LINES('spec.md'), 'Recorded author decisions (a second source next to the request, with the author\'s literal quotes): decisions.md (in the current directory).']),
     graders: [
       R.said('spec-reviewer', 'eight-headings', HEADINGS),
       R.said('spec-reviewer', 'added-none', ADDED_NONE),

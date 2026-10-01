@@ -145,3 +145,15 @@ test('claims set --none-reason registers the reason and lets the plan advance', 
   assert.strictEqual(plan(repo, ['claims', 'set', '--plan', 'p1', '--none-reason', 'sin supuestos externos']).status, 0);
   assert.strictEqual(plan(repo, ['advance', '--plan', 'p1', '--to', 'spec-review']).status, 0);
 });
+
+test('scope-card save accepts an example that quotes a recorded author decision, and rejects it without the decision', () => {
+  const repo = makeRepo();
+  plan(repo, ['new', '--plan', 'p1', '--request-file', file(REQUEST)]);
+  const card = CARD('un solo lienzo por proyecto');
+  assert.strictEqual(plan(repo, ['scope-card', 'save', '--plan', 'p1', '--file', file(card)]).status, 1);
+  const d = plan(repo, ['decision', 'add', '--plan', 'p1', '--id', 'D-1', '--text-file', file('Un lienzo por proyecto'), '--quote-file', file('sí, un solo lienzo por proyecto y que crezca')]);
+  assert.strictEqual(d.status, 0, d.stderr);
+  const after = plan(repo, ['scope-card', 'save', '--plan', 'p1', '--file', file(card)]);
+  assert.strictEqual(after.status, 0, JSON.stringify(after));
+  assert.strictEqual(plan(repo, ['scope-card', 'approve', '--plan', 'p1', '--quote-file', file('dale')]).status, 0);
+});

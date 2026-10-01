@@ -15,7 +15,7 @@ const denied = (r, label) => { assert.equal(r.exit, 2, `${label}: ${r.stderr}`);
 const passes = (r, label) => assert.equal(r.exit, 0, `${label}: ${r.stderr}`);
 
 test('a subagent cannot run plan.js, plan-audit.js or approved.js; the main thread can', () => {
-  for (const s of ['plan.js status --plan p', 'plan-audit.js begin-review --plan p', 'approved.js save --flow f']) {
+  for (const s of ['plan.js status --plan p', 'plan.js decision add --plan p --id D-1', 'plan-audit.js begin-review --plan p', 'approved.js save --flow f']) {
     denied(call(`node ${P}/scripts/${s}`), s);
     passes(call(`node ${P}/scripts/${s}`, {}), `main ${s}`);
   }

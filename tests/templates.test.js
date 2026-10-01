@@ -56,3 +56,13 @@ test('task-card.md: la línea Approved visual trae el comando de verificación',
   assert.match(line, /approved-verify\.js" --path/);
   assert.match(line, /BLOCKED/);
 });
+
+test('question.md: the recommended option goes first and marked; the others keep their order (spec §4.4)', () => {
+  const t = tpl('question.md');
+  assert.match(t, /recommended option goes first/i);
+  assert.match(t, /others keep\s+the order/i);
+  assert.doesNotMatch(t, /never summarized or reordered/);
+  const opts = [...t.matchAll(/^\d\. .*$/gm)].map((m) => m[0]);
+  assert.match(opts[0], /recommended mark/i);
+  assert.doesNotMatch(opts.slice(1).join('\n'), /recommended/i);
+});
