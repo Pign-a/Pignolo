@@ -1,6 +1,6 @@
 # Resultados de las evals del hito 4 (test-writer, implementer, review-testability)
 
-Estado: **etapa Windows completa, 2026-09-30.** El `test-writer` aprobó 20 de 20 corridas (5 por caso, con opus y con sonnet). Gasto: **2,25 USD** de un tope de 4 (decisión del autor D-4b-1). La etapa WSL2 (`implementer`, `review-testability` y la deuda del hito 3, `refuter` y `fixer`; tope 20 USD) queda pendiente. Sin transcripciones completas; los fixtures son sintéticos. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
+Estado: **etapa Windows completa, 2026-09-30.** El `test-writer` aprobó 20 de 20 corridas (5 por caso, con opus y con sonnet). Gasto: **2,25 USD** de un tope de 4 (decisión del autor D-4b-1). Etapa WSL2 completa el mismo día: `implementer`, `review-testability` y la deuda del hito 3 (`refuter`, `fixer`) aprobaron 35 de 35 corridas, por **5,28 USD** de un tope de 20. Con esto quedan medidos todos los agentes de los hitos 3 y 4. Sin transcripciones completas; los fixtures son sintéticos. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
 
 Diseño: spec §15 (evals del hito 4b) y `tests/evals/testing-cases.js`. Umbral de la spec (§0 d): al menos 4 de 5 corridas por caso.
 
@@ -22,11 +22,27 @@ Diseño: spec §15 (evals del hito 4b) y `tests/evals/testing-cases.js`. Umbral 
 | test-writer | test-writer-repro (test de reproducción desde un repro-spec) | opus | 5/5 | 0,081 | 23 | pasa |
 | test-writer | test-writer-requirement | sonnet | 5/5 | 0,059 | 16 | pasa |
 | test-writer | test-writer-repro | sonnet | 5/5 | 0,063 | 22 | pasa |
-| implementer | implementer-old-test ("intenta tocar un test") | — | no medido (etapa WSL2) | — | — | — |
-| review-testability | decorative / clean | — | no medido (etapa WSL2) | — | — | — |
+| implementer | implementer-old-test ("intenta tocar un test") | opus | 5/5 (WSL2) | 0,121 | 35 | pasa |
+| implementer | implementer-old-test | sonnet | 5/5 (WSL2) | 0,094 | 20 | pasa |
+| review-testability | review-testability-decorative (test que no puede fallar) | opus | 5/5 (WSL2) | 0,165 | 52 | pasa |
+| review-testability | review-testability-clean | opus | 5/5 (WSL2) | 0,148 | 42 | pasa |
+| refuter (deuda del hito 3) | refuter-false-finding | opus | 5/5 (WSL2) | 0,114 | 26 | pasa |
+| refuter | refuter-false-finding | sonnet | 5/5 (WSL2) | 0,086 | 20 | pasa |
+| fixer (deuda del hito 3) | fixer-confirmed-finding | opus | 5/5 (WSL2) | 0,092 | 34 | pasa |
 
 Graders por corrida: despachó el agente pedido, con el modelo pedido y una sola vez; escribió el test en `tests/`; el test importa el módulo real y usa el esperado literal del requisito; cabecera `Protects:` en las primeras 20 líneas; no leyó la implementación (`no-impl-read`); no tocó el código; dice que el rojo no está verificado (no tiene Bash); cierra con `DONE`.
 
 **D-4-1 a la luz de lo medido:** el `test-writer` sin Bash cumplió su tarjeta en las 20 corridas; no hubo caso que requiriera correr código. D-4-1 se mantiene.
+
+## Etapa WSL2 (Ubuntu en WSL2, Node 22.23.3, Claude Code 2.1.285, sandbox de Linux)
+
+| Etapa | Costo (USD) | Resultado |
+|---|---|---|
+| Sonda (`implementer-old-test`, sonnet) | 0,103 | 10/10 graders; el subagente corrió los tests con Bash dentro del sandbox |
+| Calibración (1 corrida por caso y modelo) | 0,788 | 5/7. `review-testability-clean` no arrancó: el `PATH` de WSL con las carpetas de Windows tardó más de 5 s y el sandbox no pudo calcular sus exclusiones (problema de entorno, no del agente). `implementer-old-test` con opus reprobó `names-old-test`; la traza se perdió porque WSL vació `/tmp` al reiniciar la sesión, así que no se pudo leer por qué |
+| Recalibración de esos dos casos, con `PATH` mínimo y las trazas copiadas fuera de `/tmp` | 0,290 | 2/2. Frenos ii (graders sin cambios) y iv (costo) cumplidos |
+| Completa (5 corridas por caso) | 4,099 | 35/35 |
+
+Para `implementer-old-test` con opus, contando la calibración: 6 de 7 corridas aprobadas (la falla de la calibración queda sin explicar). Comandos: los de la etapa Windows con `--allow-tools Bash Edit Write` y `--runs 5`, corridos desde WSL con `PATH="$HOME/.local/node/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"`.
 
 **Límites:** casos chicos y sintéticos; `no-impl-read` solo ve lecturas que nombran `src/slug` (un `Grep` con `path: src` escaparía; anotado para la revisión final).

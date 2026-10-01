@@ -13,11 +13,12 @@ Pignolo no le cree a un agente que dice "anda": lo verifica. Aplicamos lo mismo 
 | Revisores de código | 60 de 60 corridas aprobadas con opus y 58 de 60 con sonnet (5 corridas por caso); los dos encontraron 30 de 30 defectos plantados y no bloquearon ningún cambio limpio (0 de 30) | [RESULTS-hito-3.md](tests/evals/RESULTS-hito-3.md) |
 | Agentes de lectura e investigación | explorer 5/5 y researcher 5/5 | [RESULTS.md](tests/evals/RESULTS.md) |
 | Agente que escribe tests (`test-writer`) | 20 de 20 corridas con opus y sonnet: escribe el test desde el requisito, con el esperado literal, sin leer la implementación y sin afirmar un rojo que no corrió | [RESULTS-hito-4.md](tests/evals/RESULTS-hito-4.md) |
+| Agentes que corren comandos (`implementer`, `review-testability`, `refuter`, `fixer`) | 35 de 35 corridas en el sandbox de Linux (WSL2): el implementer no toca un test viejo, review-testability detecta un test que no puede fallar, el refuter descarta un hallazgo falso | [RESULTS-hito-4.md](tests/evals/RESULTS-hito-4.md) |
 | Validación de planes antes de construir | En un plan real con 14 errores conocidos, el método de pignolo (dos pasos, con verificación obligada) encuentra 38–45 % con opus, contra 33 % de un revisor común, por 1 a 1,5 USD y 2 a 5 minutos, sin construir el plan dos veces | [RESULTS-planes.md](tests/evals/RESULTS-planes.md), [investigación](docs/research/2026-09-30-validar-planes-sin-implementar-dos-veces.md) |
 | Revisión independiente de cada hito | Cada hito pasa por una revisión final opus antes de unirse. La del hito 4a encontró 1 problema crítico y 4 importantes; se arreglaron con un test que falla sin el arreglo, y una re-revisión lo confirmó | [CHANGELOG 0.5.0](CHANGELOG.md), [plan del hito 4](docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md) |
 | Suite propia | 2.007 tests en verde, sin dependencias npm; todo test nuevo se ve fallar antes rompiendo lo que protege | `npm test` |
 
-**Lo que todavía no está medido:** los agentes que corren comandos (`refuter`, `fixer`, `implementer`, `review-testability`) esperan su etapa de evals en WSL2 (ya preparado); los casos de las evals son chicos y sintéticos, así que no dicen cómo les va con cambios grandes; los checklists manuales en una sesión real están pendientes.
+**Lo que todavía no está medido:** los casos de las evals son chicos y sintéticos, así que no dicen cómo les va con cambios grandes; los checklists manuales en una sesión real están pendientes.
 
 Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
 
