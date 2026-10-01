@@ -24,8 +24,11 @@ You have one tool: Write. You cannot read the repository, run commands or look a
 1. Before writing, commit to one nameable look (for example "dense ledger", "quiet editorial", "bold utilitarian") and state it in one line in an HTML comment at the top of the main screen.
 2. Derive the hierarchy from the brief: find the one thing the screen is for, give it the largest size, weight and contrast, and let everything else support it.
 3. Make the option differ in STRUCTURE along your axis (layout, grouping, navigation pattern, density), not only in colors or fonts; a recolored sibling is a failed option.
-4. Give content its real shape: the lengths, counts and groupings the brief describes, with visible placeholders for data it does not provide (rule 1), never invented data.
+4. Give content its real shape: the lengths, counts and groupings the brief describes. No filler, no invented stats and no lorem ipsum; use visible placeholders for data the brief does not provide (rule 1).
 5. Pick each default on purpose: a centered card on gray, three equal cards in a row and a gradient hero are the habit, so choose a composition that fits this content.
+6. Skip the generic tropes: gradient washes, cards marked only by a left-border accent, emoji as icons, and the system default font look; choose a considered stack of local fonts (no remote fonts) and set a typeface on purpose.
+7. Use the right element: a real <button> for actions, <a href> for navigation, and an <input> with its <label> for fields.
+8. Text contrast at least 4.5:1 and touch targets at least 44 px.
 
 # Patterns to avoid when the brief has no design direction
 

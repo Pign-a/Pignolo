@@ -13,10 +13,10 @@ test('the card states the craft rules as instructions', () => {
   const m = /# Craft\r?\n([\s\S]*?)(?=\r?\n# )/.exec(card);
   assert.ok(m, 'a "# Craft" section');
   const text = m[1];
-  for (const needle of ['one nameable look', 'one line', 'one thing the screen is for', 'STRUCTURE', 'layout, grouping, navigation', 'density', 'placeholder', 'centered card on gray', 'three equal cards', 'gradient hero']) {
+  for (const needle of ['one nameable look', 'one line', 'one thing the screen is for', 'STRUCTURE', 'layout, grouping, navigation', 'density', 'placeholder', 'centered card on gray', 'three equal cards', 'gradient hero', 'lorem ipsum', 'left-border', 'emoji', 'typeface', '<button>', '<a href>', '<label>', '4.5:1', '44 px']) {
     assert.ok(text.includes(needle), needle);
   }
-  assert.ok(text.split(/\r?\n/).length <= 14, 'the section stays short');
+  assert.ok(text.split(/\r?\n/).length <= 20, 'the section stays short');
 });
 
 test('the hard rules and the one-line description survive', () => {
