@@ -6,6 +6,9 @@
 //                          --platform desktop|mobile|both --page-name <text> --design <DESIGN.md|none> --first yes|no
 //                          [--now <ISO>] [--heights <json file>]
 //   canvas-index.mjs verify --run <run>
+//   canvas-index.mjs plan --project <repo> --run <run> --values-file <json> --types-file <json> --data <dir>
+//   canvas-index.mjs merge --run <run> --live none --live-dir none [--now <ISO>]
+//   canvas-index.mjs record --run <run> --step canvas-create|canvas-publish --url <url> --data <dir> --project <repo>
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -16,12 +19,16 @@ import { splitFrontmatter } from '../lib/design-doc.mjs';
 import { parseYaml } from '../lib/yaml-subset.mjs';
 import { RUN_ROOT } from '../lib/run-folder.mjs';
 import { linkProblem, removeOwnDir } from '../lib/link-guard.mjs';
+import { planNext, mergeLive, recordStep, PublishError } from '../lib/canvas-publish.mjs';
 
 class UsageError extends Error {}
 
 const SPECS = {
   build: { value: ['project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first', 'now', 'heights'], flags: [] },
   verify: { value: ['run'], flags: [] },
+  plan: { value: ['project', 'run', 'values-file', 'types-file', 'data'], flags: [] },
+  merge: { value: ['run', 'live', 'live-dir', 'now'], flags: [] },
+  record: { value: ['run', 'step', 'url', 'data', 'project'], flags: [] },
 };
 
 function parse(argv, spec, name) {
@@ -155,7 +162,7 @@ function cmdBuild(opts, { cwd }) {
   }
   const layout = layoutSha256(built.fragment);
   fs.writeFileSync(path.join(tmp, 'page.json'), `${JSON.stringify(built.fragment, null, 2)}\n`);
-  fs.writeFileSync(path.join(tmp, 'manifest.json'), `${JSON.stringify({ files: manifestFiles, layoutSha256: layout, pageId, bytes, first: opts.first === 'yes' }, null, 2)}\n`);
+  fs.writeFileSync(path.join(tmp, 'manifest.json'), `${JSON.stringify({ files: manifestFiles, layoutSha256: layout, pageId, bytes, first: opts.first === 'yes', warnings }, null, 2)}\n`);
   fs.renameSync(tmp, canvasDir);
   return { out: { out: canvasDir, files: manifestFiles.map((f) => f.path), count: manifestFiles.length, layoutSha256: layout, pageId, warnings }, code: 0 };
 }
@@ -169,7 +176,41 @@ function cmdVerify(opts, { cwd }) {
   return { out: r, code: r.ok ? 0 : 1 };
 }
 
-const COMMANDS = { build: cmdBuild, verify: cmdVerify };
+function cmdPlan(opts, { cwd }) {
+  need(opts, 'project', 'run', 'values-file', 'types-file', 'data');
+  const { run, project } = resolveRun(cwd, opts);
+  const valuesFile = path.resolve(cwd, opts['values-file']);
+  const types = readJsonFile(path.resolve(cwd, opts['types-file']), '--types-file');
+  const r = planNext({ run, project, data: path.resolve(cwd, opts.data), types: { design: typeof types.design === 'string' ? types.design : null }, valuesFile });
+  return { out: r, code: r.ok ? 0 : 1 };
+}
+
+function cmdMerge(opts, { cwd }) {
+  need(opts, 'run', 'live', 'live-dir');
+  const { run } = resolveRun(cwd, opts);
+  let now = new Date().toISOString();
+  if (opts.now !== undefined) {
+    if (Number.isNaN(new Date(opts.now).getTime())) throw new UsageError('--now debe ser una fecha ISO');
+    now = new Date(opts.now).toISOString();
+  }
+  const r = mergeLive({ run, live: opts.live, liveDir: opts['live-dir'], now });
+  return { out: r, code: r.ok ? 0 : (r.usage ? 2 : 1) };
+}
+
+function cmdRecord(opts, { cwd }) {
+  need(opts, 'run', 'step', 'url', 'data', 'project');
+  const { run } = resolveRun(cwd, opts);
+  if (!['canvas-create', 'canvas-publish'].includes(opts.step)) throw new UsageError('--step debe ser canvas-create o canvas-publish');
+  try {
+    const r = recordStep({ run, step: opts.step, url: opts.url });
+    return { out: r, code: r.ok ? 0 : 1 };
+  } catch (e) {
+    if (e instanceof PublishError && e.usage) throw new UsageError(e.message);
+    throw e;
+  }
+}
+
+const COMMANDS = { build: cmdBuild, verify: cmdVerify, plan: cmdPlan, merge: cmdMerge, record: cmdRecord };
 
 export function main(argv, { cwd = process.cwd(), stdout = process.stdout } = {}) {
   try {

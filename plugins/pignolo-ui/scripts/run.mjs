@@ -33,7 +33,7 @@ import { decidePresentation, gateDecision, NOTICE } from '../lib/presentation.mj
 import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { loadSymptoms, mergeUserSymptoms, buildMenu, matchWords } from '../lib/symptoms.mjs';
-import { collectLeakValues } from '../lib/leak-values.mjs';
+import { collectLeakValues, collectLeakOrigins } from '../lib/leak-values.mjs';
 import { optionModel } from '../lib/option-model.mjs';
 import { gitState, checkOption } from '../lib/option-check.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
@@ -277,7 +277,10 @@ const COMMANDS = {
       const values = collectLeakValues({ project, email: opts.email });
       const out = path.resolve(cwd, opts.out);
       fs.writeFileSync(out, `${JSON.stringify(values)}\n`);
-      return { out: { out, count: values.length }, code: 0 };
+      // canvas-index plan reads this file (next to the values) to refuse when git did not run
+      const origins = collectLeakOrigins({ project, email: opts.email });
+      fs.writeFileSync(path.join(path.dirname(out), 'leak-origins.json'), `${JSON.stringify(origins)}\n`);
+      return { out: { out, count: values.length, origins }, code: 0 };
     },
   },
 
