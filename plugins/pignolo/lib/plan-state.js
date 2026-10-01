@@ -217,6 +217,22 @@ function advance({ main, plan, to, reopen, planFile }) {
   });
 }
 
+// Tareas del plan: [{ id, added: ['A1', ...] }] (las A<n> de la tarjeta de las que dependen).
+function setTasks({ main, plan, tasks }) {
+  return update({ main, plan }, (p) => {
+    if (!Array.isArray(tasks)) return { error: 'tasks debe ser una lista' };
+    const ids = new Set();
+    for (const t of tasks) {
+      if (!t || typeof t.id !== 'string' || !t.id) return { error: 'cada tarea necesita un id' };
+      if (ids.has(t.id)) return { error: `id de tarea repetido: ${t.id}` };
+      ids.add(t.id);
+      if (t.added !== undefined && !(Array.isArray(t.added) && t.added.every((a) => /^A\d+$/.test(a)))) return { error: `la tarea ${t.id}: added debe ser una lista de A<n>` };
+    }
+    p.tasks = tasks.map((t) => ({ id: t.id, added: t.added || [] }));
+    return null;
+  });
+}
+
 // Tareas que no dependen de ninguna A<n> de la tarjeta, en orden, hasta `limit`.
 function runnableBeforeApproval(planObj, { limit = 0 } = {}) {
   const card = planObj.scopeCard && planObj.scopeCard.added;
@@ -233,5 +249,5 @@ function runnableBeforeApproval(planObj, { limit = 0 } = {}) {
 module.exports = {
   STAGES, SLUG_RE, planDir, listPlans, readPlan, newPlan, setClaims, resolveClaim, claimsOpen,
   saveScopeCard, approveScopeCard, scopeCardState, recordAudit, auditState, advance, runnableBeforeApproval,
-  writePlan, update, sha256,
+  setTasks, writePlan, update, sha256,
 };

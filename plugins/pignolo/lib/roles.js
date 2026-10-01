@@ -45,9 +45,9 @@ const ROLES = Object.freeze({
 
 const ALL_LENSES = ['risk', 'resilience', 'readability', 'reliability', 'testability'];
 const PROFILE_PARAMS = Object.freeze({
-  max: Object.freeze({ parallel: 3, refutersHighRisk: 3, judgmentDay: 'high-risk+plan-close', lensesHighRisk: ALL_LENSES }),
-  balanced: Object.freeze({ parallel: 2, refutersHighRisk: 1, judgmentDay: 'plan-close', lensesHighRisk: ALL_LENSES }),
-  economy: Object.freeze({ parallel: 1, refutersHighRisk: 1, judgmentDay: 'on-request', lensesHighRisk: ['risk', 'testability'] }),
+  max: Object.freeze({ parallel: 3, preApprovalTasks: 3, refutersHighRisk: 3, judgmentDay: 'high-risk+plan-close', lensesHighRisk: ALL_LENSES }),
+  balanced: Object.freeze({ parallel: 2, preApprovalTasks: 2, refutersHighRisk: 1, judgmentDay: 'plan-close', lensesHighRisk: ALL_LENSES }),
+  economy: Object.freeze({ parallel: 1, preApprovalTasks: 1, refutersHighRisk: 1, judgmentDay: 'on-request', lensesHighRisk: ['risk', 'testability'] }),
 });
 
 module.exports = { ROLES, VOCABULARY, PROFILE_PARAMS };
