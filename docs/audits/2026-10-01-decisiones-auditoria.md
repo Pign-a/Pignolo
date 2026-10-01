@@ -48,5 +48,5 @@ Los planes ya reflejan estas decisiones: `docs/plans/2026-09-30-hito-6-continuid
 
 ## Otros rulings técnicos registrados
 
-- Una sola entrada de hook por evento y la instantánea WIP fuera de la ruta crítica: **tarea futura, no se hace ahora** (gap G20; hito 7, R-23).
+- Una sola entrada de hook por evento y la instantánea WIP fuera de la ruta crítica: **tarea futura, no se hace ahora** (gap G22; hito 7, R-23).
 - Sin decisión registrada todavía sobre los demás puntos de la auditoría que no entraron al debate: simplificar la cola del hito 7 (mecanismo único, sin `queue/<plan>`), evals con fallas reales y Δ contra "sin plugin", `STATE.md` ≤ 120 líneas y el resto de la lista de la sección 5.
