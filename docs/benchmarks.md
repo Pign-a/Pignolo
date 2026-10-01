@@ -129,6 +129,17 @@ Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
 
 **Comparabilidad:** mide si los agentes cumplen su contrato, no si pignolo mejora a Claude Code. Evidencia: [`RESULTS-hito-3.md`](../tests/evals/RESULTS-hito-3.md), [`RESULTS-hito-4.md`](../tests/evals/RESULTS-hito-4.md).
 
+## 3b. Agentes de pignolo-ui (`ui-auditor`, `ui-option`): calibración, sin corrida completa (2026-10-01)
+
+Un caso de cada tipo, una corrida por caso; `ui-auditor` en opus y `ui-option` en sonnet.
+
+| Agente | Corridas | Costo por corrida | Velocidad |
+|---|---|---|---|
+| `ui-auditor` (5 defectos sembrados y 3 páginas limpias) | 7/8; los 5 defectos hallados; una página limpia recibió un `J-01` de severidad media | 0,26–0,33 USD | 82–137 s |
+| `ui-option` (mockup, style tile, mejora) | 3/3 | 0,06–0,10 USD | 16–33 s |
+
+**Comparabilidad:** una corrida por caso, fixtures sintéticos: no hay tasa. La corrida se frenó en la calibración y falta la completa de 5 por caso. Evidencia: [`RESULTS-ui-hito-4.md`](../plugins/pignolo-ui/tests/evals/RESULTS-ui-hito-4.md).
+
 ## 4. Guardia de comandos destructivos
 
 | Medida | Resultado |
