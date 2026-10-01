@@ -857,7 +857,9 @@ Lo que se publique del spike sale sin datos de proyectos privados: solo cifras a
 | **Comparación aprobado ↔ implementación** con fixtures (A-18) | Queda en v1, informativa | Con > 30 % de diferencias falsas pasa a v1.1 |
 | **Tokens medidos por flujo** | **Resultado:** mockups y auditor sin imágenes medidos (§15). Capturas y style tile, en el hito 3 | — |
 
-### 16.3 Evals de agentes (`claude plugin eval`, WSL2)
+### 16.3 Evals de agentes (`claude plugin eval`, Windows con Git Bash)
+
+Los dos agentes no tienen Bash y el navegador que arma los fixtures es el de Windows, así que estas evals corren en Windows; los `fixture.sh` se ejecutan con Git Bash por ruta absoluta (`bash` a secas desde PowerShell es el de WSL y no tiene `node`). Los casos salen de `plugins/pignolo-ui/tests/evals/ui-cases.mjs` (autor, 2026-10-01).
 
 - **Auditor, sobre entradas congeladas:** carpeta del run completa (capturas, DOM, JSON) sin navegador. Encaja con el principio 8: el auditor solo lee. Recall ≥ 80 % sobre defectos sembrados; ≤ 20 % de páginas limpias con algún falso positivo; ≥ 5 corridas por caso. Como el juicio nunca llega a `bloquea`, ese 20 % no bloquea pantallas limpias (R-11).
 - **`ui-option`: solo chequeos de forma:**

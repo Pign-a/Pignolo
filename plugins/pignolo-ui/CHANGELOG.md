@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 — sin publicar
+
+Parte 4b del hito 4: agentes, skills y evals. Sube de 0.5.0 a 0.6.0 porque trae interfaz nueva para el usuario (los tres comandos y los dos agentes).
+
+- **Tres comandos:** `/pignolo-ui:new`, `/pignolo-ui:improve` y `/pignolo-ui:audit`. Cada uno imprime primero `pignolo-ui <versión>` y su informe empieza con la primera línea de `run.mjs report-line` (degradaciones, subagentes lanzados de pedidos, modelo pedido). "Terminado" lo dice solo `run.mjs verdict`.
+- **Dos agentes:** `ui-option` (sonnet, solo `Write`, sin CLAUDE.md, escribe una opción en una carpeta vacía) y `ui-auditor` (opus, solo lectura, cada hallazgo con evidencia, nunca `bloquea` sin evidencia de script o navegador).
+- **Textos de apoyo en `reference/`** (`prepare-run`, `options`, `apply`, `present-and-choose`): usan los marcadores `<root>`, `<data>`, `<N>` y `<presentation>` porque las variables `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}` y `${user_config.*}` solo se sustituyen en `SKILL.md`; un ajuste sin valor guardado llega literal y la skill usa el valor por defecto.
+- **Lienzo "Design": fuera de la v1** (decisión del autor R10, 2026-10-01). Las opciones se comparan en `compare.html`, una página local; no se publica nada y no se invoca `Artifact`.
+- **Costo por flujo** (tabla de la sección 15 del spec, con 3 opciones): `new` en proyecto vacío 7 corridas de agente (más hasta 2 de regeneración), con `DESIGN.md` 4, `improve` 4, `audit` 1.
+- **Evals de agentes** (`tests/evals/ui-cases.mjs`): 8 casos del auditor (5 defectos sembrados y 3 páginas limpias), 3 de `ui-option` y 3 briefs de ablación, con fixtures armados por los scripts reales. Resultados de la corrida paga: pendientes (tope 22 USD aprobado, D-4-1).
+- Permisos: se recomienda el modo `acceptEdits`; en `default` las escrituras de los subagentes piden permiso.
+
 ## 0.5.0 — sin publicar
 
 Parte 4a del hito 4: todo lo determinista de los flujos. No gasta tokens de agentes. Sube de 0.4.1 a 0.5.0 porque trae interfaz nueva (`run.mjs`, `compare.mjs`, `catalog/symptoms.json`, `norms/base.md`).
