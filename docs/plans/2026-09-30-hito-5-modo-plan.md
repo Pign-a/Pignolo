@@ -225,7 +225,7 @@ Solo lectura del repo en `core/hito-4b` (plugin 0.6.0), más una corrida de `pla
   - `end`: borra el modo (limpieza tras un corte).
 
 **Tests literales:**
-- [ ] Recorrido completo con informes de archivo (sin agentes): `check` sobre una tarjeta de este repo → `applies: true`; `begin-review` → `mode.json` en `review`; `review-done` con 3 afirmaciones, una de ellas "`git apply --numstat` proves the patch applies" → `begin-verify` después de `probes` deja 2 restantes (la tercera la cerró la sonda) y `scratch/` existe; `finish` con una entrada `false` → `audit.verdict === 'REQUEST_CHANGES'` y `auditState` = `ok`... no: `none`→`ok` solo si el veredicto es `APPROVE`; con `REQUEST_CHANGES` el registro existe pero `advance --to audited` falla (Task 1: la precondición es `auditState === 'ok'`, que exige `APPROVE`).
+- [ ] Recorrido completo con informes de archivo (sin agentes): `check` sobre una tarjeta de este repo → `applies: true`; `begin-review` → `mode.json` en `review`; `review-done` con 3 afirmaciones, una de ellas "`git apply --numstat` proves the patch applies" → `begin-verify` después de `probes` deja 2 restantes (la tercera la cerró la sonda) y `scratch/` existe; `finish` con una entrada `false` → `audit.verdict === 'REQUEST_CHANGES'`; el registro existe pero `auditState` no es `ok` y `plan.js advance --to audited` falla (Task 1: `ok` exige veredicto `APPROVE` y el sha256 vigente del plan).
 - [ ] `check` sobre un plan en prosa → `applies: false`, exit 0. `begin-verify` sin `review.json` → exit 1. `finish` con `incomplete: true` en el modo y sin hallazgos → `ESCALATE`. `end` borra el modo y es idempotente.
 - [ ] Commit: `feat(plan): plan-audit.js con sondas y experimentos forzados`.
 
