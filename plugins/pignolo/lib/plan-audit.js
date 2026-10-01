@@ -5,8 +5,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { toFindings } = require('./plan-check');
-
 const MAX_CLAIMS = 8;
 const MAX_BLOCKS = 2;
 const TTL_MIN = 30;
@@ -187,7 +185,9 @@ function stopDecision({ mode, lastMessage, attempt = 1 }) {
   return { block: true, reason };
 }
 
-function buildAudit({ review, probe, verification, planCheck, mode }) {
+// Los hallazgos de plan-check no entran: son evidencia para el revisor del paso 1, que repite
+// en sus findings lo que confirma y descarta la falsa alarma (carta del plan-auditor).
+function buildAudit({ review, probe, verification, mode }) {
   const claims = (review && review.claims) || [];
   const closed = new Set((probe && probe.closed) || []);
   const findings = [...((review && review.findings) || []), ...((probe && probe.findings) || [])];
@@ -200,7 +200,6 @@ function buildAudit({ review, probe, verification, planCheck, mode }) {
       keywords: [e.id],
     });
   }
-  if (planCheck) findings.push(...(Array.isArray(planCheck) ? planCheck : toFindings(planCheck)));
   const incomplete = Boolean(mode && mode.incomplete);
   if (findings.length) return { verdict: 'REQUEST_CHANGES', findings, incomplete };
   const unverified = claims.filter((c) => !closed.has(c.id)).some((c) => {

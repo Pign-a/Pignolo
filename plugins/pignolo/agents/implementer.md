@@ -13,7 +13,7 @@ You implement exactly one task from the task-card. You do not edit `test-paths` 
 The task-card: goal, files you may touch, tests that define done, gates, and optionally an approved visual folder (`design/approved/<flow>/` with `manifest.json`).
 
 ## Method
-1. If the card has an approved visual, verify the sha256 of every file against the manifest before anything else. An extra, missing or different file means `BLOCKED`. Then treat it as the source of truth.
+1. If the card has an approved visual, before writing anything run `node "<plugin root>/scripts/approved-verify.js" --path "<approved folder>"` from the worktree (it checks the sha256 of every file against the manifest). Exit 1 (an extra, missing or different file) means `BLOCKED`: do not implement on top of a changed folder. On exit 0 the folder is your source of truth; never edit it.
 2. Read the tests that define the task and run them before changing anything: they must fail, and that is your RED (test-first). A test the task-card marks `Red is proved by: sabotage` protects behavior that already exists: it passes now and must stay green. Any other test that already passes does not define your change: stop with `NEEDS_CONTEXT` naming it.
 3. Make the smallest change that turns them green: this is your GREEN.
 4. Run all gates and the closing check below.

@@ -55,9 +55,9 @@ function writeRun(repo, over = {}) {
   fs.writeFileSync(path.join(repo, '.pignolo', 'run.json'), JSON.stringify(run));
 }
 // branch: rama actual simulada (null = detached o ilegible; 'throw' = plazo agotado)
-const dec = (repo, command, { branch = 'main', shell = 'bash', env = {} } = {}) => gate.decide({
+const dec = (repo, command, { branch = 'main', shell = 'bash', env = {}, deps = {} } = {}) => gate.decide({
   command, cwd: repo, env: { ...process.env, ...env }, shell,
-  deps: { currentBranch: () => { if (branch === 'throw') throw new Error('timeout'); return branch; }, psTimeoutMs: PS_T },
+  deps: { currentBranch: () => { if (branch === 'throw') throw new Error('timeout'); return branch; }, psTimeoutMs: PS_T, ...deps },
 });
 const denied = (r, re) => { assert.ok(r, 'se esperaba un bloqueo'); assert.match(`${r.reason} ${r.alternative}`, re || /./); assert.ok(r.alternative); };
 
@@ -296,4 +296,154 @@ test('I-3: a git that cannot answer fails closed inside a plan', () => {
 test('M-3: the handler comment no longer claims it denies only when the command looks like it reaches main', () => {
   const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks', 'handlers', 'scope-gate.js'), 'utf8');
   assert.ok(!/se niega solo si el comando parece llevar algo a main/.test(src));
+});
+
+// ---- 0.8.2: bypasses de G19 / auditoría 7m (formas que llevan un plan a main sin que el texto diga int/<p>) ----
+// Un repo en main con una rama int/<p> por plan (registro commiteado en la rama, con una tarjeta draft o approved).
+function planBranches(spec) {
+  const repo = project();
+  for (const [plan, card] of Object.entries(spec)) {
+    mkPlan(repo, plan, card);
+    git(['checkout', '-q', '-b', `int/${plan}`, 'main'], repo);
+    git(['add', '-f', '.pignolo/state/plans'], repo);
+    git(['commit', '-q', '-m', `plan ${plan}`], repo);
+    git(['checkout', '-q', 'main'], repo);
+  }
+  return repo;
+}
+const shaOf = (repo, ref) => git(['rev-parse', ref], repo);
+
+test('G19 form: a cp/<plan>/<n> tag lands the plan and is denied (draft) / allowed (approved)', () => {
+  const repo = planBranches({ p1: 'draft', p2: 'approved' });
+  git(['tag', 'cp/p1/3', 'int/p1'], repo);
+  git(['tag', 'cp/p2/1', 'int/p2'], repo);
+  denied(dec(repo, 'git merge cp/p1/3'), /draft/);
+  denied(dec(repo, 'git merge --no-ff cp/p1/3'), /draft/);
+  assert.equal(dec(repo, 'git merge cp/p2/1'), null);
+});
+
+test('G19 form: a tag with another name that points at the plan is resolved with git', () => {
+  const repo = planBranches({ p1: 'draft' });
+  git(['tag', 'release-candidate', 'int/p1'], repo);
+  const r = dec(repo, 'git merge release-candidate');
+  denied(r, /draft/);
+  assert.deepEqual(r.plans, ['p1']);
+});
+
+test('G19 form: a raw sha (full, short, tip~0 and a middle commit) of a plan branch is denied', () => {
+  const repo = planBranches({ p1: 'draft' });
+  git(['checkout', '-q', 'int/p1'], repo);
+  fs.writeFileSync(path.join(repo, 'x.txt'), 'x\n'); git(['add', 'x.txt'], repo); git(['commit', '-q', '-m', 'second'], repo);
+  git(['checkout', '-q', 'main'], repo);
+  const full = shaOf(repo, 'int/p1');
+  const mid = shaOf(repo, 'int/p1~1');
+  denied(dec(repo, `git merge ${full}`), /draft/);
+  denied(dec(repo, `git merge ${full.slice(0, 8)}`), /draft/);
+  denied(dec(repo, `git cherry-pick ${mid}`), /draft/);
+  denied(dec(repo, `git merge ${full}~0`), /draft/);
+  // un sha que ya está en main no lleva ningún plan
+  assert.equal(dec(repo, `git merge ${shaOf(repo, 'main')}`), null);
+});
+
+test('G19 form: FETCH_HEAD and ORIG_HEAD that resolve to a plan commit are denied', () => {
+  const repo = planBranches({ p1: 'draft' });
+  git(['fetch', '-q', '.', 'int/p1'], repo);
+  denied(dec(repo, 'git merge FETCH_HEAD'), /draft/);
+  denied(dec(repo, 'git pull . FETCH_HEAD'), /draft/);
+  git(['update-ref', 'ORIG_HEAD', shaOf(repo, 'int/p1')], repo);
+  denied(dec(repo, 'git reset --hard ORIG_HEAD'), /draft/);
+  denied(dec(repo, 'git merge ORIG_HEAD'), /draft/);
+  // el mismo FETCH_HEAD apuntando a main no molesta
+  git(['fetch', '-q', '.', 'main'], repo);
+  assert.equal(dec(repo, 'git merge FETCH_HEAD'), null);
+});
+
+test('G19 form: a multi-line FETCH_HEAD (octopus fetch) is read line by line', () => {
+  const repo = planBranches({ p1: 'draft', p2: 'approved' });
+  git(['fetch', '-q', '.', 'int/p2', 'int/p1'], repo);
+  const r = dec(repo, 'git merge FETCH_HEAD');
+  denied(r, /draft/);
+  assert.deepEqual(r.plans, ['p1']);
+});
+
+test('G19 form: case variants INT/P1, Int/p1 and refs/heads/INT/P1 are the same plan', () => {
+  const repo = planBranches({ p1: 'draft' });
+  for (const ref of ['INT/P1', 'Int/p1', 'int/P1', 'refs/heads/INT/P1', 'QUEUE/p1', 'Task/P1/01-x']) {
+    const r = dec(repo, `git merge ${ref}`);
+    denied(r, /draft/);
+    assert.deepEqual(r.plans, ['p1'], ref);
+  }
+});
+
+test('G19 form: a remote-tracking ref or a branch that contains the plan is denied', () => {
+  const repo = planBranches({ p1: 'draft' });
+  git(['update-ref', 'refs/remotes/origin/feature', shaOf(repo, 'int/p1')], repo);
+  denied(dec(repo, 'git merge origin/feature'), /draft/);
+  git(['branch', 'wrapper', 'int/p1'], repo);
+  denied(dec(repo, 'git merge wrapper'), /draft/);
+});
+
+test('G19 form: compound commands (&&, ;, ||, newline, octopus) evaluate every git command, plan by plan', () => {
+  const repo = planBranches({ a: 'approved', b: 'draft', c: 'approved' });
+  git(['tag', 'cp/b/1', 'int/b'], repo);
+  const bad = [
+    'git merge int/a && git merge int/b',
+    'git merge int/b && git merge int/a',
+    'git merge int/a; git merge int/b',
+    'git merge int/a || git merge int/b',
+    'git merge int/a\ngit merge int/b',
+    'git merge int/a int/b',
+    'git merge int/a && git merge cp/b/1',
+    'git merge int/a; git merge cp/b/1',
+    'git merge int/a\ngit merge cp/b/1',
+    `git merge int/a && git merge ${shaOf(repo, 'int/b')}`,
+    'git fetch . int/b && git merge FETCH_HEAD',
+    'git checkout main && git merge int/a && git merge int/b',
+  ];
+  for (const cmd of bad) {
+    const r = dec(repo, cmd, { branch: cmd.startsWith('git checkout') ? 'int/a' : 'main' });
+    assert.ok(r, cmd);
+    assert.deepEqual(r.plans, ['b'], cmd);
+  }
+  for (const cmd of ['git merge int/a && git merge int/c', 'git merge int/a int/c', 'git merge int/a; git merge int/c']) {
+    assert.equal(dec(repo, cmd), null, cmd);
+  }
+  // el segundo comando no lleva nada a main: no suma un plan ajeno
+  assert.equal(dec(repo, 'git merge int/a && git log int/b --oneline'), null);
+});
+
+test('A7M-04: the rule checks the plans the command names, not run.json.plan', () => {
+  const repo = planBranches({ a: 'draft', b: 'approved' });
+  writeRun(repo, { flow: 'plan', plan: 'a' });
+  // el comando lleva solo b (aprobado); a es el plan del flujo pero el comando no lo toca
+  assert.equal(dec(repo, 'git merge int/b'), null);
+  assert.equal(dec(repo, `git merge ${shaOf(repo, 'int/b')}`), null);
+  // el plan del flujo es b (aprobado) y el comando lleva a (draft): se niega por a
+  writeRun(repo, { flow: 'plan', plan: 'b' });
+  const r = dec(repo, 'git merge int/a');
+  denied(r, /draft/);
+  assert.deepEqual(r.plans, ['a']);
+  // sin nada que nombre un plan, sigue valiendo el plan del flujo y el de la rama actual
+  writeRun(repo, { flow: 'plan', plan: 'a' });
+  denied(dec(repo, 'git push origin HEAD:main', { branch: 'int/b' }), /draft/);
+  denied(dec(repo, 'git merge feature-x'), /draft/);
+});
+
+test('G19: resolving a ref fails closed when git does not answer, and is silent when it is not a commit', () => {
+  const repo = planBranches({ p1: 'approved' });
+  const timeout = () => { const e = new Error('spawnSync git ETIMEDOUT'); e.code = 'ETIMEDOUT'; throw e; };
+  // sin contexto de plan (la comprobacion de que hay ramas de plan) y con el (la resolucion de la ref)
+  denied(dec(repo, 'git merge feature-x', { deps: { gitRun: timeout } }), /ramas de plan/i);
+  writeRun(repo, { flow: 'plan', plan: 'p1' });
+  denied(dec(repo, 'git merge feature-x', { deps: { gitRun: timeout } }), /resolver con git/i);
+  fs.rmSync(path.join(repo, '.pignolo', 'run.json'));
+  // git corrió y dijo "no es un commit": no hay plan que llevar
+  assert.equal(dec(repo, 'git merge no-such-ref-at-all'), null);
+});
+
+test('G19: without any plan branch or plan context, a merge of a sha or FETCH_HEAD stays silent', () => {
+  const repo = project();
+  fs.rmSync(path.join(repo, '.pignolo', 'state'), { recursive: true });
+  assert.equal(dec(repo, `git merge ${shaOf(repo, 'main')}`), null);
+  assert.equal(dec(repo, 'git merge FETCH_HEAD'), null);
 });
