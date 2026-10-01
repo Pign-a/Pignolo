@@ -48,6 +48,19 @@ M6 y M7 (abajo) encontraron por primera vez r03 (M6 opus, con un experimento), r
 
 **M5 (experimentos puntuales).** Con sonnet, en ninguna corrida ejecutó un experimento aunque tenía Bash, permiso de escritura y la indicación explícita ("no corrí experimentos": razona desde el código). Con opus, dos de las tres corridas sí experimentaron, pero el recall no subió frente a M3/M4 opus. Primero la guardia de pignolo bloqueó `node -e` (código inline que lanza procesos) y el modelo se rindió; con la indicación de escribir el experimento en un archivo, opus lo hizo. Las corridas de M5 con la preparación rota (sin permiso de escritura) quedaron fuera de la tabla, y también una de opus que cortó el límite de uso de la cuenta.
 
+## A/B de D-5-1: dos agentes o uno (2026-09-30)
+
+Con el hook corregido (cuenta también los experimentos que fallan: un Bash con salida distinta de 0 dispara `PostToolUseFailure`, no `PostToolUse`), 2 corridas por método y modelo sobre el caso real, recall contado a mano:
+
+| Método | Modelo | Recall | Hallazgos falsos | USD por corrida | Tiempo |
+|---|---|---|---|---|---|
+| M6: revisor y, en otro despacho, un agente que solo experimenta | opus | **46 %** (13/28) | 0 | 2,09 | ~8 min |
+| M8: un solo agente que revisa, lista sus supuestos y experimenta | opus | 32 % (9/28) | 1 | 1,74 | ~5 min |
+| M6 | sonnet | 18 % (5/28) | 2 | 0,47 | ~2 min |
+| M8 | sonnet | 4 % (1/28) | 0 | 0,35 | ~1,5 min |
+
+Separar los pasos rinde +14 puntos con opus por ~20 % más de costo; con sonnet ningún diseño sirve. Gasto del A/B: 9,28 USD (total de la prueba: 37,78 de 40).
+
 ## Validación del calificador (2026-09-30)
 
 El calificador automático cuenta un hallazgo si nombra la tarea y una palabra clave. Contra el conteo a mano de las 19 corridas de M3–M5 del caso real: 6 corridas iguales, 13 con diferencias de 1 a 3 errores; 18 aciertos falsos y 11 omisiones. **Infla el recall** entre 0 y 7 puntos según el grupo, porque hay palabras clave demasiado genéricas (`private-reads` en casi todo hallazgo de las tasks 5 y 7; `cat` dentro de "catastrophic"; `Glob`, `pattern`, `weakened`), y **omitía** r13 (el test que espera "el mismo error que hoy") mientras las palabras clave estaban solo en castellano. El orden entre métodos no cambia. Las tablas del caso real usan el conteo a mano; los sintéticos (errores plantados con nombres únicos) no tienen este problema. En M6 y M7 (12 corridas, 124 hallazgos) la sobreestimación fue mayor: 79 aciertos automáticos contra 57 a mano (r10 y r01 por palabras genéricas, r04/r14/r12 por palabras sueltas). Arreglo pendiente del calificador: límites de palabra y palabras clave específicas; hasta entonces, el caso real se cuenta a mano.

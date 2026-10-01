@@ -15,6 +15,8 @@ Un plan real de pignolo (el del hito 4a, primera versión) con 14 errores conoci
 | Dos pasos con sondas fijas de riesgos conocidos | Idem, con pruebas deterministas | **45 %**\* | 24 % | 0,92 / 0,31 | 2,4 / 1,2 min |
 | Construir el plan entero en una copia para validarlo (replay) | Lo que hacíamos antes; superpowers pide planes con el código completo, sin exigir el replay | — | — | ~450 mil tokens | 45–80 min |
 
+| Dos pasos en despachos separados (revisor, después un agente que solo experimenta) vs un solo agente que hace las dos cosas | A/B del diseño del `plan-auditor` | 46 % vs 32 % | 18 % vs 4 % | 2,09 vs 1,74 / 0,47 vs 0,35 | ~8 vs ~5 min |
+
 \* Parte de ese 45 % viene de sondas armadas con errores ya conocidos de este mismo caso; sin esas, ~38 %.
 
 **Comparabilidad:** alta entre las filas 1 a 3 (mismo plan, mismo código, mismas reglas de conteo). La fila 4 se midió en planes distintos. Detalle y límites: [`tests/evals/RESULTS-planes.md`](../tests/evals/RESULTS-planes.md).
@@ -36,6 +38,29 @@ Dos hitos de pignolo de tamaño parecido, 8 tareas cada uno, con implementadores
 | Ejecutar un hito cuyo plan ya trae el código verificado (pignolo-ui hito 3, 7 tareas) | — | **~145 mil tokens con un solo ejecutor en serie** (el plan costó ~405 mil) | frente a ~0,78 millones del 4b en paralelo |
 
 **Comparabilidad:** media. Los hitos no son idénticos y el 4b se benefició de lo aprendido en el 4a. Sirve como tendencia, no como A/B.
+
+## 2b. Ejecutar en serie o en paralelo (A/B con un plan real)
+
+Las mismas 4 tareas reales (hito 4a, ola 1), misma base y mismas tarjetas, calificadas con los tests finales que dejó la revisión (180):
+
+| Forma | Tiempo de pared | Tokens | Calidad |
+|---|---|---|---|
+| 4 implementadores sonnet en paralelo | ~28 min | ~531 mil | 148/180 |
+| 1 ejecutor sonnet en serie | ~32 min | ~272 mil | 151/180 |
+| Ejecución original (paralelo, opus en las 2 tareas difíciles) | ~22 min | ~0,58 millones | 150/180 |
+
+**Lectura práctica:** el paralelo es ≈ 15 % más rápido y cuesta ≈ 2 veces más, con la misma calidad. El modelo del implementador tampoco cambió la calidad: los defectos que quedan son huecos del plan que solo encuentra la revisión. Conviene ejecutar en serie con sonnet y poner opus en validar el plan y revisar. Detalle: [`RESULTS-ejecucion.md`](../tests/evals/RESULTS-ejecucion.md).
+
+## 2c. Cuántas veces correr los tests antes de unir
+
+600 merges simulados con tests inestables de probabilidad conocida, node:test real (coincide con 1−(1−p)^k):
+
+| Política | Tiempo | Detecta un test que falla el 5 % / 20 % / 50 % de las veces |
+|---|---|---|
+| 1 corrida | 1,0× | 5 % / 20 % / 53 % |
+| 2 si el cambio toca tests | 1,5× | 7 % / 28 % / 66 % |
+| Siempre 3 | 3,0× | 13 % / 49 % / 88 % |
+| 1 corrida + repetir solo lo que falló + 3 corridas de los tests tocados | ~1,5× | como 3 corridas en lo que cambiaste, sin rojos falsos por tests viejos inestables |
 
 ## 3. Agentes que revisan código
 
