@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2 — 2026-10-01
+
+- `scope-gate`: cierra las formas que llevaban un plan a `main` sin que el texto dijera `int/<p>` (G19, auditoría del hito 7; cada una con un test que falla sin el arreglo). Un `merge`, `cherry-pick`, `pull`, `reset`... a `main` con una etiqueta `cp/<p>/<n>`, cualquier otra etiqueta o rama, un sha (completo, corto, `~n`, un commit del medio), `FETCH_HEAD` (línea por línea, también en `git fetch . int/b && git merge FETCH_HEAD`), `ORIG_HEAD` o una ref remota se resuelve con git: si lleva commits de una rama o etiqueta de plan que no están en `main` (ni en un `main` remoto), ese plan debe tener la tarjeta aprobada. Una llamada a `cat-file --batch-check` y dos `for-each-ref` por commit distinto, 1 s por llamada y 2,5 s en total; un git que no responde falla cerrado.
+- Las mayúsculas no esquivan la regla (`INT/P1`, `Int/p1`, `Task/P1/01-x`: git en Windows las resuelve): el slug se baja a minúsculas.
+- La regla mira los planes que llevan los comandos del compuesto que mueven algo a `main` (cada `git` de la línea, con `&&`, `;`, `||`, salto de línea u octopus), no los que el texto nombra en cualquier parte ni `run.json.plan`: `git merge int/b` con el plan del flujo `a` en borrador ya no se niega por `a`, y un `git log int/b` suelto en la línea no suma `b`. El plan del flujo y el de la rama actual valen solo si el comando no lleva ningún plan (p. ej. `git push origin HEAD:main`).
+- Sin ramas de plan ni contexto de plan en un proyecto con pignolo, un `merge` de un sha o `FETCH_HEAD` sigue callado (una llamada a git para saberlo).
+- `reset` a algo que no es `HEAD~n` (un sha, `ORIG_HEAD`) estando en `main` entra entre los verbos que se resuelven.
+- Sin cambio: `run.js end` borra `run.json` y hoy ese archivo guarda un solo plan y una sola tarea, así que no hay otros planes que perder (el `run.json` compartido es del hito 7).
+
 ## 0.8.1 — 2026-10-01
 
 - Arreglos de la revisión final de la parte 5b (cada uno con un test que falla sin el arreglo).
