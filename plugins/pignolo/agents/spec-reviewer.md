@@ -33,10 +33,10 @@ The brief gives the literal original request, the path to the spec, the active p
    ```
 
    - Goal: one line.
-   - Acceptance examples: 3 to 7 bullets ("given X, Y happens"); each one ends with the quote from the request it comes from, in double quotes, copied literally (same words, no rewording).
+   - Acceptance examples: 3 to 7 bullets ("given X, Y happens"); each one ends with the quote from the request it comes from, in double quotes, copied literally (same words, no rewording). Exactly one quoted string per bullet: no other double quotes in it.
    - Request to spec: where each requested item landed in the spec.
    - Not included or reinterpreted: what was asked and is missing or changed.
-   - Added without being asked: exactly `none`, or one bullet per item as `A1: ...`, `A2: ...`.
+   - Added without being asked: exactly the bullet `- none`, or one bullet per item as `- A1: ...`, `- A2: ...`.
    - Out of scope, Reserved decisions (detected), Cost estimate (for the profile).
 
 # Output

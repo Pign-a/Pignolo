@@ -75,7 +75,8 @@ test('spec-reviewer: nombra los 8 encabezados de SECTIONS, en orden', () => {
     assert.ok(i > at, `falta o desordenado: ## ${h}`);
     at = i;
   }
-  assert.match(s, /Added without being asked: exactly `none`, or one bullet per item as `A1: \.\.\.`/);
+  assert.match(s, /Added without being asked: exactly the bullet `- none`, or one bullet per item as `- A1: \.\.\.`/);
+  assert.match(s, /Exactly one quoted string per bullet/);
   assert.match(s, /ends with the quote from the request it comes from/);
 });
 
