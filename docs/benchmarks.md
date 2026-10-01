@@ -105,16 +105,17 @@ Cuatro pantallas con el mismo brief, un agente por brazo, una corrida cada uno. 
 
 ## 2f. Brainstorm antes del spec: el paso de hoy o una skill con árbol de decisiones (2026-10-01)
 
-Un pedido real con verdad conocida (el lienzo "Design" de pignolo-ui y 10 decisiones que el autor tomó después), un autor simulado que solo contesta lo que se le pregunta, opus, 3 corridas por brazo.
+Un pedido real con verdad conocida (el lienzo "Design" de pignolo-ui y 10 decisiones que el autor tomó después), un autor simulado que solo contesta lo que se le pregunta, opus, 3 corridas por brazo; el borrador corregido, 2 corridas contra la misma línea de base.
 
 | Brazo | Preguntas al autor | Palabras del autor | Decisiones posteriores cubiertas (de 10) | Contrarias sin marcar | USD por corrida | Minutos |
 |---|---|---|---|---|---|---|
 | Paso 2 de hoy (una línea) | 4,3 | 88 | 5,0 (4 a 6) | 0,3 | 0,95 | 3,1 |
 | Borrador de la skill `brainstorm` (55 líneas) | 2,7 | 72 | 3,3 (1 a 6) | 1,7 | 1,28 | 3,9 |
+| Borrador corregido (un "ok" no confirma supuestos; las decisiones viejas se vuelven a preguntar), 2 corridas | 5,0 | 55 | 4,5 (3 a 6) | 0 | 1,27 | 4,9 |
 
-**Lectura:** el borrador no ganó: cubrió menos decisiones y costó ≈ 35 % más. Tomó un "ok" a su resumen como confirmación y trató decisiones viejas del repo como hechos; su lote de supuestos fue lo que más rindió. Ningún brazo preguntó algo que el repo ya contestaba. Se queda el paso de hoy más las reglas baratas, y el borrador se corrige antes de volver a medir.
+**Lectura:** el borrador no ganó: cubrió menos decisiones y costó ≈ 35 % más. Tomó un "ok" a su resumen como confirmación y trató decisiones viejas del repo como hechos; su lote de supuestos fue lo que más rindió. Ningún brazo preguntó algo que el repo ya contestaba. El borrador corregido arregló las dos fallas (0 decisiones contrarias en silencio, menos palabras del autor) y subió a 4,5, pero no cubre más que el paso de hoy y cuesta ≈ 34 % más: con la regla fijada antes de correr, tampoco gana. Se queda el paso de hoy más las reglas baratas.
 
-**Comparabilidad:** un solo pedido, un autor simulado y 3 corridas por brazo, con una dispersión mayor que la diferencia: orden de magnitud. Conteo validado a mano. Gasto: 6,74 USD. Evidencia: [`RESULTS-brainstorm.md`](../tests/evals/RESULTS-brainstorm.md).
+**Comparabilidad:** un solo pedido, un autor simulado y 3 corridas por brazo, con una dispersión mayor que la diferencia: orden de magnitud. El paso de hoy no se volvió a correr para la segunda medición. Conteo validado a mano. Gasto: 9,28 USD. Evidencia: [`RESULTS-brainstorm.md`](../tests/evals/RESULTS-brainstorm.md).
 
 ## 3. Agentes que revisan código
 

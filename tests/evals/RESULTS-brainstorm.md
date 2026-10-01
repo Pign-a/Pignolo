@@ -77,3 +77,46 @@ Por la regla del diseño: **se queda el paso de hoy y se le suman las reglas bar
 - No se midió lo que venía después (hallazgos del `spec-reviewer`, `A<n>`, auditoría del plan): no entraba en el tope. "Menos defectos posteriores" queda sin dato; "contrarias sin marcar" es lo más cercano.
 - Las skills y los scripts no corrieron: el texto de cada brazo fue en el prompt y los pasos con scripts se saltearon. El árbol de B no lo validó ningún script.
 - Las decisiones T1 a T10 las eligió quien armó el banco a partir del plan del hito 4c; otra lista daría otros números.
+
+## Segunda medición: el borrador corregido (2026-10-01)
+
+Decisión del autor: corregir el borrador y volver a medir con lo que quedaba del tope (3,26 USD). El borrador (`tests/bench/brainstorm/draft/SKILL.md`, 56 líneas) cambió en dos puntos y conserva el lote de supuestos:
+
+1. Un "ok" al resumen confirma solo la lectura del pedido. El resumen ya no lleva supuestos ni decisiones anteriores; cada decisión reservada necesita su propia respuesta o queda como supuesto declarado o pregunta pendiente.
+2. Una decisión anterior encontrada en el repo no es un hecho para un pedido nuevo: va al lote como "decisión previa, ¿sigue en pie?", o como pregunta propia si es reservada. Solo el estado del código y de la configuración es un hecho.
+
+Se corrió **solo el brazo B**, dos veces (lo que permitía el tope). Las tres corridas del brazo A de la primera medición quedan como línea de base: mismo banco, mismo commit, mismo autor simulado, mismo día. Misma calificación, validada a mano.
+
+| Corrida | Mensajes al autor | Preguntas | Devueltas por el autor | Con respuesta en el repo | Palabras del autor | Decisiones cubiertas (a mano) | Contrarias sin marcar | USD | Minutos | Tokens de salida |
+|---|---|---|---|---|---|---|---|---|---|---|
+| B4 | 6 | 5 | 1 | 0 | 55 | 6 (T2 T4 T5 T6 T8 T10) | 0 | 1,27 | 5,0 | 27,4 mil |
+| B5 | 6 | 5 | 2 | 0 | 55 | 3 (T2 T5 T8) | 0 | 1,27 | 4,8 | 25,6 mil |
+
+| Brazo | Corridas | Preguntas | Palabras del autor | Decisiones cubiertas de 10 | Contrarias sin marcar | USD por corrida | Minutos |
+|---|---|---|---|---|---|---|---|
+| A (paso 2 de hoy, línea de base) | 3 | 4,3 | 88 | **5,0** (4 a 6) | 0,3 | **0,95** | 3,1 |
+| B, primer borrador | 3 | 2,7 | 72 | 3,3 (1 a 6) | 1,7 | 1,28 | 3,9 |
+| B, borrador corregido | 2 | 5,0 | **55** | 4,5 (3 a 6) | **0** | 1,27 | 4,9 |
+
+Gasto de la segunda medición: 2,54 USD. **Gasto total: 9,28 USD** de 10.
+
+### Qué dicen los datos
+
+1. **Las dos fallas quedaron corregidas.** En las dos corridas el resumen no llevó supuestos, el "Ok." se anotó como confirmación de la lectura y nada más (B4 lo escribe así en el spec), y ninguna decisión vieja del repo pasó como hecho: fueron al lote marcadas "decisión previa" o a una pregunta propia. Las contrarias sin marcar bajaron de 1,7 a 0.
+2. **La cobertura subió (3,3 a 4,5) pero no supera a A (5,0).** Con dos corridas y un rango de 3 a 6, la diferencia con A está dentro de la dispersión.
+3. **El autor escribió menos** (55 palabras contra 88 de A), con más preguntas pero más cerradas.
+4. **Volver a preguntar las reglas de publicación no rindió:** el autor simulado contestó "No sé, decidí vos" y el brazo, bien, no las decidió: quedaron como pregunta pendiente. Gasta una pregunta del presupuesto y deja el spec con una rama abierta que A ni menciona.
+5. **El lote ya no destapó T7:** las dos corridas pusieron "celular 390×844" en el lote como decisión previa y el autor simulado lo aceptó ("quedan los ocho"), cuando su decisión era medir el alto real; en B2 un lote parecido sí lo había corregido. Es ruido del autor simulado, no del brazo: el supuesto estuvo a la vista.
+6. **Nadie llegó a T1, T3 ni T9** en esta medición, y B5 dejó sin diseñar el "Design System" (T6) a la espera de la pregunta pendiente.
+
+### Veredicto
+
+Por la misma regla (gana B si cubre más decisiones conocidas sin duplicar las palabras del autor): **B corregido tampoco gana**. No duplica las palabras del autor (escribe menos), pero no cubre más decisiones que A y cuesta ≈ 34 % más y ≈ 1,8 minutos más por corrida. Lo que sí muestra es menos decisiones contrarias escritas en silencio (0 contra 0,3) y todo lo abierto a la vista (árbol, decisiones con cita, supuestos y preguntas pendientes en 2 de 2). Si eso vale el costo extra es una decisión del autor; con la regla fijada, se queda el paso de hoy más las reglas baratas, a las que esta medición suma dos: un "ok" a un resumen no confirma supuestos, y una decisión anterior del repo se vuelve a poner delante del autor.
+
+### Límites de la segunda medición
+
+- Dos corridas de B contra tres de A, y A no se volvió a correr: es una línea de base del mismo día, no una corrida apareada.
+- La dispersión (3 a 6) es mayor que cualquier diferencia entre brazos.
+- El autor simulado aceptó en el lote un supuesto contrario a su decisión (T7) en las dos corridas, y devolvió sin contestar la pregunta de seguridad: un autor real probablemente contestaría las dos. Las dos cosas perjudican a B.
+- T7 se contó como no cubierta en B4 y B5 y aparte de "contrarias sin marcar", porque el supuesto se le mostró al autor y lo aceptó.
+- Siguen los límites de la primera medición: un solo pedido, lista de decisiones elegida por quien armó el banco, sin medir lo que viene después del spec, texto en el prompt sin scripts.
