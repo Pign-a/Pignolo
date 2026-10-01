@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 — 2026-10-01
+
+- Hito 6b (continuidad: skill). Decisión del autor R7 (2026-10-01): sin `learning-validator` (ni carta en opus, ni evals); la aceptación de aprendizajes es el piso mecánico más el sí explícito del humano.
+- Skill `close-session` (la invoca el humano, `disable-model-invocation`): evidencia real, entradas nuevas con las decisiones del humano citadas literalmente, `scan`, decisión del humano, `archive` con `--dry-run` antes, `index`, `prune` y un commit propio de `.pignolo/state/`. No despacha agentes y para con un merge en curso.
+- `close-session.js decide --human accept|reject` (excluyente con `--validation-file`) y `decideByHuman` en `lib/learnings.js`: el piso mecánico rechaza aunque el humano diga que sí; lo general queda como candidato a promover.
+- Engram fuera de la v1 (D-6-1): la config ya no tiene la clave `engram` y `/pignolo:setup` deja de nombrarlo. Spec §10.5 pasa a idea futura con lo verificado contra su documentación.
+- Spec: §10.4 (verbos y skill, R7), §10.5, §14 (`setup`), §15, §18 punto 6.
+
 ## 0.9.0 — 2026-10-01
 
 - Hito 6a (continuidad, parte determinista): todo lo que no gasta tokens de agentes. La skill `close-session` es de 6b.

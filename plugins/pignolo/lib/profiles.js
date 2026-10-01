@@ -30,7 +30,6 @@ function withDefaults(raw) {
     profile,
     models: raw.models ?? {},
     presentation: raw.presentation ?? (profile === 'economy' ? 'text' : 'ask'),
-    engram: raw.engram ?? false,
     language: raw.language ?? null,
   };
 }
