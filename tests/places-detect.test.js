@@ -195,3 +195,11 @@ test('detectPlaces no abre el contenido de ningún documento', () => {
   assert.ok(ops.length > 0, 'el registro no está vacío');
   assert.ok(!ops.some((o) => ['readFileSync', 'openSync', 'readSync', 'createReadStream'].includes(o)), ops.join(','));
 });
+
+test('findStray: lo que escribe init y todavía no se commiteó (.gitattributes, SECURITY.md) no se avisa como suelto', () => {
+  const repo = makeRepo();
+  put(repo, '.gitattributes', '.pignolo/** text eol=lf\n');
+  put(repo, 'SECURITY.md', '# s\n');
+  put(repo, 'Makefile', 'all:\n');
+  assert.deepEqual(findStray({ root: repo, config: cfgOf(repo) }).stray.map((s) => s.path), ['Makefile']);
+});

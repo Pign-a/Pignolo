@@ -24,6 +24,7 @@ const NAME_RULES = Object.freeze([
 ]);
 
 const SENSITIVE = [/^\.env/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /^id_rsa/i];
+const INIT_OWN_FILES = ['.gitattributes', 'SECURITY.md'];
 
 function classifyFile(rel) {
   const base = String(rel).replace(/\\/g, '/').split('/').pop();
@@ -95,6 +96,7 @@ function findStray({ root, run, fs = nodeFs, config } = {}) {
   for (const f of gitList(git, root, ['ls-files', '-z', '-o', '--exclude-standard'])) {
     const rel = norm(f);
     if (rel.includes('/')) continue;
+    if (INIT_OWN_FILES.includes(rel)) continue; // lo que escribe init (sin commitear todavía) no es un archivo suelto
     if (isLinkOrOutside(root, rel, fs).bad) continue;
     if (SENSITIVE.some((re) => re.test(rel))) stray.push({ path: rel, severity: 'high', note: 'archivo sensible sin versionar y sin ignorar: agregalo al .gitignore (no se mueve)' });
     else stray.push({ path: rel, severity: 'info', note: 'archivo suelto en la raíz sin versionar ni ignorar (un Makefile o un vercel.json sin versionar pueden ser un falso positivo)' });
