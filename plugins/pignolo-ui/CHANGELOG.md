@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.2 — sin publicar
+
+`ui-option` mejor hecho y con modelo por perfil (decisiones del autor, 2026-10-01, tras un A/B donde las opciones de opus salieron "algo mejor estructuradas y menos genéricas" que las de sonnet). Sube de 0.6.1 a 0.6.2: no cambia los comandos; suma el ajuste `profile`.
+
+- **Carta de oficio** (`agents/ui-option.md`, sección `# Craft`): comprometerse con un look nombrable y decirlo en una línea; derivar la jerarquía de lo único para lo que sirve la pantalla; diferir en ESTRUCTURA sobre el eje asignado (layout, agrupación, navegación, densidad) y no solo en colores; contenido con su forma real y marcadores visibles, nunca datos inventados; evitar los defaults genéricos (tarjeta centrada sobre gris, tres tarjetas iguales, hero con degradado). Todas las reglas duras siguen.
+- **Reglas de diseño en la carta** (decisión del autor, 2026-10-01, con palabras propias, inspiradas en la guía del tipo "Design" de claude.ai): sin relleno, estadísticas inventadas ni lorem ipsum (marcadores visibles); sin lugares comunes (degradados de fondo, tarjetas con borde izquierdo, emoji como íconos, aspecto de fuente por defecto; una tipografía elegida entre fuentes locales); elementos reales (`<button>`, `<a href>`, `<input>` con `<label>`); contraste de texto ≥ 4.5:1 y objetivos táctiles ≥ 44 px. Las fuentes remotas siguen prohibidas aquí (llegan con el plan del lienzo, hito 4c).
+- **Modelo por perfil:** nueva clave `userConfig.profile` (`max`, `balanced`, `economy`; por defecto `balanced`). `run.mjs option-model --profile <perfil>` da `opus` en `max` y `sonnet` en los otros dos (un valor desconocido o sin sustituir cuenta como `balanced`); `options.md` pasa ese modelo en cada invocación. No depende del núcleo.
+- **Verificado en la documentación oficial (2026-10-01, code.claude.com/docs/en/sub-agents y plugins-reference) y Ruling:** el parámetro `model` de la invocación pisa al frontmatter, y `${user_config.*}` llega al contenido de las skills. Desde v2.1.251 `CLAUDE_CODE_SUBAGENT_MODEL` ya no pisa al `model` de la invocación (antes sí). El frontmatter sigue en `model: sonnet`.
+- Tests nuevos en `tests/option-craft.test.mjs`.
+
 ## 0.6.1 — sin publicar
 
 Pasada de arreglos de la revisión final del hito 4 (un crítico, cinco importantes y los menores). Sube de 0.6.0 a 0.6.1: no cambia la interfaz, salvo las opciones nuevas `check --before` y `design-md.mjs patch --out`.

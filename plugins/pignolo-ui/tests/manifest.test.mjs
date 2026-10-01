@@ -27,9 +27,9 @@ test('plugin manifest: name, semver version, license, no hooks', () => {
   assert.equal(pj.mcpServers, undefined);
 });
 
-test('userConfig declares exactly the two keys of spec 3.1 (no language: it follows the conversation)', () => {
+test('userConfig declares exactly the three keys of spec 3.1 (no language: it follows the conversation)', () => {
   const { userConfig } = readJson(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'));
-  assert.deepEqual(Object.keys(userConfig).sort(), ['optionsPerDecision', 'presentation']);
+  assert.deepEqual(Object.keys(userConfig).sort(), ['optionsPerDecision', 'presentation', 'profile']);
   assert.deepEqual(userConfig.optionsPerDecision.options, ['1', '3']);
   assert.equal(userConfig.optionsPerDecision.default, '3');
   assert.deepEqual(userConfig.presentation.options, ['auto', 'local']);

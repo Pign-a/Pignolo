@@ -1,0 +1,208 @@
+{
+  "source": "docs/STATE.md (bloque del 2026-10-01) y la sección 'Decisiones del autor' de docs/plans/2026-10-01-pignolo-ui-hito-4c-lienzo.md (rama plan/ui-hito-4c). Decisiones que el autor tomó DESPUÉS del pedido; ninguna está en el repo del commit d0213e8.",
+  "decisions": [
+    {
+      "id": "T1",
+      "decision": "Un solo lienzo por proyecto, que crece: cada corrida agrega una página; no un lienzo por corrida.",
+      "all": [
+        [
+          "lienzo por proyecto",
+          "un solo lienzo",
+          "unico lienzo",
+          "mismo lienzo",
+          "lienzo por corrida",
+          "un lienzo por",
+          "one canvas",
+          "single canvas",
+          "canvas per"
+        ]
+      ]
+    },
+    {
+      "id": "T2",
+      "decision": "Sin pregunta de consentimiento: solo un aviso de una línea cada vez que publica.",
+      "all": [
+        [
+          "consentimiento",
+          "consent",
+          "canvasConsent"
+        ],
+        [
+          "aviso",
+          "avisa",
+          "notice",
+          "sin pregunta",
+          "no hay pregunta",
+          "sin preguntar",
+          "se quita",
+          "no se pide",
+          "se elimina"
+        ]
+      ]
+    },
+    {
+      "id": "T3",
+      "decision": "La elección se hace en el chat y, además, el usuario puede pedir que se lean los comentarios del lienzo.",
+      "all": [
+        [
+          "comentarios",
+          "comments",
+          "ArtifactComments"
+        ],
+        [
+          "lee",
+          "leer",
+          "lea",
+          "lean",
+          "lectura",
+          "read",
+          "a pedido"
+        ]
+      ]
+    },
+    {
+      "id": "T4",
+      "decision": "Un comentario nunca decide ni se aplica solo: son datos; el usuario confirma en el chat antes de aplicar.",
+      "all": [
+        [
+          "comentario",
+          "comentarios",
+          "comments"
+        ],
+        [
+          "confirma",
+          "confirmar",
+          "confirmación",
+          "nunca instrucciones",
+          "no instrucciones",
+          "datos de terceros",
+          "se aplica solo",
+          "aplican solos"
+        ]
+      ]
+    },
+    {
+      "id": "T5",
+      "decision": "DESIGN.md se publica además como artifact 'Design System'.",
+      "all": [
+        [
+          "design system"
+        ],
+        [
+          "design.md",
+          "tokens"
+        ]
+      ]
+    },
+    {
+      "id": "T6",
+      "decision": "El Design System se republica automáticamente cuando cambia DESIGN.md, sin preguntar.",
+      "all": [
+        [
+          "design system"
+        ],
+        [
+          "republica",
+          "republicar",
+          "republicación",
+          "republish",
+          "vuelve a publicar",
+          "se actualiza",
+          "actualiza solo",
+          "automáticamente",
+          "cuando cambia",
+          "cuando cambie"
+        ]
+      ]
+    },
+    {
+      "id": "T7",
+      "decision": "Se mide el alto real de cada pantalla (con el navegador) para dimensionar los artboards.",
+      "all": [
+        [
+          "alto",
+          "altura",
+          "height"
+        ],
+        [
+          "real",
+          "medir",
+          "mide",
+          "medido",
+          "medida",
+          "measured",
+          "navegador",
+          "browser"
+        ]
+      ]
+    },
+    {
+      "id": "T8",
+      "decision": "Formato por defecto: lienzo siempre que la cuenta tenga el tipo 'Design'; compare.html local si no.",
+      "all": [
+        [
+          "tipo"
+        ],
+        [
+          "design"
+        ],
+        [
+          "cuenta",
+          "disponible",
+          "account",
+          "available"
+        ],
+        [
+          "defecto",
+          "default",
+          "siempre",
+          "compare.html",
+          "respaldo",
+          "fallback",
+          "si no"
+        ]
+      ]
+    },
+    {
+      "id": "T9",
+      "decision": "Si la prueba real con una publicación falla (por ejemplo las clases CSS), se consulta al autor con el resultado en la mano; no hay plan B decidido de antemano.",
+      "all": [
+        [
+          "prueba real",
+          "puerta manual",
+          "publicación real",
+          "publicaciones reales",
+          "publicación de prueba",
+          "lienzo de prueba",
+          "prueba manual"
+        ],
+        [
+          "falla",
+          "fallan",
+          "fallara",
+          "fracasa",
+          "plan b",
+          "se consulta",
+          "se le pregunta",
+          "con el resultado"
+        ]
+      ]
+    },
+    {
+      "id": "T10",
+      "decision": "Se vuelven a correr las evals de ui-option, con tope de 3 USD.",
+      "all": [
+        [
+          "evals",
+          "eval"
+        ],
+        [
+          "usd",
+          "tope",
+          "costo",
+          "costs"
+        ]
+      ]
+    }
+  ]
+}

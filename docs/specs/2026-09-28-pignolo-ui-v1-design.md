@@ -132,6 +132,7 @@ Es del propio plugin y no usa `~/.pignolo/config.json` — porque así no depend
 | Clave | Tipo | Valores | Por defecto |
 |---|---|---|---|
 | `optionsPerDecision` | `string` con `options` | `"1"`, `"3"` | `"3"` (A-02, A-15) |
+| `profile` | `string` con `options` | `"max"`, `"balanced"`, `"economy"` | `"balanced"` (modelo de `ui-option`: opus en `max`, sonnet en los otros) |
 | `presentation` | `string` con `options` | `"auto"` (lienzo "Design" si está disponible y hay consentimiento en el proyecto; si no, local), `"local"` (nunca se publica) | `"auto"` (A-20, §13) |
 
 **Decisión del autor (2026-09-30):** sin clave `language`. Los textos para el usuario siguen el idioma de la conversación, que sigue el de Claude Code; una opción propia de idioma sobraba y en `/config` se veía como una fila vacía.
@@ -549,7 +550,8 @@ omitClaudeMd: true
 ```
 
 - **`tools: Write` y nada más:** no puede leer el código y no hereda MCP — porque por defecto un subagente hereda MCP y los CLAUDE.md [V] (R-05).
-- **Modelo y esfuerzo** (decisión del autor, 2026-09-28): sonnet con `effort: medium`, fijos en el frontmatter.
+- **Modelo y esfuerzo** (decisión del autor, 2026-09-28; modelo por perfil desde 2026-10-01): `effort: medium` fijo. El frontmatter queda en `model: sonnet` y la skill pasa el modelo por perfil en cada invocación: opus en `max`, sonnet en `balanced` y `economy` (§3.1, `run.mjs option-model`).
+- **Carta de oficio** (2026-10-01, sección `# Craft` de la carta): comprometerse con un look nombrable y decirlo en una línea; derivar la jerarquía de lo único para lo que sirve la pantalla; diferir en estructura sobre el eje asignado (layout, agrupación, navegación, densidad) y no solo en colores; contenido con su forma real y marcadores visibles, nunca inventado; evitar los defaults genéricos (tarjeta centrada sobre gris, tres tarjetas iguales, hero con degradado). Reglas de diseño (decisión del autor, 2026-10-01, con palabras propias): sin relleno, estadísticas inventadas ni lorem ipsum; sin degradados de fondo, tarjetas con borde izquierdo, emoji como íconos ni fuente por defecto (sin fuentes remotas hasta el plan del lienzo, hito 4c); `<button>`, `<a href>` y `<input>` con `<label>` reales; contraste ≥ 4.5:1 y objetivos táctiles ≥ 44 px.
 - **Carta: patrones visuales que hay que evitar cuando no hay dirección de diseño.** Fuente: guía oficial "Prompting Claude Opus 5.5", sección *Frontend design defaults*.
   - Fondo crema u off-white.
   - Palabras en itálica dentro de titulares.
@@ -569,7 +571,7 @@ omitClaudeMd: true
   - **Qué busca:** el email del usuario, el nombre y el email de git, el usuario del SO, el home y cualquier ruta absoluta local (unidad de Windows, `/Users/`, `/home/`).
   - **De dónde salen los valores:** la skill se los pasa por argumento: el email de la sesión si lo conoce, `git config user.name`/`user.email`, y el usuario y el home del SO.
   - **Si aparece alguno:** esa opción falla y no se publica ni se aprueba.
-- **Modelo:** sonnet (A-15), **confirmado por el spike**: 9/9 chequeos de forma tanto en sonnet como en opus y 0 pares coincidentes, sobre una muestra de 3 corridas que la eval de §16.3 completa a ≥ 5. Se pasa explícito en cada invocación. El modelo real se lee de `tool_response.resolvedModel` [V, spike]. Si difiere (por ejemplo por `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, que el README menciona), el informe lo dice. Si la eval de ≥ 5 corridas muestra que sonnet no pasa forma o diversidad, pasa a opus solo para `ui-option` (A-15).
+- **Modelo:** por perfil (`userConfig.profile`): opus en `max`, sonnet en `balanced` y `economy`. **Ruling (2026-10-01):** el perfil es un ajuste propio de pignolo-ui, porque no puede depender del núcleo, y solo `SKILL.md` recibe `${user_config.*}`; la skill ejecuta `option-model` y pasa el resultado como `model` de la invocación, que pisa al frontmatter. **Verificado contra la documentación oficial (2026-10-01):** https://code.claude.com/docs/en/sub-agents ("Model resolution order": 1. parámetro `model` de la invocación, 2. `model` del frontmatter, 3. `CLAUDE_CODE_SUBAGENT_MODEL`, 4. modelo de la conversación; antes de v2.1.251 el entorno iba primero y pisaba a los otros) y https://code.claude.com/docs/en/plugins-reference ("Reference a saved value": `${user_config.KEY}` se sustituye en el contenido de skills y agentes, solo valores no sensibles). Por eso el mecanismo vale tal cual; **Ruling:** desde v2.1.251 el entorno ya no pisa al `model` de la invocación (en versiones anteriores sí). Antes, sonnet (A-15), **confirmado por el spike**: 9/9 chequeos de forma tanto en sonnet como en opus y 0 pares coincidentes, sobre una muestra de 3 corridas que la eval de §16.3 completa a ≥ 5. Se pasa explícito en cada invocación. El modelo real se lee de `tool_response.resolvedModel` [V, spike]. Si difiere (por ejemplo por `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`, que el README menciona), el informe lo dice. Si la eval de ≥ 5 corridas muestra que sonnet no pasa forma o diversidad, pasa a opus solo para `ui-option` (A-15).
 - Si hubiera que quitarle `Write`, se cambia **la misma** definición de `ui-option` a `tools: []` [V] y no se crea otro agente, porque un tercer nombre rompería la allowlist exacta de A-11.
 
 ### 7.5 Diversidad medible y camino secuencial

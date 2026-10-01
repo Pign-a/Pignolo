@@ -1,0 +1,320 @@
+{
+  "date": "2026-10-01",
+  "claudeCode": "2.1.285",
+  "spentUsd": 6.741093200000001,
+  "oracleCheckUsd": 0.035001,
+  "runs": [
+    {
+      "id": "A1",
+      "arm": "A",
+      "rep": 1,
+      "commit": "d0213e8",
+      "error": null,
+      "asks": 4,
+      "authorWords": 85,
+      "askErrors": 0,
+      "specWords": 1658,
+      "treeFile": false,
+      "decisionsFile": false,
+      "touched": [
+        "T2",
+        "T5",
+        "T6",
+        "T8"
+      ],
+      "armUsd": 1.0088692000000004,
+      "oracleUsd": 0.07306599999999999,
+      "costUsd": 1.0819352000000004,
+      "tokens": {
+        "input": 24,
+        "output": 16478,
+        "cache": 652650
+      },
+      "minutes": 3.4583999999999997,
+      "turns": 34,
+      "denials": 0,
+      "asksLog": [
+        {
+          "question": "**En palabras simples**\nTu pedido se puede leer de dos maneras: publicar las pantallas en el lienzo \"Design\" de verdad (sube a la nube de Claude), o que la página local que ya arma pignolo-ui se vea y se use como un lienzo tipo Figma, sin publicar nada. Hoy mismo dejaste el lienzo \"Design\" para más adelante (v1.x), así que necesito que elijas vos.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Qué entra en este pedido?\n\n1. Lienzo \"Design\" real: pignolo-ui convierte las pantallas en artboards y las publica como artifact privado, pidiendo tu consentimiento una vez por proyecto; sin la herramienta o sin consentimiento, sigue la página local de hoy. Revierte la decisión R10 de hoy para pignolo-ui 1.0 · costo: el más alto (generador nuevo, prueba real con un lienzo privado, ramas de publicación en las skills) · lo publicado queda en la nube hasta que lo borres; el código se puede revertir.\n2. Lienzo local con aspecto Figma: la página de comparación local pasa a ser un lienzo (fondo de mesa de trabajo, artboards con título y tamaño, una fila por opción, más una lámina con los colores y las fuentes). Nada se publica y R10 sigue en pie · costo: bajo (se cambia una página que ya existe) · reversible.\n3. Las dos: primero la 2 y después la 1 como segunda parte del mismo plan · costo: la suma · mismo carácter que la 1 para lo publicado.\n\nRecomendación: 2, porque no revierte la decisión que tomaste hoy (R10) ni publica nada, y deja lista la base visual si después querés la 1.\n\n**Detalle técnico**\n- Contexto: hoy `decidePresentation` devuelve siempre `local` con el motivo `canvas-not-in-v1`; `compare.html` es una página gris con iframes por opción y pantalla.\n- Evidencia: `docs/audits/2026-10-01-decisiones-auditoria.md` (R10: lienzo \"Design\", Tasks 5 y 5b del hito 4 de pignolo-ui, a v1.x); `plugins/pignolo-ui/lib/presentation.mjs:1-6`; `plugins/pignolo-ui/lib/compare-html.mjs`; spec de pignolo-ui §13 y §13.1; tarjeta de la Task 5 conservada en `docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md`. `lib/canvas.mjs` y `scripts/to-canvas.mjs` no existen. La rama `ui/hito-4` (0.6.0) sigue sin unir.\n- Costo y reversibilidad: (1) generador `.dc.html` + lienzo privado de prueba (D-4-2) + cambio en las skills `new` e `improve`; publicar es una acción externa. (2) solo `compare-html.mjs`, su test y el texto de apoyo; todo local. (3) ambos.\n",
+          "answer": "Ninguna coincide del todo: quiero el lienzo \"Design\" real, como la 1, pero sin pedir consentimiento. Publica directo y avisa en una línea cada vez. Si la cuenta no tiene el tipo \"Design\", queda la página local de hoy.",
+          "answerWords": 39
+        },
+        {
+          "question": "Anotado: lienzo \"Design\" real, sin pedir consentimiento, con un aviso de una línea en cada publicación, y la página local de hoy si la cuenta no tiene el tipo \"Design\".\n\n**En palabras simples**\nMe falta entender la segunda frase de tu pedido: \"Los colores y las fuentes, en HTML\". pignolo-ui arma dos cosas: las pantallas (mockups) y las láminas de colores y fuentes (la dirección visual del paso 0). Necesito saber dónde querés ver esas láminas.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Qué hacemos con los colores y las fuentes?\n\n1. Se quedan en HTML local: al lienzo \"Design\" van solo las pantallas; las láminas de colores y fuentes se siguen mostrando en la página local de hoy y nunca se publican · costo: el menor (el lienzo cubre un solo caso) · reversible.\n2. También van al lienzo: las láminas de colores y fuentes se publican como una fila más de artboards, armadas en HTML igual que las pantallas · costo: algo mayor (dos tipos de fila y más publicaciones) · lo publicado queda en la nube hasta que lo borres.\n3. Lámina nueva dentro del lienzo de pantallas: además de las pantallas, cada lienzo lleva un artboard extra que muestra la paleta y las tipografías de `DESIGN.md`; las láminas del paso 0 siguen locales · costo: el mayor (pieza nueva que hoy no existe) · lo publicado queda en la nube hasta que lo borres.\n\nRecomendación: 1, porque es la lectura más literal de tu frase (pantallas en el lienzo, colores y fuentes en HTML) y es la de menor costo.\n\n**Detalle técnico**\n- Contexto: las láminas del paso 0 son los `direction-A|B|C` (style tiles); el spec actual (§13, A-20) preveía publicar en el lienzo tanto las pantallas como la dirección.\n- Evidencia: `plugins/pignolo-ui/reference/options.md` (`<kind>` = `option` o `direction`); `plugins/pignolo-ui/reference/present-and-choose.md` (paso 2, `--kind direction`); spec de pignolo-ui §13 y la fila A-20; el artifact \"Design System\" desde `DESIGN.md` figura como v1.1 en el spec (línea 914).\n- Costo y reversibilidad: (1) el generador solo acepta `option`. (2) acepta `option` y `direction`. (3) generador de una lámina de tokens desde `DESIGN.md`, sin base hoy.\n",
+          "answer": "Ninguna coincide del todo. Mi decisión es que los colores y las fuentes se publiquen desde `DESIGN.md` como el artifact \"Design System\", armado en HTML. Las láminas del paso 0 no las decidí.",
+          "answerWords": 33
+        },
+        {
+          "question": "Anotado: los colores y las fuentes se publican desde `DESIGN.md` como el artifact \"Design System\", armado en HTML.\n\n**En palabras simples**\nQueda sin decidir lo que dejaste abierto: las láminas del paso 0, que son las propuestas de dirección visual (A, B, C) que se muestran antes de que exista un `DESIGN.md`. Hay que decir si también van al lienzo \"Design\" o se quedan en la página local.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Dónde se muestran las láminas de dirección del paso 0?\n\n1. Solo en la página local, como hoy: al lienzo van las pantallas y, aparte, el \"Design System\"; las láminas de dirección nunca se publican · costo: ninguno extra · reversible.\n2. También en el lienzo \"Design\": una fila por dirección, con la misma regla que las pantallas (publica directo y avisa en una línea) · costo: algo mayor (el generador acepta dos tipos de fila y hay una publicación más por proyecto) · lo publicado queda en la nube hasta que lo borres.\n\nRecomendación: 1, porque es lo que hay hoy y no agrega publicaciones; una vez elegida la dirección, los colores y las fuentes ya salen publicados en el \"Design System\".\n\n**Detalle técnico**\n- Contexto: el spec de pignolo-ui (§13, fila A-20) preveía el lienzo también para la dirección del paso 0; hoy todo sale local.\n- Evidencia: `plugins/pignolo-ui/reference/present-and-choose.md` (paso 2, `--kind direction`; aprobado con flujo `direction`); `plugins/pignolo-ui/skills/new/SKILL.md` (paso de `DESIGN.md`).\n- Costo y reversibilidad: (1) el generador solo acepta carpetas `option-<X>`. (2) acepta también `direction-<X>`; mismo chequeo de fuga antes de publicar.\n",
+          "answer": "No sé, decidí vos.",
+          "answerWords": 4
+        },
+        {
+          "question": "Anotado: las láminas del paso 0 no las decidiste y me las delegaste. No agrego alcance por mi cuenta: quedan como hoy (solo página local, nunca se publican) y lo dejo escrito en el spec como punto que podés cambiar cuando quieras.\n\n**En palabras simples**\nSobre el \"Design System\" (colores y fuentes desde `DESIGN.md`): falta decidir cuándo se arma y se publica. Puede salir solo, dentro de los flujos que ya existen, o solo cuando vos lo pidas con un comando nuevo.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Cuándo se publica el \"Design System\"?\n\n1. Automático dentro de `new` e `improve`: cuando el `DESIGN.md` del proyecto es válido y cambió desde la última publicación (o nunca se publicó), se arma el HTML y se publica · costo: sin comando nuevo; una publicación por cada cambio de `DESIGN.md` · lo publicado queda en la nube hasta que lo borres.\n2. Solo a pedido: un comando nuevo `/pignolo-ui:design-system` que lo arma y lo publica cuando lo corrés · costo: un elemento nuevo del plugin (skill, tests, docs) · lo publicado queda en la nube hasta que lo borres.\n3. Las dos: automático como la 1 y además el comando de la 2 · costo: la suma · igual carácter.\n\nRecomendación: 1, porque no agrega un comando nuevo al plugin y el \"Design System\" publicado nunca queda viejo respecto de `DESIGN.md`.\n\n**Detalle técnico**\n- Contexto: hoy el plugin tiene tres skills (`new`, `improve`, `audit`); `new` e `improve` ya validan `DESIGN.md` al empezar y lo cambian solo con un diff que confirmás.\n- Evidencia: `plugins/pignolo-ui/skills/new/SKILL.md:26-28` (`design-md.mjs validate | extract`); `plugins/pignolo-ui/scripts/design-md.mjs` (`validate | extract | patch`); el spec de pignolo-ui lo tenía como candidato a v1.1 (línea 914: tokens por tema, tipografía y componentes con vista previa). De tu respuesta tomo solo colores y fuentes; los componentes quedan fuera.\n- Costo y reversibilidad: (1) un paso más en la preparación de `new` e `improve` y un sha del último `DESIGN.md` publicado en los datos del proyecto. (2) skill nueva. (3) ambos.\n",
+          "answer": "1. Se republica automáticamente cuando cambia DESIGN.md, sin preguntar.",
+          "answerWords": 9
+        }
+      ]
+    },
+    {
+      "id": "A2",
+      "arm": "A",
+      "rep": 2,
+      "commit": "d0213e8",
+      "error": null,
+      "asks": 6,
+      "authorWords": 116,
+      "askErrors": 0,
+      "specWords": 1998,
+      "treeFile": false,
+      "decisionsFile": false,
+      "touched": [
+        "T2",
+        "T4",
+        "T5",
+        "T6",
+        "T8",
+        "T10"
+      ],
+      "armUsd": 0.8498610000000001,
+      "oracleUsd": 0.10970200000000002,
+      "costUsd": 0.9595630000000002,
+      "tokens": {
+        "input": 22,
+        "output": 15147,
+        "cache": 516001
+      },
+      "minutes": 3.689416666666667,
+      "turns": 27,
+      "denials": 0,
+      "asksLog": [
+        {
+          "question": "**En palabras simples**\nTu pedido se puede leer de dos maneras: que las pantallas se publiquen en el lienzo \"Design\" de verdad, o que sigan siendo una página local pero con aspecto de lienzo tipo Figma. Son trabajos distintos y necesito saber cuál querés.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Qué querés decir con \"que se vean como artifacts tipo Figma\"?\n\n1. Publicar las pantallas en el lienzo \"Design\" real: cada pantalla es un artboard, una fila por opción, navegable en modo Play. Sube los mockups a tu cuenta (privado). Es lo que hoy mismo quedó para después de la v1 (R10), así que elegir esto lo trae de vuelta. Costo: el más alto (generador nuevo, depende del formato del tipo \"Design\"). Se puede deshacer: sí, vuelve a la página local.\n2. Página local con aspecto de lienzo: la comparación local de hoy se rediseña como un tablero con artboards, zoom y desplazamiento, sin publicar nada. Costo: medio. Se puede deshacer: sí.\n3. Las dos: lienzo \"Design\" real cuando está disponible y hay permiso, y la página local con aspecto de lienzo como respaldo. Costo: la suma de las dos. Se puede deshacer: sí.\n\nRecomendación: 1, porque es lo que dice tu frase (\"el lienzo Design de claude.ai\") y el diseño ya está escrito y probado una vez a mano; la página local de hoy queda como respaldo sin rediseñarla.\n\n**Detalle técnico**\n- Contexto: hoy `new` e `improve` muestran las opciones solo en `compare.html` local; la presentación responde siempre `local` con el motivo `canvas-not-in-v1`.\n- Evidencia: spec de pignolo-ui §13 y §13.1 (lienzo, `to-canvas.mjs`, sin construir: no existe el script), §5.11 línea 486 (R10, lienzo fuera de la v1), `plugins/pignolo-ui/reference/present-and-choose.md` paso 1.\n- Costo y reversibilidad: 1) script generador + presentación + consentimiento por proyecto; reversible. 2) cambio de `compare.html`; reversible. 3) ambos; reversible.\n",
+          "answer": "1. Lienzo \"Design\" real cuando la cuenta tiene el tipo, y la compare.html local como respaldo tal cual está, sin rediseñarla.",
+          "answerWords": 21
+        },
+        {
+          "question": "**En palabras simples**\nAnotado: lienzo \"Design\" real, con la página local de hoy como respaldo sin tocar. Ahora la segunda frase de tu pedido, \"los colores y las fuentes, en HTML\": la puedo leer de tres maneras y cambia qué se construye.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Qué querés que pase con los colores y las fuentes?\n\n1. La ronda de dirección visual (las muestras de colores y tipografías que se eligen antes de las pantallas, cuando el proyecto está vacío) nunca va al lienzo: se muestra siempre como página HTML local, como hoy. Solo las pantallas van al lienzo. Costo: ninguno extra. Se puede deshacer: sí.\n2. Además de lo anterior, una página HTML nueva y local que muestra los colores y las fuentes ya decididos del proyecto (paleta, tipografías con ejemplos), generada desde el archivo de diseño. Costo: una pieza más para construir. Se puede deshacer: sí.\n3. Otra cosa: que dentro del lienzo los colores y las fuentes viajen como HTML y CSS reales (texto y variables de color, no imágenes), para poder inspeccionarlos y exportarlos. Costo: ninguno extra, el generador previsto ya trabaja así. Se puede deshacer: sí.\n\nRecomendación: 1, porque es la lectura más corta de tu frase y no agrega piezas; la 2 ya está anotada en el diseño como algo para después.\n\n**Detalle técnico**\n- Contexto: el spec vigente (§13, A-20) mandaba también la dirección del paso 0 al lienzo; la opción 1 cambia eso. La opción 2 se parece al artifact \"Design System\" que A-20 deja para v1.1, pero local.\n- Evidencia: spec de pignolo-ui §13 línea 729, A-20 línea 61, línea 914; `present-and-choose.md` (`--kind direction` para style tiles).\n- Costo y reversibilidad: 1) solo una condición en la decisión de presentación; 2) un script y una plantilla nuevos; 3) nada nuevo. Las tres reversibles.\n",
+          "answer": "3. Los colores y las fuentes tienen que viajar como HTML y CSS reales dentro del lienzo, no como imágenes.",
+          "answerWords": 20
+        },
+        {
+          "question": "**En palabras simples**\nAnotado: colores y fuentes viajan como HTML y CSS reales, nunca como imágenes. Hay un cruce con algo que decidiste hoy mismo: el lienzo había quedado para después de la v1. Necesito saber si este pedido cambia eso.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Cuándo entra el lienzo \"Design\"?\n\n1. Entra en la v1 de pignolo-ui: se revierte la parte del lienzo de la decisión R10. Se construye después de cerrar lo que ya está en fila (revisión y unión de las ramas pendientes), como un plan propio. Costo: suma un plan a la v1. Se puede deshacer: sí, hasta que se publique.\n2. Sigue fuera de la v1 (R10 queda como está): ahora solo se escribe el diseño y se construye en la v1.x. Costo: ninguno ahora. Se puede deshacer: sí.\n3. Entra en la v1 y además pasa adelante de lo que está en fila. Costo: demora la unión de las ramas pendientes. Se puede deshacer: sí.\n\nRecomendación: 1, porque lo estás pidiendo ahora y la regla vigente es un solo plan en ejecución a la vez; no hace falta frenar lo pendiente.\n\n**Detalle técnico**\n- Contexto: R10 (2026-10-01) sacó de la v1 las tareas T5/T5b del lienzo y el hito 5 de pignolo-ui; hoy la presentación responde `local` con `canvas-not-in-v1`.\n- Evidencia: `docs/STATE.md` líneas 8 y 14; spec de pignolo-ui línea 486; `docs/audits/2026-10-01-decisiones-auditoria.md` R10.\n- Costo y reversibilidad: 1) un plan más en la v1, versión nueva de pignolo-ui y entrada de CHANGELOG; 2) solo docs; 3) igual que 1 con las ramas `core/hito-6` y `ui/hito-4` esperando. Todo reversible antes de publicar.\n",
+          "answer": "1. Entra en la v1, como plan propio después de cerrar lo que ya está en fila.",
+          "answerWords": 17
+        },
+        {
+          "question": "**En palabras simples**\nAnotado: entra en la v1, como plan propio, después de lo que está en fila. Publicar en el lienzo es subir los mockups a la nube de tu cuenta. Necesito que definas cuándo pignolo-ui tiene permiso para hacerlo.\n\n**Pregunta** · categoría: `security` (seguridad)\n¿Cómo se pide el permiso para publicar en el lienzo?\n\n1. Una vez por proyecto: la primera vez pregunta, guarda la respuesta y no vuelve a preguntar en ese proyecto. Se publica privado; solo mockups con datos de ejemplo, nunca capturas, código ni datos reales. Costo: una pregunta por proyecto. Se puede deshacer: el permiso sí (se cambia la respuesta guardada); lo ya subido queda en tu cuenta hasta que lo borres vos.\n2. Cada vez: pregunta antes de cada publicación. Mismo contenido permitido. Costo: una pregunta por corrida. Se puede deshacer: igual que la 1.\n3. Sin preguntar: publica siempre que el lienzo esté disponible, salvo que el proyecto diga \"solo local\". Costo: ninguna pregunta. Se puede deshacer: igual que la 1, pero se entera después.\n\nRecomendación: 1, porque es lo que ya aprobaste en el diseño de pignolo-ui (A-20) y respeta tu regla de confirmar las subidas a la nube sin preguntar en cada corrida.\n\n**Detalle técnico**\n- Contexto: el spec vigente guarda `canvasConsent: true | false` en `project.json` (datos de máquina, fuera del repo) y `presentation: \"local\"` nunca publica.\n- Evidencia: spec de pignolo-ui §13 (condición 4 y \"Qué se publica\"), principio 7 (línea 75), tabla de datos (línea 146); `leak-check.mjs` corre antes de publicar.\n- Costo y reversibilidad: las tres dejan lo publicado en la cuenta hasta que el autor lo borre; pignolo-ui no borra artifacts.\n",
+          "answer": "3. Sin preguntar, pero con un aviso de una línea cada vez que publica.",
+          "answerWords": 14
+        },
+        {
+          "question": "**En palabras simples**\nAnotado: publica sin preguntar cuando el lienzo está disponible, avisa en una línea cada vez, y el proyecto puede decir \"solo local\". Queda un punto sobre las fuentes: para que una tipografía que no es del sistema se vea en el lienzo, su archivo tiene que llegar de algún lado, y hoy el diseño prohíbe recursos remotos.\n\n**Pregunta** · categoría: `dependencies` (dependencias)\n¿De dónde salen los archivos de las fuentes en el lienzo?\n\n1. De ningún lado: el lienzo declara la fuente por su nombre en CSS, con su cadena de respaldo. Si la fuente no está instalada en tu máquina se ve la de respaldo, y el lienzo lo avisa en una nota. Costo: ninguno; sin temas de licencia. Se puede deshacer: sí.\n2. Del proyecto: si el proyecto ya tiene los archivos de fuente en su repo, se incrustan dentro del lienzo. Se ve siempre bien. Costo: sube archivos de fuente a la nube; depende de que la licencia de cada fuente permita redistribuirla; lienzos más pesados. Se puede deshacer: sí, pero lo subido queda subido.\n3. De un servicio de fuentes (por ejemplo Google Fonts) con un enlace remoto. Costo: levanta la prohibición de recursos remotos solo para fuentes de una lista cerrada de servicios; cada vez que se abre el lienzo, se llama a ese servicio. Se puede deshacer: sí.\n\nRecomendación: 1, porque no suma dependencias ni temas legales y mantiene la regla de \"nada remoto\"; la 2 o la 3 se pueden sumar después si la de respaldo molesta.\n\n**Detalle técnico**\n- Contexto: el generador previsto rechaza toda entrada con script o recurso remoto; las opciones locales siguen la misma regla.\n- Evidencia: spec de pignolo-ui §13.1 y línea 839 (\"una entrada con script o con recurso remoto se rechaza\").\n- Costo y reversibilidad: 1) nada nuevo; 2) incrustar `@font-face` con datos en línea, chequeo de licencia a cargo del autor; 3) lista cerrada de orígenes y cambio del chequeo de recursos remotos. Las tres reversibles en código.\n",
+          "answer": "Eso es técnico, decidilo vos.",
+          "answerWords": 5
+        },
+        {
+          "question": "**En palabras simples**\nLas fuentes las decido yo: el lienzo las declara por nombre en CSS con su respaldo, sin subir ni enlazar archivos de fuente. Antes de escribir el diseño te muestro los bordes que quedan, que salen del diseño ya aprobado y no de algo que hayas dicho hoy.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿El alcance queda así, o cambiás algo?\n\nLo que entra:\n- Las opciones de pantallas de `new` y de `improve` se publican en el lienzo \"Design\": una fila por opción, un artboard por pantalla, navegable.\n- La ronda de dirección visual (colores y tipografías, cuando el proyecto está vacío) también va al lienzo, con los colores y las fuentes como HTML y CSS reales.\n- Sin el tipo \"Design\" en la cuenta, o si el proyecto dice \"solo local\": la página local de hoy, sin cambios.\n- Publica sin preguntar, con un aviso de una línea cada vez.\n- La elección se sigue confirmando en el chat, no en el lienzo.\n\nLo que no entra:\n- El artifact \"Design System\" generado desde el archivo de diseño y el resto del hito 5 de pignolo-ui (siguen para después de la v1).\n- La presentación del núcleo de pignolo (sus tarjetas y su permiso de lienzo no cambian).\n- Borrar lo publicado: pignolo-ui nunca borra artifacts de tu cuenta.\n- Evals pagas: se verifica con tests del generador y un checklist manual en una sesión real.\n\n1. Queda así: escribo el diseño con este alcance. Costo: ninguno. Se puede deshacer: sí, es un documento.\n2. Cambiar algo: decime qué punto y cómo. Costo: una vuelta más. Se puede deshacer: sí.\n\nRecomendación: 1, porque cada punto sale del diseño aprobado (§13, A-20) con tus tres respuestas de hoy encima.\n\n**Detalle técnico**\n- Contexto: tus respuestas de hoy cambian tres cosas del spec vigente: R10 (el lienzo vuelve a la v1), el consentimiento por proyecto (`canvasConsent` deja de existir; queda `presentation: \"local\"` como salida) y se agrega la regla de colores y fuentes como texto.\n- Evidencia: spec de pignolo-ui §13, §13.1, A-14, A-20, línea 486; `present-and-choose.md` paso 1.\n- Costo y reversibilidad: 1) solo se escribe el spec; 2) igual, tras tu corrección.\n",
+          "answer": "2, con dos cambios: el artifact \"Design System\" sí entra (DESIGN.md se publica y se republica solo cuando cambia, sin preguntar), y las evals de ui-option sí se vuelven a correr, con tope de 3 USD. El resto va.",
+          "answerWords": 39
+        }
+      ]
+    },
+    {
+      "id": "A3",
+      "arm": "A",
+      "rep": 3,
+      "commit": "d0213e8",
+      "error": null,
+      "asks": 3,
+      "authorWords": 62,
+      "askErrors": 0,
+      "specWords": 1383,
+      "treeFile": false,
+      "decisionsFile": false,
+      "touched": [
+        "T2",
+        "T4",
+        "T5"
+      ],
+      "armUsd": 0.7519654,
+      "oracleUsd": 0.055705,
+      "costUsd": 0.8076704,
+      "tokens": {
+        "input": 24,
+        "output": 11587,
+        "cache": 558646
+      },
+      "minutes": 2.2404333333333333,
+      "turns": 24,
+      "denials": 0,
+      "asksLog": [
+        {
+          "question": "**En palabras simples**\nHoy pignolo-ui muestra las opciones de pantalla en una página local de tu máquina y no sube nada. El lienzo \"Design\" de claude.ai lo dejaste fuera de la v1 hoy mismo (decisión R10). Tu pedido se puede leer de dos maneras y necesito saber cuál es.\n\n**Pregunta** · categoría: `scope` (alcance)\nCuando decís que las pantallas \"se vean como artifacts tipo Figma\", ¿qué querés que haga pignolo-ui?\n\n1. Publicar las pantallas en el lienzo \"Design\" real de claude.ai, como artifact privado. Cambia la decisión R10 de hoy (el lienzo vuelve a entrar). Sube a la nube maquetas con datos de ejemplo, previo permiso por proyecto. Si el lienzo no está disponible, queda la página local de hoy. Se puede deshacer: se vuelve a la página local con un ajuste.\n2. No publicar nada: mejorar la página local para que se vea y se use como un lienzo tipo Figma (fondo de lienzo, cada pantalla en su marco con título, una fila por opción, zoom y desplazamiento). R10 queda como está. Es el cambio más chico y se puede deshacer.\n3. Las dos: la página local con aspecto de lienzo (opción 2) y, además, el lienzo \"Design\" real cuando esté disponible y haya permiso (opción 1). Es el más grande; también cambia R10.\n\nRecomendación: 1, porque tu pedido nombra el lienzo \"Design\" de claude.ai; pero revierte una decisión tuya de hoy, por eso lo pregunto.\n\n**Detalle técnico**\n- Contexto: spec de pignolo-ui §13 y §13.1 ya describen el lienzo (un artboard por pantalla, una fila por opción, generador `to-canvas.mjs`); §5.11 lo pasó a v1.x por R10 y hoy `run.mjs present` responde siempre `local` con el motivo `canvas-not-in-v1`.\n- Evidencia: `docs/specs/2026-09-28-pignolo-ui-v1-design.md` líneas 486 y 729-753; `plugins/pignolo-ui/reference/present-and-choose.md` paso 1; `docs/STATE.md` línea 48 (T5 y T5b fuera por R10).\n- Costo y reversibilidad: 1) construir el generador y la decisión de presentación, depende de un formato de claude.ai que no controlamos; reversible con `presentation: local`. 2) solo cambia `compare.html`; reversible. 3) la suma de los dos.\n",
+          "answer": "1. Va el lienzo \"Design\" real, y R10 se revierte. Pero sin permiso por proyecto: solo un aviso de una línea cada vez que publica.",
+          "answerWords": 25
+        },
+        {
+          "question": "Anotado: lienzo \"Design\" real, R10 revertida, sin permiso por proyecto y con un aviso de una línea cada vez que publica.\n\n**En palabras simples**\nMe falta entender la segunda frase de tu pedido: \"Los colores y las fuentes, en HTML\". Hoy pignolo-ui muestra los colores y las fuentes en dos momentos: al elegir la dirección visual (las muestras de estilo, antes de las pantallas) y en el archivo de diseño del proyecto. No quiero adivinar a cuál te referís ni dónde querés verlos.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Qué querés decir con \"los colores y las fuentes, en HTML\"?\n\n1. Los colores y las fuentes no van al lienzo: se siguen mostrando como página HTML local, como hoy. Solo las pantallas se publican en el lienzo. No agrega trabajo; se puede cambiar después.\n2. Los colores y las fuentes también van al lienzo \"Design\", como un marco más al lado de las pantallas (paleta y tipografías), armado en HTML. Agrega un marco por opción; se puede cambiar después.\n3. Una página nueva de \"sistema de diseño\" en HTML local, generada desde el archivo de diseño del proyecto: paleta por tema y tipografías con vista previa. Es una función nueva, aparte del lienzo; hoy está anotada como candidata a v1.1. Se puede deshacer.\n4. Otra cosa: contámela con tus palabras.\n\nRecomendación: 1, porque es la lectura más literal (pantallas al lienzo, colores y fuentes en HTML) y no agrega alcance; pero es una suposición mía, por eso pregunto.\n\n**Detalle técnico**\n- Contexto: las muestras de estilo son el `kind: direction` del paso 0 y hoy salen en `compare.html`; el spec §13 decía que el lienzo también se usaba para la dirección.\n- Evidencia: `docs/specs/2026-09-28-pignolo-ui-v1-design.md` línea 729 (lienzo también para la dirección del paso 0) y línea 914 (artifact \"Design System\" desde `DESIGN.md`, candidato a v1.1); `plugins/pignolo-ui/reference/present-and-choose.md` paso 2 (`--kind direction`).\n- Costo y reversibilidad: 1) cambia §13 para excluir la dirección del lienzo, sin código nuevo. 2) un artboard más en el generador. 3) un script y una plantilla nuevos. Todo reversible.\n",
+          "answer": "Ninguna coincide exacto: los colores y las fuentes van como el artifact \"Design System\", armado en HTML a partir de DESIGN.md, además de las pantallas del lienzo.",
+          "answerWords": 27
+        },
+        {
+          "question": "Anotado: además de las pantallas en el lienzo, un artifact \"Design System\" en HTML armado desde `DESIGN.md`.\n\n**En palabras simples**\nÚltima duda antes de escribir el spec: qué lleva adentro ese artifact. Vos dijiste \"los colores y las fuentes\"; el spec viejo lo anotaba también con los componentes (botones, campos, etc.) en vista previa. Ojo: a diferencia de las maquetas, esto publica los colores y nombres de fuentes reales de tu proyecto, no datos de ejemplo.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Qué muestra el artifact \"Design System\"?\n\n1. Solo colores y fuentes: la paleta (por tema, si hay claro y oscuro) y las tipografías con texto de muestra. Es lo que pediste, lo más chico; se puede ampliar después.\n2. Colores, fuentes y también los componentes con vista previa (lo que decía el spec viejo como candidato a v1.1). Más trabajo y más superficie a probar; se puede recortar después.\n\nRecomendación: 1, porque es literalmente lo que pediste y los componentes se pueden sumar en otro plan.\n\n**Detalle técnico**\n- Contexto: se publica privado, con el mismo aviso de una línea que el lienzo; si no hay herramienta Artifact, queda como HTML local. Salvo que digas otra cosa, lo genero cuando `DESIGN.md` se crea o cambia (al aprobar la dirección en `new`) y `presentation: \"local\"` sigue existiendo como forma de no publicar nunca.\n- Evidencia: `docs/specs/2026-09-28-pignolo-ui-v1-design.md` línea 914 (\"tokens por tema, tipografía y componentes con vista previa\") y línea 736 (hoy solo se publican maquetas con datos de ejemplo).\n- Costo y reversibilidad: 1) un generador que lee colores y tipografía de `DESIGN.md`. 2) lo mismo más una plantilla por componente. Las dos reversibles.\n",
+          "answer": "1. Solo colores y fuentes, que es lo que pedí.",
+          "answerWords": 10
+        }
+      ]
+    },
+    {
+      "id": "B1",
+      "arm": "B",
+      "rep": 1,
+      "commit": "d0213e8",
+      "error": null,
+      "asks": 2,
+      "authorWords": 15,
+      "askErrors": 0,
+      "specWords": 1702,
+      "treeFile": true,
+      "decisionsFile": true,
+      "touched": [
+        "T1",
+        "T5"
+      ],
+      "armUsd": 1.2361082,
+      "oracleUsd": 0.033592,
+      "costUsd": 1.2697002000000002,
+      "tokens": {
+        "input": 22,
+        "output": 21175,
+        "cache": 676387
+      },
+      "minutes": 3.9820166666666665,
+      "turns": 35,
+      "denials": 0,
+      "asksLog": [
+        {
+          "question": "**Lo que entendí (sin pregunta todavía; si algo está mal, corregime en una línea)**\n\n**Qué pediste:** \"que las pantallas de UI que arma pignolo-ui se vean como artifacts tipo Figma (el lienzo \"Design\" de claude.ai). Los colores y las fuentes, en HTML.\"\n\n**Qué asumo:**\n1. \"Las pantallas\" son las opciones de mockup que arman `new` e `improve` (A, B, C): se publican de verdad en el lienzo \"Design\" de claude.ai, una fila por opción y un artboard por pantalla, navegables en Play. No es una imitación local del lienzo.\n2. \"Los colores y las fuentes, en HTML\": el paso de dirección (las tarjetas de estilo con paleta y tipografías) se muestra siempre como HTML local y nunca va al lienzo. Esto cambia lo aprobado el 2026-09-28, que mandaba también la dirección al lienzo.\n3. Sigue valiendo lo ya decidido sobre publicar: privado, con tu consentimiento una vez por proyecto, nunca capturas, código ni datos reales; el HTML local sigue siendo la fuente de verdad y lo aprobado se guarda local. Sin la herramienta o sin consentimiento, sale el HTML local de hoy.\n4. Hoy mismo (R10) decidiste pasar el lienzo a v1.x. Este pedido lo vuelve a traer: eso te lo pregunto aparte, no lo doy por resuelto.\n\n**Qué queda afuera:** el artifact \"Design System\" generado desde `DESIGN.md`, la presentación visual del núcleo, el hito 5 de pignolo-ui y `audit` (no muestra opciones).\n",
+          "answer": "Ok.",
+          "answerWords": 1
+        },
+        {
+          "question": "**En palabras simples**\nHoy mismo decidiste dejar el lienzo \"Design\" para más adelante (v1.x). Este pedido lo trae de vuelta. Necesito saber si cambia esa decisión o si solo querés dejarlo diseñado.\n\n**Pregunta** · category: `scope` (alcance)\n¿El lienzo \"Design\" para las pantallas entra ahora en la v1 de pignolo-ui?\n\n1. **(Recomendada)** Sí, entra en la v1: se revierte esa parte de R10. Se construye como un plan propio y corto, después de unir lo que ya está hecho de pignolo-ui. Costo: una tanda de trabajo en sonnet más su revisión opus, y una prueba real con vos presente. Se puede deshacer: el camino local queda intacto y el lienzo se apaga con un ajuste.\n2. Sigue en v1.x: dejo solo el diseño escrito y no se construye nada ahora. Costo: ninguno hoy. Se puede cambiar cuando quieras.\n3. `suficiente`: cierro con lo que hay; esto queda como pregunta pendiente en la tarjeta de alcance.\n\nRecomendación: 1, porque tu pedido es posterior a R10 y pide el lienzo de forma explícita, y casi todo ya está diseñado (solo falta el generador).\n\n**Detalle técnico**\n- Contexto: R10 movió a v1.x el generador del lienzo y su prueba real (Tasks 5 y 5b del hito 4 de pignolo-ui). La lógica de decisión ya existe, apagada.\n- Evidencia: `docs/audits/2026-10-01-decisiones-auditoria.md:47`; `plugins/pignolo-ui/lib/presentation.mjs:5-6` (`canvasAvailable = false`, motivo `canvas-not-in-v1`); tarjeta de la Task 5 en `docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md:182-204`.\n- Costo y reversibilidad: (1) dos archivos nuevos y cambios de texto en dos skills, reversible; (2) sin costo, reversible; (3) sin costo, queda pendiente.\n\npregunta 1 de 6 como máximo; quedan 3 ramas\n",
+          "answer": "1. Sí, entra en la v1: el pedido es explícito y posterior a R10.",
+          "answerWords": 14
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "arm": "B",
+      "rep": 2,
+      "commit": "d0213e8",
+      "error": null,
+      "asks": 5,
+      "authorWords": 112,
+      "askErrors": 0,
+      "specWords": 2059,
+      "treeFile": true,
+      "decisionsFile": true,
+      "touched": [
+        "T2",
+        "T5",
+        "T7",
+        "T8"
+      ],
+      "armUsd": 1.2423636,
+      "oracleUsd": 0.092245,
+      "costUsd": 1.3346086,
+      "tokens": {
+        "input": 22,
+        "output": 19716,
+        "cache": 746626
+      },
+      "minutes": 4.00685,
+      "turns": 32,
+      "denials": 0,
+      "asksLog": [
+        {
+          "question": "Antes de preguntar nada, te digo qué entendí. Corregime en una línea si algo está mal; si está bien, contestá \"ok\".\n\n**Lo que pediste:** \"que las pantallas de UI que arma pignolo-ui se vean como artifacts tipo Figma (el lienzo \"Design\" de claude.ai). Los colores y las fuentes, en HTML.\"\n\n**Lo que asumo:**\n- Las pantallas son las opciones que arman `/pignolo-ui:new` y `/pignolo-ui:improve` (los mockups A, B, C): pasan a mostrarse en el lienzo \"Design\", una fila por opción y un marco por pantalla.\n- \"Los colores y las fuentes, en HTML\": la propuesta de dirección visual (paleta y tipografía, el paso previo cuando el proyecto no tiene diseño) NO va al lienzo: se sigue mostrando como página HTML local, igual que hoy.\n- Lo local sigue siendo la fuente de verdad: el lienzo es solo la forma de mostrar; lo aprobado se guarda como HTML en el proyecto, como hoy.\n- Se mantiene lo ya decidido sobre publicar: consentimiento una vez por proyecto, lienzo privado, solo mockups con datos de ejemplo.\n\n**Lo que queda afuera:** `/pignolo-ui:audit` (no arma pantallas), el artifact \"Design System\" generado desde `DESIGN.md`, la presentación visual del núcleo y el hito 5 de pignolo-ui.\n",
+          "answer": "Ok.",
+          "answerWords": 1
+        },
+        {
+          "question": "**En palabras simples**\nHoy mismo decidiste, tras la auditoría, que el lienzo \"Design\" quedaba para más adelante (v1.x). Este pedido lo trae de vuelta. Necesito saber cuál de las dos cosas vale.\n\n**Pregunta** · categoría: `rule-conflict` (conflicto con una decisión anterior)\n¿El lienzo \"Design\" vuelve a entrar ahora, o este pedido queda escrito para cuando llegue v1.x?\n\n1. **(recomendada)** Queda solo el diseño escrito, para v1.x: escribo el spec ahora y no se construye hasta que lo digas. Costo: ninguno más allá del spec. Se deshace con una línea (decir \"construilo\").\n2. Vuelve a la v1 ahora: se revierte esa parte de la decisión R10 y el lienzo se planifica y construye como próximo hito de pignolo-ui. Costo: un hito más (generador, cambios en `new` e `improve`, un lienzo de prueba real) antes de cerrar la v1; compite con los hitos 6, 7 y 8 del núcleo. Se puede deshacer: el camino local queda como respaldo.\n3. Vuelve a la v1, pero después de unir lo que ya está pendiente (hito 6, hito 4 de pignolo-ui, 8a). Mismo costo que la 2, sin abrir un frente nuevo ahora. Se puede deshacer.\n4. suficiente (sigo con lo recomendado y lo dejo como supuesto declarado).\n\nRecomendación: 1, porque la decisión de diferirlo es de hoy, la regla vigente es \"uno o dos frentes a la vez\" y ya hay dos ramas esperando revisión.\n\nAntes de decidir, si querés, puedo armar un debate de dos agentes opus (uno a favor de traerlo ahora, uno en contra): cuesta alrededor de 1 a 2 USD.\n\n**Detalle técnico**\n- Contexto: R10 movió las tareas 5 y 5b (generador del lienzo y lienzo de prueba) a v1.x; el código hoy responde siempre \"local\".\n- Evidencia: `docs/audits/2026-10-01-decisiones-auditoria.md:47`; `plugins/pignolo-ui/lib/presentation.mjs:1-6`; `docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md:7` y `:182`.\n- Costo y reversibilidad: 1, nada se construye, reversible; 2, un hito ahora, reversible; 3, un hito más tarde, reversible.\n\npregunta 1 de 6 como máximo; quedan 5 ramas\n",
+          "answer": "2. El lienzo vuelve a la v1 ahora, es lo que pedí y ya lo tengo decidido para construir.",
+          "answerWords": 19
+        },
+        {
+          "question": "**En palabras simples**\nPara saber que el lienzo anda de verdad hay que publicar uno de prueba y que vos lo navegues. Publicar sube contenido a la nube de Claude, así que lo decidís vos.\n\n**Pregunta** · categoría: `costs` (costos)\n¿El hito incluye publicar un lienzo de prueba real para que lo apruebes?\n\n1. **(recomendada)** Sí, un solo lienzo privado, con pantallas de ejemplo inventadas para la prueba (sin datos de ningún proyecto), y te pido el OK justo antes de publicarlo. Costo: una sesión corta, sin evals pagas. Lo publicado se puede borrar, pero no se garantiza que no quede copia.\n2. No: el hito se cierra solo con tests automáticos sobre los archivos generados; el lienzo queda marcado \"no verificado en vivo\" hasta que lo pruebes vos por tu cuenta. Costo: ninguno. Reversible.\n3. suficiente (queda como pregunta pendiente: publicar no se asume).\n\nRecomendación: 1, porque los tests locales comparan bytes y no pueden ver si el lienzo se abre ni si los links entre pantallas navegan; la única prueba anterior fue un lienzo de 2 pantallas.\n\n**Detalle técnico**\n- Contexto: es la Task 5b del plan del hito 4 (D-4-2: lienzo privado), movida a v1.x por R10 y ahora reabierta por tu decisión.\n- Evidencia: `docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md:11`; `docs/specs/2026-09-28-pignolo-ui-v1-design.md:721` y `:753`.\n- Costo y reversibilidad: 1, una publicación privada con tu OK previo; 2, nada se publica.\n\npregunta 2 de 6 como máximo; quedan 4 ramas\n",
+          "answer": "1. Hacé la prueba real con una publicación.",
+          "answerWords": 8
+        },
+        {
+          "question": "**En palabras simples**\nQuedan detalles chicos y fáciles de cambiar después. Te los paso juntos con el valor que propongo para cada uno.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Quedan así estos supuestos, o cambiás alguno?\n\n1. Cuando combinás opciones (\"B con la cabecera de A\"), el flujo combinado también se muestra en el lienzo antes de implementar.\n2. El ajuste `presentation` conserva sus dos valores: `auto` (lienzo si se puede y diste consentimiento en el proyecto; si no, local) y `local` (nunca se publica). Por defecto sigue `auto`.\n3. Si el lienzo no se puede usar (falta la herramienta, falta el tipo \"Design\" o no hay consentimiento), se muestra la página local de hoy y el informe lo dice en una línea; nunca se frena el flujo.\n4. Tamaños de los marcos según la plataforma declarada: celular 390×844, escritorio 1440 de ancho; con las dos plataformas, las dos filas.\n5. La página local de comparación se sigue generando siempre, también cuando hay lienzo (es lo que se verifica).\n\nOpciones:\n1. **(recomendada)** Quedan los cinco así. Sin costo extra; cada uno se cambia después con una línea.\n2. Cambio alguno: decime el número y el valor.\n3. suficiente.\n\nRecomendación: 1, porque los cinco repiten lo que ya aprobaste en el diseño de pignolo-ui (A-20 y la sección de presentación).\n\n**Detalle técnico**\n- Contexto: valores tomados del spec vigente; lo único nuevo frente a A-20 es que la dirección visual (colores y fuentes) queda en HTML local.\n- Evidencia: `docs/specs/2026-09-28-pignolo-ui-v1-design.md:61`, `:515`, `:729-735`; `plugins/pignolo-ui/.claude-plugin/plugin.json:18-24`.\n- Costo y reversibilidad: todos reversibles, sin costo.\n\npregunta 3 de 6 como máximo; quedan 3 ramas (esta, y dos que cierro yo sin preguntarte: decisiones técnicas y una verificación del formato del lienzo)\n",
+          "answer": "2: cambio el 2, el 3 y el 4.\n\nEn el 2 y el 3 no hay consentimiento: no se pregunta nada, solo un aviso de una línea cada vez que publica. El lienzo se usa siempre que la cuenta tenga el tipo \"Design\", y si no, va la página local.\n\nEn el 4, el ancho va según la plataforma, pero el alto no es fijo: se mide el alto real de cada pantalla con el navegador. El resto va.",
+          "answerWords": 80
+        },
+        {
+          "question": "**En palabras simples**\nAnotado: sin consentimiento, sin pregunta, un aviso de una línea cada vez que publica; y el alto de cada marco se mide con el navegador. Queda un punto que tu respuesta no cierra: si alguien que usa pignolo-ui puede apagar la publicación.\n\n**Pregunta** · categoría: `security` (seguridad)\n¿Se conserva el ajuste `presentation: local` como interruptor para que nunca se publique nada?\n\n1. **(recomendada)** Sí: por defecto `auto` (publica siempre que la cuenta tenga el tipo \"Design\", sin preguntar, con el aviso de una línea); quien pone `local` no publica nunca. Costo: ninguno, el ajuste ya existe. Reversible.\n2. No: se quita el ajuste; con el tipo \"Design\" disponible siempre se publica y no hay forma de apagarlo. Costo: cambia la configuración publicada del plugin (quien la tenía en `local` la pierde). Reversible volviendo a agregar el ajuste, pero lo ya publicado no se retira solo.\n3. suficiente (queda la 1 como supuesto declarado).\n\nRecomendación: 1, porque el repo es público y otros usuarios pueden trabajar con proyectos que no deben subir nada; mantener el interruptor no te cambia nada a vos.\n\n**Detalle técnico**\n- Contexto: tu decisión reemplaza el consentimiento por proyecto de A-20 y el principio 7 del diseño de pignolo-ui; el chequeo de fuga (datos de usuario o de máquina) sigue corriendo antes de cada publicación y, si falla, no se publica.\n- Evidencia: `plugins/pignolo-ui/.claude-plugin/plugin.json:18-24`; `docs/specs/2026-09-28-pignolo-ui-v1-design.md:61`, `:75`, `:568`, `:733`.\n- Costo y reversibilidad: 1, sin costo, reversible; 2, cambia un ajuste publicado, reversible salvo lo ya subido.\n\npregunta 4 de 6 como máximo; queda 1 rama\n",
+          "answer": "No sé, decidí vos.",
+          "answerWords": 4
+        }
+      ]
+    },
+    {
+      "id": "B3",
+      "arm": "B",
+      "rep": 3,
+      "commit": "d0213e8",
+      "error": null,
+      "asks": 4,
+      "authorWords": 89,
+      "askErrors": 0,
+      "specWords": 1825,
+      "treeFile": true,
+      "decisionsFile": true,
+      "touched": [
+        "T2",
+        "T5",
+        "T6",
+        "T9",
+        "T10"
+      ],
+      "armUsd": 1.1809728,
+      "oracleUsd": 0.071642,
+      "costUsd": 1.2526148,
+      "tokens": {
+        "input": 20,
+        "output": 18059,
+        "cache": 666135
+      },
+      "minutes": 3.5638833333333335,
+      "turns": 31,
+      "denials": 0,
+      "asksLog": [
+        {
+          "question": "Antes de preguntar nada, te digo lo que entendí. Corregime en una línea si algo está mal.\n\n**Lo que pediste:** \"que las pantallas de UI que arma pignolo-ui se vean como artifacts tipo Figma (el lienzo \"Design\" de claude.ai). Los colores y las fuentes, en HTML.\"\n\n**Lo que asumo:**\n1. Las opciones de pantalla de `new` y de `improve` se presentan en el lienzo \"Design\" (una fila por opción, un artboard por pantalla, navegable), como ya está diseñado en el spec de pignolo-ui (A-20, §13).\n2. \"Los colores y las fuentes, en HTML\" = la dirección visual (la muestra de colores y tipografías, el paso 0) **no** va al lienzo: se sigue mostrando como HTML local, como hoy.\n3. Se mantiene lo ya decidido: el HTML local es la fuente de verdad, se pide tu consentimiento una vez por proyecto antes de publicar, y nunca se suben capturas, código ni datos reales. Sin la herramienta Artifact, todo sigue en HTML local.\n\n**Lo que queda afuera:** `audit` (no presenta opciones), el artifact \"Design System\" y el hito 5 de pignolo-ui.\n\nUn dato que encontré: hoy mismo (R10 de la auditoría) decidiste pasar el lienzo a v1.x. Eso te lo pregunto aparte después de tu respuesta.\n",
+          "answer": "Dos correcciones. No hay pregunta de consentimiento: publica y avisa con una línea cada vez. Y el Design System no queda afuera: DESIGN.md también se publica como artifact \"Design System\". El resto va.",
+          "answerWords": 33
+        },
+        {
+          "question": "**En palabras simples**\nHoy mismo, tras la auditoría, decidiste dejar el lienzo \"Design\" para más adelante (v1.x). Este pedido lo vuelve a traer. Necesito saber si lo hacemos ahora o si esto queda escrito como el diseño de la v1.x.\n\n**Pregunta** · categoría: `rule-conflict` (conflicto con una decisión anterior)\n¿El lienzo \"Design\" vuelve a entrar ahora en pignolo-ui?\n\n1. **(recomendada)** Queda como diseño de la v1.x: escribo el spec ahora y se construye después de cerrar y unir el hito 4 de pignolo-ui · costo ahora: solo el spec · se puede cambiar cuando quieras.\n2. Entra ahora: se revierte R10 para el lienzo y se construye como siguiente plan, antes de los hitos pendientes del núcleo · costo: un plan más en ejecución (generador, skills, prueba del lienzo) y demora del resto · se puede frenar, pero lo gastado no vuelve.\n3. suficiente (sigo con la opción 1 como supuesto declarado).\n\nRecomendación: 1, porque la rama del hito 4 de pignolo-ui todavía espera su revisión final y la regla vigente es un solo plan activo en serie.\n\n**Detalle técnico**\n- Contexto: R10 movió las tareas 5 y 5b (generador y lienzo de prueba) a v1.x; el código quedó preparado pero apagado.\n- Evidencia: `docs/audits/2026-10-01-decisiones-auditoria.md:47`; `plugins/pignolo-ui/lib/presentation.mjs:1-6` (`canvasAvailable = false`); `docs/STATE.md:8` y `:20`.\n- Costo y reversibilidad: 1 = solo docs, reversible. 2 = cambia el orden de ejecución aprobado hoy; reversible salvo el gasto.\n\npregunta 1 de 6 como máximo; quedan 5 ramas\n",
+          "answer": "2. Entra ahora: lo pedí así y lo quiero construir ya, revertí R10 para el lienzo.",
+          "answerWords": 16
+        },
+        {
+          "question": "**En palabras simples**\nNadie probó todavía cómo se ve de verdad un lienzo generado por pignolo-ui: la prueba prevista (un lienzo privado de 2 pantallas) quedó sin hacer cuando se movió a v1.x. Y del tipo \"Design System\" no hay nada probado. Hay que decidir si se prueba antes de construir el resto.\n\n**Pregunta** · categoría: `costs` (costos)\n¿Se publica un lienzo privado de prueba (y un \"Design System\" de prueba) para que lo mires antes de construir las skills encima?\n\n1. **(recomendada)** Sí, primero la prueba: se publica privado un lienzo de 2 pantallas de ejemplo y un Design System hecho con la plantilla, vos los navegás y das el OK; recién ahí se conecta a `new` e `improve` · costo: una tarea más y unos minutos tuyos; sin evals pagas nuevas · lo publicado es privado y con datos de ejemplo; se puede borrar a mano.\n2. Sin prueba previa: se construye según las instrucciones del tipo y lo ves recién al usar `new` en un proyecto · costo: ninguno ahora; si el formato no era el esperado, se rehace el generador · reversible con retrabajo.\n3. suficiente (queda como pregunta pendiente: publicar no se asume).\n\nRecomendación: 1, porque el spec dice que la forma \"se verificó en una prueba real\" pero esa prueba (T5b) no se corrió, y un test byte a byte contra un formato supuesto da verde falso.\n\n**Detalle técnico**\n- Contexto: el generador se prueba contra un archivo esperado escrito a mano; solo el lienzo real dice si ese archivo es correcto.\n- Evidencia: `docs/specs/2026-09-28-pignolo-ui-v1-design.md:753`; `docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md:354-356` (T5b movida, D-4-2); `docs/STATE.md:8` (evals D-4-1 sin correr, tope 22).\n- Costo y reversibilidad: 1 = dos publicaciones privadas de ejemplo. 2 = riesgo de rehacer `to-canvas`.\n\npregunta 2 de 6 como máximo; quedan 4 ramas\n",
+          "answer": "1. Primero la prueba, y si falla algo (por ejemplo las clases CSS), me consultás con el resultado en la mano.",
+          "answerWords": 21
+        },
+        {
+          "question": "**En palabras simples**\nQuedan detalles chicos, baratos y fáciles de cambiar después. Te los paso juntos con el valor que propongo para cada uno.\n\n**Pregunta** · categoría: `scope` (alcance)\n¿Quedan así estos supuestos, o cambiás alguno?\n\n1. **Cuándo se publica el Design System:** cuando `DESIGN.md` se crea o cambia con un diff que confirmaste (no en cada comando).\n2. **Qué lleva el Design System:** colores, tipografías, radios, espaciado y componentes de `DESIGN.md`; no lleva la prosa de decisiones ni los rechazos.\n3. **Apagar la publicación:** la opción `presentation: local` del plugin sigue existiendo para no publicar nunca.\n4. **Chequeo de fuga antes de publicar:** si encuentra datos tuyos o de la máquina, no publica, muestra el HTML local y lo dice en una línea.\n5. **Aviso:** una línea después de cada publicación, con el enlace; siempre privado.\n6. **Aprobados:** lo que elegís se sigue guardando como HTML local en `design/approved/`; el lienzo es solo para mirar y elegir.\n\nOpciones: **(recomendada)** \"quedan\" · \"cambio el n: …\" · \"suficiente\".\nTodo es reversible y sin costo extra.\n\nRecomendación: quedan, porque los seis siguen lo ya escrito en el spec de pignolo-ui (§3.1, §3.3, §13) con tus dos correcciones de hoy.\n\n**Detalle técnico**\n- Contexto: lote de bajo riesgo; nada reservado adentro.\n- Evidencia: `docs/specs/2026-09-28-pignolo-ui-v1-design.md:135`, `:162-166`, `:736-737`.\n- Costo y reversibilidad: cada punto se cambia con una línea de texto de skill o un parámetro.\n\npregunta 3 de 6 como máximo; quedan 0 ramas después de esta\n",
+          "answer": "Corrijo el 1: el Design System se republica automáticamente cada vez que cambia `DESIGN.md`, sin preguntar. El resto va.",
+          "answerWords": 19
+        }
+      ]
+    }
+  ]
+}
