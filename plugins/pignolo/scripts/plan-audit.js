@@ -3,7 +3,7 @@
 // La receta de tres pasos del plan-auditor, en el orden en que la corre el orquestador
 // (hilo principal). JSON por stdout; exit 0; 1 con el motivo en stderr; 2 por uso.
 // Uso: node plan-audit.js <verbo> --plan <slug> [opciones] [--cwd <dir>]
-//   check --plan-file <md> [--root <dir>] [--plan <slug>]   evidencia para el paso 1
+//   check --plan-file <md> [--root <dir>] [--plan <slug>]   evidencia para el paso 1 (no entra al veredicto)
 //   begin-review --plan-file <md>        abre el modo review (el plan-auditor sin Bash)
 //   review-done --report-file <md>       guarda las afirmaciones y hallazgos del paso 1
 //   probes                               2a: sondas fijas sobre las afirmaciones
@@ -66,9 +66,7 @@ function run(verb, o, main) {
       const root = path.resolve(o.root || process.cwd());
       if (!fs.existsSync(root)) throw new Usage(`la raíz no existe: ${root}`);
       const res = checkPlan({ planText, root, runTests: true });
-      const findings = toFindings(res);
-      if (dir) writeJson(path.join(dir, 'check.json'), { findings });
-      return out({ applies: true, problems: problemCount(res), findings });
+      return out({ applies: true, problems: problemCount(res), findings: toFindings(res) });
     }
     case 'begin-review': {
       const m = pa.beginMode({ main, plan: o.plan, mode: 'review', claims: [], planSha256: sha(o['plan-file']) });
@@ -105,8 +103,8 @@ function run(verb, o, main) {
       const review = readJson(path.join(dir, 'review.json'), 'review.json', 'review-done');
       let probe = { closed: [], findings: [] };
       try { probe = JSON.parse(fs.readFileSync(path.join(dir, 'probes.json'), 'utf8')); } catch (_) { /* sin sondas */ }
-      let planCheck = null;
-      try { planCheck = JSON.parse(fs.readFileSync(path.join(dir, 'check.json'), 'utf8')).findings; } catch (_) { /* sin check */ }
+      // check.json no se suma al veredicto: el revisor lo recibió como evidencia y repite en sus
+      // findings lo que es real (una falsa alarma del heurístico no puede trabar el plan).
       const remaining = review.claims.filter((c) => !probe.closed.includes(c.id));
       if (remaining.length && !o['report-file']) throw new Fail(`faltan los experimentos de ${remaining.map((c) => c.id).join(', ')}: pasá --report-file con el informe del paso 2b`);
       const verification = remaining.length ? pa.parseVerification(read(o['report-file'], '--report-file'), remaining) : { entries: [], missing: [] };
@@ -114,7 +112,7 @@ function run(verb, o, main) {
       // Reclamos sin ningún experimento corrido (el hook cuenta las llamadas a Bash del modo):
       // un informe con `holds` solo de palabra no alcanza para APPROVE.
       const noExperiments = remaining.length > 0 && counters.experiments < remaining.length;
-      const built = pa.buildAudit({ review, probe, verification, planCheck, mode: { incomplete: counters.incomplete || noExperiments } });
+      const built = pa.buildAudit({ review, probe, verification, mode: { incomplete: counters.incomplete || noExperiments } });
       const audit = { ...built, at: new Date().toISOString(), planSha256: review.planSha256 };
       const rec = ps.recordAudit({ main, plan: o.plan, audit });
       pa.endMode({ main, plan: o.plan });

@@ -129,3 +129,20 @@ test('daily: worktree en .pignolo/worktrees, test-writer, rojo, implementer, gat
   assert.strictEqual(fs.readFileSync(path.join(main, 'src/sum.js'), 'utf8').includes('a + b'), true);
   assert.strictEqual(git(['status', '--porcelain'], main).includes('src/'), false);
 });
+
+// Hito 5b, Task 16: el carril plan ya existe.
+const { readSkill: readSkill5b } = require('./skill-forms');
+
+test('entry: el carril plan entrega a pignolo:plan y ya no dice que no existe', () => {
+  const { text } = readSkill5b('entry');
+  assert.doesNotMatch(text, /Plan mode is not built yet/);
+  assert.match(text, /`plan`: [^\n]*pignolo:plan/);
+  assert.match(text, /`pignolo:plan` skill with/);
+});
+
+test('daily paso 11: con laneFloor plan ofrece pasar a pignolo:plan', () => {
+  const step = readSkill5b('daily').text.split('\n').find((l) => l.startsWith('11. '));
+  assert.ok(step);
+  assert.match(step, /`laneFloor` `plan`: [^\n]*pignolo:plan/);
+  assert.doesNotMatch(step, /not built/);
+});

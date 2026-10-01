@@ -49,3 +49,10 @@ test('task-card.md: sección Test-card con los campos de §9.1 en orden, Protect
     assert.match(card, re);
   }
 });
+
+test('task-card.md: la línea Approved visual trae el comando de verificación', () => {
+  const line = tpl('task-card.md').split('\n').find((l) => l.startsWith('- Approved visual'));
+  assert.ok(line, 'sin línea Approved visual');
+  assert.match(line, /approved-verify\.js" --path/);
+  assert.match(line, /BLOCKED/);
+});

@@ -20,5 +20,5 @@ Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/temp
 7. **Pick the lane** (spec §5.2), the higher of the floor and your judgment:
    - `trivial`: one line or a mechanical change you fully understand, `laneFloor` is `trivial`, no hit.
    - `daily`: everything else that fits one task.
-   - `plan`: the floor says `plan` (a UI change without `visible-paths`), or the change needs a spec. Plan mode is not built yet: ask the human (category `scope`) whether to continue in `daily` with a high-risk review or to stop.
-8. **Hand over.** Invoke the `pignolo:trivial` or `pignolo:daily` skill with the request (quoted literally), the path of the file list and the risk JSON. Lanes only go up (trivial → daily → plan), never down.
+   - `plan`: the floor says `plan` (a UI change without `visible-paths`), or the change needs a spec. Hand it to the `pignolo:plan` skill (step 8).
+8. **Hand over.** Invoke the `pignolo:trivial`, `pignolo:daily` or `pignolo:plan` skill with the request (quoted literally), the path of the file list and the risk JSON. Lanes only go up (trivial → daily → plan), never down.
