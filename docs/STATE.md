@@ -16,6 +16,7 @@ Versiones leídas de los `plugin.json`.
 |---|---|---|
 | `core/hito-7a` | Hito 7 recortado (ramas y worktrees, sin planes en paralelo) | ejecutando |
 | `core/hito-8b` | Hito 8b: evals del `debugger` y contrato con el arnés (0.12.1) | construido; evals pagas corridas (2,77 USD de 8): 9/15 por los graders, las 6 reprobadas son falsos rechazos (G33); falta que el autor decida relajar los graders y recalibrar, y la revisión final opus |
+| `core/hito-8d` | Hito 8d: estructura de carpetas (0.13.0) | construido: `init` crea el esqueleto, adapta proyectos existentes y guarda el mapa `places`; `places.js`; falta la revisión final opus (datos primero), la pasada de arreglos y que el autor una; informe por tarea en `docs/reports/hito-8d-tareas.md`; checklist manual en `tests/manual/hito-8d.md` |
 | `core/brainstorm-rules` | Reglas de brainstorming del núcleo (tras el A/B de `docs/benchmarks.md` 2f) | en curso |
 | `plan/ui-hito-4c` | Plan del lienzo "Design" y el Design System de pignolo-ui | partiéndolo en 4 etapas; la etapa 1 es la siguiente |
 | `evals/ui-4` | Evals pagas de pignolo-ui hito 4 (tope 22 USD) | corriendo |
