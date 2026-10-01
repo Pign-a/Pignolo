@@ -1,0 +1,72 @@
+// Final report pieces (spec §12): the first line, the report.json skeleton and the verdict.
+//
+// firstLine(facts) -> string
+// reportSkeleton({ project, run, implementsPath }) -> { version, implemented, implements?, evidence, claims, candidates }
+// verdict({ uiCheck, reportCheck, build }) -> { status: 'terminado' | 'BLOCKED' | 'sin verificar', reasons }
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { manifestSha } from './approved.mjs';
+
+export function firstLine(facts) {
+  const { pluginVersion, subagents = {}, sequential = false, notIndependentAudit = false } = facts;
+  const degraded = [...(facts.degraded || [])];
+  if (notIndependentAudit) degraded.push('auditoría no independiente');
+  const version = `pignolo-ui ${pluginVersion} · ${degraded.length ? degraded.join('; ') : 'sin degradaciones'} · subagentes: ${subagents.launched} de ${subagents.requested} (modelo pedido: ${subagents.model})`;
+  if (!sequential) return version;
+  return `opciones generadas en secuencia en el hilo principal: no son independientes; se lanzaron ${subagents.launched} de ${subagents.requested} subagentes\n${version}`;
+}
+
+const SOURCES = [['browser', 'browser.json'], ['ui-check', 'ui-check.json']];
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+
+export function reportSkeleton({ project, run, implementsPath }) {
+  const evidence = {};
+  const candidates = [];
+  let n = 0;
+  const seen = new Set();
+  for (const [source, name] of SOURCES) {
+    const file = path.join(run, name);
+    if (!fs.existsSync(file)) continue;
+    const buf = fs.readFileSync(file);
+    evidence[name] = sha256(buf);
+    const json = JSON.parse(buf.toString('utf8'));
+    for (const e of Array.isArray(json.entries) ? json.entries : []) {
+      if (e.status !== 'fail') continue;
+      // ui-check.json also carries the browser entries when it ran with --measures: one claim each
+      if (source === 'ui-check' && seen.has(e.id + '|' + e.fingerprint)) continue;
+      seen.add(e.id + '|' + e.fingerprint);
+      n += 1;
+      const c = { id: `c${n}`, rule: e.id, status: e.status };
+      if (e.measure && typeof e.measure === 'object' && Object.keys(e.measure).length) c.measure = e.measure;
+      c.ref = { source, fingerprint: e.fingerprint };
+      candidates.push(c);
+    }
+  }
+  const skeleton = { version: 1, implemented: false, evidence, claims: [], candidates };
+  if (implementsPath) {
+    skeleton.implemented = true;
+    skeleton.implements = { path: implementsPath, manifestSha256: manifestSha(project, implementsPath) };
+  }
+  return skeleton;
+}
+
+export function verdict({ uiCheck, reportCheck, build }) {
+  const reasons = [];
+  const unverified = [];
+  if (!uiCheck) unverified.push('ui-check no corrió');
+  else if (uiCheck.exitCode === 2) unverified.push('ui-check falló (exit 2)');
+  if (!reportCheck) unverified.push('report-check no corrió');
+  else if (reportCheck.exitCode === 2) unverified.push('report-check falló (exit 2)');
+  const blocked = [];
+  if (uiCheck && uiCheck.exitCode !== 2 && (uiCheck.blockingNew > 0 || uiCheck.exitCode === 1)) {
+    blocked.push(`bloquea nuevo en alcance (${uiCheck.blockingNew ?? 0})`);
+  }
+  if (reportCheck && reportCheck.exitCode === 1) blocked.push(`report-check retiró ${(reportCheck.retired || []).length} afirmaciones`);
+  if (build && build.ran && build.ok === false) blocked.push(`build roto (${build.script ?? 'build'})`);
+  const noBuild = !build || build.ran === false;
+  if (noBuild) reasons.push('no verificado: el proyecto no declara build');
+  if (unverified.length) return { status: 'sin verificar', reasons: [...unverified, ...reasons] };
+  if (blocked.length) return { status: 'BLOCKED', reasons: [...blocked, ...reasons] };
+  return { status: 'terminado', reasons };
+}
