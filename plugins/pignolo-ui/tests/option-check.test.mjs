@@ -26,7 +26,7 @@ const problemsOf = (r) => r.problems.map((p) => p.problem);
 test('a good option is ok', () => {
   const { project, dir } = setup();
   const r = checkOption({ dir, expected: EXPECTED, project, gitBefore: gitState(project) });
-  assert.deepEqual(r, { ok: true, problems: [] });
+  assert.deepEqual([r.ok, r.problems, r.warnings], [true, [], []]);
 });
 
 test('each problem is reported and the option fails', () => {

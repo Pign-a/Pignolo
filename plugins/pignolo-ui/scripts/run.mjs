@@ -12,7 +12,7 @@
 //   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>] [--before <ui-check.json>]
 //   run.mjs leak-values --project <repo> --out <file> [--email <mail>]
 //   run.mjs git-state --project <repo> --out <file>
-//   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file>
+//   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local]
 //   run.mjs discard --run <run> --option <A|B|C> [--kind option|direction]
 //   run.mjs auditor-check --project <repo> --run <run>
 //   run.mjs menu --run <run> [--norms <file>] [--extra-symptoms-file <json>] [--words-file <txt>]
@@ -45,6 +45,7 @@ import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
 import { isLink, linkProblem } from '../lib/link-guard.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
+import { writeLocalCopies, LocalCopyError } from '../lib/local-copy.mjs';
 
 class UsageError extends Error {}
 
@@ -293,18 +294,20 @@ const COMMANDS = {
   },
 
   'options-check': {
-    spec: { value: ['project', 'run', 'option', 'kind', 'expected', 'git-before'] },
+    spec: { value: ['project', 'run', 'option', 'kind', 'expected', 'git-before', 'destination'] },
     async run(opts, { cwd }) {
       const project = projectDir(cwd, opts);
       const run = runDirOf(cwd, project, opts);
       const kind = kindOf(opts);
       const letter = optionLetter(opts);
       need(opts, 'expected', 'git-before');
+      const destination = opts.destination ?? 'local';
+      if (!['canvas', 'local'].includes(destination)) throw new UsageError('--destination debe ser canvas o local');
       const expected = list(opts.expected);
       let gitBefore;
       try { gitBefore = fs.readFileSync(path.resolve(cwd, opts['git-before']), 'utf8'); } catch (e) { throw new UsageError(`no se pudo leer --git-before (${e.code || e.message})`); }
       const dir = path.join(run, `${kind}-${letter}`);
-      const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`] });
+      const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`], kind, destination });
       const files = isDir(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.html')).map((f) => path.join(dir, f)) : [];
       let contradicted = [];
       if (files.length) {
@@ -312,7 +315,7 @@ const COMMANDS = {
         const checked = await runCheck({ project, files, design: designFile });
         contradicted = [...new Set(checked.entries.filter((e) => e.status === 'fail').map((e) => e.id))];
       }
-      return { out: { ok: result.ok, problems: result.problems, contradicted }, code: result.ok ? 0 : 1 };
+      return { out: { ok: result.ok, problems: result.problems, warnings: result.warnings, contradicted }, code: result.ok ? 0 : 1 };
     },
   },
 
@@ -465,12 +468,18 @@ const COMMANDS = {
         .filter((e) => e.isDirectory() && e.name.startsWith(prefix) && LETTER.test(e.name.slice(prefix.length)))
         .map((e) => e.name.slice(prefix.length)).sort();
       if (!ids.length) throw new UsageError(`no hay carpetas ${prefix}<letra> en el run`);
+      // the frames open copies without the Google Fonts <link> (A4C2-03): the backup asks for nothing
+      let copies;
+      try { copies = writeLocalCopies({ run, folders: ids.map((id) => `${prefix}${id}`) }); } catch (e) {
+        if (e instanceof LocalCopyError) return { out: { ok: false, error: e.message }, code: 1 };
+        throw e;
+      }
       const html = buildCompareHtml({ options: ids.map((id) => ({ id, screens })), kind, platform: opts.platform, title: 'Comparación de opciones' });
       const out = path.join(run, 'compare.html');
       fs.writeFileSync(out, html);
       let opened = false;
       if (!opts['no-open']) { openFile(out, {}); opened = true; }
-      return { out: { out, opened }, code: 0 };
+      return { out: { out, opened, fontsRemoved: copies.removed, line: `fuentes remotas quitadas: ${copies.removed}` }, code: 0 };
     },
   },
 };

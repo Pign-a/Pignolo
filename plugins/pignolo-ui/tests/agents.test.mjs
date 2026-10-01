@@ -72,10 +72,21 @@ test('ui-option: patterns, rules, output contract, size, no absolute paths, only
     assert.ok(low.includes(needle.toLowerCase()), `missing: ${needle}`);
   }
   assert.ok(body.includes('‹'));
-  assert.doesNotMatch(body, /[A-Za-z]:[\\/]|\/Users\/|\/home\//);
+  // a drive letter on its own (C:\ or D:/), never the "s:/" of an https:// URL
+  assert.doesNotMatch(body, /(?<![A-Za-z])[A-Za-z]:[\\/]|\/Users\/|\/home\//);
   const ids = citedIds(body);
   assert.ok(ids.length >= 4);
   for (const id of ids) assert.ok(catalogIds.has(id), `${id} is not in the catalog`);
+});
+
+test('ui-option: the three form rules and the fonts rule of the hito 4c (R-5, R-19) are in the card, and Write stays the only tool', () => {
+  const { fm, body } = frontmatterOf(read('ui-option'));
+  assert.equal(fm.tools.trim(), 'Write');
+  for (const needle of ['every non-empty element is closed', 'in quotes', 'never use `{{`', 'never `}}` in text or attributes', '`<button>`, `<input>`, `<select>` or `<textarea>` inside an `<a>`',
+    'x-dc', 'destination: canvas', 'destination: local', 'fonts.googleapis.com/css2', 'fonts.gstatic.com', 'display=swap']) {
+    assert.ok(body.toLowerCase().includes(needle.toLowerCase()), `missing: ${needle}`);
+  }
+  assert.ok(!/no external fonts/i.test(body), 'the old blanket ban on fonts is now conditioned by the destination');
 });
 
 test('ui-auditor: phases, output keys, rules, size, real catalog ids', () => {
