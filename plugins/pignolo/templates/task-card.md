@@ -15,7 +15,7 @@ English. Every path is absolute or relative to the worktree root, always with fo
 - test-paths: <globs from project.md> · protected-test-config: <globs>
 - Gate: `node "<plugin root>/scripts/gate.js" --level on-done --task` (it runs `<gates.on-done from project.md>` and seals the result; the handback-gate accepts DONE only with that seal for the current tree)
 - Risk: <low | medium | high> · reserved decisions authorized by the human: <none, or category + what was authorized>
-- Approved visual (optional): <design/approved/<flow>/ with manifest.json, or "none">. If set, the implementer first runs `node "<plugin root>/scripts/approved-verify.js" --path <design/approved/<flow>>` and ends BLOCKED on exit 1
+- Approved visual (optional): <design/approved/<flow>/ with manifest.json, or "none">. If set, the implementer first runs `node "<plugin root>/scripts/approved-verify.js" --path "design/approved/<flow>"` from the worktree and ends BLOCKED on exit 1 (the orchestrator committed the folder and its decision in `int/<plan>` first)
 - Out of scope: <what not to touch or add>
 - Close with exactly one word on the last line: DONE, BLOCKED or NEEDS_CONTEXT.
 
@@ -33,4 +33,4 @@ fills nothing here: it reads it, writes the test and reports against it.
 - Level: <unit | integration | e2e> · Doubles: <none | fake | mock, and the contract they are typed against> · Real path: <the call chain the test exercises>
 - Data: synthetic only; never real names, credentials or customer data.
 - Where: <path inside test-paths>, or, for a holdout acceptance test (plan mode), the absolute path `<main>/.pignolo/tmp/holdout/<plan>/<path>` in the main checkout, never in the task worktree (git ignores it only in the main checkout; right after accepting the test-writer, the orchestrator moves it out of the repo with `holdout.js save`)
-- Red is proved by: <`test-first` (the behavior does not exist at base: running the test fails) | `sabotage` (the behavior already exists: after the implementer's change is committed, with the tree clean and the gate green, the orchestrator writes the break as a patch and runs `node "<plugin root>/scripts/sabotage.js" --patch <file> --gate on-done --cwd "<worktree>" --timeout-min 4`)>
+- Red is proved by: <`test-first` (the behavior does not exist at base: running the test fails) | `sabotage` (the behavior already exists: after the implementer's change is committed, with the tree clean and the gate green, the orchestrator writes the break as a patch and runs `node "<plugin root>/scripts/sabotage.js" --patch "<file>" --gate on-done --cwd "<worktree>" --timeout-min 4`)>

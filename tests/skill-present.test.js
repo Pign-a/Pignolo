@@ -36,3 +36,7 @@ const PHRASES = [
 for (const [re, what] of PHRASES) {
   test(`present: ${what}`, () => assert.match(text, re));
 }
+
+test('present (M2): el rótulo de una opción es el texto literal del elemento data-option, sin descripción adentro', () => {
+  assert.match(text, /The text of that element is the label, literally: put `data-option` on the element that holds only the label/);
+});

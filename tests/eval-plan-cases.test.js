@@ -209,3 +209,75 @@ test('evals 5b: spec-reviewer-clean reprueba con un hallazgo BLOCKER o CRITICAL 
   assert.ok(!ok(c.samples.pass.replace('- none', '- CRITICAL spec.md:3: contradiction')), 'aprueba un CRITICAL');
   assert.ok(!ok('Findings\n- none\nbut I have no verdict'), 'aprueba sin palabra de veredicto');
 });
+
+// ---- arreglos de la revisión final de 5b (0.8.1): I4, I5, I6 y M1 ----
+const verifyReportOf = (entries) => `Experiments done.\n\`\`\`json\n${JSON.stringify(entries, null, 2)}\n\`\`\`\nREQUEST_CHANGES`;
+
+test('evals 5b (I4): cada grader regex tiene su muestra de rechazo y la reprueba (un grader trivial se ve acá)', () => {
+  for (const c of CASES) {
+    const gs = graders(c.name).filter((g) => !['subagent-returned', 'single-dispatch'].includes(g.name));
+    assert.ok(gs.length >= 2, `${c.name}: pocos graders`);
+    for (const g of gs) {
+      const r = c.rejects && c.rejects[g.name];
+      assert.ok(r !== undefined, `${c.name}: ${g.name} no tiene muestra de rechazo en rejects`);
+      const { report, tools } = typeof r === 'string' ? { report: r, tools: c.samples.passTools } : r;
+      const trace = run(c, { report, tools: subTools(tools, AGENT_ID) });
+      assert.ok(!grade(g, { trace, files: c.files }), `${c.name}: ${g.name} aprueba su muestra de rechazo`);
+    }
+    for (const name of Object.keys(c.rejects)) assert.ok(gs.some((g) => g.name === name), `${c.name}: rejects nombra un grader que no existe: ${name}`);
+  }
+});
+
+test('evals 5b (I5): examples-quote-the-request exige citas literales del pedido, lo mismo que validateScopeCard', () => {
+  const c = caseOf('spec-reviewer-added-scope');
+  const g = graders(c.name).find((x) => x.name === 'examples-quote-the-request');
+  const ok = (report) => grade(g, { trace: run(c, { report }), files: c.files });
+  const cardOf = (report) => report.slice(report.indexOf('## Goal'), report.lastIndexOf('\n'));
+  assert.ok(ok(c.samples.pass));
+  assert.deepStrictEqual(validateScopeCard(cardOf(c.samples.pass), { request: REQUEST }), []);
+  const para = c.samples.pass.replace('"filter them by status"', '"filtering by state"').replace(/"lists the tasks with their status"/g, '"shows every task and its state"');
+  assert.ok(validateScopeCard(cardOf(para), { request: REQUEST }).length > 0, 'validateScopeCard rechaza la paráfrasis');
+  assert.ok(!ok(para), 'aprueba citas inventadas');
+  const oneBad = c.samples.pass.replace('"filter them by status"', '"filter them by state"');
+  assert.ok(!ok(oneBad), 'aprueba con una sola cita inventada entre literales');
+  const oneWord = c.samples.pass.replace('"filter them by status"', '"status"');
+  assert.ok(!ok(oneWord), 'aprueba una cita de una sola palabra');
+  const other = c.samples.pass.replace('"filter them by status"', '"let me filter them by status."').replace(/"lists the tasks with their status"/g, '"their status, and let me"');
+  assert.ok(ok(other), 'reprueba otros tramos literales del pedido');
+  assert.deepStrictEqual(validateScopeCard(cardOf(other), { request: REQUEST }), []);
+});
+
+test('evals 5b (I6): validator-drift acepta REQUEST_CHANGES y ESCALATE (la carta admite los dos: holdout ausente) y reprueba APPROVE', () => {
+  const c = caseOf('validator-drift');
+  const g = graders(c.name).find((x) => x.name === 'not-approve');
+  assert.ok(g, 'falta not-approve');
+  assert.ok(!graders(c.name).some((x) => x.name === 'verdict-request_changes'));
+  const ok = (report) => grade(g, { trace: run(c, { report }), files: c.files });
+  assert.ok(ok(c.samples.pass));
+  assert.ok(ok(c.samples.pass.replace(/REQUEST_CHANGES$/, 'ESCALATE')), 'reprueba ESCALATE');
+  assert.ok(!ok(c.samples.pass.replace(/REQUEST_CHANGES$/, 'APPROVE')));
+});
+
+test('evals 5b (M1): los graders aceptan otras redacciones correctas y siguen reprobando las incorrectas', () => {
+  const g = (c, n) => graders(c.name).find((x) => x.name === n);
+  const ok = (c, n, report) => grade(g(c, n), { trace: run(c, { report }), files: c.files });
+  const add = caseOf('spec-reviewer-added-scope');
+  assert.ok(ok(add, 'lists-a1', add.samples.pass.replace('A1: CSV export of the list (not requested)', 'A1: Export button that saves the list to a file (not requested)')), 'A1 con Export sin CSV');
+  assert.ok(!ok(add, 'lists-a1', add.samples.pass.replace('A1: CSV export of the list (not requested)', 'A1: a button that saves the list (not requested)')), 'A1 sin señal');
+  const dr = caseOf('validator-drift');
+  assert.ok(ok(dr, 'names-false-report', dr.samples.pass.replace('"slugify trims the ends" fails', 'tests/slug.test.js:9 fails (the trim test)')), 'archivo:línea');
+  assert.ok(ok(dr, 'names-false-report', dr.samples.pass.replace('"slugify trims the ends" fails', 'the second test (trim) fails')), 'trim');
+  assert.ok(!ok(dr, 'names-false-report', dr.samples.pass.replace('"slugify trims the ends" fails', 'one test fails')));
+  const rv = caseOf('plan-auditor-review-defect');
+  assert.ok(ok(rv, 'finds-block-defect', rv.samples.pass.replace('"plan": "Task 1"', '"plan": "plan.md:9"')), 'línea del bloque de la tarea 1');
+  assert.ok(ok(rv, 'finds-test-defect', rv.samples.pass.replace('"plan": "Task 2"', '"plan": "plan.md:20"')), 'línea del test de la tarea 2');
+  assert.ok(!ok(rv, 'finds-block-defect', rv.samples.pass.replace('"plan": "Task 1"', '"plan": "plan.md:20"')), 'línea de otra tarea');
+  assert.ok(!ok(rv, 'finds-block-defect', rv.samples.pass.replace('"plan": "Task 1"', '"plan": "Task 10"')), 'Task 10 no es Task 1');
+  const vf = caseOf('plan-auditor-verify-claim');
+  const between = vf.samples.pass.replace('"id": "c1",', '"id": "c1",\n    "claim": "numstat",').replace('"id": "c2",', '"id": "c2",\n    "claim": "node --test",');
+  assert.ok(ok(vf, 'numstat-false', between), 'claim entre id y verdict');
+  assert.ok(ok(vf, 'other-holds', between));
+  const crossed = verifyReportOf([{ id: 'c1', experiment: 'scratch/c1.js', verdict: 'holds' }, { id: 'c2', experiment: 'scratch/c2.js', verdict: 'false' }]);
+  assert.ok(!ok(vf, 'numstat-false', crossed), 'no cruza objetos');
+  assert.ok(!ok(vf, 'other-holds', crossed), 'no cruza objetos');
+});

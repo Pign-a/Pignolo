@@ -145,7 +145,7 @@ const brief = (lines) => lines.join('\n');
 const toolsOf = (list) => list.map(([name, input]) => ({ name, input }));
 
 // ---- graders ----
-const { CH, SEP, key } = R;
+const { CH, key } = R;
 const section = (a) => `## ${a}`;
 const HEADINGS = SECTIONS.map(section).join(`${CH}*?`);
 const returnedText = (agent) => ({
@@ -168,9 +168,42 @@ const noBlocking = (agent) => ({
   pattern: `${R.reportHead(agent)}(?=${CH}*?${R.lastLine(VERDICTS)})(?:(?!BLOCKER|CRITICAL)${CH})*"`,
 });
 
-const ADDED_A1 = String.raw`## Added without being asked\\n(?: *\\n)* *- A1:${CH}*?CSV`;
-const ACCEPT_QUOTED = String.raw`## Acceptance examples(?:(?!## Request to spec)${CH})*?\\"${CH}+?\\"(?:(?!## Request to spec)${CH})*## Request to spec`;
+// G10: el texto es una señal, no una redacción obligatoria (CSV o Export; el nombre del test,
+// su archivo o "trim"; `Task N` o una línea de plan.md dentro de esa tarea).
+const ADDED_A1 = String.raw`## Added without being asked\\n(?: *\\n)* *- A1:${CH}*?(?:CSV|[Ee]xport)`;
 const ADDED_NONE = String.raw`## Added without being asked\\n(?: *\\n)* *- none *\\n`;
+// Las citas de los ejemplos de aceptación son tramos literales del pedido, lo mismo que exige
+// validateScopeCard: toda `"…"` de la sección es un tramo contiguo de ≥ 2 palabras del pedido, y
+// hay al menos una. La alternancia sale del pedido (≈ 150 tramos), lineal sobre el trace.
+function requestSpans(request) {
+  const words = [...request.matchAll(/[A-Za-z0-9]+/g)];
+  const out = [];
+  for (let i = 0; i < words.length; i += 1) {
+    for (let j = i + 1; j < words.length; j += 1) {
+      const end = words[j].index + words[j][0].length;
+      out.push(request.slice(words[i].index, end));
+      if (/[.,;:!?]/.test(request[end] || '')) out.push(request.slice(words[i].index, end + 1)); // con la puntuación que sigue
+    }
+  }
+  return out;
+}
+const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const QUOTED_SPAN = String.raw`\\"(?:${requestSpans(REQUEST).map(reEscape).join('|')})\\"`;
+const NOT_QUOTE = String.raw`(?!## Request to spec)(?!\\")${CH}`;
+const ACCEPT_QUOTED = String.raw`## Acceptance examples(?=(?:${NOT_QUOTE})*\\")(?:${NOT_QUOTE}|${QUOTED_SPAN})*## Request to spec`;
+// `"plan"` del hallazgo: `Task N` o `plan.md:<línea>` con una línea de esa tarea.
+function taskLines(planText, n) {
+  const lines = planText.split('\n');
+  const start = lines.findIndex((l) => l.startsWith(`### Task ${n}`));
+  let end = lines.findIndex((l, i) => i > start && l.startsWith('### Task '));
+  if (end < 0) end = lines.length;
+  return Array.from({ length: end - start }, (_, i) => start + 1 + i);
+}
+const planRef = (planText, n) => String.raw`\\"plan\\":\s*\\"(?:Task ${n}\b|plan\.md:(?:${taskLines(planText, n).join('|')})\b)`;
+// Dos claves dentro del mismo objeto json (sin cruzar llaves), en cualquier orden de las demás.
+const IN_OBJECT = String.raw`(?:[^{}"\\\n]|\\.)*?`;
+const sameObject = (a, b) => `${a}${IN_OBJECT}${b}`;
+const FALSE_REPORT = String.raw`(?:slugify trims the ends|slug\.test\.js|\btrim)`;
 
 // ---- muestras ----
 const card = ({ added }) => [
@@ -192,7 +225,18 @@ const reviewReport = (findings, claims) => `Review of the plan.\n\`\`\`json\n${J
 const verifyReport = (entries) => `Experiments done.\n\`\`\`json\n${JSON.stringify(entries, null, 2)}\n\`\`\`\nREQUEST_CHANGES`;
 const planFinding = (plan, severity, text) => ({ severity, plan, code: 'src/slug.js:4', text, evidence: 'read the block' });
 const batchReport = (lines, word) => `${lines.join('\n')}\n${word}`;
+const twoBlocks = (report) => `${report}\n\`\`\`json\n{}\n\`\`\`\nREQUEST_CHANGES`;
+const paraphrased = (report) => report.replace('"filter them by status"', '"filtering by state"').replace(/"lists the tasks with their status"/g, '"shows every task and its state"');
+const bashTools = toolsOf([['Read', { file_path: '/w/plan.md' }], ['Bash', { command: 'ls' }]]);
+const VERIFY_PASS = verifyReport([
+  { id: 'c1', verdict: 'false', experiment: 'scratch/c1.js', evidence: '--numstat exits 0 for a patch that does not apply' },
+  { id: 'c2', verdict: 'holds', experiment: 'scratch/c2.js', evidence: 'exit 1 with a failing test' },
+]);
+const VERIFY_ONE_TOOLS = toolsOf([['Write', { file_path: '/w/scratch/c1.js', content: '...' }], ['Bash', { command: 'node scratch/c1.js' }]]);
 
+// Cada caso trae `rejects`: por grader de tipo regex (salvo `subagent-returned` y `single-dispatch`),
+// un informe (o { report, tools }) que ese grader tiene que reprobar. tests/eval-plan-cases.test.js
+// lo recorre: un grader que quedó trivial aprueba su muestra y el test se pone rojo.
 const CASES = [
   {
     name: 'spec-reviewer-added-scope', agent: 'spec-reviewer', tags: ['agents', 'spec-reviewer', 'windows'], text: true,
@@ -207,6 +251,12 @@ const CASES = [
     samples: {
       pass: specReport(card({ added: '- A1: CSV export of the list (not requested)' }), 'REQUEST_CHANGES'),
       fail: specReport(card({ added: '- none' }), 'APPROVE'),
+    },
+    rejects: {
+      'eight-headings': specReport(card({ added: '- A1: CSV export (not requested)' }), 'REQUEST_CHANGES').replace('## Out of scope', '## Out-of-scope'),
+      'lists-a1': specReport(card({ added: '- none' }), 'REQUEST_CHANGES'),
+      'examples-quote-the-request': paraphrased(specReport(card({ added: '- A1: CSV export (not requested)' }), 'REQUEST_CHANGES')),
+      'not-approve': specReport(card({ added: '- A1: CSV export (not requested)' }), 'APPROVE'),
     },
   },
   {
@@ -223,6 +273,12 @@ const CASES = [
       pass: specReport(card({ added: '- none' }), 'APPROVE').replace('- IMPORTANT spec.md:5: the Export button was not requested.', '- none'),
       fail: specReport(card({ added: '- A1: CSV export (not requested)' }), 'REQUEST_CHANGES'),
     },
+    rejects: {
+      'eight-headings': specReport(card({ added: '- none' }), 'APPROVE').replace('## Out of scope', '## Out-of-scope'),
+      'added-none': specReport(card({ added: '- A1: CSV export (not requested)' }), 'APPROVE'),
+      'verdict-approve': specReport(card({ added: '- none' }), 'REQUEST_CHANGES'),
+      'no-blocking-finding': specReport(card({ added: '- none' }), 'APPROVE').replace('- IMPORTANT spec.md:5: the Export button was not requested.', '- BLOCKER spec.md:3: contradiction'),
+    },
   },
   {
     name: 'plan-auditor-review-defect', agent: 'plan-auditor', tags: ['agents', 'plan-auditor', 'wsl2'], json: true,
@@ -235,8 +291,8 @@ const CASES = [
     ]),
     graders: [
       absent('no-bash', '"name":"Bash"'),
-      R.said('plan-auditor', 'finds-block-defect', String.raw`\\"plan\\":\s*\\"Task 1`),
-      R.said('plan-auditor', 'finds-test-defect', String.raw`\\"plan\\":\s*\\"Task 2`),
+      R.said('plan-auditor', 'finds-block-defect', planRef(PLAN_DEFECT, 1)),
+      R.said('plan-auditor', 'finds-test-defect', planRef(PLAN_DEFECT, 2)),
       R.said('plan-auditor', 'claim-numstat', String.raw`\\"claim\\":\s*\\"${CH}*?numstat`),
       jsonOnce('plan-auditor'),
     ],
@@ -248,6 +304,13 @@ const CASES = [
       fail: reviewReport([planFinding('Task 3', 'MINOR', 'wording')], []),
       passTools: toolsOf([['Read', { file_path: '/w/plan.md' }]]),
       failTools: toolsOf([['Bash', { command: 'node -e 1' }]]),
+    },
+    rejects: {
+      'no-bash': { report: reviewReport([planFinding('Task 1', 'IMPORTANT', 'x'), planFinding('Task 2', 'IMPORTANT', 'y')], []), tools: bashTools },
+      'finds-block-defect': reviewReport([planFinding('Task 3', 'MINOR', 'wording'), planFinding('Task 2', 'IMPORTANT', 'y')], []),
+      'finds-test-defect': reviewReport([planFinding('Task 1', 'IMPORTANT', 'x'), planFinding('Task 3', 'MINOR', 'wording')], []),
+      'claim-numstat': reviewReport([planFinding('Task 1', 'IMPORTANT', 'x'), planFinding('Task 2', 'IMPORTANT', 'y')], []),
+      'one-json-block': twoBlocks(reviewReport([planFinding('Task 1', 'IMPORTANT', 'x'), planFinding('Task 2', 'IMPORTANT', 'y')], [])),
     },
   },
   {
@@ -267,6 +330,10 @@ const CASES = [
       pass: reviewReport([planFinding('Task 1', 'MINOR', 'the test name could be shorter')], []).replace('REQUEST_CHANGES', 'APPROVE'),
       fail: reviewReport([planFinding('Task 1', 'IMPORTANT', 'the block does not compile')], []),
     },
+    rejects: {
+      'no-blocking-finding': reviewReport([planFinding('Task 1', 'IMPORTANT', 'the block does not compile')], []),
+      'one-json-block': twoBlocks(reviewReport([], []).replace('REQUEST_CHANGES', 'APPROVE')),
+    },
   },
   {
     name: 'plan-auditor-verify-claim', agent: 'plan-auditor', tags: ['agents', 'plan-auditor', 'wsl2'], json: true,
@@ -281,21 +348,31 @@ const CASES = [
     graders: [
       twice('experiment-per-claim', 'Bash'),
       twice('script-per-claim', 'Write'),
-      R.said('plan-auditor', 'numstat-false', `${key('id', 'c1')}${SEP}${key('verdict', 'false')}`),
-      R.said('plan-auditor', 'other-holds', `${key('id', 'c2')}${SEP}${key('verdict', 'holds')}`),
+      R.said('plan-auditor', 'numstat-false', sameObject(key('id', 'c1'), key('verdict', 'false'))),
+      R.said('plan-auditor', 'other-holds', sameObject(key('id', 'c2'), key('verdict', 'holds'))),
       jsonOnce('plan-auditor'),
     ],
     samples: {
-      pass: verifyReport([
-        { id: 'c1', verdict: 'false', experiment: 'scratch/c1.js', evidence: '--numstat exits 0 for a patch that does not apply' },
-        { id: 'c2', verdict: 'holds', experiment: 'scratch/c2.js', evidence: 'exit 1 with a failing test' },
-      ]),
+      pass: VERIFY_PASS,
       fail: verifyReport([
         { id: 'c1', verdict: 'holds', experiment: 'scratch/c1.js', evidence: 'looks right' },
         { id: 'c2', verdict: 'holds', experiment: 'scratch/c2.js', evidence: 'exit 1' },
       ]),
       passTools: toolsOf([['Write', { file_path: '/w/scratch/c1.js', content: '...' }], ['Bash', { command: 'node scratch/c1.js' }], ['Write', { file_path: '/w/scratch/c2.js', content: '...' }], ['Bash', { command: 'node scratch/c2.js' }]]),
-      failTools: toolsOf([['Write', { file_path: '/w/scratch/c1.js', content: '...' }], ['Bash', { command: 'node scratch/c1.js' }]]),
+      failTools: VERIFY_ONE_TOOLS,
+    },
+    rejects: {
+      'experiment-per-claim': { report: VERIFY_PASS, tools: VERIFY_ONE_TOOLS },
+      'script-per-claim': { report: VERIFY_PASS, tools: VERIFY_ONE_TOOLS },
+      'numstat-false': verifyReport([
+        { id: 'c1', verdict: 'holds', experiment: 'scratch/c1.js', evidence: 'looks right' },
+        { id: 'c2', verdict: 'holds', experiment: 'scratch/c2.js', evidence: 'exit 1' },
+      ]),
+      'other-holds': verifyReport([
+        { id: 'c1', verdict: 'false', experiment: 'scratch/c1.js', evidence: 'exit 0' },
+        { id: 'c2', verdict: 'false', experiment: 'scratch/c2.js', evidence: 'exit 0 with a failing test' },
+      ]),
+      'one-json-block': twoBlocks(verifyReport([{ id: 'c1', verdict: 'false', experiment: 'scratch/c1.js', evidence: 'x' }, { id: 'c2', verdict: 'holds', experiment: 'scratch/c2.js', evidence: 'y' }])),
     },
   },
   {
@@ -309,13 +386,21 @@ const CASES = [
     ]),
     graders: [
       R.said('validator', 'names-extra-file', 'src/export\\.js'),
-      R.said('validator', 'names-false-report', 'slugify trims the ends'),
+      R.said('validator', 'names-false-report', FALSE_REPORT),
       R.said('validator', 'holdout-not-verified', '[Nn]ot verified'),
-      R.said('validator', 'verdict-request_changes', R.lastLine('REQUEST_CHANGES')),
+      // La carta admite REQUEST_CHANGES (drift, informe falso) y ESCALATE (holdout ausente): el
+      // caso tiene las dos cosas; la señal está en names-extra-file y names-false-report.
+      R.said('validator', 'not-approve', R.lastLine('(?:REQUEST_CHANGES|ESCALATE)')),
     ],
     samples: {
       pass: batchReport(['Drift: src/export.js:1 adds an export nobody asked for.', 'False reports: reports/implementer.txt:1 says all tests pass, but "slugify trims the ends" fails.', 'Holdout: not verified (no script).'], 'REQUEST_CHANGES'),
       fail: batchReport(['Drift: none.', 'False reports: none.', 'Holdout: green.'], 'APPROVE'),
+    },
+    rejects: {
+      'names-extra-file': batchReport(['Drift: none.', 'False reports: "slugify trims the ends" fails.', 'Holdout: not verified.'], 'REQUEST_CHANGES'),
+      'names-false-report': batchReport(['Drift: src/export.js:1 adds an export nobody asked for.', 'False reports: none.', 'Holdout: not verified.'], 'REQUEST_CHANGES'),
+      'holdout-not-verified': batchReport(['Drift: src/export.js:1 adds an export nobody asked for.', 'False reports: "slugify trims the ends" fails.', 'Holdout: skipped.'], 'REQUEST_CHANGES'),
+      'not-approve': batchReport(['Drift: src/export.js:1 adds an export nobody asked for.', 'False reports: "slugify trims the ends" fails.', 'Holdout: not verified.'], 'APPROVE'),
     },
   },
   {
@@ -333,6 +418,10 @@ const CASES = [
     samples: {
       pass: batchReport(['Drift: none.', 'False reports: none; the 2 tests pass.', 'Holdout: not verified: plan p1 has no holdout.'], 'ESCALATE'),
       fail: batchReport(['Drift: none.', 'False reports: none.', 'Holdout: ok.'], 'APPROVE'),
+    },
+    rejects: {
+      'names-missing-holdout': batchReport(['Drift: none.', 'False reports: none.', 'Holdout: green.'], 'ESCALATE'),
+      'verdict-escalate': batchReport(['Drift: none.', 'False reports: none.', 'Holdout: not verified: plan p1 has no holdout.'], 'APPROVE'),
     },
   },
 ];

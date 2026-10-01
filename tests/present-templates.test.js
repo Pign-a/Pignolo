@@ -56,3 +56,19 @@ test('APPROVALS.md entregado: encabezado sin ninguna línea de aprobación', () 
   assert.match(a, /^# Aprobaciones de plantillas/);
   assert.doesNotMatch(a, /^-\s+\w+\s+v\d+/m);
 });
+
+const { sameOptions } = require('../plugins/pignolo/lib/present');
+
+test('decision.html (M2): sus opciones pasan sameOptions con rótulos naturales (la descripción no es parte del rótulo)', () => {
+  const r = sameOptions([{ id: 'archivo', label: 'Archivo local' }, { id: 'base', label: 'Base de datos' }], html('decision'));
+  assert.deepStrictEqual(r, { same: true, extra: [], missing: [], changed: [] });
+});
+
+test('toda plantilla: el rótulo de cada data-option es corto (una línea sin punto final: sin descripción adentro)', () => {
+  for (const f of FORMATS) {
+    for (const m of html(f).matchAll(/<([a-z][a-z0-9]*)\b[^>]*\bdata-option\s*=\s*"([^"]+)"[^>]*>([\s\S]*?)<\/\1>/gi)) {
+      const label = m[3].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      assert.ok(label.length <= 60 && !/\.\s*$/.test(label), `${f}.html ${m[2]}: "${label}"`);
+    }
+  }
+});

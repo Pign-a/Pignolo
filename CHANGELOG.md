@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1 — 2026-10-01
+
+- Arreglos de la revisión final de la parte 5b (cada uno con un test que falla sin el arreglo).
+- Skill `plan`: `advance --to audited` lleva `--plan-file` (sin él nunca avanzaba: la auditoría se compara con el sha256 del archivo); el aprobado visual y su decisión se commitean por ruta en `int/<plan>` antes del worktree de la tarea (el `implementer` verifica desde su worktree y antes salía `BLOCKED` siempre); una afirmación `refuted` se cierra con `--superseded`; la tarjeta se guarda de `## Goal` a `## Cost estimate`; `plan-audit.js check` con `--root "<main>"`; el presupuesto previo a la aprobación queda declarado como límite (solo `runnable` y `scope-gate` lo hacen cumplir); todo placeholder de ruta entre comillas y toda forma corta con `node "<P>/scripts/…" --cwd "<main>"` (también en `implementer.md` y `task-card.md`).
+- `plan-audit.js finish` ya no suma los hallazgos de `plan-check`: son evidencia para el revisor del paso 1, que repite en sus `findings` lo que confirma; una falsa alarma del heurístico ya no deja el plan en un bucle. `buildAudit` pierde `planCheck`; `check` deja de escribir `check.json`.
+- Plantilla `decision.html`: `data-option` envuelve solo el título de cada camino (la descripción y la marca de recomendado van fuera), así `present.js check` pasa con rótulos naturales; la skill `present` lo dice.
+- Evals 5b: cada caso trae `rejects` (una muestra de rechazo por grader regex) y un test genérico que la recorre: cinco graders que podían quedar triviales sin que nada lo viera ahora se ven. `examples-quote-the-request` exige citas que sean tramos literales del pedido (alternancia generada del pedido, lo que valida `validateScopeCard`). `validator-drift` acepta `REQUEST_CHANGES` o `ESCALATE` (la carta admite los dos). Graders por señal, no por redacción (G10): `CSV` o `Export`, el test por nombre, archivo o `trim`, `Task N` o una línea de `plan.md` de esa tarea, `id` y `verdict` en el mismo objeto.
+- Checklist manual: el punto 8 se corre desde el worktree de la tarea.
+
 ## 0.8.0 — 2026-10-01
 
 - Hito 5b (modo `plan`, parte de agentes y skills): el carril `plan` ya se puede recorrer de punta a punta.

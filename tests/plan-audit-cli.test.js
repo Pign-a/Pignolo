@@ -202,15 +202,18 @@ test('end removes the mode and is idempotent', () => {
   assert.strictEqual(audit(repo, ['end', '--plan', 'p1']).status, 0);
 });
 
-test('the findings of check reach the verdict: all experiments hold but a path does not exist', () => {
-  const { repo, planFile } = setup();
+test('the findings of check reach the verdict only through the reviewer: kept in its findings they block, discarded they do not', () => {
+  const { repo, main, planFile } = setup();
   const badPlan = file('### Task T1: x\n\n**Files:**\n- Modify: `lib/zz.js`\n', 'bad.md');
-  assert.strictEqual(audit(repo, ['check', '--plan', 'p1', '--plan-file', badPlan, '--root', repo]).out.findings.length, 1);
-  const review = J({ findings: [], claims: [claim('C1', 'the helper returns the list sorted')] });
+  const checked = audit(repo, ['check', '--plan', 'p1', '--plan-file', badPlan, '--root', repo]);
+  assert.strictEqual(checked.out.findings.length, 1);
+  assert.ok(!fs.existsSync(path.join(pa.auditDir(main, 'p1'), 'check.json')), 'check leaves no file for finish to add');
+  const kept = J({ findings: [checked.out.findings[0]], claims: [claim('C1', 'the helper returns the list sorted')] });
   assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
-  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(review)]).status, 0);
+  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(kept)]).status, 0);
   audit(repo, ['probes', '--plan', 'p1']);
   audit(repo, ['begin-verify', '--plan', 'p1']);
+  pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c1.js' });
   const holds = J([{ id: 'C1', verdict: 'holds', experiment: 'scratch/c1.js', evidence: 'ok' }]);
   const fin = audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]);
   assert.strictEqual(fin.out.verdict, 'REQUEST_CHANGES');
@@ -238,4 +241,29 @@ test('finish: holds in the report with fewer experiments than claims is ESCALATE
   pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c1.js' });
   pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c2.js' });
   assert.strictEqual(audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]).out.verdict, 'APPROVE');
+});
+
+test('finish (I3 of 5b) does not add the plan-check findings: the reviewer took the report as evidence and kept what is real', () => {
+  const { repo, main } = setup();
+  const planFile = file('### Task T1: x\n\n**Files:**\n- Modify: `lib/made-by-another-plan.js`\n', 'plan2.md');
+  const checked = audit(repo, ['check', '--plan', 'p1', '--plan-file', planFile, '--root', repo]);
+  assert.strictEqual(checked.status, 0, checked.stderr);
+  assert.strictEqual(checked.out.findings.length, 1, 'check must see the missing path');
+  assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
+  const review = J({ findings: [], claims: [] });
+  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(review)]).status, 0);
+  assert.deepStrictEqual(audit(repo, ['probes', '--plan', 'p1']).out.remaining, []);
+  assert.strictEqual(audit(repo, ['begin-verify', '--plan', 'p1']).out.skipped, true);
+  const fin = audit(repo, ['finish', '--plan', 'p1']);
+  assert.strictEqual(fin.status, 0, fin.stderr);
+  assert.strictEqual(fin.out.verdict, 'APPROVE', JSON.stringify(fin.out));
+  assert.deepStrictEqual(fin.out.findings, []);
+  assert.strictEqual(ps.auditState({ main, plan: 'p1', planFile }), 'ok');
+  // y un hallazgo que el revisor sí confirma sigue bloqueando
+  const { repo: repo2 } = setup();
+  assert.strictEqual(audit(repo2, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
+  const confirmed = J({ findings: [{ severity: 'IMPORTANT', plan: 'Task T1', code: 'lib/made-by-another-plan.js', text: 'does not exist', evidence: 'ls' }], claims: [] });
+  assert.strictEqual(audit(repo2, ['review-done', '--plan', 'p1', '--report-file', file(confirmed)]).status, 0);
+  assert.strictEqual(audit(repo2, ['probes', '--plan', 'p1']).status, 0);
+  assert.strictEqual(audit(repo2, ['finish', '--plan', 'p1']).out.verdict, 'REQUEST_CHANGES');
 });
