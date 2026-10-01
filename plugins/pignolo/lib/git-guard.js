@@ -297,6 +297,7 @@ function evaluate(command, opts = {}) {
     psTimeoutMs: opts.psTimeoutMs, // solo tests: plazo holgado para el parseo con la máquina cargada
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
     onlyCatastrophic: Boolean(opts.onlyCatastrophic),
+    collect: Array.isArray(opts.collect) ? opts.collect : null, // solo gitCommands: una entrada por `git`
     subagent: Boolean(opts.subagent), // el payload trae agent_id
     agentType: typeof opts.agentType === 'string' ? opts.agentType : null, // agent_type del payload
     trace: [],
@@ -312,6 +313,7 @@ function evaluate(command, opts = {}) {
       found.push(hit('too-deep'));
     }
   }
+  if (Array.isArray(opts.rules)) opts.rules.push(...found.map((v) => v.rule));
   const list = opts.onlyCatastrophic ? found.filter((v) => v.cls === 'catastrophic') : found;
   return decide(list, ctx);
 }
@@ -891,6 +893,7 @@ function claudePluginOff(args) {
 }
 
 function changeDir(name, args, st, ctx, negated) {
+  st.moved = true; // gitCommands: un comando git posterior corre en otro directorio
   const t = args.find((w) => w.kind !== 'param' && !(w.value.startsWith('-') && w.value.length > 1));
   const before = possible(st);
   let next;
@@ -915,6 +918,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   let i = 1;
   let sub;
   let redirected = Boolean(cmd.gitRedirect);
+  const lost = () => { if (ctx.collect) ctx.collect.push({ sub: null, incomplete: true }); };
   const cfg = [];
   let cfgUnknown = false;
   const done = () => { if (cfgUnknown) out.push(hit('git-config-unknown')); };
@@ -928,12 +932,12 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       if (!w.dyn && (v === '-C' || v === '--git-dir' || v === '--work-tree')) { redirected = true; i++; continue; }
       const dirOpt = /^(-C|--git-dir=|--work-tree=)/.exec(v);
       if (dirOpt && (!w.dyn || w.dynAt >= dirOpt[0].length)) { redirected = true; continue; }
-      if (w.dyn) { out.push(hit('dynamic-argument')); return; }
+      if (w.dyn) { lost(); out.push(hit('dynamic-argument')); return; }
       if (!v.startsWith('-') || v === '-') break;
       if (v === '-c' || v === '--config-env') {
         const nx = words[i + 1];
-        if (!nx) { out.push(hit('git-unknown-option')); return; }
-        if (nx.dyn) { out.push(hit('git-config-override')); return; }
+        if (!nx) { lost(); out.push(hit('git-unknown-option')); return; }
+        if (nx.dyn) { lost(); out.push(hit('git-config-override')); return; }
         cfg.push(nx.value);
         i++;
         continue;
@@ -943,10 +947,11 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       const eq = v.indexOf('=');
       const opt = eq < 0 ? v : v.slice(0, eq);
       if (GIT_GLOBAL_VALUE.has(opt)) {
-        if (eq < 0) { if (!words[i + 1]) { out.push(hit('git-unknown-option')); return; } i++; }
+        if (eq < 0) { if (!words[i + 1]) { lost(); out.push(hit('git-unknown-option')); return; } i++; }
         continue;
       }
       if (GIT_GLOBAL_FLAGS.has(opt)) continue;
+      lost();
       out.push(hit('git-unknown-option'));
       return;
     }
@@ -955,12 +960,19 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     // Después de las reglas del subcomando: si una más específica niega, esa se informa.
     if (keys.some((k) => !CONFIG_ALLOW.test(k) && !OVERRIDE_ALLOW.test(k))) cfgUnknown = true;
     if (i >= words.length) { done(); return; }
-    if (words[i].dyn) { out.push(hit('dynamic-argument')); done(); return; }
+    if (words[i].dyn) { lost(); out.push(hit('dynamic-argument')); done(); return; }
     sub = words[i].value;
   }
-  if (!GIT_BUILTINS.has(sub)) { out.push(hit('unknown-git-subcommand')); done(); return; }
+  if (!GIT_BUILTINS.has(sub)) { lost(); out.push(hit('unknown-git-subcommand')); done(); return; }
   const args = words.slice(i + 1);
   const o = parseOpts(args, SPECS[sub]);
+  if (ctx.collect) {
+    ctx.collect.push({
+      sub, args: args.map((w) => w.value), positionals: o.positionals.map((w) => w.value),
+      shorts: [...o.shorts], longs: [...o.longs],
+      onMain: Boolean(st.onMain), cwdChanged: Boolean(st.moved || redirected),
+    });
+  }
   // Con -C / --git-dir / --work-tree todo se evalúa con sus reglas; lo que depende
   // del estado del otro directorio no se puede ver: `checkout <x>` (¿archivo o rama?)
   // se niega y `merge` pide confirmación (no se sabe si la rama es main).
@@ -1631,6 +1643,24 @@ function psCommands(text, ctx, st) {
   return { cmds: r.cmds, extra };
 }
 
+// ------------------------------------------------------------ git para otros hooks (R-14)
+
+// Reglas que significan "no se supo qué corre": quien llama falla cerrado (devuelve null).
+const BLIND = new Set(['invalid-input', 'unparseable', 'ps-unavailable', 'too-deep', 'dynamic-command', 'hidden-code', 'ps-sink', 'ps-encoded']);
+
+// Una entrada por cada `git` del comando, con la misma tokenización y el mismo estado que
+// `evaluate`: [{ sub, args, positionals, shorts, longs, onMain, cwdChanged }]. `onMain`: un
+// checkout/switch a main/master ya ocurrió antes en el comando; `cwdChanged`: un cd, pushd,
+// Set-Location o `git -C` lo precede. `null` si no se pudo analizar (también un git cuyo
+// subcomando o cuyas opciones salen de una variable).
+function gitCommands(command, opts = {}) {
+  const collect = [];
+  const rules = [];
+  evaluate(command, { shell: opts.shell, psExe: opts.psExe, psTimeoutMs: opts.psTimeoutMs, cwd: opts.cwd, collect, rules });
+  if (rules.some((r) => BLIND.has(r)) || collect.some((c) => c.incomplete)) return null;
+  return collect;
+}
+
 // ------------------------------------------------------------ diagnóstico
 
 function explain(command, opts = {}) {
@@ -1656,4 +1686,4 @@ if (require.main === module) {
   process.stdout.write(`${explain(argv[k + 1], { shell, mode, cwd })}\n`);
 }
 
-module.exports = { evaluate, explain, RULES, CANARIES, AUTO_MODES, UNKNOWN_BRANCH };
+module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES, UNKNOWN_BRANCH };
