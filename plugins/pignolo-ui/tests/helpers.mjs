@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import http from 'node:http';
 import zlib from 'node:zlib';
+import { findBrowser } from '../lib/browser-find.mjs';
 
 export const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = path.join(TESTS_DIR, '..');
@@ -96,4 +97,32 @@ export function makePng(width, height, rgba = [255, 255, 255, 255]) {
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0)),
   ]);
+}
+
+// Browser tests (spec §16.1): without Chrome or Edge they are a visible skip, never a pass.
+const FOUND_BROWSER = findBrowser();
+export const BROWSER_SKIP = FOUND_BROWSER.path ? false : `sin navegador: ${FOUND_BROWSER.reason}`;
+export const browserPath = () => FOUND_BROWSER.path;
+
+// Process ids whose command line mentions the temporary profile (orphan check, spec §11.1).
+export function processesWith(profile) {
+  const marker = path.basename(profile);
+  if (process.platform === 'win32') {
+    const script = `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*${marker}*' } | ForEach-Object { $_.ProcessId }`;
+    const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 30000, windowsHide: true });
+    return res.stdout.split(/\s+/).filter(Boolean).map(Number);
+  }
+  const res = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', timeout: 10000 });
+  return res.stdout.split('\n').filter((l) => l.includes(marker)).map((l) => Number(l.trim().split(/\s+/)[0]));
+}
+
+// Processes of that profile still alive after timeoutMs (children exit a moment after the main
+// process, longer under load): an orphan is one that stays.
+export async function leftoverProcesses(profile, timeoutMs = 15000) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const left = processesWith(profile);
+    if (!left.length || Date.now() > until) return left;
+    await new Promise((r) => setTimeout(r, 500));
+  }
 }
