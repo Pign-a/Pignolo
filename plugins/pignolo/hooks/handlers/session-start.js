@@ -5,6 +5,7 @@ const { readState } = require('../../lib/disabled');
 const { backupRefs, shadowState } = require('../../lib/git-backup');
 const { CANARIES } = require('../../lib/git-guard');
 const { recoverAll } = require('../../lib/sabotage');
+const { deriveNext } = require('../../lib/next');
 
 const LAUNCHER = path.join(__dirname, '..', 'launcher.js');
 const SEEDER = path.join(__dirname, '..', '..', 'scripts', 'shadow-seed.js');
@@ -102,6 +103,16 @@ exports.run = (input, ctx = {}) => {
       }
     } catch (e) {
       lines.push(`⚠ pignolo: no se pudo lanzar la siembra del repo sombra (${e.message}).`);
+    }
+  }
+  if (!st.hooksOff) {
+    // Próxima acción derivada del estado (R-10): solo si hay algo en curso. El sabotaje
+    // interrumpido ya lo informó el bloque de arriba.
+    try {
+      const n = deriveNext({ cwd, env });
+      if (n && n.kind !== 'nothing' && n.text && !String(n.kind).startsWith('sabotage')) lines.push(n.text);
+    } catch (e) {
+      lines.push(`⚠ pignolo: no se pudo derivar la próxima acción (${e.message}).`);
     }
   }
   if (input.source === 'status') {

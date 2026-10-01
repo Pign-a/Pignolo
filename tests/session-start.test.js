@@ -123,3 +123,26 @@ test('SessionStart is registered for every source, fork included (H17)', () => {
   assert.ok(entry);
   for (const source of ['startup', 'resume', 'clear', 'compact', 'fork']) assert.ok(entry.matcher.split('|').includes(source), source);
 });
+
+// Protects: R-10 (next en SessionStart) · Breaks if: el arranque no suma la próxima acción de
+// un plan en curso, la suma con /pignolo:off o la repite cuando no hay nada.
+test('startup adds the next action when a plan is in progress, and only then', () => {
+  const ps = require('../plugins/pignolo/lib/plan-state');
+  const repo = makeRepo();
+  const env = { PIGNOLO_HOME: makeTempDir() };
+  fs.mkdirSync(path.join(repo, '.pignolo'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.pignolo', 'project.md'), '---\ntype: code-tested\n---\n');
+  seedShadow({ cwd: repo, env: { ...process.env, ...env }, sessionId: 's' });
+  const quiet = ss.run({ source: 'startup', cwd: repo, session_id: 's' }, { env });
+  assert.deepStrictEqual([quiet.exit, quiet.stdout], [0, '']);
+  assert.ok(ps.newPlan({ main: repo, plan: 'p1', request: 'pedido', spec: 's' }).ok);
+  assert.ok(ps.update({ main: repo, plan: 'p1' }, (p) => { p.stage = 'audited'; return null; }).ok);
+  for (const source of ['startup', 'compact']) {
+    const r = ss.run({ source, cwd: repo, session_id: 's' }, { env });
+    const out = JSON.parse(r.stdout);
+    assert.match(out.hookSpecificOutput.additionalContext, /El plan p1 está en la etapa audited/);
+  }
+  fs.writeFileSync(path.join(repo, '.pignolo', '.disabled'), '');
+  const off = JSON.parse(ss.run({ source: 'startup', cwd: repo, session_id: 's' }, { env }).stdout);
+  assert.doesNotMatch(off.systemMessage, /El plan p1/);
+});
