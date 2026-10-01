@@ -33,18 +33,45 @@ test('new: order of the steps of spec section 7, empty project goes through dire
   for (const cap of ['one round of directions', 'one round of mockups', 'at most one regeneration', 'one implementation', 'one batch check', 'one batch of fixes', 'at most one confirmation']) {
     assert.ok(text.toLowerCase().includes(cap), cap);
   }
-  assert.ok(/not available in v1/.test(text));
-  assert.ok(!/Artifact/.test(text), 'new never calls the Artifact tool');
+  assert.ok(!/canvas-not-in-v1|is not available in v1/.test(text), 'the canvas is back in v1 (hito 4c)');
 });
 
-test('present-and-choose.md: no variables, order, never publishes in v1, literal quote, direction flow, -v2', () => {
+test('new and improve: the gate comes before the first Artifact call, the account types are listed and kept in types.json (A4C-01)', () => {
+  for (const name of ['new', 'improve']) {
+    const { text } = readSkill(name);
+    for (const lit of ['scope: "types"', '"Design"', 'types.json', '--design-type', 'publish-gate', 'canvas-index.mjs plan']) assert.ok(text.includes(lit), `${name}: ${lit}`);
+    assert.ok(text.indexOf('publish-gate') < text.indexOf('scope: "types"'), `${name}: publish-gate goes before the first Artifact call`);
+    assert.ok(/exit 1 do not call Artifact at all/.test(text) && text.includes('action: "list"'), `${name}: with exit 1 not even list`);
+    assert.ok(/ilegible/.test(text), `${name}: an unreadable presentation is said`);
+    assert.doesNotMatch(text, /canvas-not-in-v1|The canvas "Design" is not available in v1/);
+    assert.ok(text.includes('First decide how they will be shown'), `${name}: present before the options`);
+  }
+});
+
+test('present-and-choose.md: no variables, the canvas loop in order, opt-outs, one path to Artifact, no consent question, -v2 (hito 4c)', () => {
   const text = readReference('present-and-choose.md');
   assertNoVariables(text);
-  indexOrder(text, ['run.mjs" present', 'leak-check.mjs', 'run.mjs" compare-html']);
-  for (const lit of ['Never call Artifact', 'not available in v1', 'literal quote', '--kind direction', '-v2', '--quote-file']) assert.ok(text.includes(lit), lit);
+  indexOrder(text, ['run.mjs" present', 'leak-values', 'canvas-index.mjs" build', 'canvas-index.mjs" verify', 'canvas-index.mjs" plan', 'step', 'canvas-read-live',
+    'canvas-index.mjs" merge --run <run> --live', 'canvas-index.mjs" record --run <run> --step']);
+  for (const lit of ['never call Artifact when the mode is local', 'publish-gate'.replace('publish-gate', 'no-publish'), 'config set --key publish --value never', 'presentation = local', 'no publiques',
+    'privados de tu cuenta', 'readable by only you', 'no se relee', 'compare.html', '--kind direction', 'Google Fonts', 'lienzo nuevo', 'ilegible', '<run>/local/', 'fuentes remotas quitadas',
+    'solo en el lienzo', 'literal quote', '-v2', '--quote-file', 'there is no consent question']) {
+    assert.ok(text.toLowerCase().includes(lit.toLowerCase()), lit);
+  }
+  for (const bad of ['canvasConsent', 'consentNeeded', 'canvas-not-in-v1', 'una vez con los archivos', 'config set --key presentation', '--page-id', '--allow-few-values', 'to-canvas']) assert.ok(!text.includes(bad), `must not say: ${bad}`);
   assert.ok(text.indexOf('leak-check.mjs" --dir') < text.indexOf('approve.mjs" save'), 'leak check before saving as approved');
-  assert.doesNotMatch(text, /one call|una vez con los archivos|type_url|to-canvas/);
   assertScriptsExist(scriptCalls(text));
+});
+
+test('present-and-choose.md has a single way to Artifact: plan, a step at a time; force, overwrite_unread and share only inside a "never" sentence (A4C-02)', () => {
+  const text = readReference('present-and-choose.md');
+  assert.ok(!/after `?diff`?[, ]+publish|tras `?diff`?[, ]+public/i.test(text));
+  for (const word of ['force', 'overwrite_unread', 'share', 'public']) {
+    for (const sentence of text.split(/(?<=[.!?])\s+|\n/).filter((x) => new RegExp(`\\b${word}\\b`).test(x))) {
+      assert.ok(/never|nunca/i.test(sentence), `${word} outside a never sentence: ${sentence.slice(0, 90)}`);
+    }
+  }
+  assert.ok(text.includes('exactly as printed'));
 });
 
 test('transversal contract of the three skills and the reference files', () => {

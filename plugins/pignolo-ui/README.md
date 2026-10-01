@@ -1,6 +1,6 @@
 # Pignolo UI
 
-Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.6 en construcción (hito 4 de 5: los tres comandos, los dos agentes y todo lo determinista que usan; falta la convivencia con el núcleo, hito 5).
+Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.7 en construcción (hito 4c, etapa 1: el lienzo "Design" básico sobre el hito 4; falta la convivencia con el núcleo, hito 5).
 
 Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
@@ -21,13 +21,19 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
 - `optionsPerDecision` (`1` o `3`, por defecto `3`): cuántas opciones se generan por decisión, cada una con su subagente. Con `1` las opciones salen en secuencia del hilo principal y el informe lo dice.
 - `profile` (`max`, `balanced` o `economy`, por defecto `balanced`): modelo de los subagentes que generan las opciones. `max` usa opus; `balanced` y `economy` usan sonnet. Es un ajuste propio de este plugin y no depende del núcleo. Si el entorno fuerza el modelo de los subagentes (`CLAUDE_CODE_SUBAGENT_MODEL`), manda el entorno y el informe dice solo el modelo pedido.
-- `presentation` (`auto` o `local`, por defecto `auto`): en la v1 las dos dan lo mismo, una página local `compare.html`.
+- `presentation` (`auto` o `local`, por defecto `auto`): con `auto`, las opciones de mockup se publican en un lienzo privado de tu cuenta de claude.ai cuando la cuenta tiene el tipo "Design" (si no, `compare.html` local); con `local` no se publica nada. Un valor ilegible (el texto sin sustituir) cuenta como `local`.
 
 Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega literal), la skill usa el valor por defecto y lo dice.
 
 ## Qué se publica y qué nunca
 
-En la v1 no se publica nada: el lienzo "Design" quedó para una versión posterior. Las capturas, el código y los datos de tu proyecto no se publican ni se suben a ningún servicio aparte de Claude Code (el modelo lee el código y las capturas para trabajar). Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`); `.pignolo-ui/` y `design/approved/` quedan en tu repo.
+Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai** (un lienzo por corrida, una fila por opción y pantalla, a 390 y 1440 px). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con marcadores, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
+
+Para no publicar: `node scripts/run.mjs config set --data <datos> --project <repo> --key publish --value never` (clave de proyecto, también se respeta un "no" heredado de la 0.6), `presentation = local` o decir "no publiques" en el chat (vale para esa corrida). En los tres casos ni siquiera se llama a la herramienta `Artifact`. Regenerar una opción abre un lienzo nuevo (el anterior queda en tu cuenta y lo borrás vos; el agente nunca borra ni comparte nada).
+
+**Fuentes.** Una opción para el lienzo puede pedir una familia de Google Fonts (las tres `<link>` exactas; la petición la hace el navegador de quien abre el lienzo). El HTML local (`compare.html`, style tiles) no pide nada a la red: usa copias sin esas `<link>` en `<run>/local/`. Lo aprobado en `design/approved/` se guarda también sin las `<link>`; llevar la fuente al código del proyecto es una decisión tuya, después.
+
+Las capturas, el código y los datos de tu proyecto no se publican ni se suben a ningún servicio aparte de Claude Code (el modelo lee el código y las capturas para trabajar). Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`); `.pignolo-ui/` y `design/approved/` quedan en tu repo.
 
 ## Aviso
 
@@ -35,13 +41,14 @@ pignolo-ui no es asesoría legal ni certifica cumplimiento de ninguna norma. Ref
 
 ## Dónde queda cada cosa
 
-- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html`, `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
+- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html` con sus copias sin fuentes remotas en `local/`, `canvas/` (lo que se publica), `publish.json` (estado y sha256 de lo publicado), `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
 - `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas y ruta de referencia. Desinstalar el plugin lo borra.
 - `design/approved/<flujo>/`: lo que el usuario aprobó, con `manifest.json`; se versiona y nunca se edita (un cambio crea `<flujo>-v2`).
 
 ## Comandos de apoyo (`run.mjs` y `compare.mjs`)
 
-    node scripts/run.mjs env | init | config | norms | check | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
+    node scripts/run.mjs env | init | config | present | publish-gate | no-publish | norms | check | leak-values | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
+    node scripts/canvas-index.mjs build | verify | plan | merge | record
     node scripts/compare.mjs fingerprint | distance | options | approved
 
 Cada uno imprime un objeto JSON; exit 0 hecho, 1 hallazgo o rechazo, 2 error propio (`no verificado`). El JSON de entrada llega siempre por archivo. `verdict` es la única fuente de "terminado".

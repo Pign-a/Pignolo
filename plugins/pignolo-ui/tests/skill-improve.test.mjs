@@ -38,8 +38,7 @@ test('improve: steps appear in the order of spec section 8, the after goes to <r
   assert.ok(text.includes('reported as pending'));
   assert.ok(text.includes('"pignolo-ui:ui-auditor"'));
   for (const m of text.matchAll(/ui-auditor/g)) assert.equal(text.slice(Math.max(0, m.index - 11), m.index), 'pignolo-ui:');
-  assert.ok(/not available in v1/.test(text), 'the canvas is not available in v1 (R10)');
-  assert.ok(!/Artifact/.test(text), 'improve never calls the Artifact tool');
+  assert.ok(!/not available in v1/.test(text), 'the canvas is back in v1 (hito 4c)');
 });
 
 test('options.md: no variables, literals, discard before the second dispatch, leak check before approve', () => {
