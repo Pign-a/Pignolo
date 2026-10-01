@@ -13,9 +13,9 @@ const { repoIdFor } = require('../lib/seals');
 const { withDeadline } = require('../lib/git');
 const { readProjectConfig } = require('../lib/project-config');
 const { matchAny } = require('../lib/globs');
+const { ID_RE } = require('../lib/branches');
 
 const FLOWS = ['trivial', 'daily', 'review', 'plan'];
-const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 // Contador de los DONE rechazados con run.json ilegible (handback-gate).
 const MALFORMED = '_malformed';
 const WRITERS_NO_TESTS = ['pignolo:implementer', 'pignolo:fixer'];
