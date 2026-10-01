@@ -159,3 +159,43 @@ test('símbolos: un mensaje de commit convencional no es un símbolo', () => {
   const res = checkPlan({ planText: plan('Commit `feat(tests): detectar cosas` y `fix(gate): otra`.'), root: makeRoot(BASE) });
   assert.deepStrictEqual(res.refs, []);
 });
+
+// Bloque Files de un plan en tarjetas: Create y Modify, una viñeta por ruta.
+const FILES_PLAN = [
+  '### Task T1: nuevo',
+  '',
+  '**Files:**',
+  '- Create: `plugins/x/lib/nuevo.js`',
+  '- Modify: `lib/a.js`',
+  '- Test: `tests/nuevo.test.js`',
+  '',
+  'Implementa `nuevoFn({ a })` en `plugins/x/lib/nuevo.js` y llama a `foo(`.',
+  '',
+  '### Task T2: usa',
+  '',
+  '**Files:**',
+  '- Modify: `plugins/x/lib/nuevo.js`',
+  '- Modify: `lib/falta.js`',
+  '',
+  'Usa `nuevoFn({ a })` desde `lib/nuevo.js` y `tests/nuevo.test.js`.',
+].join('\n');
+
+test('Files: lo que la tarea marca Create (ruta y símbolo que define) no se reporta; Modify debe existir', () => {
+  const res = checkPlan({ planText: FILES_PLAN, root: makeRoot(BASE) });
+  const bad = res.refs.filter((r) => !r.ok).map((r) => r.value);
+  assert.deepStrictEqual(bad, ['lib/falta.js'], JSON.stringify(res.refs));
+  assert.strictEqual(refOf(res, 'nuevoFn({ a })').ok, true);
+  assert.strictEqual(refOf(res, 'plugins/x/lib/nuevo.js').ok, true);
+});
+
+test('Files: Modify de una ruta inexistente que nadie crea falla aunque otra tarea cree un archivo parecido', () => {
+  const text = '### Task T1: a\n\n**Files:**\n- Create: `lib/otro.js`\n- Modify: `lib/falta.js`\n';
+  const res = checkPlan({ planText: text, root: makeRoot(BASE) });
+  assert.strictEqual(refOf(res, 'lib/falta.js').ok, false);
+  assert.strictEqual(refOf(res, 'lib/otro.js').ok, true);
+});
+
+test('sin bloque Files un símbolo inventado sigue marcándose', () => {
+  const res = checkPlan({ planText: plan('Implementa `nuevoFn({ a })` en `lib/a.js`.'), root: makeRoot(BASE) });
+  assert.strictEqual(refOf(res, 'nuevoFn({ a })').ok, false);
+});

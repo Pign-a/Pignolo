@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2 — 2026-09-30
+
+- `lib/plan-check.js`: un símbolo que una tarea nombra en la misma línea que un archivo que esa tarea marca `Create` se da por producido por el plan y deja de reportarse como inexistente (motivo: 20 falsas alarmas medidas en un plan real, `tests/evals/RESULTS-planes.md`). Las rutas `Create` ya se aceptaban; las `Modify` siguen debiendo existir. Sin bloque `Files` el comportamiento no cambia.
+- Calificador de la prueba de planes (`tests/bench/plans/grade.js`): las palabras clave coinciden por palabra completa (`cat` ya no coincide dentro de `catastrophic`). Las cifras del caso real se contaron a mano porque el calificador por palabras sobrecontaba.
+
 ## 0.6.1 — 2026-09-30
 
 - Arreglos de la revisión final del hito 4b. `sabotage.js` marca `refused: "patch"` solo cuando rechaza el parche (no aplica, vacío, fuera de la raíz, toca tests, `git apply` falló); `daily` y `review` tratan un exit 2 sin `refused: patch` y sin `greenBefore: false` (árbol sucio, otro sabotaje en curso, sin `gates.on-done`, el comando ensucia el árbol) como no-veredicto: se muestra y se pregunta, nunca `--no-red` (antes, un `on-done` que escribía un archivo terminaba en un test decorativo aprobado).
