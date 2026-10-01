@@ -14,7 +14,7 @@
 
 | Id | Decisión | Propuesta |
 |---|---|---|
-| D-B-1 | Tope de gasto total (**abierta, la decide el autor**) | La propuesta anterior era 150 USD, pero tras unificar y recalcular el total completo da **~200 USD** (no entra). Opciones escalonadas en "Costos": **A ~56** (solo criterio de éxito), **B ~90** (comparación acotada), **C ~145** (casi todo, con 3 reps en `seeded` y 2 en `replay`/`miniapp`), **Completo ~200**. Las etapas son acumulativas: se puede aprobar A y ampliar después con lo medido. Todo con corte automático por etapa. Es una hipótesis de costo, no una medida. |
+| D-B-1 | Tope de gasto total (**DECIDIDA por el autor el 2026-10-01: la completa, ~200 USD, incluida WSL2; se corre por etapas y se frena si una etapa supera su estimado en más de 25 %**) | La propuesta anterior era 150 USD, pero tras unificar y recalcular el total completo da **~200 USD** (no entra). Opciones escalonadas en "Costos": **A ~56** (solo criterio de éxito), **B ~90** (comparación acotada), **C ~145** (casi todo, con 3 reps en `seeded` y 2 en `replay`/`miniapp`), **Completo ~200**. Las etapas son acumulativas: se puede aprobar A y ampliar después con lo medido. Todo con corte automático por etapa. Es una hipótesis de costo, no una medida. |
 | D-B-2 | Modelo por brazo | El mismo modelo base en los 4 brazos (sonnet 5.5 para el hilo principal); los subagentes de pignolo según su perfil, que es parte de lo medido. `economy` es un brazo propio. Opus solo en la calificación manual y la revisión ciega (no es un brazo). |
 | D-B-3 | Qué se publica | `docs/benchmarks.md` §5 con la tabla completa, incluidos los brazos donde pignolo pierde; datos crudos sin rutas ni nombres del proyecto de origen (repo público). |
 | D-B-4 | Plan real del proyecto de origen (absorbe el manejo de datos de la D-8-5) | El caso `real-plan` usa material del proyecto donde se usa pignolo: **solo corre con permiso expreso; informes con datos del proyecto en `local/` (fuera de git) y a `docs/benchmarks.md` solo cifras agregadas anonimizadas**, o se omite y el criterio de éxito queda "medido en sintético, pendiente con el plan real". |
@@ -188,7 +188,7 @@ Recomendación: aprobar **A** ya y decidir B o C con los costos reales de las et
 
 ## Resultados de la etapa 0
 
-_Pendiente (requiere aprobación de D-B-1)._
+_Aprobada la completa (D-B-1, 2026-10-01, ~200 USD)._
 
 ## Riesgos y límites declarados
 
