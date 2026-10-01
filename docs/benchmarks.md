@@ -103,6 +103,19 @@ Cuatro pantallas con el mismo brief, un agente por brazo, una corrida cada uno. 
 
 **Lectura práctica:** publicar en el lienzo cuesta ≈ 20–27 % más tokens que el HTML local y no tarda más; opus gasta 10–17 % más y tarda 2–3 veces más que sonnet, con opciones que el autor encontró algo mejor estructuradas. Una corrida por brazo: orden de magnitud.
 
+## 2f. Brainstorm antes del spec: el paso de hoy o una skill con árbol de decisiones (2026-10-01)
+
+Un pedido real con verdad conocida (el lienzo "Design" de pignolo-ui y 10 decisiones que el autor tomó después), un autor simulado que solo contesta lo que se le pregunta, opus, 3 corridas por brazo.
+
+| Brazo | Preguntas al autor | Palabras del autor | Decisiones posteriores cubiertas (de 10) | Contrarias sin marcar | USD por corrida | Minutos |
+|---|---|---|---|---|---|---|
+| Paso 2 de hoy (una línea) | 4,3 | 88 | 5,0 (4 a 6) | 0,3 | 0,95 | 3,1 |
+| Borrador de la skill `brainstorm` (55 líneas) | 2,7 | 72 | 3,3 (1 a 6) | 1,7 | 1,28 | 3,9 |
+
+**Lectura:** el borrador no ganó: cubrió menos decisiones y costó ≈ 35 % más. Tomó un "ok" a su resumen como confirmación y trató decisiones viejas del repo como hechos; su lote de supuestos fue lo que más rindió. Ningún brazo preguntó algo que el repo ya contestaba. Se queda el paso de hoy más las reglas baratas, y el borrador se corrige antes de volver a medir.
+
+**Comparabilidad:** un solo pedido, un autor simulado y 3 corridas por brazo, con una dispersión mayor que la diferencia: orden de magnitud. Conteo validado a mano. Gasto: 6,74 USD. Evidencia: [`RESULTS-brainstorm.md`](../tests/evals/RESULTS-brainstorm.md).
+
 ## 3. Agentes que revisan código
 
 Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
