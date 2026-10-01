@@ -151,7 +151,11 @@ function stateRule({ input, env, cwd, abs }) {
 // que escriba el archivo por código no pasa por este hook (spec §8.3).
 function projectMdRule({ input, env, cwd, abs }) {
   if (!input.agent_id) return null;
-  if (!/(^|\/)\.pignolo\/project\.md$/.test(abs.split(path.sep).join('/').toLowerCase())) return null;
+  const isProjectMd = (p) => /(^|\/)\.pignolo\/project\.md$/.test(p.split(path.sep).join('/').toLowerCase());
+  // m-6: un alias (junction, nombre 8.3, enlace) que llega al archivo real también cuenta, cuando el archivo existe.
+  let real = abs;
+  try { real = fs.realpathSync.native(abs); } catch (_) { real = abs; }
+  if (!isProjectMd(abs) && !isProjectMd(real)) return null;
   if (!projectState({ env, cwd }).active) return null;
   const who = typeof input.agent_type === 'string' && input.agent_type ? input.agent_type.replace(/^pignolo:/, '') : 'un subagente';
   return alt(`${who} no escribe ${PROJECT_MD}: solo el hilo principal y /pignolo:init cambian la configuración del proyecto. Alternativa: devolvé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en project.md.`);

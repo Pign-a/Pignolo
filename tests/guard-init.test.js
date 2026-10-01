@@ -106,3 +106,37 @@ test('the main thread edits project.md; a subagent in a project without project.
     assert.match(res.stderr, /\.claude/);
   }
 });
+
+// --- Pasada de arreglos 8a (I-2): la regla cierra las mismas formas que pignolo-plan ---
+// Protects: I-2 (Node resuelve la extensión: `init` sin .js ejecuta lo mismo) · Breaks if: INIT_JS_* vuelve a exigir .js o falta init en EVAL_STATE_SCRIPT.
+test('a subagent cannot run init without .js, nor load it with node -e/-p/-r (same as the plan.js family)', () => {
+  denied(call(`node "${P}/scripts/init" apply`), 'sin extensión');
+  denied(call(`cd "${P}/scripts" && node ./init apply`), 'cd + ./init');
+  denied(call('node "$CLAUDE_PLUGIN_ROOT/scripts/init" apply'), '$CLAUDE_PLUGIN_ROOT sin .js');
+  denied(call('node "${CLAUDE_PLUGIN_ROOT}/scripts/init" detect'), '${CLAUDE_PLUGIN_ROOT} sin .js');
+  denied(call(`& node "${P}/scripts/init" apply`, SUB, 'PowerShell'), 'ps sin .js');
+  denied(call(`node -e "require('${P}/scripts/init.js').main(['apply','--plan','p.json'])"`), 'node -e con .js');
+  denied(call(`node -e "require('${P}/scripts/init')"`), 'node -e sin .js');
+  denied(call(`node -p "require('${P}/scripts/init.js')"`), 'node -p');
+  denied(call(`node -r ${P}/scripts/init.js -e 1`), 'node -r');
+  denied(call('node -e "require(\'${CLAUDE_PLUGIN_ROOT}/scripts/init\')"'), 'node -e dinámico');
+  passes(call(`node "${P}/scripts/init" apply`, {}), 'hilo principal sin .js');
+  passes(call(`node -e "require('${P}/scripts/init.js')"`, {}), 'hilo principal con -e');
+});
+
+test('reading init (with or without .js) and the lib stay allowed for a subagent', () => {
+  for (const c of [`cat ${P}/scripts/init`, `grep -n apply ${P}/scripts/init`, `head -20 ${P}/scripts/init.js`, `node --check ${P}/scripts/init.js`, `node -e "require('${P}/lib/init-actions.js')"`, 'node scripts/init detect']) passes(call(c), c);
+});
+
+// --- m-6: A8-09 sigue el alias real (junction / nombre 8.3) cuando el archivo existe ---
+test('A8-09 also denies a path that reaches project.md through a junction alias (m-6)', () => {
+  const r = activeProject();
+  const alias = path.join(r, 'alias-dir');
+  fs.symlinkSync(path.join(r, '.pignolo'), alias, 'junction');
+  const res = edit(r, path.join(alias, 'project.md'), { agent_id: 'a', agent_type: 'pignolo:implementer' }, 'Write');
+  assert.equal(res.exit, 2, res.stderr);
+  assert.match(res.stderr, /no escribe \.pignolo\/project\.md/);
+  assert.equal(edit(r, path.join(alias, 'project.md'), {}, 'Write').exit, 0, 'hilo principal');
+  fs.writeFileSync(path.join(r, 'other.md'), 'x');
+  assert.equal(edit(r, path.join(r, 'other.md'), { agent_id: 'a', agent_type: 'pignolo:implementer' }).exit, 0, 'otro archivo');
+});

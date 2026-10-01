@@ -167,3 +167,25 @@ test('unreadable package.json: warning, no node stack, no throw', () => {
   assert.ok(d.warnings.some((w) => /package\.json ilegible/.test(w)));
   assert.ok(!d.stacks.includes('node'));
 });
+
+// Protects: I-3 · Breaks if: una compuerta que da verde sin probar nada ("exit 0", "true", ":", "echo ok") se deduce como code-tested.
+test('a trivially green test script is not a gate: code-untested with an explicit warning', () => {
+  for (const script of ['exit 0', 'true', ':', 'echo ok', 'echo "all good" && exit 0']) {
+    const d = detectProject({ root: proj({ 'package.json': pkg({ scripts: { test: script } }), 'a.test.js': '' }) });
+    assert.equal(d.type, 'code-untested', script);
+    assert.equal(d.gates['on-done'], undefined, script);
+    assert.ok(d.warnings.some((w) => /no cuenta como compuerta/.test(w)), script);
+  }
+});
+
+// Protects: I-3 · Breaks if: un scripts.test sin runner reconocido se acepta sin avisar.
+test('a test script that names no known runner is kept but warned and marked in sources', () => {
+  const d = detectProject({ root: proj({ 'package.json': pkg({ scripts: { test: 'node check-all.js' } }), 'a.test.js': '' }) });
+  assert.equal(d.type, 'code-tested');
+  assert.ok(d.warnings.some((w) => /runner/.test(w) && /confirm/.test(w)), JSON.stringify(d.warnings));
+  assert.match(d.sources.testScript, /sin runner reconocido/);
+  const ok = detectProject({ root: proj({ 'package.json': pkg({ scripts: { test: 'mocha' } }), 'a.test.js': '' }) });
+  assert.ok(!ok.warnings.some((w) => /runner/.test(w)));
+  const known = detectProject({ root: proj({ 'package.json': pkg(NODE), 'src/a.test.ts': '' }) });
+  assert.ok(!known.warnings.some((w) => /runner/.test(w)));
+});

@@ -1,6 +1,6 @@
 'use strict';
 // .pignolo/.gitignore: agrega solo las líneas que faltan (comparación exacta por línea),
-// en LF y sin tocar las demás.
+// con el fin de línea que ya usa el archivo (LF si es nuevo) y sin tocar las demás.
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -13,8 +13,9 @@ function ensureIgnored(root, entries) {
   const have = new Set(text.split(/\r?\n/));
   const missing = [...new Set(entries)].filter((e) => !have.has(e));
   if (missing.length === 0) return false;
-  const sep = text === '' || text.endsWith('\n') ? '' : '\n';
-  fs.writeFileSync(file, `${text}${sep}${missing.join('\n')}\n`);
+  const eol = text.includes('\r\n') ? '\r\n' : '\n';
+  const sep = text === '' || text.endsWith('\n') ? '' : eol;
+  fs.writeFileSync(file, `${text}${sep}${missing.join(eol)}${eol}`);
   return true;
 }
 

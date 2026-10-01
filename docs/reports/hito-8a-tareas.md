@@ -92,3 +92,46 @@ Plan: version objetivo 0.9.0 (renumerado desde 0.8.2 publicado).
 - Revision final opus de `main..core/hito-8a`: NO hecha (la tarea la pide al orquestador/autor; el ejecutor serie no despacha agentes). Review Focus 1, 3, 4, 5 y 6 primero.
 - Version: 0.9.0 (plan: 0.8.1 -> 0.9.0; main esta en 0.8.2; core/hito-6 usa 0.10.0: renumerar al unir).
 - Unir y publicar son del autor. No se hizo push.
+
+## Unión con main (hito 6)
+
+`git merge main` (d0213e8) en `core/hito-8a`. Conflictos y resolución:
+
+- `plugins/pignolo/.claude-plugin/plugin.json`: version 0.11.0.
+- `CHANGELOG.md`: entradas 0.10.1 y 0.10.0 de main intactas; la de 8a renumerada de 0.9.0 a 0.11.0 arriba de ellas (la 0.9.0 de main sigue en su lugar).
+- `lib/git-guard.js`: `pignolo-plan` con el texto de main (suma close-session.js y state-index.js) más `pignolo-init` de 8a.
+- `hooks/handlers/protect-paths.js`: `stateRule` (hito 6) y `projectMdRule` (8a) conviven; el orden de reglas es stateRule, planAuditRule, projectMdRule, roleRule.
+- `docs/specs/...-design.md`: §10.5 con el texto de main (Engram fuera, sin learning-validator) más la nota de 8a (init no migra la auto-memoria); párrafo de `setup` con el de main y la viñeta `/pignolo:init` con la de 8a.
+- `docs/STATE.md` (auto-fusionado): texto de main más las notas de 8a; actualizado a 0.11.0 y a "conflictos resueltos".
+- `learning-validator` sigue borrado (sin referencias en plugins).
+- Caminos "degradar si no existe el hito 6": no existen en el código de 8a (init no usa proposeLearning/scanLearning/readEntries/close-session, por la decisión de no migrar la auto-memoria), así que no hubo que ajustar ni agregar tests.
+- `npm test`: 2714 tests, 2712 pass, 0 fail, 2 skipped.
+
+## Pasada de arreglos (revisión final opus, REQUEST_CHANGES: 0 críticos, 3 importantes, 9 menores; 0.11.0 -> 0.11.1)
+
+Una sola pasada, en la rama `core/hito-8a`, sin subagentes. Los tests nuevos se escribieron primero y se corrieron en rojo contra el código de 0.11.0: **19 tests fallaban** (guard-init 2, project-md 3, init-detect 2, init-actions 1, claude-settings 4, init-cli 7), y después del arreglo todos pasan. Ningún test toca el HOME ni `CLAUDE_CONFIG_DIR` reales: usan `PIGNOLO_HOME` y `CLAUDE_CONFIG_DIR` temporales (`makeTempDir`) y repos temporales.
+
+| Hallazgo | Arreglo | Test (rojo antes) |
+|---|---|---|
+| I-1 sangría del mapa y `ok: true` con resultado inválido | `mergeProjectMd` usa la sangría de la primera línea hija (sin contar comentarios); `projectMdStep` vuelve a parsear el resultado antes de escribir y, si no parsea, `refused: invalid-result` (también en preview, sin respaldo ni escritura) | `project-md.test.js` (3 y 4 espacios), `init-cli.test.js` (4 espacios de punta a punta con `verify` sin `configError`; clave `[bad` -> `invalid-result` en preview y apply) |
+| I-2 regla `pignolo-init` abierta | `init(?:\.js)?` en `INIT_JS_LITERAL`, `INIT_JS_DYN` e `INIT_JS_OWN`; `EVAL_INIT_SCRIPT` niega `node -e/-p/-r` con el script (misma lógica que `namesStateScript`, devuelve `pignolo-init`); leer el script (`cat`, `grep`, `head`, `node --check`) y la lib siguen permitidos | `guard-init.test.js`: 10 formas negadas (sin `.js`, `cd` + `./init`, `$CLAUDE_PLUGIN_ROOT` y `${...}`, PowerShell, `-e`, `-p`, `-r`) y must-allow de lectura |
+| I-3 compuerta que da verde sin probar | `isInstallerPlaceholder` incluye comandos triviales (`exit 0`, `true`, `:`, `echo ...`, encadenados con `&&`/`;`): `code-untested` con aviso; `scripts.test` sin runner reconocido: aviso "confirmá" y `sources.testScript` | `init-detect.test.js` (5 scripts triviales; `node check-all.js` con aviso; `mocha` y `vitest` sin aviso) |
+| G31 (decisión del autor 2026-10-01) | `auto-memory-off` agrega `/.claude/settings.local.json` a `git rev-parse --git-path info/exclude` si no está versionado ni ignorado; en preview `exclude: true`, idempotente, conserva CRLF y líneas previas; versionado: no toca `.git` (`excludeSkipped: tracked`) | `claude-settings.test.js` (preview, apply, segunda corrida, ya ignorado, versionado, worktree enlazada), `init-cli.test.js` (de punta a punta), `e2e-hito-8.test.js` (`risk --diff HEAD`: `laneFloor: trivial`, `hits: []`) |
+| m-1 preview vencido | `preview` devuelve `stamp` (sha del plan y del resultado por paso); `apply --expect <stamp>` -> `refused: stale-preview`, exit 1, nada escrito | `init-cli.test.js` |
+| m-2 `verify` exit 0 con `ok: false` | exit 1, `kind: invalid-config` y `Alternativa:` | `init-cli.test.js` |
+| m-3 `settings.local.json` normalizado a LF | conserva el EOL detectado y la falta de salto final | `claude-settings.test.js` |
+| m-4 `.pignolo/.gitignore` CRLF mezclado | `ensureIgnored` agrega con el EOL del archivo | `init-actions.test.js` |
+| m-5 clave declarada vacía | el valor se escribe en la misma línea (`language: es`), con CRLF si corresponde | `project-md.test.js` |
+| m-6 A8-09 léxico | `projectMdRule` mira también `realpathSync.native` cuando el archivo existe | `guard-init.test.js` (alias por junction; hilo principal y otro archivo no se ven afectados) |
+| m-7 patrón que casa todo | `validatePiiPattern` rechaza lo que casa tres líneas comunes (espacio, `..`, `\s`, `[a-z ]`); `\b\d{8}\b`, `@example\.com` pasan | `project-md.test.js` |
+| m-8 nota con archivo versionado | la nota dice que está versionado y que el paso lo dejó modificado; la de "sin seguimiento" solo sale si `init` no pudo agregar la exclusión | `init-cli.test.js` |
+| m-9 `quote()` sin escape | `refused: unquotable` (exit 0, nada escrito, el resto de los pasos corre) | `init-cli.test.js` |
+
+Rulings:
+- Un tab como sangría no vale en `yaml-lite`: el test de I-1 usa 3 y 4 espacios.
+- G31 se hace solo cuando `auto-memory-off` escribe (no cuando ya estaba `autoMemoryEnabled: false`): atarlo a la escritura mantiene el paso `skipped` idempotente.
+- El e2e del límite (a) sigue sin `auto-memory-off` (mira solo el `.pignolo/.gitignore` versionado); G31 tiene su propio e2e.
+- La skill `init` usa `--expect <stamp>` en el apply y avisa de `stale-preview` e `invalid-config`; spec §8.3 y §15 actualizadas; gap G31 pasa a hecho.
+- `PIGNOL~1` (nombre 8.3) se cubre por `realpathSync.native`; el test usa una junction porque el 8.3 puede estar apagado en el volumen.
+- Versión 0.11.1 y entrada en el CHANGELOG. No se hizo push.
+- `npm test` una vez al final: 2735 tests, 2733 pass, 0 fail, 2 skipped.

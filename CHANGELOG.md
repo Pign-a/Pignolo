@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.1 — 2026-10-01
+
+- Arreglos de la revisión final del hito 8a (cada uno con un test que falla sin el arreglo).
+- I-1: al fusionar en un mapa `gates:` con otra sangría que 2 espacios, `init` conserva la sangría del mapa y, antes de escribir, vuelve a leer el resultado con el parser: si no parsea, el paso sale `refused: invalid-result` (también en `preview`) y no escribe nada ni respalda.
+- I-2: la regla `pignolo-init` niega a un subagente `node …/scripts/init` sin `.js` (también con `cd`, `$CLAUDE_PLUGIN_ROOT` y PowerShell) y `node -e|-p|-r` con el script, igual que la familia `plan.js`; leer el script y la lib siguen permitidos.
+- I-3: un `scripts.test` que da verde sin probar nada (`exit 0`, `true`, `:`, `echo …`) no cuenta como compuerta (`code-untested` con aviso); si no nombra ningún runner reconocido, se conserva pero con aviso y marca en `sources.testScript`.
+- G31 (decisión del autor): `auto-memory-off` agrega `/.claude/settings.local.json` a `.git/info/exclude` (local al clon, idempotente, mostrado en el preview como `exclude: true`) si el archivo no está versionado ni ignorado; el tripwire `claude-config` ya no sube el primer flujo a `daily`. Versionado: no toca `.git` y la nota dice que quedó modificado.
+- Menores: `apply --expect <stamp>` rechaza un preview vencido (`stale-preview`; m-1); `verify` sale 1 con `kind: invalid-config` si `project.md` no parsea (m-2); `settings.local.json` conserva CRLF y la falta de salto final (m-3), igual que `.pignolo/.gitignore` con CRLF (m-4); una clave declarada vacía (`language:`) recibe su valor (m-5); A8-09 sigue el alias real (junction, nombre 8.3) cuando el archivo existe (m-6); `pii-patterns` rechaza lo que casa líneas comunes, como un espacio o `..` (m-7); la nota de `apply` distingue el archivo versionado (m-8); un valor sin comilla posible sale `refused: unquotable` en vez de exit 3 (m-9).
+
 ## 0.11.0 — 2026-10-01
 
 - **`/pignolo:init`** (skill humana + `scripts/init.js` con `detect`, `preview`, `apply --plan` y `verify`): activa pignolo en un proyecto sin escribir `project.md` a mano. Deduce `type`, `gates`, `test-paths`, `protected-test-config`, rutas de riesgo, `deps-install` y `domain-rules` de los archivos que existen (cada valor con su fuente; lo que no se puede deducir queda sin declarar), y el humano confirma uno por uno. Solo corren los pasos aprobados (`ignores`, `gitattributes`, `reflog`, `project-md`, `security-md`, `auto-memory-off`); `project.md` existente se fusiona sin tocar lo declarado y lista los `conflicts`; nada se borra ni se pisa y nunca hace commit ni push. Los respaldos van a `PIGNOLO_HOME/init-backup/`, fuera del repo. Un `scripts.test` que es el placeholder del instalador de `npm` no cuenta: el proyecto queda `code-untested` sin `on-done`.

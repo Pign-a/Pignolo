@@ -4,8 +4,10 @@
 // pasos aprobados) y verify. Lo opera solo el hilo principal (regla pignolo-init de la guardia).
 // JSON por stdout; exit 0 ok, 1 fallo con `kind` (y `Alternativa:` en stderr), 2 uso incorrecto,
 // 3 no se pudo dejar el estado consistente. Nunca commit, add ni push.
-// Uso: node init.js detect [--cwd <dir>] | preview --plan <archivo> [--cwd] | apply --plan <archivo> [--cwd] | verify [--cwd]
+// Uso: node init.js detect [--cwd <dir>] | preview --plan <archivo> [--cwd] | apply --plan <archivo> [--cwd] [--expect <stamp>] | verify [--cwd]
+// `preview` devuelve un `stamp`; `apply --expect <stamp>` se niega (stale-preview) si el plan o el repo cambiaron desde el preview.
 const fs = require('node:fs');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
 const { gitRun, isRepo } = require('../lib/git');
@@ -14,6 +16,7 @@ const { readProjectConfig } = require('../lib/project-config');
 const { detectProject } = require('../lib/init-detect');
 const { seedCommand, SEED_ARGS } = require('../lib/init-seed');
 const { renderProjectMd, mergeProjectMd, validatePiiPattern } = require('../lib/project-md');
+const { parseFrontmatter, YamlLiteError } = require('../lib/yaml-lite');
 const { locateAutoMemory } = require('../lib/auto-memory');
 const { applyAutoMemoryOff, gitIgnoredStatus } = require('../lib/claude-settings');
 const A = require('../lib/init-actions');
@@ -30,15 +33,16 @@ class Fail extends Error {
 
 function parse(argv) {
   const verb = argv[0];
-  if (!['detect', 'preview', 'apply', 'verify'].includes(verb)) throw new Usage('uso: init.js detect|preview|apply|verify [--plan <archivo>] [--cwd <dir>]');
+  if (!['detect', 'preview', 'apply', 'verify'].includes(verb)) throw new Usage('uso: init.js detect|preview|apply|verify [--plan <archivo>] [--cwd <dir>] [--expect <stamp>]');
   const o = { verb };
   for (let i = 1; i < argv.length; i += 1) {
     const a = argv[i];
-    if (!['--plan', '--cwd'].includes(a)) throw new Usage(`opción desconocida: ${a}`);
+    if (!['--plan', '--cwd', '--expect'].includes(a)) throw new Usage(`opción desconocida: ${a}`);
     i += 1;
     if (argv[i] === undefined) throw new Usage(`${a} necesita un valor`);
     o[a.slice(2)] = argv[i];
   }
+  if (o.expect !== undefined && verb !== 'apply') throw new Usage('--expect solo vale con apply');
   if ((verb === 'preview' || verb === 'apply') && !o.plan) throw new Usage(`${verb} necesita --plan <archivo>`);
   return o;
 }
@@ -118,6 +122,7 @@ function projectMdStep({ main, env, proposal, answers, dry }) {
     if (!v.ok) return { step: { id: 'project-md', status: 'refused', reason: v.refused, detail: v.reason, pattern: p }, conflicts: [] };
   }
   const file = path.join(main, '.pignolo', 'project.md');
+  const refuse = (reason, detail) => ({ step: { id: 'project-md', status: 'refused', reason, ...(detail ? { detail } : {}) }, conflicts: [] });
   let existing = null;
   try { existing = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   let text;
@@ -125,14 +130,20 @@ function projectMdStep({ main, env, proposal, answers, dry }) {
   let added;
   if (existing === null) {
     if (!Object.keys(merged).length) return { step: { id: 'project-md', status: 'refused', reason: 'no-proposal' }, conflicts };
-    text = renderProjectMd(merged);
+    try { text = renderProjectMd(merged); } catch (e) { if (e.kind === 'unquotable') return refuse('unquotable', e.message); throw e; }
   } else {
-    const r = mergeProjectMd(existing, merged);
+    let r;
+    try { r = mergeProjectMd(existing, merged); } catch (e) { if (e.kind === 'unquotable') return refuse('unquotable', e.message); throw e; }
     if (!r.ok) return { step: { id: 'project-md', status: 'refused', reason: r.refused, detail: r.reason }, conflicts };
     text = r.text;
     conflicts = r.conflicts;
     added = r.added;
     if (text === existing) return { step: { id: 'project-md', status: 'skipped', reason: 'already-set', ...(conflicts.length ? { conflicts: conflicts.length } : {}) }, conflicts };
+  }
+  // Red de seguridad (I-1): nunca se escribe (ni se promete en el preview) un resultado que el parser no lee.
+  try { parseFrontmatter(text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text); } catch (e) {
+    if (e instanceof YamlLiteError) return { step: { id: 'project-md', status: 'refused', reason: 'invalid-result', detail: e.message }, conflicts };
+    throw e;
   }
   if (dry) return { step: { id: 'project-md', status: 'would-do', file, ...(added ? { added } : {}) }, conflicts };
   let backup;
@@ -163,7 +174,7 @@ function runSteps({ cwd, env, run, plan, dry }) {
       } else if (id === 'security-md') {
         step = A.applySecurityMd({ root: main, template: dry ? '' : readTemplate(), answers: plan.answers, dry });
       } else {
-        step = applyAutoMemoryOff({ main, env, dry });
+        step = applyAutoMemoryOff({ main, env, dry, run: git });
         if (step.notes && step.notes.includes('env-forces-on')) notes.push('CLAUDE_CODE_DISABLE_AUTO_MEMORY está en falso: gana sobre la clave del archivo y la auto-memoria seguirá activa');
       }
     } catch (e) {
@@ -171,14 +182,23 @@ function runSteps({ cwd, env, run, plan, dry }) {
     }
     steps.push(step);
   }
+  const memStep = steps.find((s) => s.id === 'auto-memory-off');
   const ignored = gitIgnoredStatus({ main, run: git }).ignored;
-  if (plan.approved.includes('auto-memory-off') && ignored === false) notes.push('.claude/settings.local.json no está ignorado por git en este repo (depende del excludes global de cada persona): no lo agregues al commit y, mientras esté sin seguimiento, el piso de riesgo (claude-config) sube el primer flujo a daily; ignoralo en tu excludes global o en .git/info/exclude');
+  const wrote = memStep && ['done', 'would-do'].includes(memStep.status);
+  if (wrote && memStep.excludeSkipped === 'tracked') notes.push(`.claude/settings.local.json está versionado en git: el paso ${dry ? 'lo dejará' : 'lo dejó'} modificado (\` M\`); revisá el diff antes de commitear`);
+  else if (plan.approved.includes('auto-memory-off') && ignored === false && !(memStep && memStep.exclude === true)) notes.push('.claude/settings.local.json no está ignorado por git en este repo y init no pudo agregarlo a .git/info/exclude: no lo agregues al commit y, mientras esté sin seguimiento, el piso de riesgo (claude-config) sube el primer flujo a daily; ignoralo en tu excludes global o en .git/info/exclude');
   return { main, steps, conflicts, notes };
 }
 
-function report(r) {
+// Huella de lo que preview muestra: el plan aprobado y el resultado por paso. Apply --expect la recalcula.
+function stampOf(plan, r) {
+  const canon = JSON.stringify({ plan: { approved: plan.approved, answers: plan.answers, proposal: plan.proposal }, steps: r.steps, conflicts: r.conflicts });
+  return crypto.createHash('sha256').update(canon).digest('hex').slice(0, 24);
+}
+
+function report(r, stamp) {
   const failed = r.steps.filter((s) => s.status === 'refused' && /^(write-failed|unexpected)/.test(s.reason || ''));
-  const body = { ok: failed.length === 0, steps: r.steps, conflicts: r.conflicts, notes: r.notes };
+  const body = { ok: failed.length === 0, ...(stamp ? { stamp } : {}), steps: r.steps, conflicts: r.conflicts, notes: r.notes };
   if (!failed.length) return { body, code: 0 };
   const half = failed.some((s) => s.unexpected);
   return { body: { ...body, kind: half ? 'inconsistent' : 'step-failed', failed: failed.map((s) => s.id) }, code: half ? 3 : 1, alt: half ? 'revisá `git status` y los respaldos en PIGNOLO_HOME/init-backup antes de repetir' : 'corregí la causa que indica el paso y repetí `init.js apply` (es idempotente)' };
@@ -230,10 +250,23 @@ function main(argv, env = process.env) {
   const o = parse(argv);
   const cwd = o.cwd || process.cwd();
   if (o.verb === 'detect') return { body: detect({ cwd, env }), code: 0 };
-  if (o.verb === 'verify') return { body: verify({ cwd, env }), code: 0 };
+  if (o.verb === 'verify') {
+    const body = verify({ cwd, env });
+    if (body.ok) return { body, code: 0 };
+    return { body: { ...body, kind: 'invalid-config' }, code: 1, alt: 'corregí .pignolo/project.md según `configError` (o restaurá el respaldo de PIGNOLO_HOME/init-backup) y repetí verify' };
+  }
   const plan = readPlan(o.plan);
-  const r = runSteps({ cwd, env, plan, dry: o.verb === 'preview' });
-  return report(r);
+  if (o.verb === 'preview') {
+    const r = runSteps({ cwd, env, plan, dry: true });
+    return report(r, stampOf(plan, r));
+  }
+  if (o.expect !== undefined) {
+    const now = stampOf(plan, runSteps({ cwd, env, plan, dry: true }));
+    if (now !== o.expect) {
+      return { body: { ok: false, kind: 'stale-preview', refused: 'stale-preview', reason: 'el plan o el repo cambiaron desde el preview: no se escribió nada' }, code: 1, alt: 'volvé a correr `init.js preview`, mostrale el resultado nuevo al humano y repetí apply con el stamp nuevo' };
+    }
+  }
+  return report(runSteps({ cwd, env, plan, dry: false }));
 }
 
 module.exports = { main, detect, verify, runSteps, STEP_IDS };

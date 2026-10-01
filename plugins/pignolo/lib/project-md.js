@@ -112,7 +112,8 @@ function mergeProjectMd(existingText, proposal) {
     if (!isDeclared) {
       added.push(key);
       const blk = declared === null ? blockOf(head, key) : null;
-      if (blk) inserts.push({ at: blk.end, lines: withCr(keyLines(key, kind, value).slice(1)) });
+      if (blk && (kind === 'scalar' || kind === 'bool')) head[blk.start] = keyLines(key, kind, value)[0] + cr; // `key:` vacía: el valor va en su línea (m-5)
+      else if (blk) inserts.push({ at: blk.end, lines: withCr(keyLines(key, kind, value).slice(1)) });
       else appended.push(...withCr(keyLines(key, kind, value)));
       continue;
     }
@@ -124,7 +125,12 @@ function mergeProjectMd(existingText, proposal) {
         if (declared[k] === undefined) { missing.push([k, v]); added.push(`${key}.${k}`); } else if (String(declared[k]) !== String(v)) conflicts.push({ key: `${key}.${k}`, existing: declared[k], proposed: v });
         else kept.push(`${key}.${k}`);
       }
-      if (missing.length) inserts.push({ at: blockOf(head, key).end, lines: withCr(missing.map(([k, v]) => `  ${k}: ${quote(v)}`)) });
+      if (missing.length) {
+        const blk = blockOf(head, key);
+        // Las claves nuevas usan la sangría de la primera línea hija (I-1): con otra, el archivo deja de parsear.
+        const ind = (head.slice(blk.start + 1, blk.end + 1).filter((l) => !l.trim().startsWith('#')).map((l) => /^[ \t]+(?=\S)/.exec(l)).find((m) => m) || ['  '])[0];
+        inserts.push({ at: blk.end, lines: withCr(missing.map(([k, v]) => `${ind}${k}: ${quote(v)}`)) });
+      }
     } else if (kind === 'list') {
       if (Array.isArray(declared) && sameList(declared, value)) kept.push(key); else conflicts.push({ key, existing: declared, proposed: value });
     } else if (String(declared) === String(value)) kept.push(key); else conflicts.push({ key, existing: declared, proposed: value });
@@ -145,6 +151,9 @@ function validatePiiPattern(pattern) {
   for (const s of ['a', 'e', 'x', 'A', 'Z', '1']) {
     if (re.test(s)) return { ok: false, refused: 'too-broad', reason: `coincide con una sola letra o dígito ("${s}"): bloquearía todo` };
   }
+  // Un patrón que casa líneas comunes de cualquier código bloquearía todo (m-7).
+  const common = ['const total = items.length + 1;', 'The quick brown fox jumps over the lazy dog', 'import { x } from "./y";'];
+  if (common.every((s) => re.test(s))) return { ok: false, refused: 'too-broad', reason: 'coincide con líneas comunes de cualquier archivo: bloquearía todo' };
   return { ok: true };
 }
 

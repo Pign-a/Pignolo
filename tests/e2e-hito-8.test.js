@@ -134,7 +134,7 @@ test('limit a of 3b closed: a tracked .pignolo/.gitignore completed by init keep
   git(['add', '-f', '.pignolo/.gitignore'], repo);
   git(['commit', '-q', '-m', 'base'], repo);
   const env = envFor();
-  // sin auto-memory-off: su settings.local.json sin seguimiento dispara el tripwire claude-config del piso de riesgo (daily)
+  // sin auto-memory-off: este test mira solo el .pignolo/.gitignore versionado (el caso de G31 tiene su propio test)
   initAll(repo, env, { approved: ALL.filter((id) => id !== 'auto-memory-off') });
   assert.equal(script('run.js', ['start', '--flow', 'trivial', '--cwd', repo], { env }).status, 0);
   
@@ -262,4 +262,20 @@ test('R-21: init files name nothing from hitos 6 and 7', () => {
     const text = fs.readFileSync(f, 'utf8');
     for (const b of banned) assert.equal(text.includes(b), false, `${path.basename(f)} contiene ${b}`);
   }
+});
+
+// Protects: G31 (decisión del autor, 2026-10-01) · Breaks if: auto-memory-off deja settings.local.json sin ignorar y risk.js sube el primer flujo a daily.
+test('G31 closed: with auto-memory-off approved, risk --diff stays trivial (the file goes to .git/info/exclude)', () => {
+  const repo = makeRepo();
+  write(repo, 'package.json', JSON.stringify({ scripts: { test: 'node --test' } }));
+  write(repo, 'tests/a.test.js', "require('node:test')('ok', () => {});\n");
+  git(['add', '-A'], repo);
+  git(['commit', '-q', '-m', 'base'], repo);
+  const env = envFor();
+  initAll(repo, env); // ALL incluye auto-memory-off
+  assert.ok(fs.existsSync(path.join(repo, '.claude', 'settings.local.json')));
+  const risk = script('risk.js', ['--diff', 'HEAD', '--cwd', repo], { env });
+  assert.equal(risk.status, 0, risk.stderr);
+  assert.equal(risk.json.laneFloor, 'trivial', JSON.stringify(risk.json));
+  assert.deepEqual(risk.json.hits, []);
 });

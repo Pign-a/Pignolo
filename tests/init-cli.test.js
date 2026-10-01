@@ -238,3 +238,128 @@ test('output: clean stderr on success, and nothing from the auto-memory files ev
     assert.doesNotThrow(() => JSON.parse(r.stdout));
   }
 });
+
+// --- Pasada de arreglos 8a ---
+const planOnly = (repo, approved, proposal, answers = {}) => planFile({ v: 1, approved, answers, proposal });
+
+// Protects: I-1 · Breaks if: init deja inválido un project.md que era válido y responde ok:true.
+test('I-1: a project.md whose gates map uses 4 spaces is merged keeping them; verify still parses it', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  write(repo, '.pignolo/project.md', '---\ntype: code-tested\ngates:\n    on-edit: npm run lint\n---\n');
+  commitAll(repo, 'pm');
+  const plan = planOnly(repo, ['project-md'], { gates: { 'on-edit': 'npm run lint', 'on-done': 'npm test' } });
+  const p = cli(['preview', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(p.json.steps.find((s) => s.id === 'project-md').status, 'would-do');
+  const a = cli(['apply', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(a.status, 0, a.stderr);
+  assert.equal(a.json.steps.find((s) => s.id === 'project-md').status, 'done');
+  const text = fs.readFileSync(path.join(repo, '.pignolo', 'project.md'), 'utf8');
+  assert.equal(text, '---\ntype: code-tested\ngates:\n    on-edit: npm run lint\n    on-done: npm test\n---\n');
+  const v = cli(['verify', '--cwd', repo], { env });
+  assert.equal(v.json.configError, undefined);
+  assert.equal(v.json.config.gates['on-done'], 'npm test');
+});
+
+// Protects: I-1 (red de seguridad) · Breaks if: se escribe un resultado que el parser rechaza.
+test('I-1: a result that does not parse is refused as invalid-result, in preview too, and nothing is written', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  const original = '---\ntype: code-tested\n---\n';
+  write(repo, '.pignolo/project.md', original);
+  commitAll(repo, 'pm');
+  const plan = planOnly(repo, ['project-md'], { gates: { '[bad': 'npm test' } });
+  for (const verb of ['preview', 'apply']) {
+    const r = cli([verb, '--plan', plan, '--cwd', repo], { env });
+    const s = r.json.steps.find((x) => x.id === 'project-md');
+    assert.equal(s.status, 'refused', verb);
+    assert.equal(s.reason, 'invalid-result', verb);
+    assert.equal(fs.readFileSync(path.join(repo, '.pignolo', 'project.md'), 'utf8'), original);
+  }
+  assert.equal(fs.existsSync(path.join(env.PIGNOLO_HOME, 'init-backup')), false, 'sin respaldo si no se escribe');
+});
+
+// Protects: m-9 · Breaks if: un valor sin comilla posible sale como "inconsistent" / exit 3 sin haber escrito nada.
+test('m-9: a value that cannot be quoted is refused as unquotable (exit 0, nothing written)', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  const plan = planOnly(repo, ['project-md', 'reflog'], { type: 'code-tested', gates: { 'on-done': `echo "it's"` } });
+  const r = cli(['apply', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(r.status, 0, r.stderr);
+  const s = r.json.steps.find((x) => x.id === 'project-md');
+  assert.equal(s.status, 'refused');
+  assert.equal(s.reason, 'unquotable');
+  assert.ok(!fs.existsSync(path.join(repo, '.pignolo', 'project.md')));
+  assert.equal(r.json.steps.find((x) => x.id === 'reflog').status, 'done');
+});
+
+// Protects: m-2 · Breaks if: verify sale 0 con ok:false.
+test('m-2: verify with an unparseable project.md exits 1 with kind and Alternativa', () => {
+  const repo = nodeRepo();
+  write(repo, '.pignolo/project.md', '---\ntype: code-tested\ngates:\n    a: 1\n  b: 2\n---\n');
+  const v = cli(['verify', '--cwd', repo]);
+  assert.equal(v.json.ok, false);
+  assert.equal(v.json.kind, 'invalid-config');
+  assert.equal(v.status, 1);
+  assert.match(v.stderr, /Alternativa:/);
+  const good = cli(['verify', '--cwd', nodeRepo()]);
+  assert.equal(good.status, 0);
+});
+
+// Protects: m-1 · Breaks if: apply acepta un preview vencido.
+test('m-1: preview returns a stamp; apply --expect refuses a stale one and accepts the current one', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  const plan = fullPlan(repo, env);
+  const p1 = cli(['preview', '--plan', plan, '--cwd', repo], { env });
+  assert.match(p1.json.stamp, /^[0-9a-f]{16,}$/);
+  assert.equal(cli(['preview', '--plan', plan, '--cwd', repo], { env }).json.stamp, p1.json.stamp, 'estable');
+  write(repo, '.gitattributes', '.pignolo/** text eol=lf\n'); // el repo cambia entre preview y apply
+  const stale = cli(['apply', '--plan', plan, '--cwd', repo, '--expect', p1.json.stamp], { env });
+  assert.equal(stale.status, 1);
+  assert.equal(stale.json.refused, 'stale-preview');
+  assert.match(stale.stderr, /Alternativa:/);
+  assert.ok(!fs.existsSync(path.join(repo, '.pignolo', 'project.md')), 'no escribió nada');
+  const p2 = cli(['preview', '--plan', plan, '--cwd', repo], { env });
+  assert.notEqual(p2.json.stamp, p1.json.stamp);
+  const ok = cli(['apply', '--plan', plan, '--cwd', repo, '--expect', p2.json.stamp], { env });
+  assert.equal(ok.status, 0, ok.stderr);
+  assert.ok(fs.existsSync(path.join(repo, '.pignolo', 'project.md')));
+  const noExpect = cli(['apply', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(noExpect.status, 0, 'sin --expect, apply sigue como antes');
+});
+
+// Protects: G31 · Breaks if: auto-memory-off deja settings.local.json sin ignorar y el flujo sube a daily.
+test('G31 end to end: preview announces the exclude, apply writes it once, git status stays clean of it, risk has no claude-config hit', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  const plan = planOnly(repo, ['auto-memory-off'], {});
+  const p = cli(['preview', '--plan', plan, '--cwd', repo], { env });
+  const ps = p.json.steps.find((s) => s.id === 'auto-memory-off');
+  assert.equal(ps.status, 'would-do');
+  assert.equal(ps.exclude, true);
+  assert.ok(!fs.existsSync(path.join(repo, '.claude')));
+  assert.ok(!/settings\.local/.test(fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8')));
+  const a = cli(['apply', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(a.json.steps.find((s) => s.id === 'auto-memory-off').exclude, true);
+  assert.ok(!a.json.notes.some((n) => /no está ignorado/.test(n)), JSON.stringify(a.json.notes));
+  assert.equal(porcelain(repo), '');
+  const again = cli(['apply', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(again.json.steps.find((s) => s.id === 'auto-memory-off').status, 'skipped');
+  const lines = fs.readFileSync(path.join(repo, '.git', 'info', 'exclude'), 'utf8').split(/\r?\n/).filter((l) => l === '/.claude/settings.local.json');
+  assert.equal(lines.length, 1);
+});
+
+// Protects: m-8 · Breaks if: con el archivo versionado la nota sigue diciendo "mientras esté sin seguimiento".
+test('m-8: with settings.local.json tracked, the note says it is versioned and was modified', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  write(repo, '.claude/settings.local.json', '{"a":1}\n');
+  git(['add', '-f', '.claude/settings.local.json'], repo);
+  git(['commit', '-q', '-m', 'tracked'], repo);
+  const a = cli(['apply', '--plan', planOnly(repo, ['auto-memory-off'], {}), '--cwd', repo], { env });
+  const note = a.json.notes.join('\n');
+  assert.match(note, /versionado/);
+  assert.ok(!/sin seguimiento/.test(note));
+  assert.match(porcelain(repo), /^M\s+\.claude\/settings\.local\.json/);
+});

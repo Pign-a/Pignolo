@@ -120,3 +120,31 @@ test('CRLF: untouched lines keep their ending and new ones use the file ending',
   const r = mergeProjectMd('---\r\ntype: docs\r\n---\r\nnota\r\n', { type: 'docs', depsInstall: 'npm ci' });
   assert.equal(r.text, '---\r\ntype: docs\r\ndeps-install: npm ci\r\n---\r\nnota\r\n');
 });
+
+// --- Pasada de arreglos 8a ---
+// Protects: I-1 · Breaks if: las claves nuevas de un mapa se insertan con 2 espacios aunque el mapa use otra sangría.
+test('merge into a gates map indented with 3 or 4 spaces keeps that indentation and stays parseable', () => {
+  for (const ind of ['    ', '   ']) {
+    const text = `---\ntype: code-tested\ngates:\n${ind}on-edit: npm run lint\n---\nnotas\n`;
+    const r = mergeProjectMd(text, { gates: { 'on-edit': 'npm run lint', 'on-done': 'npm test' } });
+    assert.equal(r.ok, true);
+    assert.ok(r.text.includes(`gates:\n${ind}on-edit: npm run lint\n${ind}on-done: npm test\n---`), JSON.stringify(r.text));
+    assert.equal(readBack(r.text).gates['on-done'], 'npm test');
+  }
+});
+
+// Protects: m-5 · Breaks if: una clave declarada vacía (`language:`) se informa como agregada sin escribir nada.
+test('a declared-but-empty scalar key gets its value written on the same line', () => {
+  const r = mergeProjectMd('---\ntype: docs\nlanguage:\n---\n', { type: 'docs', language: 'es' });
+  assert.deepEqual(r.added, ['language']);
+  assert.equal(r.text, '---\ntype: docs\nlanguage: es\n---\n');
+  assert.equal(readBack(r.text).language, 'es');
+  const crlf = mergeProjectMd('---\r\ntype: docs\r\nlanguage:\r\n---\r\n', { language: 'es' });
+  assert.equal(crlf.text, '---\r\ntype: docs\r\nlanguage: es\r\n---\r\n');
+});
+
+// Protects: m-7 · Breaks if: validatePiiPattern deja pasar patrones que casan cualquier línea común.
+test('validatePiiPattern rejects patterns that match ordinary lines (a space, "..")', () => {
+  for (const p of [' ', '..', '\\s', '[a-z ]']) assert.equal(validatePiiPattern(p).ok, false, `"${p}"`);
+  for (const p of ['\\b\\d{8}\\b', '@example\\.com', 'cliente-\\d+']) assert.equal(validatePiiPattern(p).ok, true, p);
+});

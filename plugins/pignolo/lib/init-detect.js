@@ -14,8 +14,14 @@ const MAX_DEPTH = 8;
 const SCRIPT_EXT = /\.(?:sh|bash|ps1|py|js|mjs|rb|pl|bat|cmd)$/;
 const DOC_EXT = /\.(?:md|mdx|rst)$/i;
 
+// Comandos que dan verde sin probar nada: `exit 0`, `true`, `:`, `echo ...` solos o encadenados con && o ;.
+const TRIVIAL_SEGMENT = /^(?:exit(?:\s+0)?|true|:|echo\b.*)?$/i;
+const isTrivialGreen = (cmd) => cmd.split(/&&|;/).every((s) => TRIVIAL_SEGMENT.test(s.trim()));
+// Runners reconocidos en scripts.test (además de los que ya se detectan por dependencia).
+const KNOWN_RUNNER = /\b(?:vitest|jest|mocha|ava|tap|uvu|playwright|cypress|pytest|karma|jasmine)\b|\b(?:node|tsx|bun|deno)\s+(?:--\S+\s+)*test\b/;
+
 function isInstallerPlaceholder(cmd) {
-  return typeof cmd === 'string' && PLACEHOLDERS.some((re) => re.test(cmd));
+  return typeof cmd === 'string' && (PLACEHOLDERS.some((re) => re.test(cmd)) || isTrivialGreen(cmd));
 }
 
 // Lista de archivos (rutas con "/"), sin seguir enlaces: un enlace que sale del repo se descarta.
@@ -72,7 +78,11 @@ function detectNode({ files, root, fs, d }) {
   const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
   const testScript = typeof scripts.test === 'string' ? scripts.test : null;
   const realTest = testScript !== null && testScript.trim() !== '' && !isInstallerPlaceholder(testScript);
-  if (testScript !== null && !realTest) d.warnings.push(`scripts.test de package.json es el placeholder del instalador ("${testScript}"): no cuenta como compuerta`);
+  if (testScript !== null && !realTest) d.warnings.push(`scripts.test de package.json es el placeholder del instalador o un comando que da verde sin probar nada ("${testScript}"): no cuenta como compuerta`);
+  if (realTest && !KNOWN_RUNNER.test(testScript)) {
+    d.warnings.push(`scripts.test ("${testScript}") no nombra ningún runner reconocido: confirmá que corre tests de verdad antes de aceptar la compuerta`);
+    d.sources.testScript = `scripts.test sin runner reconocido: "${testScript}"`;
+  }
   const run = (s) => `${pm} run ${s}`;
   const runners = [];
   const mentions = (name) => deps[name] !== undefined || (testScript !== null && new RegExp(`\\b${name}\\b`).test(testScript));

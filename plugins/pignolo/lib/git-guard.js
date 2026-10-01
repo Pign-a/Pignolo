@@ -858,6 +858,7 @@ function checkRunScript(name, words, st, ctx, out) {
     for (const w of argv) { if (w.dyn || !w.value.startsWith('-')) break; leading.push(w.value); }
     if (!evalFlag && leading.some((v) => v === '--check' || v === '-c')) return;
     if (evalFlag && argv.some((w) => namesStateScript(w.value))) { out.push(hit('pignolo-plan')); return; }
+    if (evalFlag && argv.some((w) => namesInitScript(w.value))) { out.push(hit('pignolo-init')); return; }
   }
   const executes = (w) => w === words[0] || INTERP.has(name);
   for (const w of words) {
@@ -903,9 +904,12 @@ function isPlanScript(w, st, ctx) {
 // principal y con el sí del humano. Misma detección anclada al plugin que isPlanScript (el
 // scripts/init.js de un proyecto cualquiera pasa) y solo cuando se EJECUTA: checkRunScript mira
 // el argv del intérprete, así que `cat`, `grep` o `Get-Content` sobre el script no lo casan.
-const INIT_JS_LITERAL = /(?:^|\/)(?:plugins\/pignolo|\.claude\/plugins\/cache\/[^/]+\/pignolo\/[^/]+)\/scripts\/init\.js$/;
-const INIT_JS_DYN = /^\$(?:\{(?:env:)?CLAUDE_PLUGIN_ROOT\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\/]scripts[\\/]init\.js$/i;
-const INIT_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/init\\.js$`);
+const INIT_JS_LITERAL = /(?:^|\/)(?:plugins\/pignolo|\.claude\/plugins\/cache\/[^/]+\/pignolo\/[^/]+)\/scripts\/init(?:\.js)?$/;
+const INIT_JS_DYN = /^\$(?:\{(?:env:)?CLAUDE_PLUGIN_ROOT\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\/]scripts[\\/]init(?:\.js)?$/i;
+const INIT_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/init(?:\\.js)?$`);
+// init.js cargado con `node -e|-p|-r` también corre su main (la lib init-actions es un límite declarado, §8.3).
+const EVAL_INIT_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${OWN_PLUGIN_ROOT}/)scripts/init(?![\\w-])`, 'i');
+const namesInitScript = (value) => EVAL_INIT_SCRIPT.test(value.replace(/\\+/g, '/').replace(/\/+/g, '/'));
 function isInitScript(w, st, ctx) {
   if (w.dyn) return INIT_JS_DYN.test(w.value);
   const p = resolveAt(w.value, st, ctx);

@@ -187,3 +187,20 @@ test('dry runs report would-do and write nothing', () => {
   assert.equal(porcelain(repo), before);
   assert.equal(cfg(repo, 'gc.reflogExpire'), '');
 });
+
+// Protects: m-4 · Breaks if: ensureIgnored agrega en LF a un .pignolo/.gitignore con finales CRLF.
+test('ensureIgnored keeps the CRLF endings of an existing .pignolo/.gitignore', () => {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.pignolo'));
+  const f = path.join(repo, '.pignolo', '.gitignore');
+  fs.writeFileSync(f, '.gitignore\r\nrun.json\r\n');
+  A.applyIgnores({ root: repo });
+  const text = fs.readFileSync(f, 'utf8');
+  assert.ok(!/[^\r]\n/.test(text), JSON.stringify(text));
+  assert.ok(text.includes('.disabled\r\n'));
+  const noFinal = makeRepo();
+  fs.mkdirSync(path.join(noFinal, '.pignolo'));
+  fs.writeFileSync(path.join(noFinal, '.pignolo', '.gitignore'), 'a\r\nb');
+  A.applyIgnores({ root: noFinal });
+  assert.ok(!/[^\r]\n/.test(fs.readFileSync(path.join(noFinal, '.pignolo', '.gitignore'), 'utf8')));
+});
