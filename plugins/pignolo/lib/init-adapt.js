@@ -62,6 +62,8 @@ function validateAnswers(placesAns, detection) {
     const cands = detection.candidates.filter((c) => c.kind === kind);
     const from = a.from !== undefined ? a.from : (cands.length === 1 ? cands[0].path : undefined);
     const cand = typeof from === 'string' ? cands.find((c) => samePath(c.path, from)) : null;
+    // Idempotencia: un move que ya se hizo (el origen ya no está y el lugar recomendado sí) no es una respuesta mal formada.
+    if (!cand && a.decision === 'move' && PLACE_DEFAULTS[kind] && cands.some((c) => samePath(c.path, PLACE_DEFAULTS[kind]))) continue;
     if (!cand) throw badAnswer(`places.${kind}.from "${from}" no es una candidata detectada (${cands.map((c) => c.path).join(', ') || 'ninguna'})`);
     if (a.decision === 'move') {
       if (!MOVABLE.includes(kind)) throw badAnswer(`places.${kind}: ese tipo solo admite adopt o leave (design, private y reference no se mueven)`);
@@ -114,10 +116,12 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
     const a = placesAns[kind];
     if (!a) continue;
     const cands = detection.candidates.filter((c) => c.kind === kind);
-    const cand = a.decision === 'leave' ? (cands[0] || null) : cands.find((c) => samePath(c.path, a.from !== undefined ? a.from : cands[0].path));
+    let cand = a.decision === 'leave' ? (cands[0] || null) : cands.find((c) => samePath(c.path, a.from !== undefined ? a.from : cands[0].path));
+    let already = false;
+    if (!cand && a.decision === 'move') { cand = cands.find((c) => samePath(c.path, PLACE_DEFAULTS[kind])); already = Boolean(cand); }
     const from = cand ? cand.path : null;
-    const to = a.decision === 'move' ? PLACE_DEFAULTS[kind] : from;
-    const d = { kind, decision: a.decision, from, to, effective: a.decision, blockedBy: [], forced: false };
+    const to = a.decision === 'move' && !already ? PLACE_DEFAULTS[kind] : from;
+    const d = { kind, decision: a.decision, from, to, effective: already ? 'adopt' : a.decision, blockedBy: [], forced: false, ...(already ? { alreadyInPlace: true } : {}) };
     if (kind === 'reference' && isPublic && a.decision !== 'leave') {
       d.effective = 'leave';
       d.refused = { reason: 'public-repo', detail: 'repo público o sin respuesta: reference no se declara; usá local/' };
@@ -227,7 +231,9 @@ function applyAdaptation({ main, plan, config, env = process.env, now = new Date
     return { ...base, status, ...(movers.length ? {} : { reason: 'nothing-to-move' }), items: summaryOf(plan, 'would-do'), rewrites: plan.rewrites.files.map((f) => ({ file: f.file, edits: f.edits })), refs: refsOut };
   }
   if (!movers.length) {
-    return { ...base, status: 'skipped', reason: 'nothing-to-move', items: summaryOf(plan), rewrites: [], refs: refsOut };
+    const allDone = plan.decisions.length > 0 && plan.decisions.every((d) => d.alreadyInPlace || d.decision === 'leave' || d.effective === 'adopt');
+    const reason = plan.decisions.some((d) => d.alreadyInPlace) && allDone ? 'already-in-place' : 'nothing-to-move';
+    return { ...base, status: 'skipped', reason, items: summaryOf(plan), rewrites: [], refs: refsOut };
   }
   // Idempotencia: lo que ya está en su lugar (el origen no existe y el destino sí) no se vuelve a mover.
   const exists = (rel) => { try { fs.lstatSync(path.join(main, ...rel.split('/'))); return true; } catch (_) { return false; } };

@@ -9,7 +9,7 @@
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const path = require('node:path');
-const { mainRoot } = require('../lib/disabled');
+const { mainRoot, projectRoot } = require('../lib/disabled');
 const { gitRun, isRepo } = require('../lib/git');
 const { projectState } = require('../lib/project');
 const { readProjectConfig } = require('../lib/project-config');
@@ -21,9 +21,14 @@ const { locateAutoMemory } = require('../lib/auto-memory');
 const { applyAutoMemoryOff, gitIgnoredStatus } = require('../lib/claude-settings');
 const A = require('../lib/init-actions');
 const { detectPlaces } = require('../lib/places-detect');
+const { PLACE_KINDS, RECOMMENDED_REFERENCE, resolvePlaces } = require('../lib/places');
+const { proposeAdaptation, planAdaptation, applyAdaptation } = require('../lib/init-adapt');
+const { applySkeleton } = require('../lib/init-skeleton');
+const SM = require('../lib/safe-move');
+const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
 
-const STEP_IDS = ['ignores', 'gitattributes', 'reflog', 'project-md', 'security-md', 'auto-memory-off'];
+const STEP_IDS = ['ignores', 'gitattributes', 'reflog', 'adapt', 'skeleton', 'project-md', 'security-md', 'auto-memory-off'];
 const NEEDS = { 'project-md': ['piiPatterns'], 'security-md': ['channel'] };
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'SECURITY.md');
 
@@ -62,7 +67,10 @@ function readPlan(file) {
   if (!plan || typeof plan !== 'object' || Array.isArray(plan) || plan.v !== 1 || !Array.isArray(plan.approved)) throw new Usage('el plan debe ser { v: 1, approved: [...], answers: {}, proposal: {} }');
   const unknown = plan.approved.filter((id) => !STEP_IDS.includes(id));
   if (unknown.length) throw new Usage(`paso desconocido en approved: ${unknown.join(', ')} (válidos: ${STEP_IDS.join(', ')})`);
-  return { approved: plan.approved, answers: plan.answers || {}, proposal: plan.proposal || {} };
+  const answers = plan.answers || {};
+  if (answers.public !== undefined && typeof answers.public !== 'boolean') throw new Usage('answers.public debe ser true o false');
+  if (answers.places !== undefined && (!answers.places || typeof answers.places !== 'object' || Array.isArray(answers.places))) throw new Usage('answers.places debe ser un objeto { <tipo>: { decision, from?, force? } }');
+  return { approved: plan.approved, answers, proposal: plan.proposal || {} };
 }
 
 const gitFor = (main) => (args, o) => gitRun(args, (typeof o === 'string' ? o : o && o.cwd) || main);
@@ -154,6 +162,49 @@ function projectMdStep({ main, env, proposal, answers, dry }) {
   return { step: { id: 'project-md', status: 'done', file, ...(backup ? { backup } : {}), ...(added ? { added } : {}) }, conflicts };
 }
 
+// Paso `adapt` (hito 8d): valida lo que ya hay y lo adopta, mueve o deja. No escribe project.md (lo escribe project-md con el mapa).
+function adaptStep({ main, run, env, plan, dry }) {
+  const detection = detectPlaces({ root: main, run });
+  if (!detection.existing || proposeAdaptation({ detection, answers: plan.answers }).items.length === 0) {
+    return { step: { id: 'adapt', status: 'skipped', reason: 'nothing-to-adapt' }, adaptPlan: null };
+  }
+  let config;
+  try { config = readProjectConfig({ root: main }); } catch (e) { return { step: { id: 'adapt', status: 'refused', reason: 'invalid-config', detail: e.message }, adaptPlan: null }; }
+  const adaptPlan = planAdaptation({ main, answers: plan.answers, config, detection, run });
+  const step = applyAdaptation({ main, plan: adaptPlan, config, env, run, dry });
+  return { step, adaptPlan };
+}
+
+// Paso `skeleton`: crea lo que no existe de las carpetas del mapa (resuelto con lo adoptado o movido por adapt).
+function skeletonStep({ main, run, plan, adapt, dry }) {
+  let cfg;
+  try { cfg = readProjectConfig({ root: main }); } catch (e) { return { step: { id: 'skeleton', status: 'refused', reason: 'invalid-config', detail: e.message, created: [], skipped: [], refused: [], notes: [] }, resolved: null }; }
+  const merged = { ...cfg, places: { ...cfg.places, ...((adapt && adapt.places) || {}) } };
+  if (plan.answers.public === false && !merged.places.reference) merged.places.reference = RECOMMENDED_REFERENCE;
+  const resolved = resolvePlaces(merged);
+  const step = applySkeleton({
+    root: main, places: resolved.places, answers: plan.answers, run, dry,
+    leftKinds: adapt ? adapt.leftKinds : [], willExist: adapt && dry ? adapt.willExist : [],
+  });
+  return { step, resolved };
+}
+
+// El mapa que escribe project-md: lo que adapt adoptó o movió y, si el esqueleto corrió, los lugares que tienen carpeta (sin los dejados ni los que se negaron).
+function finalPlaces({ plan, adapt, skeleton }) {
+  const out = { ...((adapt && adapt.places) || {}) };
+  if (skeleton && skeleton.resolved) {
+    const left = (adapt && adapt.leftKinds) || [];
+    const refused = skeleton.step.refused.map((r) => r.kind);
+    for (const k of PLACE_KINDS) {
+      const p = skeleton.resolved.places[k];
+      if (!p.path || left.includes(k) || refused.includes(k)) continue;
+      if (k === 'reference' && plan.answers.public !== false) continue;
+      if (out[k] === undefined) out[k] = p.path;
+    }
+  }
+  return out;
+}
+
 function runSteps({ cwd, env, run, plan, dry }) {
   const main = resolveRoot(cwd, run);
   const git = run || gitFor(main);
@@ -161,16 +212,29 @@ function runSteps({ cwd, env, run, plan, dry }) {
   const conflicts = [];
   const notes = [];
   let template = null;
+  let adapt = null; // { step, adaptPlan }
+  let skeleton = null; // { step, resolved }
+  let adaptFailed = false;
   const readTemplate = () => { if (template === null) template = fs.readFileSync(TEMPLATE, 'utf8'); return template; };
   for (const id of STEP_IDS) {
     if (!plan.approved.includes(id)) { steps.push({ id, status: 'skipped', reason: 'not-approved' }); continue; }
+    if (adaptFailed) { steps.push({ id, status: 'skipped', reason: 'adapt-failed' }); continue; }
     let step;
     try {
       if (id === 'ignores') step = A.applyIgnores({ root: main, run: git, dry });
       else if (id === 'gitattributes') step = A.applyGitattributes({ root: main, main, env, dry });
       else if (id === 'reflog') step = A.applyReflog({ root: main, run: git, dry });
-      else if (id === 'project-md') {
-        const r = projectMdStep({ main, env, proposal: plan.proposal, answers: plan.answers, dry });
+      else if (id === 'adapt') {
+        adapt = adaptStep({ main, run, env, plan, dry });
+        step = adapt.step;
+        if (step.status === 'refused') adaptFailed = true;
+      } else if (id === 'skeleton') {
+        skeleton = skeletonStep({ main, run, plan, adapt: adapt && adapt.step, dry });
+        step = skeleton.step;
+      } else if (id === 'project-md') {
+        const places = finalPlaces({ plan, adapt: adapt && adapt.step, skeleton });
+        const proposal = Object.keys(places).length ? { ...plan.proposal, places: { ...(plan.proposal.places || {}), ...places } } : plan.proposal;
+        const r = projectMdStep({ main, env, proposal, answers: plan.answers, dry });
         step = r.step;
         conflicts.push(...r.conflicts);
       } else if (id === 'security-md') {
@@ -180,30 +244,82 @@ function runSteps({ cwd, env, run, plan, dry }) {
         if (step.notes && step.notes.includes('env-forces-on')) notes.push('CLAUDE_CODE_DISABLE_AUTO_MEMORY está en falso: gana sobre la clave del archivo y la auto-memoria seguirá activa');
       }
     } catch (e) {
-      step = { id, status: 'refused', reason: `unexpected: ${e.message}`, unexpected: true };
+      if (e && e.kind === 'bad-answer') throw new Usage(e.message);
+      if (e && e.kind === 'scan-failed') {
+        step = { id, status: 'refused', reason: 'scan-failed', detail: e.message };
+        if (id === 'adapt') adaptFailed = true;
+      } else step = { id, status: 'refused', reason: `unexpected: ${e.message}`, unexpected: true };
     }
     steps.push(step);
   }
+  const adaptDone = adapt && adapt.step && ['done', 'would-do'].includes(adapt.step.status);
+  if (adaptDone && path.resolve(projectRoot(cwd)).toLowerCase() !== path.resolve(main).toLowerCase()) notes.push('estás en una worktree enlazada: init movió y escribió en el checkout principal; esta worktree conserva su layout viejo hasta que la actualices');
   const memStep = steps.find((s) => s.id === 'auto-memory-off');
   const ignored = gitIgnoredStatus({ main, run: git }).ignored;
   const wrote = memStep && ['done', 'would-do'].includes(memStep.status);
   if (wrote && memStep.excludeSkipped === 'tracked') notes.push(`.claude/settings.local.json está versionado en git: el paso ${dry ? 'lo dejará' : 'lo dejó'} modificado (\` M\`); revisá el diff antes de commitear`);
   else if (plan.approved.includes('auto-memory-off') && ignored === false && !(memStep && memStep.exclude === true)) notes.push('.claude/settings.local.json no está ignorado por git en este repo y init no pudo agregarlo a .git/info/exclude: no lo agregues al commit y, mientras esté sin seguimiento, el piso de riesgo (claude-config) sube el primer flujo a daily; ignoralo en tu excludes global o en .git/info/exclude');
-  return { main, steps, conflicts, notes };
+  return { main, steps, conflicts, notes, adaptStamp: adapt && adapt.adaptPlan ? adapt.adaptPlan.stamp : null };
 }
 
 // Huella de lo que preview muestra: el plan aprobado y el resultado por paso. Apply --expect la recalcula.
 function stampOf(plan, r) {
-  const canon = JSON.stringify({ plan: { approved: plan.approved, answers: plan.answers, proposal: plan.proposal }, steps: r.steps, conflicts: r.conflicts });
+  const canon = JSON.stringify({ plan: { approved: plan.approved, answers: plan.answers, proposal: plan.proposal }, steps: r.steps, conflicts: r.conflicts, adapt: r.adaptStamp });
   return crypto.createHash('sha256').update(canon).digest('hex').slice(0, 24);
 }
 
 function report(r, stamp) {
   const failed = r.steps.filter((s) => s.status === 'refused' && /^(write-failed|unexpected)/.test(s.reason || ''));
   const body = { ok: failed.length === 0, ...(stamp ? { stamp } : {}), steps: r.steps, conflicts: r.conflicts, notes: r.notes };
+  // Un movimiento a medias (o fallido) en apply: se detiene, informa el registro y ofrece deshacer; los pasos siguientes no corrieron.
+  const adapt = r.steps.find((s) => s.id === 'adapt');
+  if (!stamp && adapt && adapt.status === 'refused') {
+    const partial = adapt.kind === 'partial';
+    const kind = adapt.kind || 'adapt-failed';
+    return {
+      body: { ...body, ok: false, kind, failed: ['adapt'], ...(adapt.record ? { record: adapt.record } : {}) },
+      code: partial ? 3 : 1,
+      alt: adapt.record ? `places.js undo --record "${adapt.record}" (deshace lo que se movió; si un programa tiene un archivo abierto, cerralo y reintentá)` : 'corregí la causa que indica el paso adapt y volvé a correr preview y apply',
+    };
+  }
   if (!failed.length) return { body, code: 0 };
   const half = failed.some((s) => s.unexpected);
   return { body: { ...body, kind: half ? 'inconsistent' : 'step-failed', failed: failed.map((s) => s.id) }, code: half ? 3 : 1, alt: half ? 'revisá `git status` y los respaldos en PIGNOLO_HOME/init-backup antes de repetir' : 'corregí la causa que indica el paso y repetí `init.js apply` (es idempotente)' };
+}
+
+// Lo que verify suma por el mapa (hito 8d): rutas del mapa que ya no existen, referencias manuales que quedan al último movimiento y local/ con versionados.
+function placesVerify({ main, config, env, run }) {
+  const notes = [];
+  const fsx = fs;
+  const declared = (config && config.places) || {};
+  for (const [kind, rel] of Object.entries(declared)) {
+    const g = SM.isLinkOrOutside(main, rel, fsx);
+    if (g.bad) { notes.push(`places.${kind} (${rel}): ${g.reason === 'link-in-path' ? 'pasa por un enlace' : 'cae fuera del proyecto'}; corregilo en .pignolo/project.md`); continue; }
+    let there = true;
+    try { fsx.lstatSync(path.join(main, ...SM.norm(rel).split('/'))); } catch (_) { there = false; }
+    if (!there) notes.push(`places.${kind}: la carpeta ${rel} no existe en el disco (el mapa apunta a algo que ya no está)`);
+  }
+  const priv = declared.private || 'local/';
+  try {
+    const tracked = SM.gitList(run || SM.makeRun(main), main, ['ls-files', '-z', '--', `:(icase,literal)${SM.norm(priv)}`]);
+    if (tracked.length) notes.push(`${priv} tiene ${tracked.length} archivo(s) versionados: una carpeta privada no debería viajar con el repo (init no destrackea nada)`);
+  } catch (_) { /* sin lista: no se avisa */ }
+  // El último movimiento aplicado de este repo: ¿quedan referencias manuales a las rutas viejas?
+  try {
+    const dir = path.dirname(path.dirname(SM.recordPath({ main, env })));
+    const stamps = fs.readdirSync(dir).sort().reverse();
+    for (const s of stamps) {
+      const file = path.join(dir, s, 'moves.json');
+      if (!fs.existsSync(file)) continue;
+      const rec = SM.readRecord(file);
+      if (rec.status !== 'applied' && rec.status !== 'partial') break;
+      const moves = rec.items.map((i) => ({ kind: i.kind, from: i.from, to: i.to }));
+      const refs = RS.scanReferences({ main, moves, run });
+      for (const r of refs.manual) notes.push(`queda una referencia a una ruta vieja: ${r.file}:${r.line} (${r.class}); arreglala a mano (${moves[r.move].from} -> ${moves[r.move].to})`);
+      break;
+    }
+  } catch (_) { /* sin registros: no hay nada que revisar */ }
+  return notes;
 }
 
 function verify({ cwd, env, run }) {
@@ -237,6 +353,7 @@ function verify({ cwd, env, run }) {
   const trackedModified = tracked && dirty('.pignolo/.gitignore');
   const files = ['.pignolo/project.md', '.gitattributes', 'SECURITY.md'].filter((f) => fs.existsSync(path.join(main, f)) && dirty(f));
   if (trackedModified) files.push('.pignolo/.gitignore');
+  notes.push(...placesVerify({ main, config, env, run }));
   return {
     ok: configError === null,
     ...(configError ? { configError } : {}),
@@ -258,12 +375,17 @@ function main(argv, env = process.env) {
     return { body: { ...body, kind: 'invalid-config' }, code: 1, alt: 'corregí .pignolo/project.md según `configError` (o restaurá el respaldo de PIGNOLO_HOME/init-backup) y repetí verify' };
   }
   const plan = readPlan(o.plan);
+  if (o.verb === 'apply' && plan.approved.includes('adapt') && o.expect === undefined) {
+    throw new Usage('apply con adapt exige --expect <stamp> (el que dio preview): mover carpetas sin compararlas con la vista previa no se permite');
+  }
   if (o.verb === 'preview') {
     const r = runSteps({ cwd, env, plan, dry: true });
     return report(r, stampOf(plan, r));
   }
   if (o.expect !== undefined) {
-    const now = stampOf(plan, runSteps({ cwd, env, plan, dry: true }));
+    // Una respuesta que dejó de ser válida porque el repo cambió (p. ej. un .js dentro de la carpeta a mover) también es una vista previa vieja.
+    let now = null;
+    try { now = stampOf(plan, runSteps({ cwd, env, plan, dry: true })); } catch (e) { if (!(e instanceof Usage)) throw e; }
     if (now !== o.expect) {
       return { body: { ok: false, kind: 'stale-preview', refused: 'stale-preview', reason: 'el plan o el repo cambiaron desde el preview: no se escribió nada' }, code: 1, alt: 'volvé a correr `init.js preview`, mostrale el resultado nuevo al humano y repetí apply con el stamp nuevo' };
     }
