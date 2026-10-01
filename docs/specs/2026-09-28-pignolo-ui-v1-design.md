@@ -453,6 +453,22 @@ Registradas al construir el SEO estático, `files` y `report-check` (plan `docs/
 - **`report.json`** (contrato interno, lo escribe la skill): `version`, `implemented`, `implements: { path, manifestSha256 }`, `evidence` (sha256 de `ui-check.json` y `browser.json`) y `claims` con `id`, `text`, `rule`, `status`, `measure` y `ref` (`ui-check` por fingerprint, `browser`, `capture` o `file` con sha256). `measure` compara por igualdad exacta las claves que trae la afirmación; una afirmación con `rule`, `status` o `measure` necesita `ui-check` o `browser` (con `capture` o `file` se retira). Un run con un lote (`files.json`, verificado o no) se trata como implementado aunque diga `false`; un `ui-check.json` vencido (algún `inputs` cambió) retira toda afirmación que lo cita.
 - **`browser.json`** (contrato que hereda el hito 3): un objeto con `entries` de la misma forma que las de `ui-check.json`. Hasta el hito 3, una afirmación que lo cita se retira con `browser.json not in the run`.
 
+### 5.10 Aclaraciones técnicas del hito 3
+
+Registradas al construir el navegador (plan `docs/plans/2026-09-30-pignolo-ui-hito-3-navegador.md`). Son decisiones técnicas del agente: no cambian un contrato que consuma el núcleo.
+
+- **Alturas** de los anchos que solo se miden: 768×1024 y 320×640 (§11.3 no las da; B4 depende de ellas).
+- **Navegador:** en Windows se prueba Edge antes que Chrome. `PIGNOLO_UI_BROWSER` inexistente es "sin navegador", no otro navegador.
+- **B1 (COLOR-03):** capas de fondo compuestas hasta la primera opaca; fondo con imagen o degradé, texto con opacidad < 1 y lienzo desconocido son `unverified`; texto grande a 3:1; deshabilitados exentos.
+- **B2 (STATE-04 y NAV-01):** se aprieta Tab hasta (esperados + 5) veces; un esperado no alcanzado es NAV-01 y uno alcanzado sin ningún estilo distinto es STATE-04. Un cambio solo de `cursor` o `transform` no cuenta.
+- **B3 (LAYOUT-11 y LAYOUT-10):** `overflow-x: auto|scroll` queda exento (1.4.10); LAYOUT-11 es `bloquea` a 320 px y `alto` en los otros anchos; las barras de borde a borde no violan el margen.
+- **B4 (MOTION-07):** texto en los dos primeros viewports con opacidad efectiva 0 bajo `prefers-reduced-motion: reduce`.
+- **Requiere sesión:** otra ruta u origen que el pedido, o un `input[type=password]` visible: todo `unverified`.
+- **Huella** `<id>|<página>|<ancho>|<tema>|<selector o clave>`, sin valores ni número de línea. **`--before`:** multiconjunto por huella, como `--base` en `ui-check`.
+- **`browser.json`** crece de forma aditiva: `{ version, browser, url, finalUrl, degraded, cleanup, plan, entries }`, con `cleanup = { graceful, killed, profileRemoved, profile }` o `null`.
+- **`--url` solo local** también en `browser.mjs` (§8 dice "URL o ruta"): una URL de la red local o de staging se rechaza; un archivo va por `--file`.
+- Los estados vacío, cargando y error siguen "no verificado" (A-18).
+
 ---
 
 ## 6. Topes de los flujos
@@ -630,7 +646,7 @@ Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0
   - macOS: `/Applications`.
   - Linux: `google-chrome`, `chromium` y `microsoft-edge` en `PATH`.
   - `PIGNOLO_UI_BROWSER` fuerza la ruta (R-28).
-- **Limpieza en `finally`:** se cierra el navegador con `Browser.close`. Si no termina en un plazo fijo, se mata el árbol de procesos sin shell (en el spike hizo falta 1 vez de 16) y se borra el perfil; teclas y botones se liberan.
+- **Limpieza en `finally`:** se cierran primero sus páginas y después el navegador con `Browser.close`. Si no termina en un plazo fijo, se mata el árbol de procesos sin shell (en el spike hizo falta 1 vez de 16) y se borra el perfil, con reintentos hasta 20 s; teclas y botones se liberan.
 - **Plazos:** si vence cualquiera, "no verificado" con el motivo, y limpieza. Una política corporativa que bloquea la depuración remota también da "no verificado".
 - **Tema y anchos:** `prefers-color-scheme` se fija **siempre** de forma explícita (claro, u oscuro solo cuando se mide el oscuro) — porque el headless hereda el tema del SO. Los anchos se emulan con `mobile: false`, para que el ancho medido sea el del viewport pedido.
 - **Framing:** el buffer del pipe se arma sobre `Buffer`, no sobre cadenas, para no romper UTF-8 partido entre dos lecturas.

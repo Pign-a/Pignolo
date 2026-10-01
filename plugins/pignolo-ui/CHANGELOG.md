@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — sin publicar
+
+- Hito 3: `scripts/browser.mjs` maneja el Chrome o Edge instalado por `--remote-debugging-pipe` (perfil temporal propio, nunca el del usuario) con tres subcomandos: `measure` (B1–B4: COLOR-03, STATE-04, NAV-01, LAYOUT-10, LAYOUT-11 y MOTION-07, en todos los anchos y temas de §11.3, a `browser.json`), `capture` (capturas de viewport validadas, con sha256, en la carpeta del run) y `dom` (DOM renderizado a `dom-<ancho>.html`, para las reglas `document` de `ui-check`). `ui-check --measures <browser.json>` suma esas entradas a su salida y a su código de salida.
+- Motivo de subir a 0.4.0: interfaz nueva (`browser.mjs`, `--measures`) y `browser.json` con su contrato completo.
+- Lo que cambia para el usuario: hace falta Chrome o Edge instalado para medir (`PIGNOLO_UI_BROWSER` fuerza la ruta); sin navegador, con la URL caída, con sesión requerida o con un plazo vencido todo sale "no verificado" con su motivo, nunca "pasa"; `--url` acepta solo direcciones locales; las capturas quedan en la carpeta del run; un perfil temporal que no se pudo borrar se informa con su ruta (`cleanup` y `leftoverProfile`), pero no se poda nada (decisión D-3-1 del orquestador).
+- Los tests de navegador sin navegador salen como skip visible (`sin navegador: …`), nunca como verde.
+
 ## 0.3.1 — 2026-09-30
 
 - Se quita la opción `language` de `userConfig`. Los textos para el usuario siguen el idioma de la conversación (el de Claude Code). Motivo: en `/config` aparecía una fila "Idioma" sin nada que elegir, y ningún código la leía (decisión del autor, 2026-09-30).
