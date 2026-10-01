@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { envReport } from '../lib/env-check.mjs';
 import { initRun } from '../lib/run-init.mjs';
-import { readConfig, writeConfig, ConfigError } from '../lib/project-config.mjs';
+import { readConfig, readOptOut, writeConfig, ConfigError } from '../lib/project-config.mjs';
 import { decidePresentation, gateDecision, NOTICE } from '../lib/presentation.mjs';
 import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
@@ -43,7 +43,7 @@ import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
 import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
-import { isLink, linkProblem } from '../lib/link-guard.mjs';
+import { isLink, linkProblem, runLinkProblem } from '../lib/link-guard.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
 import { writeLocalCopies, LocalCopyError } from '../lib/local-copy.mjs';
 
@@ -182,9 +182,9 @@ const COMMANDS = {
     run(opts, { cwd }) {
       need(opts, 'data', 'project', 'presentation');
       const project = projectDir(cwd, opts);
-      const { optOut } = readConfig({ data: path.resolve(cwd, opts.data), project });
+      const { optOut, dataProblem } = readOptOut({ data: path.resolve(cwd, opts.data), project });
       const runOptOut = opts.run !== undefined && fs.existsSync(path.join(runDirOf(cwd, project, opts), 'no-publish'));
-      const out = gateDecision({ presentation: opts.presentation, projectOptOut: optOut, runOptOut });
+      const out = gateDecision({ presentation: opts.presentation, projectOptOut: optOut, runOptOut, dataUnresolved: dataProblem !== null });
       return { out, code: out.allowed ? 0 : 1 };
     },
   },
@@ -194,7 +194,9 @@ const COMMANDS = {
     run(opts, { cwd }) {
       const { project, run } = projectOfRun(cwd, opts);
       if (!isInsideRunRoot(project, run) || !isDir(run)) throw new UsageError('--run no existe o está fuera de .pignolo-ui/');
-      if (linkProblem(run)) throw new UsageError('--run es un enlace: se rechaza');
+      // the run and the two folders above it: nothing is written through a link or a junction
+      const linked = runLinkProblem(run);
+      if (linked) throw new UsageError(`${path.relative(project, linked)} es un enlace: se rechaza`);
       const file = path.join(run, 'no-publish');
       if (isLink(file)) throw new UsageError('no-publish es un enlace: se rechaza');
       const tmp = `${file}.${process.pid}.tmp`;
@@ -211,9 +213,10 @@ const COMMANDS = {
       const project = projectDir(cwd, opts);
       const kind = kindOf(opts);
       const unresolved = !['auto', 'local'].includes(opts.presentation);
-      const { optOut } = readConfig({ data: path.resolve(cwd, opts.data), project });
+      const { optOut, dataProblem } = readOptOut({ data: path.resolve(cwd, opts.data), project });
       const runOptOut = opts.run !== undefined && fs.existsSync(path.join(runDirOf(cwd, project, opts), 'no-publish'));
       const decision = decidePresentation({
+        dataUnresolved: dataProblem !== null,
         presentation: opts.presentation,
         kind,
         artifact: yesNo(opts.artifact, 'artifact'),
@@ -463,12 +466,14 @@ const COMMANDS = {
       need(opts, 'run', 'platform', 'screens');
       const run = path.resolve(cwd, opts.run);
       if (!isDir(run)) throw new UsageError(`--run no existe: ${opts.run}`);
+      const linked = runLinkProblem(run);
+      if (linked) throw new UsageError(`${path.basename(linked)} es un enlace: se rechaza`);
       if (!['desktop', 'mobile', 'both'].includes(opts.platform)) throw new UsageError('--platform debe ser desktop, mobile o both');
       const kind = kindOf(opts);
       const screens = list(opts.screens);
       const prefix = `${kind}-`;
       const ids = fs.readdirSync(run, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && e.name.startsWith(prefix) && LETTER.test(e.name.slice(prefix.length)))
+        .filter((e) => (e.isDirectory() || e.isSymbolicLink()) && e.name.startsWith(prefix) && LETTER.test(e.name.slice(prefix.length)))
         .map((e) => e.name.slice(prefix.length)).sort();
       if (!ids.length) throw new UsageError(`no hay carpetas ${prefix}<letra> en el run`);
       // the frames open copies without the Google Fonts <link> (A4C2-03): the backup asks for nothing
@@ -479,6 +484,7 @@ const COMMANDS = {
       }
       const html = buildCompareHtml({ options: ids.map((id) => ({ id, screens })), kind, platform: opts.platform, title: 'Comparación de opciones' });
       const out = path.join(run, 'compare.html');
+      if (isLink(out)) throw new UsageError('compare.html es un enlace: se rechaza');
       fs.writeFileSync(out, html);
       let opened = false;
       if (!opts['no-open']) { openFile(out, {}); opened = true; }

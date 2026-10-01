@@ -7,14 +7,15 @@
 //
 // decidePresentation({ presentation, kind, artifact, designType, optOut }) -> { mode, reasons }
 //   canvas only with presentation 'auto', optOut null, kind 'option', the Artifact tool and the "Design" type.
-//   reasons, all that apply and in this order: presentation-local, project-opt-out, legacy-consent-declined,
+//   reasons, all that apply and in this order: presentation-local, data-unresolved (the data folder is not the real one, so the opt-out cannot be read), project-opt-out, legacy-consent-declined,
 //   style-tile-local, no-artifact-tool, no-design-type
-// gateDecision({ presentation, projectOptOut, runOptOut }) -> { allowed, reasons }   (run.mjs publish-gate)
+// gateDecision({ presentation, projectOptOut, runOptOut, dataUnresolved }) -> { allowed, reasons }   (run.mjs publish-gate)
 export const NOTICE = 'Publico en un lienzo y sus archivos, privados de tu cuenta de claude.ai: mockups con marcadores, nunca capturas ni código; las fuentes se piden a Google Fonts al abrir el lienzo. Para no publicar: decímelo o `config set --key publish --value never`.';
 
-export function decidePresentation({ presentation, kind, artifact, designType, optOut = null }) {
+export function decidePresentation({ presentation, kind, artifact, designType, optOut = null, dataUnresolved = false }) {
   const reasons = [];
   if (presentation !== 'auto') reasons.push('presentation-local');
+  if (dataUnresolved) reasons.push('data-unresolved');
   if (optOut === 'project-opt-out' || optOut === 'legacy-consent-declined') reasons.push(optOut);
   if (kind !== 'option') reasons.push('style-tile-local');
   if (artifact !== true) reasons.push('no-artifact-tool');
@@ -22,9 +23,10 @@ export function decidePresentation({ presentation, kind, artifact, designType, o
   return { mode: reasons.length === 0 ? 'canvas' : 'local', reasons };
 }
 
-export function gateDecision({ presentation, projectOptOut = null, runOptOut = false }) {
+export function gateDecision({ presentation, projectOptOut = null, runOptOut = false, dataUnresolved = false }) {
   const reasons = [];
   if (presentation !== 'auto') reasons.push('presentation-local');
+  if (dataUnresolved) reasons.push('data-unresolved');
   if (projectOptOut === 'project-opt-out' || projectOptOut === 'legacy-consent-declined') reasons.push(projectOptOut);
   if (runOptOut) reasons.push('run-opt-out');
   return { allowed: reasons.length === 0, reasons };

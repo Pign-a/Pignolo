@@ -77,10 +77,13 @@ export function buildCanvas({ options, platform, pageId, pageName, canvasTitle, 
         if (name === 'Main.dc.html') mainTaken = true;
         x += size.w + FRAME_GAP;
       }
-      notes[rowId] = {
-        x: 0, y: y - ROW_GAP, text: `Opción ${opt.id}${platform === 'both' ? ` · ${size.w}` : ''}`, kind: 'title1',
-        maxW: opt.screens.length * size.w + (opt.screens.length - 1) * FRAME_GAP, page: pageId,
-      };
+      // title1 is for several artboards ("never for one"): a row with a single frame is named by the title of the frame
+      if (opt.screens.length > 1) {
+        notes[rowId] = {
+          x: 0, y: y - ROW_GAP, text: `Opción ${opt.id}${platform === 'both' ? ` · ${size.w}` : ''}`, kind: 'title1',
+          maxW: opt.screens.length * size.w + (opt.screens.length - 1) * FRAME_GAP, page: pageId,
+        };
+      }
       y += rowH + ROW_GAP;
     }
   }

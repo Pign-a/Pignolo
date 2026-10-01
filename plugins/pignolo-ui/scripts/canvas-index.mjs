@@ -18,7 +18,7 @@ import { scanMarkup } from '../lib/canvas-html.mjs';
 import { splitFrontmatter } from '../lib/design-doc.mjs';
 import { parseYaml } from '../lib/yaml-subset.mjs';
 import { RUN_ROOT } from '../lib/run-folder.mjs';
-import { linkProblem, removeOwnDir } from '../lib/link-guard.mjs';
+import { linkProblem, removeOwnDir, runLinkProblem, samePath } from '../lib/link-guard.mjs';
 import { planNext, mergeLive, recordStep, PublishError } from '../lib/canvas-publish.mjs';
 
 class UsageError extends Error {}
@@ -57,12 +57,12 @@ function resolveRun(cwd, opts) {
   need(opts, 'run');
   const run = path.resolve(cwd, opts.run);
   const parts = run.split(path.sep);
-  const at = parts.findIndex((p, i) => p === RUN_ROOT && parts[i + 1] === 'runs');
+  const at = parts.findIndex((p, i) => samePath(p, RUN_ROOT) && samePath(parts[i + 1] ?? '', 'runs'));
   if (at < 1 || parts.length !== at + 3) throw new UsageError(`--run debe ser una carpeta de ${RUN_ROOT}/runs/<id> del proyecto`);
   const project = parts.slice(0, at).join(path.sep) || path.sep;
-  if (opts.project !== undefined && path.resolve(cwd, opts.project) !== path.resolve(project)) throw new UsageError('--run no está dentro de --project');
+  if (opts.project !== undefined && !samePath(path.resolve(cwd, opts.project), path.resolve(project))) throw new UsageError('--run no está dentro de --project');
   if (!isDir(run)) throw new UsageError(`--run no existe: ${opts.run}`);
-  const link = [path.join(project, RUN_ROOT), path.join(project, RUN_ROOT, 'runs'), run].find((p) => linkProblem(p));
+  const link = runLinkProblem(run);
   if (link) throw new UsageError(`${path.relative(project, link)} es un enlace: se rechaza`);
   return { run, project };
 }
@@ -79,7 +79,7 @@ export function canvasTitleFrom(designFile) {
     if (!fm.ok) return 'Proyecto';
     const parsed = parseYaml(fm.yaml);
     const name = parsed.supported && parsed.value && typeof parsed.value.name === 'string' ? parsed.value.name.trim() : '';
-    if (!name || name === 'Project name' || name.length > 120 || /[\r\n]/.test(name)) return 'Proyecto';
+    if (!name || name === 'Project name' || name.length > 120 || /[\r\n<>]/.test(name)) return 'Proyecto';
     return name;
   } catch {
     return 'Proyecto';
@@ -116,7 +116,11 @@ function cmdBuild(opts, { cwd }) {
       id, kind: 'option',
       screens: screens.map((file) => {
         const f = path.join(dir, file);
-        if (!fs.existsSync(f) || !fs.statSync(f).isFile()) throw new UsageError(`falta ${file} en option-${id}`);
+        let st = null;
+        try { st = fs.lstatSync(f); } catch { /* missing */ }
+        if (!st) throw new UsageError(`falta ${file} en option-${id}`);
+        // lstat: a screen that is a link is never followed
+        if (st.isSymbolicLink() || !st.isFile()) throw new UsageError(`${file} en option-${id} es un enlace o no es un archivo: se rechaza`);
         return { file, html: fs.readFileSync(f, 'utf8') };
       }),
     };
@@ -172,6 +176,7 @@ function cmdVerify(opts, { cwd }) {
   const dir = path.join(run, 'canvas');
   if (linkProblem(dir)) return { out: { ok: false, problems: [{ code: 'root-is-link' }] }, code: 1 };
   if (!isDir(dir)) return { out: { ok: false, problems: [{ code: 'no-canvas' }] }, code: 1 };
+  if (linkProblem(path.join(dir, 'project'))) return { out: { ok: false, problems: [{ code: 'link-in-output', file: 'project' }] }, code: 1 };
   const r = verifyCanvas({ dir });
   return { out: r, code: r.ok ? 0 : 1 };
 }

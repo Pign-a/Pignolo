@@ -12,29 +12,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { findLeaks, MIN_VALUE_LENGTH } from './leak-check.mjs';
 import { linkProblem, isLink } from './link-guard.mjs';
+import { decodeEntities, cssUnescape } from './entities.mjs';
 
-const LATIN1 = ('nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para middot cedil '
-  + 'sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute Ecirc Euml Igrave Iacute Icirc Iuml '
-  + 'ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute THORN szlig agrave aacute acirc atilde auml aring aelig '
-  + 'ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml').split(' ');
-const NAMED = new Map([['amp', '&'], ['lt', '<'], ['gt', '>'], ['quot', '"'], ['apos', "'"]]);
-LATIN1.forEach((n, i) => NAMED.set(n, String.fromCharCode(160 + i)));
-
-const codePoint = (n) => { try { return String.fromCodePoint(n); } catch { return ''; } };
-
-export function decodeEntities(text) {
-  return String(text)
-    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_, h) => codePoint(parseInt(h, 16)))
-    .replace(/&#(\d{1,7});/g, (_, d) => codePoint(parseInt(d, 10)))
-    .replace(/&([A-Za-z][A-Za-z0-9]{1,8});/g, (m, name) => (NAMED.has(name) ? NAMED.get(name) : m));
-}
+export { decodeEntities };
 
 function urlDecode(text) {
   const spaced = String(text).replace(/\+/g, ' ');
   return spaced.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => { try { return decodeURIComponent(run); } catch { return run; } });
 }
 
-const collapse = (text) => String(text).replace(/<[^>]*>/g, '').replace(/[\s ]+/g, ' ');
+const NBSP = String.fromCharCode(160);
+const SPACES = new RegExp(`[\\s${NBSP}]+`, 'g');
+const collapse = (text) => String(text).replace(/<[^>]*>/g, '').replace(SPACES, ' ');
+// every tag becomes a space (cells and blocks next to each other): the text of the page as a reader sees it
+const spaced = (text) => String(text).replace(/<[^>]*>/g, ' ').replace(SPACES, ' ');
+// characters that are not seen: zero width (200b-200f), word joiner (2060-2064), soft hyphen (ad), byte order mark (feff)
+const INVISIBLE = new RegExp(`[${[[0x200b, 0x200f], [0x2060, 0x2064], [0xad, 0xad], [0xfeff, 0xfeff]].map(([a, b]) => `${String.fromCharCode(a)}-${String.fromCharCode(b)}`).join('')}]`, 'g');
+const visible = (text) => String(text).replace(INVISIBLE, '');
 
 function jsonStrings(value, out = []) {
   if (typeof value === 'string') out.push(value);
@@ -62,6 +56,12 @@ function viewsOf(raw, { json = false } = {}) {
     add(`${name}+url`, url);
     add(`${name}+collapsed`, collapse(twice));
     add(`${name}+url+collapsed`, collapse(url));
+    // the page as read: tags as spaces, invisible characters out, CSS escapes undone
+    const read = visible(cssUnescape(twice));
+    add(`${name}+text`, spaced(read));
+    add(`${name}+text+url`, spaced(visible(cssUnescape(url))));
+    add(`${name}+invisible`, collapse(read));
+    add(`${name}+unescaped`, read);
   }
   return out;
 }

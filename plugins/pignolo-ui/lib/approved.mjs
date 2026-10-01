@@ -11,18 +11,12 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { checkLeaks } from './leak-check.mjs';
 import { stripRemoteFonts } from './remote-fonts.mjs';
+import { resourceProblems } from './remote-check.mjs';
 
 const FLOW = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREEN = /^[a-z0-9][a-z0-9-]*\.html$/;
-const RESOURCE_TAG = /<(img|script|link|iframe|video|audio|source|embed|object|image|use|track|input)\b[^>]*>/gi;
-const REMOTE_ATTR = /\b(?:src|href|srcset|poster|data|xlink:href)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
-const EVENT_HANDLER = /<[a-z][^>]*[\s/"']on[a-z]+\s*=/i;
-const JS_URL = /\b(?:src|href|action|formaction|xlink:href|data|poster)\s*=\s*["']?\s*javascript:/i;
 const BASE_HREF = /<base\b[^>]*\bhref\s*=/i;
 const META_REFRESH = /<meta\b[^>]*\bhttp-equiv\s*=\s*["']?\s*refresh/i;
-const SRCSET = /\bsrcset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi;
-const REMOTE_URL = /^\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
-const REMOTE_CSS = /url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?\/\/|@import\s+["']\s*(?:[a-z][a-z0-9+.-]*:)?\/\//i;
 
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const posix = (p) => p.split(path.sep).join('/');
@@ -34,10 +28,10 @@ export function screenProblems(html, { allowFonts = false, files = null } = {}) 
   const out = [];
   const text = allowFonts ? stripRemoteFonts(html).html : html;
   if (!/<meta\s[^>]*charset\s*=\s*["']?utf-8/i.test(text)) out.push({ problem: 'no-charset' });
-  if (/<script\b/i.test(text) || EVENT_HANDLER.test(text) || JS_URL.test(text)) out.push({ problem: 'script' });
-  const remoteTag = [...text.matchAll(RESOURCE_TAG)].some((m) => REMOTE_ATTR.test(m[0]));
-  const remoteSrcset = [...text.matchAll(SRCSET)].some((m) => (m[1] ?? m[2] ?? m[3]).split(',').some((c) => REMOTE_URL.test(c)));
-  if (remoteTag || remoteSrcset || BASE_HREF.test(text) || META_REFRESH.test(text) || REMOTE_CSS.test(text)) out.push({ problem: 'remote-resource' });
+  // decided on the attributes and the CSS read like a browser reads them (lib/remote-check.mjs)
+  const found = resourceProblems(text);
+  if (/<script\b/i.test(text) || found.script) out.push({ problem: 'script' });
+  if (found.remote || BASE_HREF.test(text) || META_REFRESH.test(text)) out.push({ problem: 'remote-resource' });
   if (files) {
     for (const m of text.matchAll(/<a\b[^>]*\bhref\s*=\s*["']([^"']*)["']/gi)) {
       const href = m[1].trim().replace(/^(?:\.\/)+/, '');

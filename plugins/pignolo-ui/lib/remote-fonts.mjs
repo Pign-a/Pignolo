@@ -63,7 +63,9 @@ function classify(tag) {
   const attrs = attrsOf(tag);
   if (!looksLikeFont(attrs)) return null;
   const names = [...attrs.keys()];
-  const href = attrs.get('href');
+  // valid HTML writes the separator of the query as &amp;: the allowed form is read decoded and goes out canonical
+  const rawHref = attrs.get('href');
+  const href = typeof rawHref === 'string' ? rawHref.replace(/&amp;/gi, '&') : rawHref;
   const rel = String(attrs.get('rel') ?? '').trim().toLowerCase();
   if ([...attrs.values()].includes(null)) return { problem: 'a font link repeats an attribute' };
   if (rel === 'preconnect') {

@@ -15,7 +15,7 @@ import crypto from 'node:crypto';
 import { verifyCanvas, layoutSha256 } from './canvas-layout.mjs';
 import { scanBytes } from './leak-scan.mjs';
 import { readValuesFile } from './leak-check.mjs';
-import { readConfig, ConfigError } from './project-config.mjs';
+import { readOptOut, ConfigError } from './project-config.mjs';
 import { linkProblem, isLink } from './link-guard.mjs';
 
 export class PublishError extends Error {
@@ -90,7 +90,7 @@ function allStrings(value, out = []) {
   return out;
 }
 
-function assertParams(params) {
+export function assertParams(params) {
   const walk = (v, where) => {
     if (typeof v === 'string') { if (/[<>]/.test(v)) throw new PublishError(`marcador sin resolver en params (${where})`); return; }
     if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${where}[${i}]`)); return; }
@@ -119,7 +119,9 @@ function optOutProblems({ run, project, data }) {
   const out = [];
   if (fs.existsSync(path.join(run, 'no-publish'))) out.push({ code: 'run-opt-out' });
   try {
-    const { optOut } = readConfig({ data, project });
+    const { optOut, dataProblem } = readOptOut({ data, project });
+    // the opt-out lives under --data: a data folder that is not the real one cannot say there is none
+    if (dataProblem) out.push({ code: dataProblem });
     if (optOut) out.push({ code: optOut });
   } catch (e) {
     if (!(e instanceof ConfigError)) throw e;
@@ -146,6 +148,9 @@ export function planNext({ run, project, data, types = {}, valuesFile }) {
 
   // the step that the state asks for
   const published = readJson(publishFile(run)) ?? null;
+  // a state that is not one of ours is not "done", and the address that a step will carry is validated when it is read
+  if (published && published.state !== 'created' && published.state !== 'published') return fail([{ code: 'bad-state' }]);
+  if (published && published.canvasUrl && !ARTIFACT_URL.test(String(published.canvasUrl))) return fail([{ code: 'bad-url' }]);
   const manifestFiles = Object.fromEntries(manifest.files.map((f) => [f.path, f.sha256]));
   const sameAsPublished = published && published.state === 'published' && published.layoutSha256 === manifest.layoutSha256
     && JSON.stringify(sortedObj(published.files ?? {})) === JSON.stringify(sortedObj(manifestFiles));
@@ -181,7 +186,8 @@ export function planNext({ run, project, data, types = {}, valuesFile }) {
   try { values = readValuesFile(valuesFile); } catch { return fail([{ code: 'no-leak-values' }]); }
   const originsFile = path.join(path.dirname(valuesFile), 'leak-origins.json');
   const origins = readJson(originsFile);
-  if (origins && origins.git === 'failed') return fail([{ code: 'no-leak-values', detail: 'git failed: the user name and email are unknown' }]);
+  // leak-values always writes this file: missing, unreadable or with git failed means the user name and email are unknown
+  if (!origins || typeof origins !== 'object' || Array.isArray(origins) || !['ok', 'unset'].includes(origins.git)) return fail([{ code: 'no-leak-values', detail: 'leak-origins.json is missing, unreadable or says that git failed' }]);
   const localPaths = new Set([step.params.root, step.params.file_path, ...Object.values(step.params.files ?? {})].filter(Boolean));
   const texts = [
     { label: 'canvasTitle', text: fragment.canvasTitle },

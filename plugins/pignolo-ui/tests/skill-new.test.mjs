@@ -41,7 +41,7 @@ test('new and improve: the gate comes before the first Artifact call, the accoun
     const { text } = readSkill(name);
     for (const lit of ['scope: "types"', '"Design"', 'types.json', '--design-type', 'publish-gate', 'canvas-index.mjs plan']) assert.ok(text.includes(lit), `${name}: ${lit}`);
     assert.ok(text.indexOf('publish-gate') < text.indexOf('scope: "types"'), `${name}: publish-gate goes before the first Artifact call`);
-    assert.ok(/exit 1 do not call Artifact at all/.test(text) && text.includes('action: "list"'), `${name}: with exit 1 not even list`);
+    assert.ok(/any exit other than 0[^\n]*do not call Artifact at all/.test(text) && text.includes('action: "list"'), `${name}: with exit 1 not even list`);
     assert.ok(/ilegible/.test(text), `${name}: an unreadable presentation is said`);
     assert.doesNotMatch(text, /canvas-not-in-v1|The canvas "Design" is not available in v1/);
     assert.ok(text.includes('First decide how they will be shown'), `${name}: present before the options`);

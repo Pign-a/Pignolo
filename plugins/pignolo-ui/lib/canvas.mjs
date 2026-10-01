@@ -57,10 +57,10 @@ function rewriteBody(body, links) {
       const parts = [];
       for (const a of tag.attrs) {
         let raw = a.bool ? `${a.name}=""` : a.raw;
-        if (t.name === 'a' && a.name.toLowerCase() === 'href' && a.value !== null && isLocalHtmlHref(a.value)) {
+        if (((t.name === 'a' && a.name.toLowerCase() === 'href') || (t.name === 'form' && a.name.toLowerCase() === 'action')) && a.value !== null && isLocalHtmlHref(a.value)) {
           const target = a.value.trim().replace(/^(?:\.\/)+/, '').split(/[?#]/)[0];
           if (a.value.trim().startsWith('/') || !Object.prototype.hasOwnProperty.call(links, target)) throw new CanvasError('broken-link', `the link ${a.value} points to no screen of the option`);
-          raw = `href="${links[target]}"`;
+          raw = `${a.name.toLowerCase()}="${links[target]}"`;
         }
         parts.push(raw);
       }
@@ -85,6 +85,8 @@ export function toArtboard({ html, w, h, links = {}, allowFonts = false }) {
   if (bad.length) throw new CanvasError(bad[0].problem, null, bad.map((p) => ({ code: p.problem })));
   const doc = splitDocument(src);
   if (doc.fontProblems.length) throw new CanvasError('bad-font-link', doc.fontProblems[0].detail, doc.fontProblems);
+  // any other <link> (a local stylesheet, an icon) would be dropped in silence: the converter neither invents nor repairs
+  if (doc.linkTags > doc.fontLinks.length) throw new CanvasError('unsupported-link', 'a <link> other than the allowed font links is not converted');
   const fonts = allowFonts ? doc.fontLinks : [];
   const body = rewriteBody(stripRemoteFonts(doc.body).html, links).trim();
   const css = ['body{margin:0}', ...doc.styles].join('\n');

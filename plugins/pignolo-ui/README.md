@@ -23,7 +23,7 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 - `profile` (`max`, `balanced` o `economy`, por defecto `balanced`): modelo de los subagentes que generan las opciones. `max` usa opus; `balanced` y `economy` usan sonnet. Es un ajuste propio de este plugin y no depende del núcleo. Si el entorno fuerza el modelo de los subagentes (`CLAUDE_CODE_SUBAGENT_MODEL`), manda el entorno y el informe dice solo el modelo pedido.
 - `presentation` (`auto` o `local`, por defecto `auto`): con `auto`, las opciones de mockup se publican en un lienzo privado de tu cuenta de claude.ai cuando la cuenta tiene el tipo "Design" (si no, `compare.html` local); con `local` no se publica nada. Un valor ilegible (el texto sin sustituir) cuenta como `local`.
 
-Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega literal), la skill usa el valor por defecto y lo dice.
+Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega literal), la skill usa el valor por defecto de `optionsPerDecision` y `profile` y lo dice; `presentation` nunca se reemplaza por un valor por defecto: se pasa tal cual y los scripts lo leen como `local` (no se publica nada).
 
 ## Qué se publica y qué nunca
 
@@ -33,7 +33,7 @@ Para no publicar: `node scripts/run.mjs config set --data <datos> --project <rep
 
 **Fuentes.** Una opción para el lienzo puede pedir una familia de Google Fonts (las tres `<link>` exactas; la petición la hace el navegador de quien abre el lienzo). El HTML local (`compare.html`, style tiles) no pide nada a la red: usa copias sin esas `<link>` en `<run>/local/`. Lo aprobado en `design/approved/` se guarda también sin las `<link>`; llevar la fuente al código del proyecto es una decisión tuya, después.
 
-Las capturas, el código y los datos de tu proyecto no se publican ni se suben a ningún servicio aparte de Claude Code (el modelo lee el código y las capturas para trabajar). Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`); `.pignolo-ui/` y `design/approved/` quedan en tu repo.
+Las capturas, el código y los datos de tu proyecto no se publican ni se suben a ningún servicio aparte de Claude Code (el modelo lee el código y las capturas para trabajar). Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`), pero **desinstalar no borra lo que ya se publicó en claude.ai**: esos lienzos quedan en tu cuenta y los borrás vos; `.pignolo-ui/` y `design/approved/` quedan en tu repo.
 
 ## Aviso
 

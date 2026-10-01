@@ -16,6 +16,8 @@ export function planKit(r, { values = LEAK_VALUES, types = { design: TYPE_URL } 
   const data = path.join(dir, 'data');
   fs.mkdirSync(data, { recursive: true });
   fs.writeFileSync(valuesFile, JSON.stringify(values));
+  // like `run.mjs leak-values`: the origins sit next to the values (plan fails closed without them)
+  fs.writeFileSync(path.join(dir, 'leak-origins.json'), JSON.stringify({ 'os-user': true, home: true, 'git-name': true, 'git-email': true, 'account-email': false, git: 'ok' }));
   fs.writeFileSync(typesFile, JSON.stringify(types));
   const plan = (extra = []) => canvasIndex(['plan', '--project', r.project, '--run', r.run, '--values-file', valuesFile, '--types-file', typesFile, '--data', data, ...extra]);
   const record = (step, url, extra = []) => canvasIndex(['record', '--run', r.run, '--step', step, '--url', url, '--data', data, '--project', r.project, ...extra]);

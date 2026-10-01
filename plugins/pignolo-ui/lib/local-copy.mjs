@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { stripRemoteFonts } from './remote-fonts.mjs';
 import { isLink, linkProblem } from './link-guard.mjs';
+import { screenProblems } from './approved.mjs';
 
 export class LocalCopyError extends Error {}
 
@@ -36,6 +37,9 @@ export function writeLocalCopies({ run, folders }) {
       const out = path.join(to, ent.name);
       if (isLink(out)) throw new LocalCopyError(`local/${folder}/${ent.name} es un enlace`);
       const stripped = stripRemoteFonts(fs.readFileSync(path.join(from, ent.name), 'utf8').replace(/\r\n/g, '\n'));
+      // the backup page opens this file in a browser: nothing remote and no script may be left in the copy
+      const bad = screenProblems(stripped.html, { allowFonts: false }).find((p) => p.problem === 'remote-resource' || p.problem === 'script');
+      if (bad) throw new LocalCopyError(`${folder}/${ent.name}: ${bad.problem}: no se arma el respaldo local con recursos remotos ni scripts`);
       fs.writeFileSync(out, stripped.html);
       removed += stripped.removed;
       written.push({ folder, file: ent.name });

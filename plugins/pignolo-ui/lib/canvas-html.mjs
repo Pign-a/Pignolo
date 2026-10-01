@@ -7,6 +7,7 @@
 //   warnings: fixed-position, viewport-units, body-rule, body-attr, css-close-braces
 // splitDocument(html) -> { lang, title, styles, fontLinks, body }     (throws CanvasError('no-body'))
 import { parseFontLinks } from './remote-fonts.mjs';
+import { decodeEntities } from './entities.mjs';
 
 export class CanvasError extends Error {
   constructor(code, detail, problems) {
@@ -20,7 +21,7 @@ export class CanvasError extends Error {
 export const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW = new Set(['style', 'script']);
 const CONTROLS = new Set(['button', 'input', 'select', 'textarea']);
-const RESERVED = /^(?:x-dc|helmet|dc-import|sc-[a-z0-9-]*)$/i;
+const RESERVED = /^(?:x-dc|x-import|helmet|dc-import|iframe|object|embed|sc-[a-z0-9-]*)$/i;
 
 const lineAt = (src, index) => src.slice(0, index).split('\n').length;
 
@@ -165,6 +166,12 @@ export function scanMarkup(html) {
   // `{{` anywhere (text, attributes, comments and <style>): the canvas reads it as a placeholder lookup.
   const opening = src.indexOf('{{');
   if (opening >= 0) problems.push({ code: 'braces', detail: 'an opening brace pair', line: lineAt(src, opening) });
+  // the same pairs written as character references (&#123;&#123;): the canvas reads the text after decoding it
+  const markup = src.replace(/<style\b[\s\S]*?<\/style\s*>/gi, '');
+  const decoded = decodeEntities(markup);
+  if (decoded !== markup &&(decoded.includes('{{') || decoded.includes('}}')) && !problems.some((p) => p.code === 'braces')) {
+    problems.push({ code: 'braces', detail: 'a brace pair written as character references', line: 1 });
+  }
   const seen = new Set();
   const unique = problems.filter((p) => { const k = `${p.code}|${p.detail}|${p.line}`; if (seen.has(k)) return false; seen.add(k); return true; });
   return { ok: unique.length === 0, problems: unique, warnings };
@@ -173,18 +180,28 @@ export function scanMarkup(html) {
 const strip = (s) => s.replace(/<!--[\s\S]*?-->/g, '');
 
 export function splitDocument(html) {
-  const src = String(html);
+  // comments first: a commented <style> or <link> must not come back to life
+  const src = strip(String(html));
   const body = /<body\b[^>]*>([\s\S]*?)<\/body\s*>/i.exec(src) ?? /<body\b[^>]*>([\s\S]*)$/i.exec(src);
   if (!body) throw new CanvasError('no-body', 'the document has no <body>');
+  // a second <body>, or anything after the first </body> but the end of the document, would be dropped in silence
+  if ((src.match(/<body\b/gi) ?? []).length > 1) throw new CanvasError('extra-body', 'the document has more than one <body>');
+  const closing = /<\/body\s*>/i.exec(src);
+  if (closing && src.slice(closing.index + closing[0].length).replace(/<\/html\s*>/gi, '').trim() !== '') throw new CanvasError('extra-body', 'there is content after </body>');
   const lang = /<html\b[^>]*\blang\s*=\s*["']([^"']+)["']/i.exec(src)?.[1] ?? 'es';
   const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(src)?.[1].trim() ?? '';
   const styles = [];
+  const takeStyle = (m, css) => {
+    // media, scoped, nonce...: the canvas takes the rules without the attribute, so it would change what the page does
+    if (/\S/.test(m.slice('<style'.length, m.indexOf('>')))) throw new CanvasError('style-attribute', 'a <style> with attributes (media, ...) is not converted');
+    styles.push(css.trim());
+  };
   const head = /<head\b[^>]*>([\s\S]*?)<\/head\s*>/i.exec(src)?.[1] ?? '';
-  for (const m of head.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) styles.push(m[1].trim());
+  for (const m of head.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) takeStyle(m[0], m[1]);
   let inner = body[1];
-  inner = inner.replace(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, (_, css) => { styles.push(css.trim()); return ''; });
+  inner = inner.replace(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi, (all, css) => { takeStyle(all, css); return ''; });
   const fonts = parseFontLinks(src, { requireHead: true });
-  return { lang, title, styles: styles.filter(Boolean), fontLinks: fonts.links, fontProblems: fonts.problems, body: strip(inner).trim() };
+  return { lang, title, styles: styles.filter(Boolean), fontLinks: fonts.links, fontProblems: fonts.problems, linkTags: (src.match(/<link\b/gi) ?? []).length, body: inner.trim() };
 }
 
 export { tokenize, readTag };
