@@ -1034,6 +1034,21 @@ Se corre **por etapa**, al cerrarla (T11, T11b, T11c, T11d); cada etapa verifica
 
 ## Cambios al ejecutar
 
-_(vacío; el ejecutor de cada etapa anota acá lo que difiera de este plan al hacer su T0 y al cerrar su puerta.)_
+### Etapa 1, T0 (2026-10-01, ejecutor de la etapa 1, pignolo-ui 0.6.2 sobre `main` 7255677)
+
+Línea base: `npm run test:ui` = 931 tests (928 pasan, 2 saltados, 1 falla por carga de la máquina: `on Ctrl+C a profile that cannot be removed is reported as leftoverProfile`, de navegador, no relacionado). Lo que difiere o hay que saber, por nombre:
+
+- `decidePresentation` (`lib/presentation.mjs`): hoy recibe `{ presentation, artifact, designType, canvasConsent, canvasAvailable }` y devuelve `consentNeeded`; T4 la reescribe (sin consentimiento, con `kind` y `optOut`).
+- `project-config.mjs`: `VALIDATORS` trae `canvasConsent`; `readConfig` no devuelve `optOut` y `writeConfig` no borra claves heredadas. `run.mjs config set` convertía `canvasConsent` a booleano.
+- `checkOption` (`lib/option-check.mjs`) no recibe `kind` ni `destination`; `checkScreens(dir)` no tenía `allowFonts` ni había una función pura por pantalla (T1 agrega `screenProblems`).
+- `validateDesign(text, {catalog}) → { status, data, ... }` existe; T2 solo necesita `name` del frontmatter (`splitFrontmatter` + `parseYaml`), no la forma completa de `data` (eso es de la etapa 3).
+- `tests/helpers.mjs` **no** trae un helper de repo temporal con `git init`: los tests de esta etapa lo arman con `git init` por `spawnSync`.
+- Raíces de `<run>`: `lib/run-init.mjs` usa `lstatSync().isSymbolicLink()` y `realpathSync.native` (no están exportadas); `leak-scan` y `canvas-index` replican esa comprobación en `lib/link-guard.mjs` (nuevo, T2).
+- `compare-html` armaba los `src` de los iframes como `<kind>-<id>/<pantalla>` y `compare.mjs options` abre `option-<X>/<main>` por `file://`: T5 los pasa a `<run>/local/`. `options-check`, `discard` y `compare-html` aceptan hoy solo una letra `[A-Z]` (los ids `E1`-`E6` son de la etapa 4).
+- `run.mjs leak-values` imprimía `{ out, count }`; T7 le suma `origins`.
+- `approve.mjs save` copiaba los bytes tal cual; T1 copia por `stripRemoteFonts` y suma `fontsRemoved`.
+- `agents/ui-option.md` (0.6.2) dice "no remote fonts" en Craft 6 y "no remote resources" en el contrato de salida: T5 lo condiciona a `destination`. El bloque Dispatch de `reference/options.md` (`<model>`, `git-state`, línea `The user asked for <N> subagents`) no cambia.
+- Casos de `tests/evals/ui-cases.mjs`: `ui-option-mockup`, `ui-option-style-tile` y `ui-option-improve`.
+- El formato real de los artboards de las tres pruebas (`canvas-spike`, `ab-canvas`) usa `height: 844px` fijo en la raíz; el plan manda `min-height` (R-4) y la puerta T6 lo confirma.
 
 **Registro de la reestructuración en etapas (2026-10-01, por decisión del autor):** el plan se reagrupó en cuatro etapas sin cambiar el comportamiento ya fijado por las dos vueltas de auditoría, salvo lo que decidió el autor (D-4c-14 a D-4c-22). Lo que cada etapa construye de forma recortada se declara en su tarjeta: etapa 1, un lienzo por corrida con estado en `<run>/publish.json` y regeneración que abre un lienzo nuevo; `present` sin `first`, `canvasPublished` ni `designSystemPublished`; `plan` sin pasos del sistema; `merge` solo con `--live none`. Las tarjetas partidas (`T2b`, `T4b`, `T4c`, `T5b`, `T6b`, `T6c`, `T7d`, `T7e`, `T9b` a `T9d`, `T10b` a `T10d`, `T11b` a `T11d`) llevan, textuales, los tests y las interfaces que salieron de la tarjeta original.
