@@ -2,7 +2,7 @@
 //
 // node <root>/scripts/ui-check.mjs [--project <repo root>] --run <folder in .pignolo-ui/>
 //   (--files <path>)... [--files-from <list.json>] [--design <DESIGN.md>] [--base <ref>]
-//   [--dom <file>]... [--url <development URL>]... [--measures <browser.json>] [--gate]
+//   [--dom <file>]... [--url <development URL>]... [--measures <browser.json>] [--before <ui-check.json of the before>] [--gate]
 //
 // --url (at most 20, one origin, loopback only: nothing remote at run time) feeds the static
 // SEO rules with what the development server returns; it needs --design (spec §5.4, A-06).
@@ -24,7 +24,7 @@ import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 
 class UsageError extends Error {}
 
-const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url', 'measures']);
+const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url', 'measures', 'before']);
 const REPEATED = new Set(['files', 'dom', 'url']);
 const MAX_URLS = 20;
 const FLAGS = new Set(['gate']);
@@ -150,9 +150,17 @@ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {})
     const measures = opts.measures !== undefined ? readMeasures(project, inputFile(project, path.resolve(cwd, opts.measures), '--measures')) : null;
     if (!files.length && !dom.length && !design && !measures) throw new UsageError('falta --files, --dom, --design o --measures: no hay nada que chequear');
 
+    // improve: the "before" ui-check.json; failures of rendered pages it already had are debt (spec §5)
+    let before = null;
+    if (opts.before !== undefined) {
+      let json;
+      try { json = JSON.parse(fs.readFileSync(path.resolve(cwd, opts.before), 'utf8')); } catch (e) { throw new UsageError(`no se pudo leer --before (${e.code || e.message})`); }
+      if (!json || !Array.isArray(json.entries)) throw new UsageError('--before: ui-check.json sin la lista entries');
+      before = json.entries;
+    }
     const base = opts.base ?? null;
     if (base !== null) assertRef(project, base); // an invalid ref is a usage error, before any rule runs
-    const result = await check({ project, files, design, base, dom, urls, measures });
+    const result = await check({ project, files, design, base, dom, urls, measures, before });
 
     ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
     fs.mkdirSync(runDir, { recursive: true });

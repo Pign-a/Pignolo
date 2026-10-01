@@ -3,3 +3,4 @@ local/
 tests/evals/generated/
 tests/evals/**/results/
 tests/bench/plans/results/
+plugins/pignolo-ui/tests/evals/generated/

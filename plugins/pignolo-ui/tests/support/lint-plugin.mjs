@@ -4,10 +4,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const TOP_LEVEL = new Set(['.claude-plugin', 'skills', 'agents', 'scripts', 'lib', 'catalog', 'norms', 'templates', 'tests',
+const TOP_LEVEL = new Set(['.claude-plugin', 'skills', 'agents', 'scripts', 'lib', 'catalog', 'norms', 'reference', 'templates', 'tests',
   'README.md', 'CHANGELOG.md', 'CREDITS.md', 'LICENSE']);
 // Folders whose files ship as runtime text (content rules apply). tests/ only gets the file rules.
-const RUNTIME_DIRS = new Set(['skills', 'agents', 'scripts', 'lib', 'catalog', 'norms', 'templates']);
+const RUNTIME_DIRS = new Set(['skills', 'agents', 'scripts', 'lib', 'catalog', 'norms', 'reference', 'templates']);
 const EXECUTABLE_EXT = new Set(['.exe', '.dll', '.so', '.dylib', '.node', '.wasm', '.bat', '.cmd', '.ps1', '.sh', '.com', '.msi', '.jar']);
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SKILL_MAX_CHARS = 12000; // ~3k tokens at ~4 chars per token

@@ -1,6 +1,6 @@
 # Pignolo UI
 
-Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.3 en construcción (hito 2 de 5 terminado: catálogo, `ui-check`, SEO estático, `files` y `report-check`).
+Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.6 en construcción (hito 4 de 5: los tres comandos, los dos agentes y todo lo determinista que usan; falta la convivencia con el núcleo, hito 5).
 
 Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
@@ -8,6 +8,42 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
 - Node ≥ 22 para pignolo-ui (A-12), sin dependencias npm.
 - Claude Code ≥ 2.1.271 (`userConfig` con `options`).
+- Chrome o Edge instalado para lo que mide en el navegador (`PIGNOLO_UI_BROWSER` fuerza la ruta). Sin navegador el flujo sigue en modo degradado y lo dice.
+- Permisos: se recomienda el modo `acceptEdits`; los subagentes escriben solo en la carpeta del run.
+
+## Comandos
+
+- `/pignolo-ui:new <pantalla>`: confirma o crea `DESIGN.md`, escribe el brief con vos, genera opciones como HTML navegable, elegís, implementa sin romper y verifica con evidencia.
+- `/pignolo-ui:improve <URL o ruta>`: inspecciona la pantalla (script y navegador), te muestra un menú de síntomas, genera versiones mejoradas, aplica la elegida y confirma con antes y después.
+- `/pignolo-ui:audit <URL o ruta>`: una pasada de auditoría con evidencia; no cambia ningún archivo y no bloquea.
+
+## Configuración (`userConfig`)
+
+- `optionsPerDecision` (`1` o `3`, por defecto `3`): cuántas opciones se generan por decisión, cada una con su subagente. Con `1` las opciones salen en secuencia del hilo principal y el informe lo dice.
+- `presentation` (`auto` o `local`, por defecto `auto`): en la v1 las dos dan lo mismo, una página local `compare.html`.
+
+Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega literal), la skill usa el valor por defecto y lo dice.
+
+## Qué se publica y qué nunca
+
+En la v1 no se publica nada: el lienzo "Design" quedó para una versión posterior. Las capturas, el código y los datos de tu proyecto no se publican ni se suben a ningún servicio aparte de Claude Code (el modelo lee el código y las capturas para trabajar). Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`); `.pignolo-ui/` y `design/approved/` quedan en tu repo.
+
+## Aviso
+
+pignolo-ui no es asesoría legal ni certifica cumplimiento de ninguna norma. Referencias consultadas el 2026-10-01: WCAG 2.2 (https://www.w3.org/TR/WCAG22/), Apple Human Interface Guidelines (https://developer.apple.com/design/human-interface-guidelines/) y Fluent 2 (https://fluent2.microsoft.design/).
+
+## Dónde queda cada cosa
+
+- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html`, `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
+- `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas y ruta de referencia. Desinstalar el plugin lo borra.
+- `design/approved/<flujo>/`: lo que el usuario aprobó, con `manifest.json`; se versiona y nunca se edita (un cambio crea `<flujo>-v2`).
+
+## Comandos de apoyo (`run.mjs` y `compare.mjs`)
+
+    node scripts/run.mjs env | init | config | norms | check | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
+    node scripts/compare.mjs fingerprint | distance | options | approved
+
+Cada uno imprime un objeto JSON; exit 0 hecho, 1 hallazgo o rechazo, 2 error propio (`no verificado`). El JSON de entrada llega siempre por archivo. `verdict` es la única fuente de "terminado".
 
 ## Alias de nombres semánticos
 
