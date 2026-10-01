@@ -88,6 +88,9 @@ export function validateFindings({ output, run, project, catalog, judgmentIds = 
       if (!ev.ok || !ev.script || !ev.failing) add('bloquea-without-script');
       if (/^J-\d+$/.test(String(f.id))) add('judgment-above-alto');
     }
+    // author decision 2026-10-01: a judgment finding (J-nn) is at most `medio` unless a failing script or browser entry backs it.
+    // Rejected, not downgraded, like every other violation here: the main thread sends the problem back to the auditor.
+    if (/^J-\d+$/.test(String(f.id)) && (f.severity === 'alto' || f.severity === 'bloquea') && !(ev.ok && ev.script && ev.failing)) add('judgment-without-measure');
   });
   return { ok: problems.length === 0, problems };
 }
