@@ -373,11 +373,15 @@ function recordPath({ main, env = process.env, now = new Date() } = {}) {
   return path.join(pignoloHome(env), 'init-backup', sha12(main), stampOf(now), 'moves.json');
 }
 
-// Escritura atómica (temp + rename). El temporal queda si el rename falla: este módulo no borra archivos.
+// Escritura atómica (temp + rename). Única excepción a "no se borra" junto con rmdirSync de createdDirs: si el rename falla
+// se quita el temporal PROPIO (recién creado con wx), para no dejar basura en el proyecto del usuario.
 function writeAtomic(fs, file, text) {
   const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
   fs.writeFileSync(tmp, text, { flag: 'wx' });
-  fs.renameSync(tmp, file);
+  try { fs.renameSync(tmp, file); } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* ya no está */ }
+    throw e;
+  }
 }
 
 function readRecord(file, fs = nodeFs) {

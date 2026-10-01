@@ -116,7 +116,8 @@ test('el código de este hito no usa readdirSync recursivo ni borra archivos', (
     if (!fs.existsSync(file)) continue;
     const src = fs.readFileSync(file, 'utf8');
     assert.ok(!/readdirSync\([^)]*recursive\s*:\s*true/.test(src), `${name}: readdirSync con recursive: true`);
-    assert.ok(!/\b(rmSync|unlinkSync)\s*\(/.test(src), `${name}: borra archivos`);
+    const del = (src.match(/\b(rmSync|unlinkSync)\s*\(/g) || []).length;
+    assert.ok(del === 0 || (name === 'safe-move.js' && del === 1), `${name}: borra archivos (solo el temporal propio de writeAtomic)`);
     if (name !== 'safe-move.js') assert.ok(!/\brmdirSync\s*\(/.test(src), `${name}: rmdirSync fuera de safe-move`);
   }
 });
