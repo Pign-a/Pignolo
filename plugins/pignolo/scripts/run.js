@@ -8,7 +8,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { mainRoot } = require('../lib/disabled');
 const { readRun, validateRun, taskList } = require('../lib/project');
-const { readCounter, clearCounter, counterKey } = require('../lib/handback-counter');
+const { readCounter, clearCounter, counterKey, NOTASK } = require('../lib/handback-counter');
 const { pignoloHome } = require('../lib/home');
 const { ensureIgnored, PIGNOLO_IGNORED: IGNORED } = require('../lib/pignolo-gitignore');
 const { repoIdFor } = require('../lib/seals');
@@ -170,6 +170,7 @@ function start(o, main, env) {
     }
     if (st.run) for (const t of taskList(st.run)) clearCounter(env, main, t.id);
     clearCounter(env, main, MALFORMED);
+    clearCounter(env, main, NOTASK);
     const now = Date.now();
     const run = { v: 1, flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
     if (o.plan) run.plan = o.plan;
@@ -277,6 +278,7 @@ function taskLocked(o, main, env) {
   writeRun(st.file, run);
   clearCounter(env, main, o.id);
   clearCounter(env, main, MALFORMED);
+  clearCounter(env, main, NOTASK);
   out({ ok: true, run: view(readRun(main).run) });
 }
 
@@ -327,6 +329,7 @@ function end(o, main, env) {
     const st = readRun(main);
     if (st.run) for (const t of taskList(st.run)) clearCounter(env, main, t.id);
     clearCounter(env, main, MALFORMED);
+    clearCounter(env, main, NOTASK);
     const existed = fs.existsSync(st.file);
     fs.rmSync(st.file, { force: true });
     out({ ok: true, ended: existed });

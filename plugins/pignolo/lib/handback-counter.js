@@ -7,6 +7,9 @@ const crypto = require('node:crypto');
 const { pignoloHome } = require('./home');
 const { gitCommon } = require('./disabled');
 
+// Informes de escritor sin tarea identificable (sin `Task: <id>` con varias tareas, o con un id ajeno): un contador propio.
+const NOTASK = '_notask';
+
 const initial = () => ({ count: 0, accepted: false, acceptedAgentId: null, blocked: false, lastReason: null, stopHookActive: [] });
 
 function counterKey(cwd = process.cwd()) {
@@ -46,4 +49,4 @@ function clearCounter(env, cwd, taskId) {
   fs.rmSync(counterPath(env, cwd, taskId), { force: true });
 }
 
-module.exports = { counterKey, counterPath, readCounter, writeCounter, clearCounter };
+module.exports = { NOTASK, counterKey, counterPath, readCounter, writeCounter, clearCounter };

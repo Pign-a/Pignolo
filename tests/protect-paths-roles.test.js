@@ -200,3 +200,47 @@ test('verify agent: review mode and no live mode deny even the scratch; the main
   assert.strictEqual(protect.run(payload(verify, path.join(verify, 'src', 'a.js')), { env: env() }).exit, 0, 'main thread');
   assert.strictEqual(protect.run(auditPay(verify, path.join(verify, 'src', 'a.js'), 'Write', 'pignolo:explorer'), { env: env() }).exit, 0, 'other role');
 });
+
+// Hito 7a (Task 7): varias tareas registradas. Con B (D-7-1) esta regla es el único control de escritura del implementer.
+function setupMulti({ tasksObj = true } = {}) {
+  const { repo, wt: wtA } = setup();
+  const wtB = path.join(makeTempDir('pignolo-wt-'), 'wt-b');
+  git(['worktree', 'add', '-q', '-b', 'tb', wtB], repo);
+  const base = git(['rev-parse', 'HEAD'], repo);
+  const t = (id, wt) => ({ id, worktree: wt, base, files: [], agents: [] });
+  const run = {
+    v: 2, flow: 'plan', started: new Date().toISOString(), expires: new Date(Date.now() + 3600e3).toISOString(),
+    tasks: tasksObj ? { a: t('a', wtA), b: t('b', wtB) } : {},
+  };
+  fs.writeFileSync(path.join(repo, '.pignolo', 'run.json'), JSON.stringify(run));
+  return { repo, wtA, wtB };
+}
+
+test('7a: con run.tasks {a, b}, un implementer solo escribe dentro de la worktree de alguna tarea, no en el checkout principal', () => {
+  const { repo, wtA, wtB } = setupMulti();
+  const p = (file, agent = IMPL) => protect.run(payload(repo, file, agent), { env: env() });
+  const r = p(path.join(repo, 'src', 'x.js'));
+  assert.strictEqual(r.exit, 2);
+  assert.match(r.stderr, /Alternativa:.*worktree/);
+  assert.strictEqual(p(path.join(wtA, 'src', 'x.js')).exit, 0, 'dentro de la worktree de a');
+  assert.strictEqual(p(path.join(wtB, 'src', 'x.js')).exit, 0, 'la de b también: el scope de la compuerta ata los archivos de cada tarea (límite declarado)');
+  assert.strictEqual(p(path.join(repo, 'src', 'x.js'), 'pignolo:fixer').exit, 2, 'el fixer también');
+  assert.strictEqual(p(path.join(repo, 'src', 'x.js'), 'pignolo:test-writer').exit, 2, 'el test-writer también');
+  assert.strictEqual(p(path.join(makeTempDir('pignolo-scratch-'), 'x.js')).exit, 0, 'un temporal fuera del principal no lo gobierna esta regla');
+});
+
+test('7a: el hilo principal, un payload sin agent_type y run.tasks vacío escriben en el principal como hoy', () => {
+  const { repo } = setupMulti();
+  const file = path.join(repo, 'src', 'x.js');
+  assert.strictEqual(protect.run(payload(repo, file), { env: env() }).exit, 0, 'hilo principal (sin agent_id)');
+  const noType = { hook_event_name: 'PreToolUse', tool_name: 'Write', cwd: repo, tool_input: { file_path: file, content: 'x' }, agent_id: 'a1' };
+  assert.strictEqual(protect.run(noType, { env: env() }).exit, 0, 'sin agent_type no se aplica (falla abierto, declarado)');
+  const empty = setupMulti({ tasksObj: false });
+  assert.strictEqual(protect.run(payload(empty.repo, path.join(empty.repo, 'src', 'x.js'), IMPL), { env: env() }).exit, 0, 'run.tasks vacío (guarda de regresión del hito 4)');
+});
+
+test('7a: el test-writer sigue escribiendo el holdout en el principal con tareas registradas', () => {
+  const { repo } = setupMulti();
+  const r = protect.run(payload(repo, path.join(repo, '.pignolo', 'tmp', 'holdout', 'p1', 'acc.test.js'), 'pignolo:test-writer'), { env: env() });
+  assert.strictEqual(r.exit, 0, r.stderr);
+});
