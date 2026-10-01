@@ -132,9 +132,10 @@ function backupRefs({ cwd, now = new Date(), env = process.env, timeoutMs = 6000
   return result;
 }
 
-function setReflogPolicy({ cwd } = {}) {
-  gitRun(['config', '--local', 'gc.reflogExpire', 'never'], cwd);
-  gitRun(['config', '--local', 'gc.reflogExpireUnreachable', 'never'], cwd);
+// `run` opcional (A8-07): por defecto el git de siempre; `init` inyecta el suyo.
+function setReflogPolicy({ cwd, run = (args, dir) => gitRun(args, dir) } = {}) {
+  run(['config', '--local', 'gc.reflogExpire', 'never'], cwd);
+  run(['config', '--local', 'gc.reflogExpireUnreachable', 'never'], cwd);
 }
 
 module.exports = { snapshotWip, seedShadow, shadowState, backupRefs, setReflogPolicy };

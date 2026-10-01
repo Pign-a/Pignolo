@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const { mainRoot } = require('../lib/disabled');
 const { readRun, validateRun } = require('../lib/project');
 const { readCounter, clearCounter } = require('../lib/handback-counter');
-const { ensureIgnored } = require('../lib/pignolo-gitignore');
+const { ensureIgnored, PIGNOLO_IGNORED: IGNORED } = require('../lib/pignolo-gitignore');
 const { repoIdFor } = require('../lib/seals');
 const { withDeadline } = require('../lib/git');
 const { readProjectConfig } = require('../lib/project-config');
@@ -18,9 +18,6 @@ const FLOWS = ['trivial', 'daily', 'review', 'plan'];
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 // Contador de los DONE rechazados con run.json ilegible (handback-gate).
 const MALFORMED = '_malformed';
-// .pignolo/.gitignore: él mismo (sin commitear, contaría como un archivo más del diff y
-// ningún cambio sería trivial), la marca, el flag, los temporales de las skills y sus worktrees.
-const IGNORED = ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/'];
 const WRITERS_NO_TESTS = ['pignolo:implementer', 'pignolo:fixer'];
 const VERBS = {
   start: { value: ['flow', 'plan', 'ttl-min', 'cwd'], bool: ['replace'] },
