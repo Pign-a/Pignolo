@@ -171,4 +171,24 @@ function setStatus({ main, kind, id, status, supersededBy }) {
   return { ok: true, file, status };
 }
 
-module.exports = { KINDS, STATUSES, TERMINAL, ID_RE, stateRoot, stateDir, parseEntry, readEntries, writeEntry, setStatus, writeAtomic };
+// Mueve una entrada entre tipos sin borrar nunca (hito 6, F6/C7): si el archivo está versionado
+// (`git ls-files --error-unmatch`) va con `git mv` (figura como R); si no, o sin git, con rename.
+// El destino no se pisa: refused 'exists'. Nunca commitea.
+function moveEntry({ main, fromKind, toKind, id }) {
+  if (!KINDS.includes(fromKind) || !KINDS.includes(toKind)) return refuse('invalid-kind', `tipo desconocido: ${fromKind} -> ${toKind}`);
+  const from = path.join(stateDir(main, fromKind), `${id}.md`);
+  const to = path.join(stateDir(main, toKind), `${id}.md`);
+  if (!fs.existsSync(from)) return refuse('missing', `no existe ${from}`);
+  if (fs.existsSync(to)) return refuse('exists', `ya existe ${to}`);
+  fs.mkdirSync(path.dirname(to), { recursive: true });
+  let tracked = false;
+  const { gitRun, isGitFailure } = require('./git');
+  try { gitRun(['ls-files', '--error-unmatch', '--', from], main, { timeout: 5000 }); tracked = true; } catch (e) {
+    if (!isGitFailure(e) && e.code !== 'ENOENT') throw e; // git corrió y dijo que no (o no hay git): rename
+  }
+  if (tracked) gitRun(['mv', '--', from, to], main, { timeout: 5000 });
+  else fs.renameSync(from, to);
+  return { ok: true, file: to, from, how: tracked ? 'git-mv' : 'rename' };
+}
+
+module.exports = { KINDS, STATUSES, TERMINAL, ID_RE, stateRoot, stateDir, parseEntry, readEntries, writeEntry, setStatus, moveEntry, writeAtomic };
