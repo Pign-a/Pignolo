@@ -72,6 +72,35 @@
       "contrary": [
         "T10"
       ]
+    },
+    "B4": {
+      "draft": "v2",
+      "match": [
+        "T2",
+        "T4",
+        "T5",
+        "T6",
+        "T8",
+        "T10"
+      ],
+      "declared": [],
+      "contrary": [],
+      "contraryShownAndAccepted": [
+        "T7"
+      ]
+    },
+    "B5": {
+      "draft": "v2",
+      "match": [
+        "T2",
+        "T5",
+        "T8"
+      ],
+      "declared": [],
+      "contrary": [],
+      "contraryShownAndAccepted": [
+        "T7"
+      ]
     }
   },
   "questions": {
@@ -105,6 +134,16 @@
       "asked": 3,
       "inRepo": 0,
       "returned": 0
+    },
+    "B4": {
+      "asked": 5,
+      "inRepo": 0,
+      "returned": 1
+    },
+    "B5": {
+      "asked": 5,
+      "inRepo": 0,
+      "returned": 2
     }
   }
 }
