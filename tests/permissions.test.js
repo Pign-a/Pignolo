@@ -94,6 +94,9 @@ const NOT_EXPRESSIBLE = {
   'pignolo-plan': 'depende del payload (agent_id): el hilo principal sí corre plan.js, plan-audit.js y approved.js; una regla de permisos no distingue',
   'pignolo-init': 'depende del payload (agent_id): el hilo principal sí corre init.js (con el sí del humano); una regla de permisos no distingue',
   'pignolo-holdout': 'depende del payload (agent_id, agent_type): el hilo principal y el validator sí corren holdout.js',
+  'pignolo-queue': 'depende del payload (agent_id, agent_type): el hilo principal y el integrator sí corren queue.js',
+  'pignolo-worktree-tools': 'depende del payload (agent_id): el hilo principal sí corre worktree.js create|tag-contract y cleanup.js apply',
+  'pignolo-protected-refs': 'depende del payload (agent_id) y de la rama de HEAD: el hilo principal sí escribe esas refs',
   'sabotage-lock': 'depende del estado del worktree (un candado de sabotaje en su git-dir): sin candado, commit y add pasan',
 };
 
