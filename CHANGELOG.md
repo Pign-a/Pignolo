@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0 — 2026-10-01
+
+- Hito 6a (continuidad, parte determinista): todo lo que no gasta tokens de agentes. La skill `close-session` es de 6b.
+- Estado de juicio: `lib/state-store.js` (un archivo por entrada en `.pignolo/state/<tipo>/`, estados por tipo, campo aditivo `priority`, escrituras atómicas, una entrada ilegible se informa) y `scripts/state-index.js` (`INDEX.md` generado sin fecha, planes listados sin moverlos, `archive` como contador, `--check`).
+- Nivel caliente: `lib/context-budget.js` (degradación en 4 niveles, tope 8.000) y `SessionStart` lo emite solo en `additionalContext`, con la rama del checkout principal y el tope repartido con los avisos.
+- `SubagentStart` (`hooks/handlers/subagent-start.js`): inyecta `rules/core.md` a todo agente `pignolo:*` y la tarjeta de la tarea al agente que la tarea nombra; nunca niega (el lanzador suma `FAIL_OPEN`).
+- Egreso (`hooks/handlers/egress.js`, `lib/egress.js`, D-6-3.a): mientras hay un flujo en curso, ningún subagente usa web salvo `pignolo:researcher` (con la consulta filtrada por `pii-patterns` e identificadores del proyecto) y ninguno usa MCP; el hilo principal y lo que pasa fuera de un flujo no se tocan.
+- `protect-paths`: `INDEX.md` y `learnings/accepted/` no se editan a mano (aun con `/pignolo:off`); un subagente o un worktree que no es el principal no escriben `.pignolo/state/`. La guardia niega a los subagentes `close-session.js` y `state-index.js`.
+- Aprendizajes: `lib/learnings.js` (`proposeLearning`, piso mecánico `scanLearning`, `parseValidation`, `decideAcceptance`, `applyDecision`). Decisión del autor R7 (2026-10-01): sin `learning-validator` en este hito; la aceptación es determinista más el sí del humano.
+- `scripts/close-session.js` (`evidence`, `scan`, `decide`, `archive`, `index`, `prune`) y `lib/archive.js`: nunca borra, archiva plano con `git mv` o `rename`, se niega con un merge, cherry-pick o rebase en curso.
+- Sombra al cerrar la sesión: `gc` con heurística (más de 2.000 sueltos o 24 h) y poda corta bajo un solo lock con la poda, con la sesión resuelta (`--session` o `CLAUDE_CODE_SESSION_ID`, no documentada) y sin otra sesión activa; sesiones vivas conservan su última ref. Rehacer el índice de sesión: medido y descartado.
+- Pruebas: `tests/e2e-hito-6a.test.js` y checklist manual `tests/manual/hito-6.md`. Límite declarado: `INDEX.md` y `accepted/` siguen escribibles por Bash/PowerShell.
+
 ## 0.7.1 — 2026-10-01
 
 - Arreglos de la revisión final del hito 5a (cada uno con un test que falla sin el arreglo).
