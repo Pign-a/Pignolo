@@ -6,7 +6,7 @@
 // Uso: node close-session.js <verbo> [--cwd <dir>] [--session <id>]
 //   evidence --since <iso|sha>             commits, archivos, sellos y el run.json vigente
 //   scan --id <id>                         piso mecánico sobre una propuesta
-//   decide --id <id> --validation-file <md> [--reserved]
+//   decide --id <id> (--human <accept|reject> | --validation-file <md> [--reserved])
 //   archive [--days 14] [--dry-run]        mueve lo cerrado y viejo a archive/ (nunca borra)
 //   index                                  regenera INDEX.md
 //   prune                                  poda y gc de la sombra (necesita la sesión)
@@ -20,7 +20,7 @@ const { mainRoot } = require('../lib/disabled');
 const VERBS = {
   evidence: { value: ['since'], need: ['since'] },
   scan: { value: ['id'], need: ['id'] },
-  decide: { value: ['id', 'validation-file'], bool: ['reserved'], need: ['id', 'validation-file'] },
+  decide: { value: ['id', 'validation-file', 'human'], bool: ['reserved'], need: ['id'] },
   archive: { value: ['days'], bool: ['dry-run'], need: [] },
   index: { value: [], need: [] },
   prune: { value: [], need: [] },
@@ -51,6 +51,13 @@ function parse(argv) {
     return usage(`opción desconocida para ${verb}: ${a}`);
   }
   for (const n of spec.need) if (opts[n] === undefined) return usage(`${verb} necesita --${n}`);
+  if (verb === 'decide') {
+    const hasV = opts['validation-file'] !== undefined;
+    const hasH = opts.human !== undefined;
+    if (hasV === hasH) return usage('decide necesita --human <accept|reject> o --validation-file <md> (uno solo)');
+    if (hasH && !['accept', 'reject'].includes(opts.human)) return usage(`--human debe ser accept o reject (${opts.human})`);
+    if (hasH && opts.reserved) return usage('--reserved va con --validation-file; con --human la decisión ya es del humano');
+  }
   return opts;
 }
 
@@ -99,10 +106,19 @@ function scan({ main, id }) {
   return { ok: true, id, findings: r.findings, clean: r.findings.length === 0 };
 }
 
-function decide({ main, id, validationFile, reserved }) {
+function decide({ main, id, validationFile, reserved, human }) {
   const L = require('../lib/learnings');
   const p = L.readProposal({ main, id });
   if (!p.ok) return refuse(p.refused, p.reason);
+  if (human) {
+    let pii;
+    try { pii = piiOf(main); } catch (e) { return refuse('project-md', e.message); }
+    const scanned = L.scanLearning({ text: p.text, piiPatterns: pii });
+    const d = L.decideByHuman({ entry: p.entry, scan: scanned, answer: human });
+    const applied = L.applyDecision({ main, id, decision: d.decision });
+    if (!applied.ok) return refuse(applied.refused, applied.reason, { decision: d.decision, reason: d.reason });
+    return { ok: true, id, decision: d.decision, reason: d.reason, promoteCandidate: d.promoteCandidate, moved: applied.moved, file: applied.file || null, how: applied.how || null, validation: 'human' };
+  }
   let text;
   try { text = fs.readFileSync(path.resolve(validationFile), 'utf8'); } catch (e) { return refuse('validation-file', `no se pudo leer ${validationFile}: ${e.message}`); }
   let piiPatterns;
@@ -148,7 +164,7 @@ function main() {
   switch (opts.verb) {
     case 'evidence': r = evidence({ main: root, since: opts.since, env }); break;
     case 'scan': r = scan({ main: root, id: opts.id }); break;
-    case 'decide': r = decide({ main: root, id: opts.id, validationFile: opts['validation-file'], reserved: opts.reserved }); break;
+    case 'decide': r = decide({ main: root, id: opts.id, validationFile: opts['validation-file'], reserved: opts.reserved, human: opts.human }); break;
     case 'archive': r = archive({ main: root, days: opts.days, dryRun: opts['dry-run'] }); break;
     case 'index': r = index({ main: root }); break;
     case 'prune': r = prune({ main: root, env, session: opts.session }); break;

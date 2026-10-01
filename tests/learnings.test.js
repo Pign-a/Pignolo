@@ -126,3 +126,17 @@ test('applyDecision uses git mv for a versioned proposal and rename for an uncom
   assert.strictEqual(r2.how, 'rename');
   assert.ok(!git(['status', '--porcelain'], main).includes(`proposed/${other}`), 'el índice de git no ve la que no estaba versionada');
 });
+
+// Protects: R7 del autor (2026-10-01: sin learning-validator, piso mecánico + sí del humano) ·
+// Breaks if: el sí del humano gana al piso, un "no" acepta, una respuesta desconocida mueve, o
+// lo general no queda como promote-candidate.
+test('decideByHuman: the floor wins over a yes; accept and reject move; unknown answer is pending', () => {
+  const d = (e, s, a) => L.decideByHuman({ entry: e, scan: s, answer: a });
+  const dirty = { findings: [{ kind: 'secret', match: 'ghp_x' }] };
+  assert.deepStrictEqual([d(entry('web'), dirty, 'accept').decision, d(entry('web'), dirty, 'accept').reason], ['rejected', 'piso mecánico: secret (ghp_x)']);
+  assert.strictEqual(d(entry('web'), clean, 'accept').decision, 'accepted');
+  assert.strictEqual(d(entry('session'), clean, 'reject').decision, 'rejected');
+  assert.strictEqual(d(entry('session'), clean, 'maybe').decision, 'pending');
+  assert.strictEqual(d(entry('session', 'general'), clean, 'accept').promoteCandidate, true);
+  assert.strictEqual(d(entry('session', 'project'), clean, 'accept').promoteCandidate, false);
+});

@@ -209,3 +209,27 @@ test('evidence: commits and files since a sha, seals from the seal dir, run with
   const bad = cli(['evidence', '--since', 'deadbeef'], { cwd: repo });
   assert.deepStrictEqual([bad.status, bad.json.refused], [1, 'git-failed']);
 });
+
+// Protects: R7 del autor (2026-10-01): `decide --human` es el camino de aceptación sin
+// learning-validator · Breaks if: --human no mueve, el piso no gana al sí, o el uso acepta
+// --human y --validation-file juntos.
+test('decide --human: accept moves to accepted/, reject to rejected/, the floor wins over a yes; usage is exclusive', () => {
+  const repo = makeRepo();
+  project(repo);
+  const propose = (id, source, body = '# Usar LF\n\nSiempre LF.\n') => assert.ok(L.proposeLearning({ main: repo, id, source, evidence: 'tests/x.test.js', body }).ok);
+  propose('2026-09-30-h1', 'web');
+  const a = cli(['decide', '--id', '2026-09-30-h1', '--human', 'accept'], { cwd: repo });
+  assert.strictEqual(a.status, 0, a.stderr);
+  assert.deepStrictEqual([a.json.decision, a.json.moved, a.json.validation], ['accepted', true, 'human']);
+  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/accepted'), '2026-09-30-h1.md')));
+  propose('2026-09-30-h2', 'session');
+  assert.strictEqual(cli(['decide', '--id', '2026-09-30-h2', '--human', 'reject'], { cwd: repo }).json.decision, 'rejected');
+  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/rejected'), '2026-09-30-h2.md')));
+  propose('2026-09-30-h3', 'session', `# Token\n\nusá ghp_${'a'.repeat(36)}\n`);
+  assert.strictEqual(cli(['decide', '--id', '2026-09-30-h3', '--human', 'accept'], { cwd: repo }).json.decision, 'rejected');
+  propose('2026-09-30-h4', 'session');
+  for (const args of [['--human', 'yes'], ['--human', 'accept', '--validation-file', 'v.md'], ['--human', 'accept', '--reserved'], []]) {
+    assert.strictEqual(cli(['decide', '--id', '2026-09-30-h4', ...args], { cwd: repo }).status, 2, args.join(' '));
+  }
+  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/proposed'), '2026-09-30-h4.md')));
+});

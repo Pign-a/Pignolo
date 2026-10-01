@@ -105,6 +105,18 @@ function decideAcceptance({ entry, validation, scan, reservedMatch = false } = {
   return { decision: 'accepted', reason: 'los seis chequeos en pass', promoteCandidate };
 }
 
+// Decisión del humano (R7 del autor, 2026-10-01: sin learning-validator, la aceptación es el piso
+// mecánico más el sí del humano). El piso gana siempre: un hallazgo de scanLearning rechaza aunque
+// el humano diga que sí. answer: 'accept' | 'reject'; otra cosa → pending.
+function decideByHuman({ entry, scan, answer } = {}) {
+  const fields = (entry && entry.fields) || {};
+  const findings = (scan && Array.isArray(scan.findings)) ? scan.findings : [];
+  if (findings.length) return { decision: 'rejected', reason: `piso mecánico: ${findings.map((f) => `${f.kind} (${f.match})`).join(', ')}`, promoteCandidate: false };
+  if (answer === 'reject') return { decision: 'rejected', reason: 'el humano dijo que no', promoteCandidate: false };
+  if (answer !== 'accept') return { decision: 'pending', reason: `respuesta del humano desconocida: ${answer}`, promoteCandidate: false };
+  return { decision: 'accepted', reason: 'el humano dijo que sí', promoteCandidate: fields.scope === 'general' };
+}
+
 // Mueve de proposed/ a accepted/ o rejected/ (git mv si está versionada, rename si no) y fija el status.
 // human y pending no mueven nada.
 function applyDecision({ main, id, decision }) {
@@ -127,4 +139,4 @@ function readProposal({ main, id }) {
   return { ok: true, entry, text: fs.readFileSync(file, 'utf8') };
 }
 
-module.exports = { SOURCES, SCOPES, CHECKS, SIZE_LIMIT, proposeLearning, scanLearning, parseValidation, decideAcceptance, applyDecision, readProposal };
+module.exports = { SOURCES, SCOPES, CHECKS, SIZE_LIMIT, proposeLearning, scanLearning, parseValidation, decideAcceptance, decideByHuman, applyDecision, readProposal };
