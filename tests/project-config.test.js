@@ -159,3 +159,25 @@ test('gates.mutation: se lee como texto, sin aviso de clave desconocida, tambié
     assert.ok(readProjectConfig({ root }).warnings.some((w) => /desconocida "otra"/.test(w)));
   });
 });
+
+test('presentation y canvas-consent: claves aditivas, valor inválido es aviso y no error', () => {
+  const root = makeRepo();
+  write(root, fm('type: code-tested\npresentation: text\ncanvas-consent: true'));
+  const ok = readProjectConfig({ root });
+  assert.strictEqual(ok.presentation, 'text');
+  assert.strictEqual(ok.canvasConsent, true);
+  assert.ok(!ok.warnings.some((w) => /desconocida/.test(w)), ok.warnings.join(' | '));
+
+  write(root, fm('type: code-tested\npresentation: bogus\ncanvas-consent: maybe'));
+  const bad = readProjectConfig({ root });
+  assert.strictEqual(bad.presentation, null);
+  assert.strictEqual(bad.canvasConsent, false);
+  assert.ok(bad.warnings.some((w) => /presentation/.test(w) && /bogus/.test(w)));
+  assert.ok(bad.warnings.some((w) => /canvas-consent/.test(w)));
+
+  write(root, fm('type: code-tested'));
+  const none = readProjectConfig({ root });
+  assert.strictEqual(none.presentation, null);
+  assert.strictEqual(none.canvasConsent, false);
+  assert.strictEqual(readProjectConfig({ root: makeRepo() }).presentation, null);
+});

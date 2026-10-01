@@ -78,6 +78,15 @@ function main() {
     return;
   }
 
+  // Atajos de solo-payload (R-15 iv): salen con 0 sin crear el Worker ni cargar el handler.
+  try {
+    if (require('../lib/hook-fastpath').skips(name, input)) {
+      done = true;
+      process.exitCode = 0;
+      return;
+    }
+  } catch (e) { /* sin atajo: sigue el camino de siempre */ }
+
   const ms = deadlineFor(name);
   const timer = setTimeout(() => fail(`se venció el plazo interno de ${ms} ms; se niega por las dudas`), ms);
   const worker = new Worker(__filename, {

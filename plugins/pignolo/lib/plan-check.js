@@ -322,6 +322,19 @@ function checkPlan({ planText, root, runTests = false, tmpDir = os.tmpdir() }) {
   }
 }
 
+// Un plan en tarjetas (R-4): un `### Task` con `**Files:**` o `**Interfaces:**` en las 60
+// líneas siguientes. plan-check no aplica a un plan en prosa.
+function isCardPlan(planText) {
+  const lines = String(planText || '').split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^###\s+Task\b/.test(lines[i])) continue;
+    for (let j = i + 1; j <= i + 60 && j < lines.length; j += 1) {
+      if (/^\s*\*\*(Files|Interfaces):\*\*/.test(lines[j])) return true;
+    }
+  }
+  return false;
+}
+
 function problemCount(res) {
   return res.refs.filter((r) => !r.ok).length + res.blocks.filter((b) => !b.ok).length + (res.tests || []).filter((t) => !t.red).length;
 }
@@ -340,4 +353,4 @@ function toFindings(res) {
   return out;
 }
 
-module.exports = { checkPlan, problemCount, toFindings, parsePlan };
+module.exports = { checkPlan, problemCount, toFindings, parsePlan, isCardPlan };

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.1 — 2026-10-01
+
+- Arreglos de la revisión final del hito 5a (cada uno con un test que falla sin el arreglo).
+- `scope-gate` ya no deja pasar las formas que mueven el plan a `main`: `rebase <upstream> main` (y `--onto`), `pull . x:main`, `branch -m/-M/-c/-C` y `--move`/`--copy` hacia `main`, `checkout -B main` y `switch -C main` (`--force-create`). El prefiltro no distingue mayúsculas (`Git merge`) y suma `checkout` y `switch`.
+- El registro del plan se lee de la rama del plan cuando falta en disco (en `main` no existe): `git show int/<p>:…` o `queue/<p>:…`, con plazo de 1 s y fallo cerrado; `scope-gate` también se activa cuando el comando nombra `int/<p>`, `queue/<p>` o `task/<p>/`; `next` encuentra el plan desde `main`.
+- `plan-audit.js finish`: con menos experimentos corridos que afirmaciones pendientes el veredicto es `ESCALATE`, no `APPROVE`.
+- `present-gate`: solo mira `action: publish` (o ausente) y también escanea los archivos de `tool_input.files`. `runnableBeforeApproval`: una tarea con una `A<n>` que la tarjeta no tiene cuenta como dependiente. Comentario del handler de `scope-gate` corregido.
+- Docs: D-5-3 (una ola por perfil, 3/2/1) registrada como decisión del autor; spec §8.3 declara dos formas de `pignolo-plan` que la regla no ve.
+
+## 0.7.0 — 2026-09-30
+
+- Hito 5a (modo `plan`, parte determinista): todo lo que no gasta tokens de agentes. Las cartas, skills, plantillas y evals son de 5b (el carril `plan` todavía no se puede recorrer de punta a punta).
+- Registro del plan y tarjeta de alcance: `lib/plan-state.js`, `lib/scope-card.js`, `scripts/plan.js` (estado en `.pignolo/state/plans/<plan>/`, etapas en orden, tarjeta validada mecánicamente y atada a su sha256; una tarjeta editada después de aprobarla pide aprobar de nuevo). `run.json` suma `plan` opcional. Antes de la aprobación corren las tareas que no dependen de un ítem agregado sin pedirlo, hasta `preApprovalTasks` del perfil (D-5-3, del autor: `max` 3, `balanced` 2, `economy` 1).
+- `scope-gate` (`hooks/handlers/scope-gate.js`, `lib/scope-gate.js`): sin tarjeta aprobada, nada llega a `main` desde un plan. Reutiliza el parser de la guardia (`gitCommands`), falla cerrado dentro de un plan y calla fuera de él. Límites declarados en la spec §8.3.
+- Auditoría de planes en tres pasos (`scripts/plan-audit.js`, `lib/plan-audit.js`, `lib/plan-probes.js`): revisor `plan-auditor` sin `Bash`, cinco sondas fijas con disparadores precisos que solo refutan, y experimentos forzados por hook (`plan-audit-gate`: cuenta `PostToolUse` y `PostToolUseFailure` en un log de solo-agregar y bloquea el cierre hasta un experimento por afirmación, como mucho dos veces; después `ESCALATE`). `plan-check` solo con planes en tarjetas (`isCardPlan`, `--require-cards`).
+- **D-5-1 decidida por el autor (2026-09-30, tras un A/B medido con opus: dos despachos separados 46 % de recall contra 32 % de un agente que hace las dos cosas):** el `plan-auditor` gana `Write` (cambio de contrato de la tabla de §6) y se despacha dos veces, `review` y `verify`. `protect-paths` confina su `Write`/`Edit`/`MultiEdit` al `scratch/` de la auditoría en modo `verify`; su `Bash` no se confina (límite declarado). `lib/plan-agents.js` deja el cambio a una constante.
+- Guardia: regla `pignolo-plan` (un subagente no ejecuta `plan.js`, `plan-audit.js` ni `approved.js`; detección estrecha, `run.js` intacto). `hooks.json` suma seis entradas (con `PostToolUseFailure`) y el launcher gana atajos de solo-payload (`lib/hook-fastpath.js`) que salen antes de crear el Worker.
+- Presentación y aprobados: `lib/present.js`, `scripts/present.js` (`decide`, `check`), `present-gate` sobre `Artifact` (best-effort: la forma del `tool_input` no se midió), claves `presentation` y `canvas-consent` en `project.md` (aditivas); aprobados visuales versionados con el formato de pignolo-ui (`scripts/approved.js`, `approved-verify.js`). Sin plantillas aprobadas todo cae a texto (D-5-4).
+- `scripts/next.js` (solo lectura) y su línea en `SessionStart` solo si hay algo en curso.
+- Pruebas: `tests/e2e-hito-5.test.js` (scope-gate, next, resume, present y la auditoría por el launcher real) y checklist manual `tests/manual/hito-5.md`.
+- Límites declarados: `queue/` con conflicto y la ejecución por olas son del hito 7; `INDEX.md` y `close-session` del hito 6.
+
 ## 0.6.2 — 2026-09-30
 
 - `lib/plan-check.js`: un símbolo que una tarea nombra en la misma línea que un archivo que esa tarea marca `Create` se da por producido por el plan y deja de reportarse como inexistente (motivo: 20 falsas alarmas medidas en un plan real, `tests/evals/RESULTS-planes.md`). Las rutas `Create` ya se aceptaban; las `Modify` siguen debiendo existir. Sin bloque `Files` el comportamiento no cambia.

@@ -62,8 +62,8 @@ test('start with a gitignore that already has lines keeps them', () => {
   const repo = makeRepo();
   fs.mkdirSync(path.join(repo, '.pignolo'));
   fs.writeFileSync(path.join(repo, '.pignolo', '.gitignore'), 'foo\n');
-  run(repo, ['start', '--flow', 'plan']);
-  run(repo, ['start', '--flow', 'plan', '--replace']);
+  run(repo, ['start', '--flow', 'plan', '--plan', 'p1']);
+  run(repo, ['start', '--flow', 'plan', '--plan', 'p1', '--replace']);
   assert.strictEqual(fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8'), 'foo\n.gitignore\nrun.json\n.disabled\ntmp/\nworktrees/\n');
 });
 
@@ -90,7 +90,7 @@ test('start: an expired flow is overwritten without --replace; bad usage is exit
   run(repo, ['start', '--flow', 'daily']);
   const o = readRunFile(repo);
   fs.writeFileSync(runFile(repo), JSON.stringify({ ...o, expires: new Date(Date.now() - 1000).toISOString() }));
-  assert.strictEqual(run(repo, ['start', '--flow', 'plan']).status, 0);
+  assert.strictEqual(run(repo, ['start', '--flow', 'review']).status, 0);
   assert.strictEqual(run(repo, ['start', '--flow', 'nada']).status, 2);
   assert.strictEqual(run(repo, ['bogus']).status, 2);
 });
@@ -231,4 +231,26 @@ test('I1: the _malformed counter shows in status and start, task and end clear i
   bump();
   assert.strictEqual(run(repo, ['end']).status, 0);
   assert.ok(gone(), 'end');
+});
+
+test('start --flow plan needs a valid --plan slug and records it in run.json', () => {
+  const repo = makeRepo();
+  assert.strictEqual(run(repo, ['start', '--flow', 'plan']).status, 2, 'plan flow without --plan');
+  assert.strictEqual(run(repo, ['start', '--flow', 'plan', '--plan', 'A b']).status, 2, 'bad slug');
+  assert.strictEqual(run(repo, ['start', '--flow', 'daily', '--plan', 'p1']).status, 2, '--plan only with the plan flow');
+  assert.ok(!fs.existsSync(runFile(repo)), 'nothing written on usage errors');
+  const r = run(repo, ['start', '--flow', 'plan', '--plan', 'p1']);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const obj = readRunFile(repo);
+  assert.strictEqual(obj.plan, 'p1');
+  assert.deepStrictEqual(validateRun(obj), []);
+  assert.strictEqual(run(repo, ['status']).out.run.plan, 'p1');
+});
+
+test('validateRun: plan is optional and must be a slug; a run.json from before stays valid', () => {
+  const base = { v: 1, flow: 'plan', started: '2026-09-30T10:00:00.000Z', expires: '2026-09-30T12:00:00.000Z' };
+  assert.deepStrictEqual(validateRun(base), []);
+  assert.deepStrictEqual(validateRun({ ...base, plan: 'p-1' }), []);
+  assert.ok(validateRun({ ...base, plan: 'A b' }).length > 0);
+  assert.ok(validateRun({ ...base, plan: 7 }).length > 0);
 });

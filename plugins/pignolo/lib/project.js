@@ -21,7 +21,7 @@ const isIso = (v) => typeof v === 'string' && !Number.isNaN(Date.parse(v));
 const isStr = (v) => typeof v === 'string' && v !== '';
 const isStrList = (v) => Array.isArray(v) && v.every((x) => typeof x === 'string');
 
-// Run v1 (§6): { v: 1, flow, started, expires, task?: { id, worktree (absoluta), base,
+// Run v1 (§6): { v: 1, flow, started, expires, plan? (slug del plan, flujo plan), task?: { id, worktree (absoluta), base,
 // testRef?, files[], agents[], testAuthorization? } }. Devuelve los errores (vacío = válido).
 function validateRun(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return ['run.json no es un objeto'];
@@ -30,6 +30,7 @@ function validateRun(obj) {
   if (!FLOWS.includes(obj.flow)) errs.push(`flow debe ser uno de ${FLOWS.join(', ')}`);
   if (!isIso(obj.started)) errs.push('started debe ser una fecha ISO');
   if (!isIso(obj.expires)) errs.push('expires debe ser una fecha ISO');
+  if (obj.plan !== undefined && !(typeof obj.plan === 'string' && /^[a-z0-9][a-z0-9-]{0,63}$/.test(obj.plan))) errs.push('plan debe ser un slug (minúsculas, dígitos y guiones)');
   if (obj.task !== undefined) {
     const t = obj.task;
     if (!t || typeof t !== 'object' || Array.isArray(t)) errs.push('task debe ser un objeto');

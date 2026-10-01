@@ -199,3 +199,32 @@ test('sin bloque Files un símbolo inventado sigue marcándose', () => {
   const res = checkPlan({ planText: plan('Implementa `nuevoFn({ a })` en `lib/a.js`.'), root: makeRoot(BASE) });
   assert.strictEqual(refOf(res, 'nuevoFn({ a })').ok, false);
 });
+
+const { isCardPlan } = require('../plugins/pignolo/lib/plan-check');
+
+test('isCardPlan: tarjeta de 3 líneas sí; prosa con bloques de código no; Task sin Files ni Interfaces no', () => {
+  assert.strictEqual(isCardPlan('### Task 1: x\n\n**Files:**\n- Create: `lib/x.js`\n'), true);
+  assert.strictEqual(isCardPlan('### Task 1: x\n**Interfaces:**\n- Produce: x()\n'), true);
+  assert.strictEqual(isCardPlan('### Task 1: x\n\nHacé esto.\n\n```js\nconst a = 1;\n```\n'), false);
+  assert.strictEqual(isCardPlan('# Plan\n\nSolo prosa con `lib/a.js` y **Files:** suelto.\n'), false);
+  const far = `### Task 1: x\n${'texto\n'.repeat(70)}**Files:**\n- Create: a\n`;
+  assert.strictEqual(isCardPlan(far), false, 'Files más allá de 60 líneas no cuenta');
+});
+
+test('CLI --require-cards: prosa sale con 2 y el aviso; una tarjeta sigue su curso', () => {
+  const root = makeRoot(BASE);
+  const dir = makeTempDir('plan-check-plans-');
+  fs.writeFileSync(path.join(dir, 'prosa.md'), plan('Toca `lib/a.js`.'));
+  fs.writeFileSync(path.join(dir, 'card.md'), '### Task T1: a\n\n**Files:**\n- Modify: `lib/a.js`\n');
+  const r = spawnSync(process.execPath, [CLI, '--plan', path.join(dir, 'prosa.md'), '--root', root, '--require-cards'], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /el plan no está en tarjetas \(Files\/Interfaces\): plan-check no aplica/);
+  const ok = spawnSync(process.execPath, [CLI, '--plan', path.join(dir, 'card.md'), '--root', root, '--require-cards'], { encoding: 'utf8' });
+  assert.strictEqual(ok.status, 0, ok.stderr);
+});
+
+test('guarda de regresión: Create y Produce no se marcan como inexistentes', () => {
+  const text = '### Task T1: a\n\n**Files:**\n- Create: `lib/x.js`\n\n**Interfaces:**\n- Produce: `x()`\n';
+  const res = checkPlan({ planText: text, root: makeRoot(BASE) });
+  assert.deepStrictEqual(res.refs.filter((r) => !r.ok), []);
+});
