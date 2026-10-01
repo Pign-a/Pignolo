@@ -89,6 +89,17 @@ test('holdout en preparación: el implementer no lo lee (Read, Glob, Grep, Bash)
   // Buscar en el repo (un ancestro de la preparación) sigue permitido: no es el almacén.
   assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: s.main }, IMPL).exit, 0);
   assert.strictEqual(read(s, s.wt, 'Read', { file_path: path.join(s.main, 'src', 'a.js') }, IMPL).exit, 0);
+  // Hallazgo final 3 (medido con el Grep real): desde .pignolo o .pignolo/tmp, Grep devuelve el contenido de la
+  // preparación (la base ya está dentro del .gitignore). Se niega la base, el cwd y el prefijo del glob.
+  const tmp = path.join(s.main, '.pignolo', 'tmp');
+  assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: tmp }, IMPL).exit, 2);
+  assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: path.join(s.main, '.pignolo') }, IMPL).exit, 2);
+  assert.strictEqual(read(s, tmp, 'Grep', { pattern: 'x' }, IMPL).exit, 2);
+  assert.strictEqual(read(s, s.main, 'Grep', { pattern: 'x', glob: '.pignolo/tmp/**' }, IMPL).exit, 2);
+  assert.strictEqual(read(s, s.wt, 'Glob', { pattern: '**/*.js', path: tmp }, IMPL).exit, 2);
+  assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: tmp }, TW).exit, 0);
+  // El resto de .pignolo (worktrees) no contiene la preparación: sigue permitido.
+  assert.strictEqual(read(s, s.wt, 'Grep', { pattern: 'x', path: path.join(s.main, '.pignolo', 'worktrees') }, IMPL).exit, 0);
 });
 
 test('holdout en preparación: la shell no lo alcanza por ruta relativa ni por la forma Git Bash; Glob desde un ancestro es el límite conocido', () => {

@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { makeRepo, git, PLUGIN_ROOT } = require('./helpers');
+const { makeRepo, makeTempDir, git, PLUGIN_ROOT } = require('./helpers');
 
 const SCRIPTS = path.join(PLUGIN_ROOT, 'scripts');
 // Sin NODE_TEST_CONTEXT: si no, el `node --test` hijo le reporta a esta suite y sale 0.
@@ -100,4 +100,33 @@ test('daily paso 12: con un test test-first rojo commiteado el sabotaje da exit 
   assert.strictEqual(late.status, 0, late.stderr);
   assert.deepStrictEqual([late.json.red, late.json.greenBefore], [true, true]);
   clean(s);
+});
+
+// Hallazgo final 1: el exit 2 que no es un veredicto no puede leerse como "parche rechazado" (en review
+// terminaba en --no-red). Solo los rechazos del parche llevan `refused: "patch"`.
+test('exit 2 sin veredicto: el comando que ensucia el árbol no lleva refused:patch y los rechazos del parche sí', () => {
+  const main = makeRepo();
+  put(main, '.pignolo/project.md', '---\ntype: code-tested\ngates:\n  on-done: node gen.js\ntest-paths:\n  - tests/\n---\n');
+  put(main, 'gen.js', "require('node:fs').writeFileSync('gen.txt', 'x');\n");
+  put(main, 'src/pages.js', PAGES);
+  git(['add', '-A'], main);
+  git(['commit', '-q', '-m', 'C0'], main);
+  const out = makeTempDir('pignolo-patch-');
+  const good = path.join(out, 'p.patch');
+  const badPatch = path.join(out, 'bad.patch');
+  fs.writeFileSync(good, BREAK);
+  const r = script('sabotage.js', ['--patch', good, '--gate', 'on-done', '--cwd', main], main);
+  assert.strictEqual(r.status, 2);
+  assert.strictEqual(r.json.greenBefore, true);
+  assert.strictEqual(r.json.refused, undefined);
+  // El árbol quedó sucio: el siguiente sabotaje sale 2 por árbol sucio, tampoco es un rechazo del parche.
+  const again = script('sabotage.js', ['--patch', good, '--gate', 'on-done', '--cwd', main], main);
+  assert.strictEqual(again.status, 2);
+  assert.strictEqual(again.json.refused, undefined);
+  // Un parche que no aplica sí es un rechazo del parche.
+  fs.unlinkSync(path.join(main, 'gen.txt'));
+  fs.writeFileSync(badPatch, BREAK.replace('start + size);', 'nada de esto existe);'));
+  const bad = script('sabotage.js', ['--patch', badPatch, '--gate', 'on-done', '--cwd', main], main);
+  assert.strictEqual(bad.status, 2);
+  assert.strictEqual(bad.json.refused, 'patch');
 });

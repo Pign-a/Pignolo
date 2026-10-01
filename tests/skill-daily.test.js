@@ -91,7 +91,14 @@ test('daily: lectura del exit de sabotage.js (no-veredictos, plazo en Bash, recu
   // F3: timedOut y greenBefore:false no son veredicto y nunca se le achacan al parche.
   assert.match(text, /- exit 1 with `timedOut: true`, or exit 2 with `greenBefore: false`[^\n]*not a verdict and never the patch's fault[^\n]*`--timeout-min <minutes the suite needs>`/);
   assert.match(text, /- exit 1 otherwise: the test stayed green with the break/);
-  assert.match(text, /- exit 2 with the patch refused[^\n]*fix the patch once/);
+  assert.match(text, /- exit 2 with `refused: patch`[^\n]*fix the patch once/);
+  // Hallazgo final 1: el exit 2 sin `refused: patch` ni `greenBefore: false` no es veredicto: se muestra y se pregunta.
+  assert.match(text, /- exit 2 without `refused: patch` and without `greenBefore: false`[^\n]*not a verdict[^\n]*ask the human[^\n]*never rewrite the patch/);
+  // Hallazgo final 4: newFiles, --recover con exit 2, --cwd en el task del test-writer y el brief del rewrite.
+  assert.match(text, /non-empty `newFiles`[^\n]*show them to the human and ask/);
+  assert.match(text, /--recover --cwd "<wt>"` before anything else; if that exits 2[^\n]*wait and run it again/);
+  assert.match(text, /--agent pignolo:test-writer --cwd "<main>"`, renew first/);
+  assert.match(text, /you wrote this test in this task; rewrite it/);
   assert.match(text, /- exit 3: the script could not restore the code/);
   // F4: si Bash mató la corrida, recuperar antes de todo.
   assert.match(text, /sabotage\.js" --recover --cwd "<wt>"` before anything else/);

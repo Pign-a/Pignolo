@@ -64,7 +64,7 @@ async function main() {
 main().then((code) => { process.exitCode = code; }, (e) => {
   const exit = typeof e.exit === 'number' ? e.exit : 2;
   const out = { error: e.message };
-  for (const k of ['greenBefore', 'commandExit', 'notRestored', 'newFiles', 'logTail']) if (e[k] !== undefined) out[k] = e[k];
+  for (const k of ['refused', 'greenBefore', 'commandExit', 'notRestored', 'newFiles', 'logTail']) if (e[k] !== undefined) out[k] = e[k];
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
   if (e.logTail) process.stderr.write(`${e.logTail}\n`);
   const strong = exit === 3 ? '⚠ NO SE PUDO RESTAURAR: ' : '';

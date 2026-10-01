@@ -31,6 +31,10 @@ test('test-writer: sin Bash (D-4-1), test-card, Protects en las primeras 20 lín
   assert.match(s, /as a behavior of the code under test/);
   assert.match(s, /`<main>\/\.pignolo\/tmp\/holdout\/<plan>\/`, in the main checkout: never in the task worktree/);
   assert.match(s, /skip, only, todo, retries/);
+  // Hallazgo final 5: "no toques tests existentes" chocaba con el rewrite de un test de esta misma tarea.
+  assert.match(s, /Do not touch tests that existed at the task base/);
+  assert.match(s, /you wrote the test in this task and asks you to rewrite it/);
+  assert.doesNotMatch(s, /Do not touch existing tests/);
 });
 
 test('review-testability: la rotura va como diff unificado en repro para confirmarla con sabotage.js; Protects y characterization', () => {

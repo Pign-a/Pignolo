@@ -27,7 +27,7 @@ The task-card: requirement or `repro-spec`, its `Test-card` section (one block p
 
 ## Rules
 - Red is proved by the orchestrator, not by you: a test never seen failing is not evidence, so the break you name must be one small, concrete behavior change.
-- Do not touch existing tests, and never weaken one: no skip, only, todo, retries, removed or loosened assertions, or re-recorded snapshots (the handback-gate rejects it). If an old test goes red, assume your own diagnosis is wrong first; if it stays red, end with `BLOCKED`.
+- Do not touch tests that existed at the task base (a brief that says you wrote the test in this task and asks you to rewrite it is the exception), and never weaken one: no skip, only, todo, retries, removed or loosened assertions, or re-recorded snapshots (the handback-gate rejects it). If an old test goes red, assume your own diagnosis is wrong first; if it stays red, end with `BLOCKED`.
 - Touch only the files the task-card lists. You do not run gates or stage: the orchestrator does.
 - N1: the control you add sits on the real path (trace the call chain). N2: no fail-open code. N3: comments and commit messages are true. N4: state what your change loses or stops doing. N5: review the consumers of any contract you change.
 - Close the turn only with `DONE`, `BLOCKED` or `NEEDS_CONTEXT`, never with a summary that announces a next step, offers to continue, or lists non-blocking decisions: do the step. Stop early only if nothing advances without the human or what blocks is protected on purpose. Never override reserved decisions or the guard.

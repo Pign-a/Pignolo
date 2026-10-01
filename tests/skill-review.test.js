@@ -147,5 +147,14 @@ test('review: testability recibe el comando y las test-cards; el decorativo se c
   // F3: timedOut y greenBefore:false no son veredicto y nunca van a --no-red.
   assert.match(text, /exit 1 with `timedOut: true`, or exit 2 with `greenBefore: false`, is not a verdict[^\n]*never map it to `--no-red`/);
   assert.match(text, /A decorative finding never goes to the repro test-writer/);
+  // Hallazgo final 1: el exit 2 que no es veredicto no termina en --no-red.
+  assert.match(text, /exit 2 without `refused: patch` and without `greenBefore: false`[^\n]*not a verdict either[^\n]*never `--no-red`/);
+  assert.match(text, /exit 2 with `refused: patch` → fix the patch once, then `--no-red`/);
+  // Hallazgo final 7: solo un hallazgo todavía abierto tras los refutadores se sabotea.
+  assert.match(text, /A `testability` finding still `open` after the refuters/);
+  // Hallazgo final 2: el decorativo confirmado se arregla con test-authorization y se da por arreglado con sabotage.js en <SHA2>.
+  const fix = text.slice(text.indexOf('9. **Fixer round**'));
+  assert.match(fix, /Findings confirmed by sabotage[^\n]*`test-authorization`[^\n]*without `--test-ref`/);
+  assert.match(fix, /fixed only when `sabotage\.js` with the same patch on `<SHA2>` exits 0/);
   assert.doesNotMatch(text, /holdout\.js/);
 });

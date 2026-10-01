@@ -106,6 +106,10 @@ exports.run = (input, ctx = {}) => {
   const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
   const staging = input.agent_type === 'pignolo:test-writer' ? null : resolveClean(path.join(state.main, '.pignolo', 'tmp', 'holdout'), cwd, home);
   const staged = (p) => staging !== null && isWithin(p, staging);
+  // Glob/Grep desde <main>/.pignolo o una carpeta suya que contiene la preparación (<main>/.pignolo/tmp):
+  // Grep ahí devuelve el contenido (no respeta el .gitignore cuando la base ya está dentro de él).
+  const pignoloDir = staging === null ? null : resolveClean(path.join(state.main, '.pignolo'), cwd, home);
+  const stagedAbove = (p) => staging !== null && isWithin(p, pignoloDir) && isWithin(staging, p);
   const ti = input.tool_input || {};
   const tool = String(input.tool_name || '');
 
@@ -115,7 +119,8 @@ exports.run = (input, ctx = {}) => {
     const base = typeof ti.path === 'string' && ti.path ? at(ti.path) : cleanPath(cwd);
     const pat = tool === 'Glob' ? ti.pattern : ti.glob;
     const prefix = typeof pat === 'string' && pat !== '' ? at(staticPrefix(pat), base) : null;
-    denied = insideOrAbove(base) || staged(base) || (prefix !== null && (insideOrAbove(prefix) || staged(prefix)));
+    denied = insideOrAbove(base) || staged(base) || stagedAbove(base)
+      || (prefix !== null && (insideOrAbove(prefix) || staged(prefix) || stagedAbove(prefix)));
   } else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string') {
     denied = shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store })
       || (staging !== null && stagingDenied(ti.command, { cwd, home, staging }));
