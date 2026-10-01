@@ -456,7 +456,7 @@ effort: medium
 | C-06 falsa (nuevo) | — | `primaryHue` con `Math.round`; `parseColor(...).rgba` | T4 |
 | C-08 verdadera | — | Frontmatter en línea vale; `parseYaml(...).value` | Task 0, T1 |
 
-## Cambios de spec que necesita el plan (para el autor; el plan no edita el spec)
+## Cambios de spec que necesita el plan (APROBADOS por el autor el 2026-10-01; se editan en el spec al cerrar el hito)
 
 1. **§13 y §13.1:** publicar el lienzo son **dos llamadas** a `Artifact` (crear desde `type_url`; publicar `files` a la `url`), no una; y decir cómo se detecta el tipo "Design" (`Artifact` `list` con `scope: "types"`). Hoy §13 dice "se detecta al inicio" sin mecanismo.
 2. **§8 y §12:** la confirmación de `improve` y la verificación de `new` corren en `<run>/after/` (R-13); el "antes" del run no se reescribe. Hoy §8 dice "cada versión queda en el run" sin fijar dónde va la segunda lectura, y con el orden literal del spec `report-check` retira todo (`stale`).
