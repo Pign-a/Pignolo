@@ -53,3 +53,10 @@ test('no stray agents', () => {
   const files = fs.existsSync(AGENTS_DIR) ? fs.readdirSync(AGENTS_DIR).filter((f) => f.endsWith('.md')) : [];
   for (const f of files) assert.ok(ROLES[f.slice(0, -3)], `agente fuera de ROLES: ${f}`);
 });
+
+test('plan-auditor has Write (D-5-1), in roles.js and in its frontmatter', () => {
+  const want = ['Read', 'Grep', 'Glob', 'Bash', 'Write'].sort();
+  assert.deepStrictEqual([...ROLES['plan-auditor'].tools].sort(), want);
+  const fm = parseFrontmatter(fs.readFileSync(path.join(AGENTS_DIR, 'plan-auditor.md'), 'utf8')).fm;
+  assert.deepStrictEqual(fm.tools.split(',').map((t) => t.trim()).sort(), want);
+});

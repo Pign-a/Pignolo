@@ -25,7 +25,7 @@ const ROLES = Object.freeze({
   explorer: role(RO, 'low', 'sonnet', 'sonnet', 'sonnet', 'reader'),
   researcher: role(['WebSearch', 'WebFetch'], 'medium', 'opus', 'opus', 'sonnet', 'researcher', { omitClaudeMd: true }),
   'spec-reviewer': role(RO, 'high', 'opus', 'opus', 'opus', 'reviewer'),
-  'plan-auditor': role(ROB, 'high', 'opus', 'opus', 'opus', 'reviewer'),
+  'plan-auditor': role([...ROB, 'Write'], 'high', 'opus', 'opus', 'opus', 'reviewer'),
   'test-writer': role([...RO, 'Edit', 'Write'], 'medium', 'opus', 'sonnet', 'sonnet', 'writer'),
   implementer: role([...RO, 'Edit', 'Write', 'Bash'], 'medium', 'opus', 'sonnet', 'sonnet', 'writer'),
   'review-risk': role(RO, 'high', 'opus', 'opus', 'sonnet', 'reviewer'),
