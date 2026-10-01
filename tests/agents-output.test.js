@@ -77,7 +77,8 @@ test('spec-reviewer: nombra los 8 encabezados de SECTIONS, en orden', () => {
   }
   assert.match(s, /Added without being asked: exactly the bullet `- none`, or one bullet per item as `- A1: \.\.\.`/);
   assert.match(s, /Exactly one quoted string per bullet/);
-  assert.match(s, /ends with the quote from the request it comes from/);
+  assert.match(s, /ends with the quote it comes from, in double quotes, copied literally/);
+  assert.match(s, /from the request or from the literal quote of a recorded decision/);
 });
 
 test('spec-reviewer: el ejemplo de salida termina en una palabra de veredicto sola', () => {

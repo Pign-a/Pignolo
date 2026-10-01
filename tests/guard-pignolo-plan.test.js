@@ -15,7 +15,7 @@ const denied = (r, label) => { assert.equal(r.exit, 2, `${label}: ${r.stderr}`);
 const passes = (r, label) => assert.equal(r.exit, 0, `${label}: ${r.stderr}`);
 
 test('a subagent cannot run plan.js, plan-audit.js or approved.js; the main thread can', () => {
-  for (const s of ['plan.js status --plan p', 'plan-audit.js begin-review --plan p', 'approved.js save --flow f']) {
+  for (const s of ['plan.js status --plan p', 'plan.js decision add --plan p --id D-1', 'plan-audit.js begin-review --plan p', 'approved.js save --flow f']) {
     denied(call(`node ${P}/scripts/${s}`), s);
     passes(call(`node ${P}/scripts/${s}`, {}), `main ${s}`);
   }
@@ -111,4 +111,12 @@ test('reading the state scripts is never denied, with or without the extension',
   passes(call(`node --check ${P}/scripts/state-index.js`), 'node --check');
   passes(call(`node -c ${P}/scripts/close-session.js`), 'node -c');
   for (const c of [`Get-Content ${P}/scripts/close-session`, `Select-String -Pattern x -Path ${P}/scripts/state-index.js`]) passes(call(c, SUB, 'PowerShell'), c);
+});
+
+// Protects: spec §8.3 (leer .pignolo/state/decisions/ sigue permitido a un subagente: el spec-reviewer lo necesita) ·
+// Breaks if: la guardia niega `cat`/`grep`/`ls` de las decisiones.
+// Límite declarado (no se testea como bloqueo): una escritura por redirección o `cp` a .pignolo/state/ desde Bash
+// no la cubre ninguna regla; la cubre la revisión del diff y la aprobación humana de la tarjeta (spec §4.5, §8.3).
+test('a subagent can read the recorded decisions', () => {
+  for (const c of ['cat .pignolo/state/decisions/2026-10-01-p1-d-1.md', 'grep -r quote .pignolo/state/decisions/', 'ls .pignolo/state/decisions']) passes(call(c), c);
 });

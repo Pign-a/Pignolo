@@ -8,8 +8,8 @@ human's language:
   scope-card, test-authorization, needs-review-batch, judge-conflict, live-check-input, quota
 A question without a category is a failure (spec §0 c).
 
-Options: complete, in the order they were found, never summarized or reordered. Each one says
-what happens, its cost and whether it can be undone.
+Options: complete, never summarized. The recommended option goes first and is marked; the others keep
+the order they were found in. Each one says what happens, its cost and whether it can be undone.
 -->
 **<"In plain words" heading>**
 <1 to 3 short lines, no jargon, no paths, no counts: what is going on and what the human has to decide.>
@@ -17,10 +17,10 @@ what happens, its cost and whether it can be undone.
 **<"Question" heading>** · category: `<category>` (<category name in the human's language>)
 <the question, in one line>
 
-1. <option: what happens · cost · reversible or not>
+1. <the recommended option, with the <recommended mark>: what happens · cost · reversible or not>
 2. <option: what happens · cost · reversible or not>
 
-<"Recommendation" label>: <option number>, because <evidence in one line>.
+<"Recommendation" label>: option 1, because <evidence in one line>.
 
 **<"Technical detail" heading>**
 - <"Context" label>: <at most 2 lines>.

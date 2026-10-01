@@ -145,7 +145,7 @@ test('recordDecision writes the decision file; approved-verify finds the sha the
   const d = ap.recordDecision({ projectRoot: root, path: r.path, manifestSha256: r.manifestSha256, quote: 'dale, esa pantalla', date: '2026-09-30' });
   assert.strictEqual(d.id, '2026-09-30-checkout');
   const text = fs.readFileSync(d.file, 'utf8');
-  assert.match(text, /^---\nid: 2026-09-30-checkout\nstatus: accepted\nsource: human\nevidence: .*design\/approved\/checkout.*[0-9a-f]{64}.*\ncreated: 2026-09-30\n---\n/);
+  assert.match(text, /^---\nid: 2026-09-30-checkout\nstatus: decided\nsource: human\nevidence: .*design\/approved\/checkout.*[0-9a-f]{64}.*\ncreated: 2026-09-30\n---\n/);
   assert.match(text, /dale, esa pantalla/);
   assert.ok(d.file.includes(path.join('.pignolo', 'state', 'decisions')));
   assert.strictEqual(ap.recordDecision({ projectRoot: root, path: r.path, manifestSha256: r.manifestSha256, quote: '', date: '2026-09-30' }).error !== undefined, true);

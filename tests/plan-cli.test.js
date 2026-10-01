@@ -145,3 +145,28 @@ test('claims set --none-reason registers the reason and lets the plan advance', 
   assert.strictEqual(plan(repo, ['claims', 'set', '--plan', 'p1', '--none-reason', 'sin supuestos externos']).status, 0);
   assert.strictEqual(plan(repo, ['advance', '--plan', 'p1', '--to', 'spec-review']).status, 0);
 });
+
+test('scope-card save accepts an example that quotes a recorded author decision, and rejects it without the decision', () => {
+  const repo = makeRepo();
+  plan(repo, ['new', '--plan', 'p1', '--request-file', file(REQUEST)]);
+  const card = CARD('un solo lienzo por proyecto');
+  assert.strictEqual(plan(repo, ['scope-card', 'save', '--plan', 'p1', '--file', file(card)]).status, 1);
+  const d = plan(repo, ['decision', 'add', '--plan', 'p1', '--id', 'D-1', '--text-file', file('Un lienzo por proyecto'), '--quote-file', file('sí, un solo lienzo por proyecto y que crezca')]);
+  assert.strictEqual(d.status, 0, d.stderr);
+  const after = plan(repo, ['scope-card', 'save', '--plan', 'p1', '--file', file(card)]);
+  assert.strictEqual(after.status, 0, JSON.stringify(after));
+  assert.strictEqual(plan(repo, ['scope-card', 'approve', '--plan', 'p1', '--quote-file', file('dale')]).status, 0);
+});
+
+// Protects: spec §4.5 (una decisión de otro plan nunca respalda la tarjeta de éste) · Breaks if:
+// plan-state arma las fuentes con las decisiones de todos los planes (listDecisions sin `plan`).
+test('scope-card save rejects a quote that only a decision of another plan has', () => {
+  const repo = makeRepo();
+  plan(repo, ['new', '--plan', 'p1', '--request-file', file(REQUEST)]);
+  plan(repo, ['new', '--plan', 'p2', '--request-file', file(REQUEST)]);
+  const d = plan(repo, ['decision', 'add', '--plan', 'p2', '--id', 'D-1', '--text-file', file('Un lienzo'), '--quote-file', file('sí, un solo lienzo por proyecto y que crezca')]);
+  assert.strictEqual(d.status, 0, d.stderr);
+  const card = file(CARD('un solo lienzo por proyecto'));
+  assert.strictEqual(plan(repo, ['scope-card', 'save', '--plan', 'p1', '--file', card]).status, 1);
+  assert.strictEqual(plan(repo, ['scope-card', 'save', '--plan', 'p2', '--file', card]).status, 0);
+});
