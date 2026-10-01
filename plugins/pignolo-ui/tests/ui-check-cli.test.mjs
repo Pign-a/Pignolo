@@ -33,7 +33,7 @@ test('usage errors exit 2 with a Spanish message and no stack', async (t) => {
     ['--run outside .pignolo-ui', ['--project', repo, '--run', path.join(repo, 'out'), '--files', 'src/a.css'], /--run debe estar dentro de \.pignolo-ui/],
     ['unknown option', ['--project', repo, '--run', run, '--files', 'src/a.css', '--fast'], /opción desconocida --fast/],
     ['missing file', ['--project', repo, '--run', run, '--files', 'src/missing.css'], /no existe/],
-    ['no --files, --dom or --design', ['--project', repo, '--run', run], /falta --files, --dom o --design/],
+    ['no --files, --dom, --design or --measures', ['--project', repo, '--run', run], /falta --files, --dom, --design o --measures/],
     ['--design outside the project', ['--project', repo, '--run', run, '--design', outsideDesign], /--design está fuera del proyecto/],
   ];
   for (const [name, args, message] of CASES) {
