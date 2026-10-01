@@ -7,8 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { projectState, readRun } = require('./project');
 
-const GIT_RE = /\bgit\b/;
-const VERB_RE = /\b(merge|push|pull|rebase|fetch|branch|update-ref|reset|cherry-pick)\b/i;
+const { GIT_RE, VERB_RE } = require('./hook-fastpath'); // el prefiltro es una sola constante (Task 12)
 const MAIN = /^(main|master)$/;
 const PLAN_BRANCH = /(?:^|[^A-Za-z0-9_-])(?:(?:int|queue)\/([a-z0-9][a-z0-9-]{0,63})(?![a-z0-9-])|task\/(?!daily\/)([a-z0-9][a-z0-9-]{0,63})\/)/g;
 const BRANCH_TIMEOUT_MS = 1000;

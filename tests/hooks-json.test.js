@@ -55,3 +55,23 @@ test('private-reads is registered on PreToolUse for Read, Grep, Glob, Bash and P
   const p = handlersFor('PreToolUse').filter((h) => h.args[1] === 'private-reads');
   assert.deepStrictEqual(p.map((h) => h.matcher), ['Read|Grep|Glob|Bash|PowerShell']);
 });
+
+// Hito 5a (Task 12): lista esperada explícita de los hooks nuevos.
+test('scope-gate, plan-audit-gate and present-gate are registered exactly as expected', () => {
+  const { VERIFY_AGENT } = require(path.join(PLUGIN_ROOT, 'lib', 'plan-agents.js'));
+  const pick = (event, name) => handlersFor(event).filter((h) => h.args[1] === name).map((h) => h.matcher);
+  assert.deepStrictEqual(pick('PreToolUse', 'scope-gate'), ['Bash|PowerShell']);
+  assert.deepStrictEqual(pick('PreToolUse', 'plan-audit-gate'), ['Bash|PowerShell']);
+  assert.deepStrictEqual(pick('PostToolUse', 'plan-audit-gate'), ['Bash|PowerShell']);
+  assert.deepStrictEqual(pick('PostToolUseFailure', 'plan-audit-gate'), ['Bash|PowerShell']);
+  assert.deepStrictEqual(pick('SubagentStop', 'plan-audit-gate'), [`^${VERIFY_AGENT}$`]);
+  assert.deepStrictEqual(pick('PreToolUse', 'present-gate'), ['Artifact']);
+  for (const event of Object.keys(hooks)) {
+    for (const h of handlersFor(event).filter((x) => ['scope-gate', 'plan-audit-gate', 'present-gate'].includes(x.args[1]))) {
+      assert.ok(h.timeout >= 30 && h.timeout <= 60, h.args[1]);
+    }
+  }
+  // Cada hook nuevo, en su propia entrada: un deny de scope-gate gana a un ask de la guardia.
+  const own = hooks.PreToolUse.find((m) => m.hooks.some((h) => h.args[1] === 'scope-gate'));
+  assert.strictEqual(own.hooks.length, 1);
+});
