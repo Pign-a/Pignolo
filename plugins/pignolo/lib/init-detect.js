@@ -84,7 +84,7 @@ function detectNode({ files, root, fs, d }) {
   const mutation = deps['@stryker-mutator/core'] !== undefined ? 'stryker' : null;
   return {
     stack: 'node', pm, manifest: 'package.json', realTest, hasLint: !!scripts.lint, hasTypecheck: !!scripts.typecheck, hasBuild: !!scripts.build,
-    cmd: run, depsInstall: lock ? installs[pm] : null, runners, mutationTool: mutation, packageTestIsReal: realTest,
+    testScript, cmd: run, depsInstall: lock ? installs[pm] : null, runners, mutationTool: mutation, packageTestIsReal: realTest,
   };
 }
 
@@ -177,7 +177,7 @@ function detectProject({ root, run, fs = nodeFs } = {}) {
   const d = {
     root, stacks: [], packageManager: null, type: null, gates: {}, testPaths: [], protectedTestConfig: [], highRiskPaths: [], contracts: [],
     serialPaths: [], costPaths: [], visiblePaths: [], depsInstall: null, domainRules: [], runners: [], runnerExcludes: [], mutation: null,
-    seedPlan: { runner: null, flag: null, reason: 'pending-task-3' }, sources: {}, warnings: [],
+    testScript: null, seedPlan: { runner: null, flag: null, reason: 'pending-task-3' }, sources: {}, warnings: [],
   };
   let files = null;
   if (typeof run === 'function') {
@@ -292,7 +292,8 @@ function detectProject({ root, run, fs = nodeFs } = {}) {
   d.runnerExcludes = runnerExcludes(d.runners, files);
   const tool = infos.map((i) => i.mutationTool).find(Boolean) || null;
   d.mutation = mutationFor(tool, main, files);
-  d.seedPlan.runner = d.runners.find((r) => !['playwright', 'cypress', 'pytest-randomly'].includes(r)) || null;
+  d.testScript = main && main.stack === 'node' && main.realTest ? main.testScript : null;
+  d.seedPlan.runner =d.runners.find((r) => !['playwright', 'cypress', 'pytest-randomly'].includes(r)) || null;
   return d;
 }
 

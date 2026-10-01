@@ -84,6 +84,9 @@ function buildConfig(text) {
     const v = data[key];
     if (v !== undefined && v !== null && typeof v !== 'object') c[prop] = String(v);
   }
+  // {seed} solo lo expande la compuerta en sus comandos de nivel (D-8-3); la mutación recibe archivos, no semilla.
+  if (c.gates.mutation && c.gates.mutation.includes('{seed}')) c.warnings.push('gates.mutation: {seed} no se expande (la mutación recibe PIGNOLO_MUTATE_FILES, no una semilla)');
+  if (c.depsInstall && c.depsInstall.includes('{seed}')) c.warnings.push('deps-install: {seed} no se expande (solo en los comandos de compuerta)');
   for (const key of Object.keys(data)) if (!KNOWN.has(key)) c.warnings.push(`clave desconocida "${key}" (se ignora)`);
 
   for (const p of c.piiPatterns) {
