@@ -5,12 +5,14 @@
 //   run.mjs env [--claude-min <x.y.z>]
 //   run.mjs init --project <repo> --command new|improve|audit --slug <slug> [--now <ISO>] [--url <local URL> | --file <path>] [--files <a,b>]
 //   run.mjs config get|set --data <dir> --project <repo> [--key <k> --value <v>]
-//   run.mjs present --data <dir> --project <repo> --presentation auto|local --artifact yes|no --design-type yes|no
+//   run.mjs present --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> --kind option|direction --artifact yes|no --design-type yes|no [--run <run>]
+//   run.mjs publish-gate --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> [--run <run>]
+//   run.mjs no-publish --run <run>
 //   run.mjs norms --run <run> [--norms <norms.md>]
 //   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>] [--before <ui-check.json>]
 //   run.mjs leak-values --project <repo> --out <file> [--email <mail>]
 //   run.mjs git-state --project <repo> --out <file>
-//   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file>
+//   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local]
 //   run.mjs discard --run <run> --option <A|B|C> [--kind option|direction]
 //   run.mjs auditor-check --project <repo> --run <run>
 //   run.mjs menu --run <run> [--norms <file>] [--extra-symptoms-file <json>] [--words-file <txt>]
@@ -26,12 +28,12 @@ import { fileURLToPath } from 'node:url';
 import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { envReport } from '../lib/env-check.mjs';
 import { initRun } from '../lib/run-init.mjs';
-import { readConfig, writeConfig, ConfigError } from '../lib/project-config.mjs';
-import { decidePresentation } from '../lib/presentation.mjs';
+import { readConfig, readOptOut, writeConfig, ConfigError } from '../lib/project-config.mjs';
+import { decidePresentation, gateDecision, NOTICE } from '../lib/presentation.mjs';
 import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { loadSymptoms, mergeUserSymptoms, buildMenu, matchWords } from '../lib/symptoms.mjs';
-import { collectLeakValues } from '../lib/leak-values.mjs';
+import { collectLeakValues, collectLeakOrigins } from '../lib/leak-values.mjs';
 import { optionModel } from '../lib/option-model.mjs';
 import { gitState, checkOption } from '../lib/option-check.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
@@ -41,7 +43,9 @@ import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
 import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { isLink, linkProblem, runLinkProblem } from '../lib/link-guard.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
+import { writeLocalCopies, LocalCopyError } from '../lib/local-copy.mjs';
 
 class UsageError extends Error {}
 
@@ -170,19 +174,60 @@ const COMMANDS = {
     },
   },
 
-  present: {
-    spec: { value: ['data', 'project', 'presentation', 'artifact', 'design-type'] },
+  // The gate runs BEFORE any Artifact call (also before action: "list"): exit 0 allowed, exit 1 not.
+  // Anything but the literal "auto" (the text ${user_config.presentation} that Claude Code did not substitute
+  // included) counts as local: an unreadable setting never opens a publication (D-4c-15).
+  'publish-gate': {
+    spec: { value: ['data', 'project', 'presentation', 'run'] },
     run(opts, { cwd }) {
-      need(opts, 'data', 'presentation', 'artifact', 'design-type');
+      need(opts, 'data', 'project', 'presentation');
       const project = projectDir(cwd, opts);
-      if (!['auto', 'local'].includes(opts.presentation)) throw new UsageError('--presentation debe ser auto o local');
-      const { config } = readConfig({ data: path.resolve(cwd, opts.data), project });
-      const out = decidePresentation({
+      const { optOut, dataProblem } = readOptOut({ data: path.resolve(cwd, opts.data), project });
+      const runOptOut = opts.run !== undefined && fs.existsSync(path.join(runDirOf(cwd, project, opts), 'no-publish'));
+      const out = gateDecision({ presentation: opts.presentation, projectOptOut: optOut, runOptOut, dataUnresolved: dataProblem !== null });
+      return { out, code: out.allowed ? 0 : 1 };
+    },
+  },
+
+  'no-publish': {
+    spec: { value: ['run'] },
+    run(opts, { cwd }) {
+      const { project, run } = projectOfRun(cwd, opts);
+      if (!isInsideRunRoot(project, run) || !isDir(run)) throw new UsageError('--run no existe o está fuera de .pignolo-ui/');
+      // the run and the two folders above it: nothing is written through a link or a junction
+      const linked = runLinkProblem(run);
+      if (linked) throw new UsageError(`${path.relative(project, linked)} es un enlace: se rechaza`);
+      const file = path.join(run, 'no-publish');
+      if (isLink(file)) throw new UsageError('no-publish es un enlace: se rechaza');
+      const tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, 'no-publish\n');
+      fs.renameSync(tmp, file);
+      return { out: { out: file }, code: 0 };
+    },
+  },
+
+  present: {
+    spec: { value: ['data', 'project', 'presentation', 'kind', 'artifact', 'design-type', 'run'] },
+    run(opts, { cwd }) {
+      need(opts, 'data', 'project', 'presentation', 'kind', 'artifact', 'design-type');
+      const project = projectDir(cwd, opts);
+      const kind = kindOf(opts);
+      const unresolved = !['auto', 'local'].includes(opts.presentation);
+      const { optOut, dataProblem } = readOptOut({ data: path.resolve(cwd, opts.data), project });
+      const runOptOut = opts.run !== undefined && fs.existsSync(path.join(runDirOf(cwd, project, opts), 'no-publish'));
+      const decision = decidePresentation({
+        dataUnresolved: dataProblem !== null,
         presentation: opts.presentation,
+        kind,
         artifact: yesNo(opts.artifact, 'artifact'),
         designType: yesNo(opts['design-type'], 'design-type'),
-        canvasConsent: config.canvasConsent,
+        optOut,
       });
+      const reasons = runOptOut ? [...decision.reasons.filter((r) => r !== 'run-opt-out'), 'run-opt-out'] : decision.reasons;
+      const mode = runOptOut ? 'local' : decision.mode;
+      const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local' };
+      if (mode === 'canvas') out.notice = NOTICE;
+      if (unresolved) out.presentationUnresolved = true;
       return { out, code: 0 };
     },
   },
@@ -235,7 +280,10 @@ const COMMANDS = {
       const values = collectLeakValues({ project, email: opts.email });
       const out = path.resolve(cwd, opts.out);
       fs.writeFileSync(out, `${JSON.stringify(values)}\n`);
-      return { out: { out, count: values.length }, code: 0 };
+      // canvas-index plan reads this file (next to the values) to refuse when git did not run
+      const origins = collectLeakOrigins({ project, email: opts.email });
+      fs.writeFileSync(path.join(path.dirname(out), 'leak-origins.json'), `${JSON.stringify(origins)}\n`);
+      return { out: { out, count: values.length, origins }, code: 0 };
     },
   },
 
@@ -252,18 +300,20 @@ const COMMANDS = {
   },
 
   'options-check': {
-    spec: { value: ['project', 'run', 'option', 'kind', 'expected', 'git-before'] },
+    spec: { value: ['project', 'run', 'option', 'kind', 'expected', 'git-before', 'destination'] },
     async run(opts, { cwd }) {
       const project = projectDir(cwd, opts);
       const run = runDirOf(cwd, project, opts);
       const kind = kindOf(opts);
       const letter = optionLetter(opts);
       need(opts, 'expected', 'git-before');
+      const destination = opts.destination ?? 'local';
+      if (!['canvas', 'local'].includes(destination)) throw new UsageError('--destination debe ser canvas o local');
       const expected = list(opts.expected);
       let gitBefore;
       try { gitBefore = fs.readFileSync(path.resolve(cwd, opts['git-before']), 'utf8'); } catch (e) { throw new UsageError(`no se pudo leer --git-before (${e.code || e.message})`); }
       const dir = path.join(run, `${kind}-${letter}`);
-      const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`] });
+      const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`], kind, destination });
       const files = isDir(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.html')).map((f) => path.join(dir, f)) : [];
       let contradicted = [];
       if (files.length) {
@@ -271,7 +321,7 @@ const COMMANDS = {
         const checked = await runCheck({ project, files, design: designFile });
         contradicted = [...new Set(checked.entries.filter((e) => e.status === 'fail').map((e) => e.id))];
       }
-      return { out: { ok: result.ok, problems: result.problems, contradicted }, code: result.ok ? 0 : 1 };
+      return { out: { ok: result.ok, problems: result.problems, warnings: result.warnings, contradicted }, code: result.ok ? 0 : 1 };
     },
   },
 
@@ -416,20 +466,29 @@ const COMMANDS = {
       need(opts, 'run', 'platform', 'screens');
       const run = path.resolve(cwd, opts.run);
       if (!isDir(run)) throw new UsageError(`--run no existe: ${opts.run}`);
+      const linked = runLinkProblem(run);
+      if (linked) throw new UsageError(`${path.basename(linked)} es un enlace: se rechaza`);
       if (!['desktop', 'mobile', 'both'].includes(opts.platform)) throw new UsageError('--platform debe ser desktop, mobile o both');
       const kind = kindOf(opts);
       const screens = list(opts.screens);
       const prefix = `${kind}-`;
       const ids = fs.readdirSync(run, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && e.name.startsWith(prefix) && LETTER.test(e.name.slice(prefix.length)))
+        .filter((e) => (e.isDirectory() || e.isSymbolicLink()) && e.name.startsWith(prefix) && LETTER.test(e.name.slice(prefix.length)))
         .map((e) => e.name.slice(prefix.length)).sort();
       if (!ids.length) throw new UsageError(`no hay carpetas ${prefix}<letra> en el run`);
+      // the frames open copies without the Google Fonts <link> (A4C2-03): the backup asks for nothing
+      let copies;
+      try { copies = writeLocalCopies({ run, folders: ids.map((id) => `${prefix}${id}`) }); } catch (e) {
+        if (e instanceof LocalCopyError) return { out: { ok: false, error: e.message }, code: 1 };
+        throw e;
+      }
       const html = buildCompareHtml({ options: ids.map((id) => ({ id, screens })), kind, platform: opts.platform, title: 'Comparación de opciones' });
       const out = path.join(run, 'compare.html');
+      if (isLink(out)) throw new UsageError('compare.html es un enlace: se rechaza');
       fs.writeFileSync(out, html);
       let opened = false;
       if (!opts['no-open']) { openFile(out, {}); opened = true; }
-      return { out: { out, opened }, code: 0 };
+      return { out: { out, opened, fontsRemoved: copies.removed, line: `fuentes remotas quitadas: ${copies.removed}` }, code: 0 };
     },
   },
 };
@@ -447,8 +506,7 @@ async function configCommand(argv, { cwd }) {
   }
   need(opts, 'key', 'value');
   let value = opts.value;
-  if (opts.key === 'canvasConsent') value = opts.value === 'true' ? true : opts.value === 'false' ? false : opts.value;
-  else if (opts.key === 'routes') value = list(opts.value);
+  if (opts.key === 'routes') value = list(opts.value);
   const { repoId, file, config } = writeConfig({ data, project, key: opts.key, value });
   return { out: { repoId, file, config }, code: 0 };
 }

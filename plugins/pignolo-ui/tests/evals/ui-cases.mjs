@@ -188,12 +188,14 @@ const MOCKUP_BRIEF = [
   'Screens, in order: inicio.html (main), detalle.html.',
   'Content provided: the title "Mi cuenta"; everything else (balances, names, dates) is not provided.',
   'Axis assigned to this option: A, density (compact, dense lists).',
+  'destination: local (no remote resource of any kind, fonts included).',
   'Write only to the folder `out/option-A/`, which is empty. Never overwrite.',
 ].join('\n');
 const TILE_BRIEF = [
   'Brief confirmed by the user. Style direction for a small savings app (empty project).',
   'One file: inicio.html (the style tile).',
   'Axis assigned to this option: A, restraint (neutral surfaces, one accent).',
+  'destination: local (no remote resource of any kind, fonts included).',
   'Write only to the folder `out/direction-A/`, which is empty. Never overwrite.',
 ].join('\n');
 const IMPROVE_BRIEF = [
@@ -202,6 +204,7 @@ const IMPROVE_BRIEF = [
   'Findings the user chose: hard-to-read helper text (COLOR-03), no visible keyboard focus (STATE-04).',
   'Text summary of the "before" capture: a white page, a title, a grey helper line under it, a teal button with no visible focus ring.',
   'Axis assigned to this option: B, structure.',
+  'destination: local (no remote resource of any kind, fonts included).',
   'Write only to the folder `out/option-B/`, which is empty. Never overwrite.',
 ].join('\n');
 
@@ -211,6 +214,12 @@ const fileGrader = (name, file, pattern, match) => ({ name, type: 'regex', targe
 export const DOCTYPE = '<!doctype html';
 export const CHARSET = String.raw`<meta\s[^>]*charset\s*=\s*["']?utf-8`;
 export const NO_SCRIPT = String.raw`<script\b|\son[a-z]+\s*=|javascript:`;
+// Form rules of the hito 4c (R-5) and the fonts rule (R-19): what a regex can see in a file. Well-formedness
+// itself (closed elements, quoted attributes) is checked by the options-check script, not by a regex.
+export const NO_BRACES = String.raw`\{\{`;
+export const NO_CONTROL_IN_LINK = String.raw`<a\b[^>]*>(?:(?!</a>)[\s\S])*<(?:button|input|select|textarea)\b`;
+export const NO_RESERVED_TAGS = String.raw`<(?:x-dc|helmet|dc-import|sc-[a-z0-9-]*)\b`;
+export const NO_FONT_HOSTS = String.raw`fonts\.(?:googleapis|gstatic)\.com`;
 export const NO_REMOTE = String.raw`<(?:img|script|link|source|iframe|video|audio|embed|object|input)\b[^>]*\b(?:src|href|srcset|poster|data)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|<base\b|url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|@import\s+(?:url\(\s*)?["']?\s*(?:[a-z][a-z0-9+.-]*:)?//`;
 
 function optionCases() {
@@ -223,6 +232,10 @@ function optionCases() {
         fileGrader(`charset-${s}`, f, CHARSET),
         fileGrader(`no-script-${s}`, f, NO_SCRIPT, 'not_contains'),
         fileGrader(`no-remote-${s}`, f, NO_REMOTE, 'not_contains'),
+        fileGrader(`no-braces-${s}`, f, NO_BRACES, 'not_contains'),
+        fileGrader(`no-control-in-link-${s}`, f, NO_CONTROL_IN_LINK, 'not_contains'),
+        fileGrader(`no-reserved-tags-${s}`, f, NO_RESERVED_TAGS, 'not_contains'),
+        fileGrader(`fonts-only-canvas-${s}`, f, NO_FONT_HOSTS, 'not_contains'),
         fileGrader(`sample-marker-${s}`, f, 'data-sample'),
         fileGrader(`sample-strip-${s}`, f, 'Datos de ejemplo'),
         fileGrader(`primary-${s}`, f, 'data-primary="true"'),
