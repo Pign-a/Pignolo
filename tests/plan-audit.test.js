@@ -3,6 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 const { PLUGIN_ROOT, makeTempDir } = require('./helpers');
 const pa = require(path.join(PLUGIN_ROOT, 'lib', 'plan-audit.js'));
 
@@ -44,73 +45,106 @@ test('parseVerification reports the claims without a valid entry', () => {
   assert.deepStrictEqual(none.missing, ['C1', 'C2', 'C3']);
 });
 
-test('mode: active inside the window, inactive after 30 min, broken file inactive', () => {
+test('mode: active inside the window, inactive after 30 min, broken file inactive; mode.json has no counters', () => {
   const main = makeTempDir('pignolo-audit-');
   const m = pa.beginMode({ main, plan: 'p1', mode: 'verify', claims: [claim('C1')], planSha256: 'abc', now: T0 });
   assert.strictEqual(m.mode, 'verify');
-  assert.strictEqual(m.experiments, 0);
-  assert.strictEqual(m.blocks, 0);
-  assert.strictEqual(m.incomplete, false);
-  const file = path.join(pa.auditDir(main, 'p1'), 'mode.json');
-  assert.ok(fs.existsSync(file));
+  const keys = Object.keys(JSON.parse(fs.readFileSync(path.join(pa.auditDir(main, 'p1'), 'mode.json'), 'utf8'))).sort();
+  assert.deepStrictEqual(keys, ['claims', 'expires', 'mode', 'plan', 'planSha256', 'started', 'v']);
   const act = pa.readMode({ main, now: T0 + 5 * 60000 });
   assert.strictEqual(act.active, true);
   assert.strictEqual(act.plan, 'p1');
+  assert.strictEqual(act.mode, 'verify');
+  assert.strictEqual(act.dir, pa.auditDir(main, 'p1'));
+  assert.strictEqual(act.planSha256, 'abc');
+  assert.deepStrictEqual([act.experiments, act.attempts, act.incomplete], [0, 0, false]);
   assert.deepStrictEqual(pa.readMode({ main, now: T0 + 31 * 60000 }), { active: false });
-  fs.writeFileSync(file, '{ roto');
+  fs.writeFileSync(path.join(pa.auditDir(main, 'p1'), 'mode.json'), '{ roto');
   assert.deepStrictEqual(pa.readMode({ main, now: T0 + 1000 }), { active: false });
   assert.deepStrictEqual(pa.readMode({ main: makeTempDir(), now: T0 }), { active: false });
 });
 
-test('countExperiment adds one call and logs the command; endMode is idempotent', () => {
+test('two mode folders: the live one wins; two live: the latest started; unreadable beside a live one', () => {
+  const main = makeTempDir('pignolo-audit-');
+  pa.beginMode({ main, plan: 'p2', mode: 'verify', claims: [], planSha256: 'x', now: T0 - 60 * 60000 });
+  pa.beginMode({ main, plan: 'p1', mode: 'verify', claims: [], planSha256: 'x', now: T0 });
+  assert.strictEqual(pa.readMode({ main, now: T0 + 1000 }).plan, 'p1');
+  pa.beginMode({ main, plan: 'p3', mode: 'review', claims: [], planSha256: 'x', now: T0 + 2000 });
+  assert.strictEqual(pa.readMode({ main, now: T0 + 3000 }).plan, 'p3');
+  fs.mkdirSync(pa.auditDir(main, 'p4'), { recursive: true });
+  fs.writeFileSync(path.join(pa.auditDir(main, 'p4'), 'mode.json'), 'roto');
+  assert.strictEqual(pa.readMode({ main, now: T0 + 3000 }).plan, 'p3');
+});
+
+test('counters are append-only logs: 5 concurrent processes count 5; recordStop returns 1, 2, 3', async () => {
   const main = makeTempDir('pignolo-audit-');
   pa.beginMode({ main, plan: 'p1', mode: 'verify', claims: [claim('C1'), claim('C2')], planSha256: 'abc', now: Date.now() });
-  pa.countExperiment({ main, command: 'node scratch/a.js' });
-  pa.countExperiment({ main, command: 'node scratch/b.js' });
-  const m = pa.readMode({ main, now: Date.now() });
-  assert.strictEqual(m.experiments, 2);
+  const script = path.join(makeTempDir('pignolo-audit-script-'), 'rec.js');
+  fs.writeFileSync(script, "const pa = require(process.argv[2]);\npa.recordExperiment({ main: process.argv[3], plan: 'p1', command: 'node scratch/' + process.argv[4] + '.js' });\n");
+  const lib = path.join(PLUGIN_ROOT, 'lib', 'plan-audit.js');
+  await Promise.all([1, 2, 3, 4, 5].map((i) => new Promise((resolve, reject) => {
+    const c = spawn(process.execPath, [script, lib, main, String(i)], { stdio: 'ignore' });
+    c.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`exit ${code}`))));
+  })));
+  assert.strictEqual(pa.readMode({ main, now: Date.now() }).experiments, 5);
   const log = fs.readFileSync(path.join(pa.auditDir(main, 'p1'), 'bash-calls.log'), 'utf8');
-  assert.match(log, /node scratch\/a\.js/);
-  assert.match(log, /node scratch\/b\.js/);
+  assert.strictEqual(log.trim().split('\n').length, 5);
+  assert.match(log, /node scratch\/3\.js/);
+  assert.deepStrictEqual([1, 2, 3].map(() => pa.recordStop({ main, plan: 'p1' })), [1, 2, 3]);
+  assert.strictEqual(pa.readMode({ main, now: Date.now() }).attempts, 3);
+  assert.strictEqual(pa.readMode({ main, now: Date.now() }).incomplete, false);
+  pa.markIncomplete({ main, plan: 'p1' });
+  assert.strictEqual(pa.readMode({ main, now: Date.now() }).incomplete, true);
+  const stored = JSON.parse(fs.readFileSync(path.join(pa.auditDir(main, 'p1'), 'mode.json'), 'utf8'));
+  assert.strictEqual('experiments' in stored, false, 'mode.json is not rewritten by the counters');
+});
+
+test('a multi-line command is logged on one line; endMode is idempotent', () => {
+  const main = makeTempDir('pignolo-audit-');
+  pa.beginMode({ main, plan: 'p1', mode: 'verify', claims: [claim('C1')], planSha256: 'abc', now: Date.now() });
+  pa.recordExperiment({ main, plan: 'p1', command: 'echo a\necho b' });
+  assert.strictEqual(pa.readMode({ main, now: Date.now() }).experiments, 1);
   pa.endMode({ main, plan: 'p1' });
   pa.endMode({ main, plan: 'p1' });
   assert.deepStrictEqual(pa.readMode({ main, now: Date.now() }), { active: false });
-  assert.strictEqual(pa.countExperiment({ main, command: 'x' }), null);
 });
 
-function verifyMode(over = {}) {
-  return { v: 1, plan: 'p1', mode: 'verify', experiments: 1, blocks: 0, incomplete: false, claims: [claim('C1'), claim('C2'), claim('C3')], scratch: '/m/scratch', ...over };
-}
+test('beginMode starts a fresh count', () => {
+  const main = makeTempDir('pignolo-audit-');
+  pa.beginMode({ main, plan: 'p1', mode: 'verify', claims: [], planSha256: 'a', now: Date.now() });
+  pa.recordExperiment({ main, plan: 'p1', command: 'x' });
+  pa.recordStop({ main, plan: 'p1' });
+  pa.beginMode({ main, plan: 'p1', mode: 'verify', claims: [], planSha256: 'a', now: Date.now() });
+  const m = pa.readMode({ main, now: Date.now() });
+  assert.deepStrictEqual([m.experiments, m.attempts], [0, 0]);
+});
+
+const vmode = (over = {}) => ({ active: true, plan: 'p1', mode: 'verify', experiments: 1, attempts: 1, incomplete: false, claims: [claim('C1'), claim('C2'), claim('C3')], dir: '/m/audit', ...over });
 const entries = (ids) => J(ids.map((id) => ({ id, verdict: 'holds', experiment: 'ran it', evidence: 'ok' })));
 
-test('stopDecision in verify: blocks with the number and ids, at most twice', () => {
-  const mode = verifyMode();
-  const d = pa.stopDecision({ mode, lastMessage: 'listo' });
+test('stopDecision in verify: blocks with the number and ids; the third attempt is incomplete', () => {
+  const d = pa.stopDecision({ mode: vmode(), lastMessage: 'listo', attempt: 1 });
   assert.strictEqual(d.block, true);
   assert.match(d.reason, /You ran 1 experiment\(s\) for 3 claim\(s\): 2 still missing/);
   assert.match(d.reason, /C1/);
-  assert.match(d.reason, /\/m\/scratch/);
-  assert.strictEqual(mode.blocks, 1);
-  assert.ok(pa.stopDecision({ mode, lastMessage: 'listo' }).block);
-  assert.strictEqual(mode.blocks, 2);
-  assert.strictEqual(pa.stopDecision({ mode, lastMessage: 'listo' }), null);
-  assert.strictEqual(mode.incomplete, true);
-  assert.strictEqual(mode.blocks, 2);
+  assert.match(d.reason, /audit/);
+  assert.strictEqual(pa.stopDecision({ mode: vmode(), lastMessage: 'listo', attempt: 2 }).block, true);
+  assert.deepStrictEqual(pa.stopDecision({ mode: vmode(), lastMessage: 'listo', attempt: 3 }), { block: false, incomplete: true });
 });
 
-test('stopDecision in verify: enough experiments but no entries still blocks; complete passes untouched', () => {
-  const m1 = verifyMode({ experiments: 3 });
-  assert.strictEqual(pa.stopDecision({ mode: m1, lastMessage: 'sin entradas' }).block, true);
-  const m2 = verifyMode({ experiments: 3 });
-  assert.strictEqual(pa.stopDecision({ mode: m2, lastMessage: entries(['C1', 'C2', 'C3']) }), null);
-  assert.strictEqual(m2.blocks, 0);
-  assert.strictEqual(m2.incomplete, false);
+test('stopDecision in verify: enough experiments but no entries still blocks; complete passes, even at attempt 3', () => {
+  assert.strictEqual(pa.stopDecision({ mode: vmode({ experiments: 3 }), lastMessage: 'sin entradas', attempt: 1 }).block, true);
+  assert.strictEqual(pa.stopDecision({ mode: vmode({ experiments: 3 }), lastMessage: entries(['C1', 'C2', 'C3']), attempt: 1 }), null);
+  assert.strictEqual(pa.stopDecision({ mode: vmode({ experiments: 3 }), lastMessage: entries(['C1', 'C2', 'C3']), attempt: 3 }), null);
 });
 
-test('stopDecision in review: needs a valid json block', () => {
-  const mode = { mode: 'review', blocks: 0, incomplete: false, claims: [] };
-  assert.strictEqual(pa.stopDecision({ mode, lastMessage: 'sin bloque' }).block, true);
-  assert.strictEqual(pa.stopDecision({ mode, lastMessage: J({ findings: [], claims: [claim('C1')] }) }), null);
+test('stopDecision in review: needs a valid json block; it is pure', () => {
+  const mode = { active: true, plan: 'p1', mode: 'review', experiments: 0, attempts: 0, incomplete: false, claims: [], dir: '/m/audit' };
+  const copy = JSON.stringify(mode);
+  assert.strictEqual(pa.stopDecision({ mode, lastMessage: 'sin bloque', attempt: 1 }).block, true);
+  assert.strictEqual(pa.stopDecision({ mode, lastMessage: J({ findings: [], claims: [claim('C1')] }), attempt: 1 }), null);
+  assert.deepStrictEqual(pa.stopDecision({ mode, lastMessage: 'sin bloque', attempt: 3 }), { block: false, incomplete: true });
+  assert.strictEqual(JSON.stringify(mode), copy);
 });
 
 test('buildAudit', () => {

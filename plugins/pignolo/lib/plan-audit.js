@@ -70,57 +70,93 @@ function parseVerification(text, claims) {
   return { entries, missing: ids.filter((id) => !have.has(id)) };
 }
 
+const sleepMs = (ms) => { try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); } catch (_) { /* sin espera */ } };
+
+// Único escritor de mode.json (plan-audit.js, hilo principal): reintento corto ante
+// EPERM/EBUSY, que en Windows aparecen si un hook lo está leyendo (R-15).
+function writeModeFile(file, text) {
+  for (let i = 0; ; i += 1) {
+    try { writeAtomic(file, text); return; } catch (e) {
+      if (i >= 5 || !['EPERM', 'EBUSY'].includes(e.code)) throw e;
+      sleepMs(20 * (i + 1));
+    }
+  }
+}
+
+// mode.json no guarda contadores (R-15): los de los hooks son logs de solo-agregar.
+// Empezar un modo abre cuenta nueva (borra los logs del anterior).
 function beginMode({ main, plan, mode, claims = [], planSha256 = '', now, ttlMin = TTL_MIN }) {
   if (!['review', 'verify'].includes(mode)) throw new Error(`modo inválido: ${mode}`);
   const t = toMs(now);
   const obj = {
-    v: 1, plan, mode, started: new Date(t).toISOString(), expires: new Date(t + ttlMin * 60000).toISOString(),
-    claims, experiments: 0, blocks: 0, incomplete: false, planSha256, scratch: path.join(auditDir(main, plan), 'scratch'),
+    v: 1, plan, mode, started: new Date(t).toISOString(), expires: new Date(t + ttlMin * 60000).toISOString(), claims, planSha256,
   };
-  writeAtomic(modeFile(main, plan), `${JSON.stringify(obj, null, 2)}\n`);
+  fs.mkdirSync(auditDir(main, plan), { recursive: true });
+  fs.rmSync(path.join(auditDir(main, plan), 'bash-calls.log'), { force: true });
+  fs.rmSync(path.join(auditDir(main, plan), 'stops.log'), { force: true });
+  writeModeFile(modeFile(main, plan), `${JSON.stringify(obj, null, 2)}\n`);
   return obj;
 }
+
+const countLines = (file, only) => {
+  try {
+    return fs.readFileSync(file, 'utf8').split('\n').filter((l) => (only ? l.trim() === only : l.trim() !== '')).length;
+  } catch (_) { return 0; }
+};
 
 // El modo vigente más reciente. Vencido, ausente o ilegible = inactivo (no bloquea: un
 // mode.json viejo no puede dejar al plan-auditor sin Bash para siempre).
 function readMode({ main, now } = {}) {
   const t = toMs(now);
   const root = path.join(main, '.pignolo', 'tmp', 'plan-audit');
-  let best = null;
   let dirs = [];
   try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name); } catch (_) { return { active: false }; }
+  let best = null;
   for (const d of dirs) {
     let m;
     try { m = JSON.parse(fs.readFileSync(modeFile(main, d), 'utf8')); } catch (_) { continue; }
-    if (!m || typeof m !== 'object' || !['review', 'verify'].includes(m.mode) || Number.isNaN(Date.parse(m.expires))) continue;
+    if (!m || typeof m !== 'object' || !['review', 'verify'].includes(m.mode) || Number.isNaN(Date.parse(m.expires)) || Number.isNaN(Date.parse(m.started))) continue;
     if (Date.parse(m.expires) <= t) continue;
-    if (!best || Date.parse(m.started) > Date.parse(best.started)) best = m;
+    if (!best || Date.parse(m.started) > Date.parse(best.started)) best = { ...m, plan: d };
   }
-  return best ? { active: true, ...best } : { active: false };
+  if (!best) return { active: false };
+  const dir = auditDir(main, best.plan);
+  return {
+    active: true, plan: best.plan, mode: best.mode, dir, claims: best.claims || [], started: best.started, expires: best.expires,
+    planSha256: best.planSha256,
+    experiments: countLines(path.join(dir, 'bash-calls.log')),
+    attempts: countLines(path.join(dir, 'stops.log'), 'stop'),
+    incomplete: countLines(path.join(dir, 'stops.log'), 'incomplete') > 0,
+  };
 }
 
-// Persiste el modo tal cual (lo usan los hooks tras stopDecision, que lo muta).
-function saveMode({ main, mode }) {
-  const { active, ...rest } = mode;
-  writeAtomic(modeFile(main, rest.plan), `${JSON.stringify(rest, null, 2)}\n`);
+// Un appendFileSync por evento (una línea): no pierde incrementos bajo llamadas paralelas.
+function recordExperiment({ main, plan, command, now }) {
+  const line = `${new Date(toMs(now)).toISOString()} ${String(command || '').replace(/\s*\r?\n\s*/g, ' ')}\n`;
+  fs.mkdirSync(auditDir(main, plan), { recursive: true });
+  fs.appendFileSync(path.join(auditDir(main, plan), 'bash-calls.log'), line);
 }
 
-function countExperiment({ main, command, now }) {
-  const m = readMode({ main, now });
-  if (!m.active) return null;
-  m.experiments += 1;
-  saveMode({ main, mode: m });
-  try { fs.appendFileSync(path.join(auditDir(main, m.plan), 'bash-calls.log'), `${new Date(toMs(now)).toISOString()} ${String(command || '').replace(/\r?\n/g, ' ')}\n`); } catch (_) { /* el log es auxiliar */ }
-  return m;
+function recordStop({ main, plan }) {
+  fs.mkdirSync(auditDir(main, plan), { recursive: true });
+  const file = path.join(auditDir(main, plan), 'stops.log');
+  fs.appendFileSync(file, 'stop\n');
+  return countLines(file, 'stop');
+}
+
+function markIncomplete({ main, plan }) {
+  fs.mkdirSync(auditDir(main, plan), { recursive: true });
+  fs.appendFileSync(path.join(auditDir(main, plan), 'stops.log'), 'incomplete\n');
 }
 
 function endMode({ main, plan }) {
   fs.rmSync(modeFile(main, plan), { force: true });
 }
 
-// null = dejar terminar; { block, reason } = bloquear el cierre. MUTA `mode` (suma a blocks;
-// deja incomplete al agotar los bloqueos): quien lo llama lo persiste con saveMode.
-function stopDecision({ mode, lastMessage }) {
+// null = dejar terminar; { block: true, reason } = bloquear el cierre; { block: false,
+// incomplete: true } = ya se bloqueó MAX_BLOCKS veces y todavía falta algo (quien llama hace
+// markIncomplete). Pura: no escribe nada. `mode` es lo que devuelve readMode.
+function stopDecision({ mode, lastMessage, attempt = 1 }) {
   let reason = null;
   if (mode.mode === 'review') {
     const r = parseReview(lastMessage);
@@ -132,13 +168,12 @@ function stopDecision({ mode, lastMessage }) {
     if (short > 0 || v.missing.length > 0) {
       const k = short > 0 ? short : v.missing.length;
       const ids = (v.missing.length ? v.missing : claims.map((c) => c.id)).join(', ');
-      const scratch = mode.scratch || 'scratch/';
+      const scratch = mode.dir ? path.join(mode.dir, 'scratch') : 'scratch/';
       reason = `You ran ${mode.experiments || 0} experiment(s) for ${claims.length} claim(s): ${k} still missing; for each remaining claim (${ids}) write a script in ${scratch} with Write, run it with Bash, and give the final json array again, with one entry { id, verdict, experiment, evidence } per claim.`;
     }
   }
   if (!reason) return null;
-  if ((mode.blocks || 0) >= MAX_BLOCKS) { mode.incomplete = true; return null; }
-  mode.blocks = (mode.blocks || 0) + 1;
+  if (attempt > MAX_BLOCKS) return { block: false, incomplete: true };
   return { block: true, reason };
 }
 
@@ -168,5 +203,5 @@ function buildAudit({ review, probe, verification, planCheck, mode }) {
 
 module.exports = {
   MAX_CLAIMS, MAX_BLOCKS, TTL_MIN, auditDir, parseReview, parseVerification,
-  beginMode, readMode, saveMode, countExperiment, endMode, stopDecision, buildAudit,
+  beginMode, readMode, recordExperiment, recordStop, markIncomplete, endMode, stopDecision, buildAudit,
 };
