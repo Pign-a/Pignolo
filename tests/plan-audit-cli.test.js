@@ -200,3 +200,18 @@ test('end removes the mode and is idempotent', () => {
   assert.strictEqual(pa.readMode({ main, now: Date.now() }).active, false);
   assert.strictEqual(audit(repo, ['end', '--plan', 'p1']).status, 0);
 });
+
+test('the findings of check reach the verdict: all experiments hold but a path does not exist', () => {
+  const { repo, planFile } = setup();
+  const badPlan = file('### Task T1: x\n\n**Files:**\n- Modify: `lib/zz.js`\n', 'bad.md');
+  assert.strictEqual(audit(repo, ['check', '--plan', 'p1', '--plan-file', badPlan, '--root', repo]).out.findings.length, 1);
+  const review = J({ findings: [], claims: [claim('C1', 'the helper returns the list sorted')] });
+  assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
+  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(review)]).status, 0);
+  audit(repo, ['probes', '--plan', 'p1']);
+  audit(repo, ['begin-verify', '--plan', 'p1']);
+  const holds = J([{ id: 'C1', verdict: 'holds', experiment: 'scratch/c1.js', evidence: 'ok' }]);
+  const fin = audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]);
+  assert.strictEqual(fin.out.verdict, 'REQUEST_CHANGES');
+  assert.ok(fin.out.findings.some((f) => f.kind === 'missing-path'));
+});
