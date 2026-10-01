@@ -45,7 +45,7 @@ test('improve: steps appear in the order of spec section 8, the after goes to <r
 test('options.md: no variables, literals, discard before the second dispatch, leak check before approve', () => {
   const text = readReference('options.md');
   assertNoVariables(text);
-  for (const lit of ['The user asked for <N> subagents for this decision.', 'subagent_type: "pignolo-ui:ui-option"', 'model: "sonnet"',
+  for (const lit of ['The user asked for <N> subagents for this decision.', 'subagent_type: "pignolo-ui:ui-option"', 'model: <model>',
     '≈ N corridas de ~X k tokens', 'B y C son muy parecidas', 'sequential: true', 'modelo pedido', 'regenerate']) {
     assert.ok(text.includes(lit), lit);
   }
