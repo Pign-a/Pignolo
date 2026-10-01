@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — sin publicar
+
+Parte 4a del hito 4: todo lo determinista de los flujos. No gasta tokens de agentes. Sube de 0.4.1 a 0.5.0 porque trae interfaz nueva (`run.mjs`, `compare.mjs`, `catalog/symptoms.json`, `norms/base.md`).
+
+- `scripts/run.mjs` con subcomandos: `env` (versión del plugin, de Node y de Claude Code, mínimo 2.1.271), `init` (carpeta del run con `run.json` y poda de más de 14 días que no atraviesa enlaces), `config` (`project.json` con claves cerradas), `present`, `norms`, `check` (un `--dom` por cada archivo de `dom.json`), `leak-values`, `git-state`, `options-check`, `discard`, `auditor-check`, `menu`, `report-skeleton`, `report-line`, `verdict` y `compare-html`.
+- `scripts/compare.mjs`: huella estructural de mockups (bloques, titulares, columnas, acción primaria) y de style tiles (tono del primario, tipografía, radios); `options` dice qué opción regenerar, `approved` compara un aprobado con su implementación. Informativo: las diferencias nunca dan exit 1. **Medición de A-18: 0 de 6 diferencias falsas** sobre pares aprobado/implementación que solo cambian tokens.
+- Diccionario de 11 síntomas (`catalog/symptoms.json`), normas base con 12 criterios de juicio `J-01` a `J-12` (`norms/base.md`) y normas del autor opcionales (`norms.md`; si son inválidas se ignoran enteras, con aviso).
+- `verdict` decide "terminado", "BLOCKED" o "sin verificar" por script: `ui-check` sin bloqueantes nuevos en alcance, `report-check` en 0 y build verde si existe.
+- El "después" de una confirmación vive en `<run>/after/`: medir otra vez en la misma carpeta deja `ui-check.json` desactualizado y `report-check` retira todo (R-13). Regenerar una opción mueve la anterior a `<run>/discarded/` (R-14).
+- Lienzo "Design": **fuera de la v1** (decisión del autor, 2026-10-01); la presentación es siempre `compare.html` local y no se publica nada.
+- `browser.mjs` exporta `createOpener` (sin cambio de comportamiento) para compartir la apertura con limpieza.
+
 ## 0.4.1 — sin publicar
 
 Arreglos de la revisión final del hito 3 (navegador):

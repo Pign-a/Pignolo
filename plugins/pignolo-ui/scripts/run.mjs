@@ -192,9 +192,9 @@ const COMMANDS = {
       const hasMeasures = fs.existsSync(path.join(run, 'browser.json'));
       if (hasMeasures) args.push('--measures', path.join(run, 'browser.json'));
       const files = opts.files !== undefined ? list(opts.files) : [];
-      for (const f of files) args.push('--files', path.resolve(cwd, f));
+      for (const f of files) args.push('--files', path.resolve(project, f));
       if (!domList.length && !hasMeasures && !files.length) throw new UsageError('no hay nada que chequear: falta dom.json, browser.json o --files');
-      if (opts.design !== undefined) args.push('--design', path.resolve(cwd, opts.design));
+      if (opts.design !== undefined) args.push('--design', path.resolve(project, opts.design));
       if (opts.base !== undefined) args.push('--base', opts.base);
       if (opts.url !== undefined) args.push('--url', opts.url);
       const res = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 300000, windowsHide: true });

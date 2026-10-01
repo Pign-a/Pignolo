@@ -1,6 +1,6 @@
 # Pignolo UI
 
-Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.3 en construcción (hito 2 de 5 terminado: catálogo, `ui-check`, SEO estático, `files` y `report-check`).
+Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.5 en construcción (hito 4a de 5: además del catálogo, `ui-check`, el navegador, `files` y `report-check`, trae `run.mjs`, `compare.mjs`, síntomas y normas; las skills y los agentes llegan con el 4b).
 
 Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
@@ -8,6 +8,21 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
 - Node ≥ 22 para pignolo-ui (A-12), sin dependencias npm.
 - Claude Code ≥ 2.1.271 (`userConfig` con `options`).
+- Chrome o Edge instalado para lo que mide en el navegador (`PIGNOLO_UI_BROWSER` fuerza la ruta). Sin navegador el flujo sigue en modo degradado y lo dice.
+- Permisos: se recomienda el modo `acceptEdits`; los subagentes escriben solo en la carpeta del run.
+
+## Dónde queda cada cosa
+
+- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html`, `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
+- `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas y ruta de referencia. Desinstalar el plugin lo borra.
+- `design/approved/<flujo>/`: lo que el usuario aprobó, con `manifest.json`; se versiona y nunca se edita (un cambio crea `<flujo>-v2`).
+
+## Comandos de apoyo (`run.mjs` y `compare.mjs`)
+
+    node scripts/run.mjs env | init | config | norms | check | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
+    node scripts/compare.mjs fingerprint | distance | options | approved
+
+Cada uno imprime un objeto JSON; exit 0 hecho, 1 hallazgo o rechazo, 2 error propio (`no verificado`). El JSON de entrada llega siempre por archivo. `verdict` es la única fuente de "terminado".
 
 ## Alias de nombres semánticos
 

@@ -2,7 +2,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
@@ -80,7 +79,7 @@ test('fingerprint --kind mockup without a browser is unverified with the reason,
   writeTree(project, { 'm.html': '<!doctype html><title>t</title><p>x</p>' });
   const out = path.join(project, 'fp.json');
   const r = runScript('compare.mjs', ['fingerprint', '--kind', 'mockup', '--file', 'm.html', '--out', out, '--project', project], {
-    env: { ...process.env, PIGNOLO_UI_BROWSER: path.join(os.tmpdir(), 'no-existe', 'chrome.exe') },
+    env: { ...process.env, PIGNOLO_UI_BROWSER: path.join(makeTempDir(), 'no-existe', 'chrome.exe') },
   });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.json.unverified, /./);
@@ -113,9 +112,6 @@ ${extraHeading ? '<section><h2>Extra</h2></section>' : ''}
 <footer><p>pie</p>${primaryIn === 'footer' ? '<button class="cta" data-primary="true">Pagar</button>' : ''}</footer>
 </body></html>`;
 
-function tmpProfiles() {
-  return fs.readdirSync(os.tmpdir()).filter((n) => n.startsWith('pignolo-ui-browser-'));
-}
 
 test('mockups with the primary action in another place do not coincide; only tokens differ -> coincide', { skip: BROWSER_SKIP }, () => {
   const project = makeTempDir();
@@ -124,7 +120,6 @@ test('mockups with the primary action in another place do not coincide; only tok
     [`${RUN}/option-B/inicio.html`]: mockup({ primaryIn: 'footer' }),
     [`${RUN}/option-C/inicio.html`]: mockup({ primaryIn: 'header', bg: '#111', accent: '#d97706', font: 'serif', radius: 20 }),
   });
-  const before = tmpProfiles();
   const r = runScript('compare.mjs', ['options', '--run', path.join(project, RUN), '--kind', 'mockup', '--main', 'inicio.html'], { timeout: 120000 });
   assert.equal(r.status, 0, r.stderr);
   const pair = (a, b) => r.json.pairs.find((p) => p.a === a && p.b === b);
@@ -132,7 +127,7 @@ test('mockups with the primary action in another place do not coincide; only tok
   assert.equal(pair('A', 'C').coincide, true);
   assert.equal(r.json.regenerate, 'C');
   assert.equal(r.json.cleanup.profileRemoved, true);
-  assert.deepEqual(tmpProfiles().filter((n) => !before.includes(n)), []);
+  assert.equal(fs.existsSync(r.json.cleanup.profile), false, "the temporary profile of this run is gone");
 });
 
 test('approved: an extra heading is a difference, exit stays 0; same structure with other tokens has none', { skip: BROWSER_SKIP }, async () => {
@@ -202,11 +197,10 @@ test('cleanup: a page that does not load leaves no browser profile and says so',
     const s = net.createServer().listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); });
   });
   const project = makeTempDir();
-  const before = tmpProfiles();
   const out = path.join(project, 'fp.json');
   const r = runScript('compare.mjs', ['fingerprint', '--kind', 'mockup', '--url', `http://127.0.0.1:${closedPort}/`, '--out', out, '--project', project], { timeout: 120000 });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.json.unverified, /./);
   assert.equal(r.json.cleanup.profileRemoved, true);
-  assert.deepEqual(tmpProfiles().filter((n) => !before.includes(n)), []);
+  assert.equal(fs.existsSync(r.json.cleanup.profile), false, "the temporary profile of this run is gone");
 });

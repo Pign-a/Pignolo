@@ -469,6 +469,22 @@ Registradas al construir el navegador (plan `docs/plans/2026-09-30-pignolo-ui-hi
 - **`--url` solo local** también en `browser.mjs` (§8 dice "URL o ruta"): una URL de la red local o de staging se rechaza; un archivo va por `--file`.
 - Los estados vacío, cargando y error siguen "no verificado" (A-18).
 
+### 5.11 Aclaraciones técnicas del hito 4
+
+Registradas al construir la parte 4a (plan `docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md`). Los cambios marcados con (autor) los aprobó el autor el 2026-10-01.
+
+- **Carpeta de cada opción (R-3):** `<run>/option-<A|B|C>/<pantalla>.html` (mockups) o `<run>/direction-<A|B|C>/<pantalla>.html` (style tiles); nombres `^[a-z0-9][a-z0-9-]*\.html$`. La "pantalla principal" es la primera de la lista de pantallas del brief y esa lista, en orden, viaja como `--screens`.
+- **Contrato de marcado de `ui-option` (R-4):** la acción primaria lleva `data-primary="true"`; un style tile declara en `:root` `--color-primary`, `--font-body` y `--radius-sm|md|lg`. Es un contrato interno entre el brief y `compare`.
+- **Huella de mockup (R-6):** a 1440×900 en tema claro, `blocks` (etiqueta de cada hijo visible de primer nivel de `main` o `body`), `headings` (h1 a h3), `columns` y `primary` (tercio vertical y horizontal; `null` cuenta como igual). Coinciden dos mockups con distancia de edición normalizada de los bloques < 0,3, mismas columnas y misma acción primaria. Heurística de v1, medida con A-18 (0 de 6 diferencias falsas en fixtures).
+- **`compare` es informativo:** las diferencias nunca dan exit 1; `regenerate` es la letra mayor de la pareja que coincide y, en la segunda ronda, solo se avisa.
+- **El "después" (autor, R-13):** la confirmación de `improve` y la verificación de `new` corren en `<run>/after/` (orden `measure --before`, `capture`, `dom`, `check`); el "antes" del run no se reescribe. Medir otra vez en el mismo run deja `ui-check.json` desactualizado y `report-check` retira todo.
+- **Veredicto (autor):** "terminado", "BLOCKED" o "sin verificar" lo calcula `run.mjs verdict` con `ui-check`, `report-check` y el build; precedencia `sin verificar` > `BLOCKED` > `terminado`.
+- **Primera línea (autor):** el modelo del subagente se informa como pedido (`modelo pedido: <model>`); el real no es visible al hilo principal y se verifica en el transcript.
+- **Regeneración (autor, R-14):** regenerar una opción mueve la anterior a `<run>/discarded/<opción>-<n>/` y el nuevo despacho escribe en una carpeta vacía (`ui-option` solo tiene `Write`, que no sobrescribe).
+- **El auditor (autor):** recibe solo la ruta del run; el run trae `run.json` (raíz del proyecto, `DESIGN.md`, URL o archivo, fuentes) y `norms.md`. Su salida es un bloque `json` que el hilo principal copia a `auditor.json` y `run.mjs auditor-check` valida.
+- **Variables (autor):** `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}` y `${user_config.*}` se sustituyen solo en `SKILL.md`, no en archivos de apoyo, y un `userConfig` sin valor guardado puede llegar literal: la skill usa el valor por defecto.
+- **Lienzo "Design" fuera de la v1 (autor, R10, 2026-10-01):** §13 y §13.1 quedan para v1.x (dos llamadas a `Artifact`, nombres con ancho). En la v1 la presentación es siempre `compare.html` local y `decidePresentation` devuelve `local` con el motivo `canvas-not-in-v1`.
+
 ---
 
 ## 6. Topes de los flujos
