@@ -39,7 +39,7 @@
 - **Rama:** `ui/hito-4c`, desde `main`; un worktree para el ejecutor; cada tarea termina con su commit.
 - **Orden (serie):** olas en "Olas", más abajo. T0 → T1 → T2 → T3 → T4 → T5 → **T6 (puerta manual con el autor)** → T7 → T8 → T9 → T10 → T11.
 - **Modelos:** sonnet en todas las tareas; revisores y auditores en opus.
-- **Tests:** ≈ 150 nuevos, todos sin red (los de navegador, pocos y con `BROWSER_SKIP` visible). Desglose en "Estimación de tests".
+- **Tests:** ≈ 145 nuevos, todos sin red (los de navegador, pocos y con `BROWSER_SKIP` visible). Desglose en "Estimación de tests".
 
 ## Review Focus (revisión final opus)
 
@@ -188,7 +188,7 @@ Todas tienen recomendación; ninguna bloquea T0 a T5.
   - `record --data <dir> --project <repo> --url <url> --design-sha <hex>`: guarda en `project.json` la clave `designSystem` (`{ url, sha256 }`) con escritura atómica; la URL se valida (R-7 en T4).
 
 **Tests literales:**
-- [ ] `buildTokens` sobre el fixture (colores primitivos y semánticos con referencias `{colors.blue-600}`, `pignolo.themes.dark` para 2 semánticos, 2 familias tipográficas, `spacing` `"1"` a `"4"`, `rounded` `sm|md|full`): `color.themes` = `light` y `dark`; `primary` = `{ light: '{blue-600}', dark: <oklch o rgb del tema> }`… **no**: un alias dentro de un valor por tema no se garantiza, así que con tema oscuro el valor claro se **resuelve** al hex del primitivo (golden fija el caso) y sin tema oscuro se conserva el alias `{blue-600}`; `spacing.tokens[0].name === 'space-1'`, `radius.tokens` con `radius-sm`; `type.families` con una clave por familia; `type.groups[*].styles[*].fontWeight` es número; `color.tokens` es un **arreglo** (guarda contra el formato DTCG). Salida igual byte a byte a `tokens.json` (golden).
+- [ ] `buildTokens` sobre el fixture (colores primitivos y semánticos con referencias `{colors.blue-600}`, `pignolo.themes.dark` para 2 semánticos, 2 familias tipográficas, `spacing` `"1"` a `"4"`, `rounded` `sm|md|full`): `color.themes` = `light` y `dark`; un token con valor por tema (`primary` con `pignolo.themes.dark`) es `{ light: <hex resuelto del primitivo>, dark: <valor del tema> }` (un alias dentro de un valor por tema no está garantizado, así que se resuelve), y uno sin valor oscuro conserva el alias `{blue-600}`; `spacing.tokens[0].name === 'space-1'`, `radius.tokens` con `radius-sm`; `type.families` con una clave por familia; `type.groups[*].styles[*].fontWeight` es número; `color.tokens` es un **arreglo** (guarda contra el formato DTCG). Salida igual byte a byte a `tokens.json` (golden).
 - [ ] Omisiones: color `red` → `unreadable-color`; `{colors.nada}` → `bad-alias`; `{colors.a}` en `a` → `bad-alias`; un token llamado `mi token` → `bad-name`; `colors.space-1` y `spacing.1` → `duplicate-name` (se omite el segundo); `letterSpacing` → `unsupported-property`; `components` y `pignolo.elevation` → `not-mapped`. Sin ningún color válido → `build` exit 1.
 - [ ] `buildReadme` contiene el nombre, la plataforma, el conteo por familia, la lista de omitidos y la línea "fuente de verdad"; **no** contiene ningún texto de la sección `## Decisions` del fixture (sembrar una cadena trampa ahí y exigir su ausencia). Igual a `README.md` (golden).
 - [ ] `folderFor('Mi App!')` → `mi-app`; `'__x'` → `x`; `''` → `design-system`; 100 caracteres → ≤ 64. `buildIndex`: las claves exactas y `createdOnFiles.at` = `now`.
@@ -354,14 +354,14 @@ Si el presupuesto aprieta: se recorta **T8** primero (tamaños fijos con aviso).
 | T1 | ≈ 25 |
 | T2 | ≈ 28 |
 | T3 | ≈ 22 |
-| T4 | ≈ 105 (96 de la tabla generada, que cuentan como un solo caso parametrizado por archivo: ≈ 12 casos `it` más) |
+| T4 | ≈ 14 (la tabla de 96 combinaciones es un solo caso `it` con bucles) |
 | T5 | ≈ 8 |
 | T6 | ≈ 2 (cobertura de `buildCover`) |
 | T7 | ≈ 22 |
 | T8 | ≈ 4 (+ 1 de navegador con skip visible) |
 | T9 | ≈ 14 |
 | T10 | ≈ 6 |
-| **Total** | **≈ 150 casos `it`** (≈ 240 contando las filas de la tabla de T4) |
+| **Total** | **≈ 145 casos `it`** (≈ 240 contando las 96 filas de la tabla de T4) |
 
 Sin red. Los de navegador son 1 y salen `skip` visible sin navegador.
 
