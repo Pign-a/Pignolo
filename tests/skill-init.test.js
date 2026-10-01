@@ -18,10 +18,10 @@ test('frontmatter: human-only, name init, real script references and verbs', () 
   assert.ok(fs.existsSync(path.join(PLUGIN_ROOT, 'skills', 'init', 'SKILL.md')));
 });
 
-test('the twelve steps come in order: detect before preview, preview before apply, apply before verify', () => {
+test('the fourteen steps come in order: detect before preview, preview before apply, apply before verify', () => {
   const t = SKILL.text;
   const steps = [...t.matchAll(/^(\d+)\. \*\*/gm)].map((m) => Number(m[1]));
-  assert.deepEqual(steps, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual(steps, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   const at = (re) => t.search(re);
   assert.ok(at(/init\.js" detect/) < at(/init\.js" preview/));
   assert.ok(at(/init\.js" preview/) < at(/init\.js" apply/));
@@ -67,4 +67,43 @@ test('the init skill is one of the plugin skills', () => {
   const dirs = fs.readdirSync(path.join(PLUGIN_ROOT, 'skills'));
   assert.ok(dirs.includes('init'));
   for (const d of dirs) assert.ok(fs.existsSync(path.join(PLUGIN_ROOT, 'skills', d, 'SKILL.md')), d);
+});
+
+// ---------------------------------------------------------------- hito 8d, Task 10: textos de init, plan, status y close-session
+test('8d: la skill init nombra adapt, skeleton, places.js undo, answers.public, --expect y la compuerta corrida aparte; sin runGate, árbol de carpetas ni ruta de usuario', () => {
+  const t = SKILL.text;
+  for (const re of [/\*\*Layout \(adapt\)\.\*\*/, /\*\*Skeleton\.\*\*/, /places\.js" undo --record/, /answers\.public/, /--expect/, /separate command/, /`adapt`, `skeleton`/]) assert.match(t, re, String(re));
+  assert.match(t, /Pignolo never moves code/);
+  assert.match(t, /a hard guard is never forced/);
+  assert.match(t, /`\/local\/`/);
+  assert.doesNotMatch(t, /runGate/);
+  assert.doesNotMatch(t, /[├└│]/);
+  assert.doesNotMatch(t, /[A-Za-z]:[\\/]+Users|\/home\/|\/Users\//);
+});
+
+test('8d: plan lee el lugar de spec y plan con places.js where y ya no fija docs/plans/ ni docs/specs/', () => {
+  const plan = readSkill('plan').text;
+  assert.match(plan, /places\.js" where spec/);
+  assert.match(plan, /places\.js" where plan/);
+  assert.doesNotMatch(plan, /docs\/plans\//);
+  assert.doesNotMatch(plan, /docs\/specs\//);
+  assert.deepEqual(brokenReferences(plan), []);
+});
+
+test('8d: status y close-session usan places.js report; close-session ofrece fix preview, no bloquea y sigue sin agentes', () => {
+  const status = readSkill('status').text;
+  assert.match(status, /places\.js" report/);
+  assert.deepEqual(brokenReferences(status), []);
+  const cs = readSkill('close-session').text;
+  assert.match(cs, /places\.js" report/);
+  assert.match(cs, /fix preview/);
+  assert.match(cs, /never blocks the closing/);
+  assert.match(cs, /No agents\./);
+  assert.deepEqual(brokenReferences(cs), []);
+});
+
+test('8d: el README explica los seis lugares, where, report, el undo y sus límites', () => {
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  assert.match(readme, /## Dónde va cada archivo/);
+  for (const re of [/`reference`[^\n]*solo/, /places\.js where/, /`report`/, /places\.js undo/, /Límites/]) assert.match(readme, re, String(re));
 });
