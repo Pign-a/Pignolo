@@ -112,6 +112,18 @@ function roleRule({ input, env, cwd, file }) {
   return alt(`${agent.slice(8)} no escribe ${rel} (test o config de tests) sin autorización. ${ALT_IMPL}`);
 }
 
+// A8-09 (decisión del autor, 2026-10-01): ningún subagente escribe .pignolo/project.md con el proyecto
+// activo; solo el hilo principal y /pignolo:init (script) cambian la configuración. El mensaje empieza
+// como el de roleRule (`<agente> no escribe .pignolo/project.md`). Límite declarado: un `node -e`
+// que escriba el archivo por código no pasa por este hook (spec §8.3).
+function projectMdRule({ input, env, cwd, abs }) {
+  if (!input.agent_id) return null;
+  if (!/(^|\/)\.pignolo\/project\.md$/.test(abs.split(path.sep).join('/').toLowerCase())) return null;
+  if (!projectState({ env, cwd }).active) return null;
+  const who = typeof input.agent_type === 'string' && input.agent_type ? input.agent_type.replace(/^pignolo:/, '') : 'un subagente';
+  return alt(`${who} no escribe ${PROJECT_MD}: solo el hilo principal y /pignolo:init cambian la configuración del proyecto. Alternativa: devolvé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en project.md.`);
+}
+
 exports.run = (input, ctx = {}) => {
   const env = ctx.env || process.env;
   const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : process.cwd();
@@ -135,5 +147,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return planAuditRule({ input, env, cwd, abs }) || roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
+  return planAuditRule({ input, env, cwd, abs }) || projectMdRule({ input, env, cwd, abs }) || roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
 };
