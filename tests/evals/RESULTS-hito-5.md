@@ -33,3 +33,7 @@ El agente entregó la tarjeta con `Added without being asked: none` y las ocho s
 | iii. Calibración con exactamente los casos de la etapa y todos aprobados | **no cumplido (1/2)** |
 | iv. 5 × calibración ≤ tope de la completa | no evaluado (corte previo) |
 | v. Tope de costo por corrida (`--max-cost-usd`) | no se alcanzó |
+
+## Cambio de grader por decisión del autor (2026-10-01)
+
+Tras el freno iii el autor decidió relajar `verdict-approve` de `spec-reviewer-clean`, que pasa a llamarse `verdict-not-escalate`. Motivo: la carta del agente pide cambios cuando el spec es vago aunque no haya alcance agregado, y "limpio" significa sin ítems agregados, no sin huecos. Regla nueva: pasa si `Added without being asked` = `none` (el grader `added-none` sigue exigiéndolo) y la última línea es `APPROVE` o `REQUEST_CHANGES`; `ESCALATE` reprueba. Un `REQUEST_CHANGES` con un ítem agregado reprueba por `added-none`. Test determinista nuevo en `tests/eval-plan-cases.test.js`: rojo demostrado contra el grader viejo ("REQUEST_CHANGES con Added = none debe pasar"), verde con el nuevo. Como los graders cambiaron, la etapa Windows se recalibró (freno ii se mide desde este commit).
