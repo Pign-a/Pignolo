@@ -10,6 +10,12 @@ Arreglos de la revisión final de 0.12.0 (cada uno con un test que falla sin el 
 - **I4:** tres mutantes muertos con tests nuevos: decisión de otro plan en la compuerta (`plan-cli`), decisión sin cita con texto igual a la cita buscada (`scope-card`) y control de duplicado con otra fecha (`decisions`).
 - **Menores:** M1 declarado (las `accepted` viejas siguen sin poder cerrarse); M2 `D-01` ya no se acepta; M3 una cita de menos de 3 caracteres no prueba nada; M4 `CREDITS.md` atribuye bien (la pregunta de a una es de superpowers; la respuesta recomendada y leer el código, de Pocock); M5 el `spec-reviewer` nombra las preguntas pendientes (van en `Reserved decisions`); M6 los patrones flojos del test de la skill se ajustan.
 
+- Hito 8b (solo pruebas y documentos; ningún archivo del plugin cambia de comportamiento).
+- **Evals `agents` del `debugger`** (`tests/evals/debugger-cases.js`, `tests/eval-debugger-cases.test.js`): tres casos con defecto plantado (error de límite, sospechoso equivocado, fallo que no se reproduce), con graders de ruta:línea (±2 líneas), evidencia citada, descarte de la sospecha, marca "hypothesis — not verified", cero archivos modificados y palabra final sin ofrecer seguir. Cada grader tiene una muestra de rechazo y los repos de los casos 1 y 2 fallan de verdad y pasan con el arreglo conocido.
+- **Contrato con el arnés de medición del criterio de éxito** (`tests/seeded-defects.test.js`): verifica que `tests/bench/vs-base/run.js` y `seeds/seeds.json` existen y traen los cinco tipos de §0; se salta mientras el arnés no esté en la rama. La corrida paga la lanza el autor.
+- **Resultados de las evals pagas del `debugger`** (`tests/evals/RESULTS-hito-8.md`, 2,77 USD de 8): sonda 1/1, calibración 3/3, completa 9/15 (3/5 por caso) por los graders; las 6 reprobadas leídas a mano eran informes correctos que el grader rechazó por la redacción (G33). **No cumple el umbral de 4/5 hasta que el autor decida relajar los graders y recalibrar** (≈ 2,6 USD). Costo real 0,14 a 0,16 USD por corrida (G34).
+- Docs: `docs/gaps.md` (G33, G34 y el límite A8-09 en G30), `docs/benchmarks.md` §3 y la tabla del README.
+
 ## 0.12.0 — 2026-10-01
 
 Versión menor y no un parche: cambia la interfaz (verbo nuevo de `plan.js`, segunda fuente de citas en `validateScopeCard` y en el contrato del `spec-reviewer`, orden de las opciones de `templates/question.md`).

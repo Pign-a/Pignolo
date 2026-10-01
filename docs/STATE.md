@@ -15,7 +15,7 @@ Versiones leídas de los `plugin.json`.
 | Rama | Qué es | Estado |
 |---|---|---|
 | `core/hito-7a` | Hito 7 recortado (ramas y worktrees, sin planes en paralelo) | ejecutando |
-| `core/hito-8b` | Hito 8b: evals del `debugger` y arnés de medición | ejecutando |
+| `core/hito-8b` | Hito 8b: evals del `debugger` y contrato con el arnés (0.12.1) | construido; evals pagas corridas (2,77 USD de 8): 9/15 por los graders, las 6 reprobadas son falsos rechazos (G33); falta que el autor decida relajar los graders y recalibrar, y la revisión final opus |
 | `core/brainstorm-rules` | Reglas de brainstorming del núcleo (tras el A/B de `docs/benchmarks.md` 2f) | en curso |
 | `plan/ui-hito-4c` | Plan del lienzo "Design" y el Design System de pignolo-ui | partiéndolo en 4 etapas; la etapa 1 es la siguiente |
 | `evals/ui-4` | Evals pagas de pignolo-ui hito 4 (tope 22 USD) | corriendo |
@@ -59,7 +59,7 @@ No se repiten acá; abrir el archivo.
 | Método liviano, serie contra paralelo | `CLAUDE.md`, `tests/evals/RESULTS-ejecucion.md` |
 | Validar planes, modelo de revisión | `tests/evals/RESULTS-planes.md`, `tests/evals/RESULTS.md` |
 | Brainstorm antes del spec | `tests/evals/RESULTS-brainstorm.md` |
-| Evals de agentes por hito | `tests/evals/RESULTS-hito-3.md`, `-hito-4.md`, `-hito-5.md` |
+| Evals de agentes por hito | `tests/evals/RESULTS-hito-3.md`, `-hito-4.md`, `-hito-5.md`, `-hito-8.md` (debugger) |
 | Decisiones anteriores a hoy | `docs/history/2026-10-01-estado-hasta-hoy.md` |
 
 ## Pendiente del autor
