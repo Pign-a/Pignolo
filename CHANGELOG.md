@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 — 2026-10-01
+
+- Hito 5b (modo `plan`, parte de agentes y skills): el carril `plan` ya se puede recorrer de punta a punta.
+- Skill `plan` (`skills/plan/SKILL.md`): afirmaciones clave, `spec-reviewer`, `researcher` y `refuter`, tarjeta de alcance aprobada solo por el humano en su turno, plan, auditoría de tres pasos, ejecución serial, `validator` por tanda y aprobados visuales. `entry` entrega el carril a `pignolo:plan` y `daily` ofrece pasar a `plan` cuando el diff real lo pide.
+- Cartas: `spec-reviewer` (los 8 encabezados de la tarjeta, una cita literal por ejemplo, `- none` o `- A1: …`), `plan-auditor` (modos `review` y `verify`, sin replay) e `implementer` (verifica el aprobado visual con `approved-verify.js`; `BLOCKED` con exit 1). `templates/task-card.md` lleva el comando.
+- Skill `present` y cuatro plantillas visuales (`simple`, `ui`, `infra`, `decision`) con datos de ejemplo; `APPROVALS.md` sin aprobaciones, así que los formatos caen a texto hasta que el autor los apruebe (D-5-4).
+- Evals `agents` de `spec-reviewer`, `plan-auditor` y `validator` (7 casos en `tests/evals/plan-cases.js`, calificadores probados sin costo en `tests/eval-plan-cases.test.js`). Las corridas con el modelo (D-5-2, tope 17 USD por etapas) están pendientes.
+- Checklist manual: `tests/manual/hito-5.md` suma los puntos 7 a 9.
+- Límite declarado: `plan.js` no tiene un verbo para registrar la ruta de la spec después de `new`; la skill la pasa en `new --spec`.
+
 ## 0.7.1 — 2026-10-01
 
 - Arreglos de la revisión final del hito 5a (cada uno con un test que falla sin el arreglo).
