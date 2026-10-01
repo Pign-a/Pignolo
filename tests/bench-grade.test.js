@@ -88,3 +88,14 @@ test('truth.json: 14 del caso real y 6 por sintético, uno de cada tipo; clean s
     assert.ok(e.id && (e.tasks || []).length >= 1 && e.keywords.length >= 1 && e.keywords.length <= 6, e.id);
   }
 });
+
+test('las palabras clave coinciden por límite de palabra, no como subcadena', () => {
+  const truth = { w: [{ id: 'w1', tasks: ['T1'], keywords: ['cat', 'process.exit', 'node --check', 'lib/x.js'] }] };
+  const hit = (evidence) => grade({ findings: [f('T1', evidence)], truth, plan: 'w' }).found.length === 1;
+  assert.strictEqual(hit('un fallo catastrophic en el cierre'), false);
+  assert.strictEqual(hit('usa cat para leer'), true);
+  assert.strictEqual(hit('llama a process.exit(1) antes de tiempo'), true);
+  assert.strictEqual(hit('falla node --check: error'), true);
+  assert.strictEqual(hit('mira (lib/x.js).'), true);
+  assert.strictEqual(hit('processXexit y mylib/x.jsx'), false);
+});

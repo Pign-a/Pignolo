@@ -62,7 +62,7 @@ function spansOf(prose) {
       for (const k of kws) if (k.pos < m.index) word = k.word;
       let kind = inherit && inherit.indent < indent ? inherit.kind : 'plain';
       if (word) kind = PRODUCERS.has(word) ? 'produce' : 'plain';
-      out.push({ task: p.task, value: m[1].trim(), kind, word });
+      out.push({ task: p.task, value: m[1].trim(), kind, word, line: p.text });
     }
     const last = kws.length ? kws[kws.length - 1].word : null;
     if (last && PRODUCERS.has(last)) inherit = { indent, kind: 'produce' };
@@ -167,7 +167,7 @@ function pathOk(v, idx, created) {
 }
 
 function checkSpan(span, ctx) {
-  const { idx, created, produced, scripts } = ctx;
+  const { idx, created, produced, inCreated, scripts } = ctx;
   const v = span.value;
   const base = { task: span.task };
   const cmd = /^node\s+(.+)$/.exec(v);
@@ -190,7 +190,7 @@ function checkSpan(span, ctx) {
     const planNames = destructured(balanced(v, v.indexOf('(')));
     const def = findDefinitions(name, idx);
     if (!def.file) {
-      const ok = produced.has(name);
+      const ok = produced.has(name) || inCreated.has(name);
       return { ...base, kind: 'symbol', value: v, name, ok, why: ok ? 'lo produce el propio plan' : `no hay definición de ${name} en el repo` };
     }
     if (planNames && planNames.length && def.params.length && !produced.has(name)) {
@@ -208,6 +208,27 @@ function checkSpan(span, ctx) {
     return { ...base, kind: 'path', value: v, ok, why: ok ? 'ok' : 'no existe en el repo ni lo crea el plan' };
   }
   return null;
+}
+
+// `inCreated`: símbolos nombrados en una línea que también nombra un archivo que ESA tarea
+// marca Create (bloque Files); se dan por definidos ahí, pero solo si el repo no los define
+// (si existen, su firma se sigue comparando).
+function createdSymbols(spans) {
+  const inCreated = new Set();
+  const createdBy = new Map(); // tarea -> rutas Create/Crear
+  for (const s of spans) {
+    if ((s.word === 'Create' || s.word === 'Crear') && pathLike(s.value)) {
+      if (!createdBy.has(s.task)) createdBy.set(s.task, new Set());
+      createdBy.get(s.task).add(s.value.replace(/^\.\//, ''));
+    }
+  }
+  for (const s of spans) {
+    const m = /^([A-Za-z_$][\w$]*)\(/.exec(s.value);
+    if (!m) continue;
+    const mine = createdBy.get(s.task);
+    if (mine && [...mine].some((c) => s.line.includes(c))) inCreated.add(m[1]);
+  }
+  return inCreated;
 }
 
 function producedSymbols(spans, blocks) {
@@ -247,7 +268,7 @@ function checkPlan({ planText, root, runTests = false, tmpDir = os.tmpdir() }) {
   // Rutas que el plan crea: las de Create/Crear/Test y las que cuelgan de "exporta"/"Produce".
   const created = new Set(spans.filter((s) => (PATH_PLANNERS.has(s.word) || s.kind === 'produce') && pathLike(s.value))
     .map((s) => s.value.replace(/^\.\//, '')));
-  const ctx = { idx, created, produced: producedSymbols(spans, blocks), scripts };
+  const ctx = { idx, created, produced: producedSymbols(spans, blocks), inCreated: createdSymbols(spans), scripts };
 
   const refs = [];
   const seen = new Set();

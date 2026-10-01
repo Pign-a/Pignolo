@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2 — 2026-09-30
+
+- `lib/plan-check.js`: un símbolo que una tarea nombra en la misma línea que un archivo que esa tarea marca `Create` se da por producido por el plan y deja de reportarse como inexistente (motivo: 20 falsas alarmas medidas en un plan real, `tests/evals/RESULTS-planes.md`). Las rutas `Create` ya se aceptaban; las `Modify` siguen debiendo existir. Sin bloque `Files` el comportamiento no cambia.
+- Calificador de la prueba de planes (`tests/bench/plans/grade.js`): las palabras clave coinciden por palabra completa (`cat` ya no coincide dentro de `catastrophic`). Las cifras del caso real se contaron a mano porque el calificador por palabras sobrecontaba.
+
 ## 0.5.1 — 2026-09-30
 
 - `scripts/plan-check.js` (y `lib/plan-check.js`): revisa un plan contra el repo sin IA. Rutas, símbolos, firmas y comandos que nombra cada tarea; `node --check` de sus bloques js; con `--run-tests`, corre los bloques de test del plan en una copia temporal y dice si dan rojo. Lo usará el `plan-auditor` (hito 5). Límite medido: en un plan que nombra lo que el propio plan va a crear da falsas alarmas; falta que ignore lo marcado como `Create`.

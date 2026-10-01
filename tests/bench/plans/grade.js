@@ -4,6 +4,10 @@
 // sus tareas y al menos una de sus palabras clave (en evidence, kind o keywords,
 // sin distinguir mayúsculas). Límite declarado: un hallazgo bien escrito con otras
 // palabras no coincide; los no coincidentes se revisan a mano en la sonda.
+// Las cifras del caso real en tests/evals/RESULTS-planes.md se contaron A MANO: este
+// calificador por palabras clave sobrecuenta (palabras clave genéricas coinciden con
+// hallazgos que no describen el error); las palabras se comparan completas, pero eso no
+// lo vuelve una fuente de esas cifras.
 
 // "Task 3", "T3", "t3" y "3" son la misma tarea.
 function normTask(t) {
@@ -32,7 +36,18 @@ function matches(finding, err) {
   if (!finding || typeof finding !== 'object') return false;
   if (!(err.tasks || []).some((t) => normTask(t) === normTask(finding.task))) return false;
   const hay = haystack(finding);
-  return err.keywords.some((k) => hay.includes(String(k).toLowerCase()));
+  return err.keywords.some((k) => hasWord(hay, String(k).toLowerCase()));
+}
+
+// Coincidencia por límite de palabra: `cat` no está en `catastrophic`. El límite solo se
+// exige en un extremo de la palabra clave que sea carácter de palabra, así `process.exit`
+// o `node --check` (puntuación en el medio o al final) siguen coincidiendo.
+function hasWord(hay, kw) {
+  if (!kw) return false;
+  const esc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pre = /^\w/.test(kw) ? '(?<!\\w)' : '';
+  const post = /\w$/.test(kw) ? '(?!\\w)' : '';
+  return new RegExp(pre + esc + post).test(hay);
 }
 
 // grade({ findings, truth, plan }): `findings` es el arreglo o el texto del informe,
