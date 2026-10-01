@@ -17,6 +17,7 @@ const KEYS = [
   ['deps-install', 'depsInstall', 'scalar'],
   ['domain-rules', 'domainRules', 'list'],
   ['mutation', 'mutation', 'bool'],
+  ['places', 'places', 'map'],
   ['language', 'language', 'scalar'],
   ['profile', 'profile', 'scalar'],
 ];
@@ -143,6 +144,36 @@ function mergeProjectMd(existingText, proposal) {
   return { ok: true, text, added, kept, conflicts };
 }
 
+// Deshacer el mapa (hito 8d, R-12): edita SOLO la línea `places.<tipo>` y solo si su valor actual es `after`.
+// `before: null` quita la línea (y el bloque `places:` si queda vacío); si no, vuelve a `before`. El resto de los bytes no cambia.
+function revertPlaces({ text, edits }) {
+  const reverted = [];
+  const left = [];
+  const lines = String(text).split('\n');
+  const unq = (v) => {
+    const t = v.replace(/\r$/, '').trim();
+    return /^(["']).*\1$/.test(t) ? t.slice(1, -1) : t;
+  };
+  for (const { kind, before, after } of edits || []) {
+    const blk = blockOf(lines, 'places');
+    let at = -1;
+    if (blk) for (let i = blk.start + 1; i <= blk.end; i += 1) if (new RegExp(`^\\s+${kind}:`).test(lines[i])) { at = i; break; }
+    if (at < 0) { if (before !== null) left.push({ kind, current: null }); continue; }
+    const m = /^(\s+)([^:]+):(.*)$/.exec(lines[at].replace(/\r$/, ''));
+    const current = unq(m[3]);
+    if (current !== unq(String(after))) { left.push({ kind, current }); continue; }
+    const cr = lines[at].endsWith('\r') ? '\r' : '';
+    if (before === null) {
+      lines.splice(at, 1);
+      const nb = blockOf(lines, 'places');
+      // Sin hijos: se quita también la línea `places:`.
+      if (nb && nb.end === nb.start) lines.splice(nb.start, 1);
+    } else lines[at] = `${m[1]}${kind}: ${quote(before)}${cr}`;
+    reverted.push(kind);
+  }
+  return { text: lines.join('\n'), reverted, left };
+}
+
 function validatePiiPattern(pattern) {
   if (typeof pattern !== 'string' || pattern === '') return { ok: false, refused: 'too-broad', reason: 'un patrón vacío coincide con todo' };
   let re;
@@ -157,4 +188,4 @@ function validatePiiPattern(pattern) {
   return { ok: true };
 }
 
-module.exports = { renderProjectMd, mergeProjectMd, validatePiiPattern };
+module.exports = { renderProjectMd, mergeProjectMd, validatePiiPattern, revertPlaces };
