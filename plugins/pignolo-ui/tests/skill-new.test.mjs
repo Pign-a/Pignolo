@@ -62,7 +62,7 @@ test('transversal contract of the three skills and the reference files', () => {
       for (const m of text.matchAll(re)) assert.equal(text.slice(Math.max(0, m.index - 11), m.index), 'pignolo-ui:', `${name}: ${m[0]} without prefix`);
     }
     // "terminado" only next to the verdict script (new, improve); audit never says it
-    const lines = text.split('\n').filter((l) => /terminado/i.test(l));
+    const lines = text.split('\n').flatMap((l) => l.split(/(?<=[.!?])\s+/)).filter((l) => /terminado/i.test(l));
     if (name === 'audit') assert.deepEqual(lines, []);
     else for (const l of lines) assert.ok(/verdict/.test(l), `${name}: "terminado" without run.mjs verdict: ${l.slice(0, 80)}`);
     // after apply.md, every measure/capture/dom/check/report-skeleton/verdict command points at <run>/after
