@@ -49,3 +49,16 @@ Un agente por brazo, sin subagentes. Tokens y tiempo: lo que informa cada agente
 ## Decisión del autor (2026-10-01)
 
 Pantallas de UI en el lienzo siempre que la cuenta tenga el tipo (aviso de una línea, sin pregunta; un lienzo por proyecto); colores, fuentes y bases en HTML local; `DESIGN.md` publicado además como "Design System". `ui-option` sigue escribiendo HTML plano y un script lo convierte a artboard, así las mediciones y los aprobados leen HTML. Plan: `docs/plans/2026-10-01-pignolo-ui-hito-4c-lienzo.md`.
+
+## Repetición con la carta de `ui-option` mejorada (2026-10-01)
+
+Mismo brief y misma tarea (4 pantallas HTML más la página de comparación), con la carta de la rama `ui/option-craft` (pignolo-ui 0.6.2), que suma una sección de oficio: comprometerse con un estilo nombrable, derivar la jerarquía del contenido y diferenciar las opciones por estructura.
+
+| Brazo | Tokens | Tiempo | Usos de herramientas | HTML escrito | Estilos que declaró |
+|---|---|---|---|---|---|
+| Sonnet, carta anterior | ~76 mil | 67 s | 7 | 13,2 KB | no se pedía |
+| Sonnet, carta mejorada | ~75 mil | 62 s | 9 | 13,7 KB | A "libro de movimientos denso"; B "número protagonista, fondo verde noche" |
+| Opus, carta anterior | ~84 mil | 145 s (con repetición) | 8 | 16,2 KB | no se pedía |
+| Opus, carta mejorada | ~79 mil | 134 s | 9 | 18,6 KB | A "dense ledger"; B "quiet monument" |
+
+**Lectura:** las reglas de oficio no encarecen (sonnet igual, opus algo menos porque esta vez no hubo repetición). Opus sigue tardando el doble que sonnet. Si la carta mejorada alcanza para que sonnet deje de ser genérico lo decide el autor mirando los resultados; hasta entonces rige opus en `max` y sonnet en `balanced` y `economy`. Una corrida por brazo.
