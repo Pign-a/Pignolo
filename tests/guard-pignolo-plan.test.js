@@ -21,6 +21,18 @@ test('a subagent cannot run plan.js, plan-audit.js or approved.js; the main thre
   }
 });
 
+// Protects: hito 6, Task 8 (los scripts que escriben .pignolo/state/ son del hilo principal) ·
+// Breaks if: PLAN_SCRIPT no suma close-session.js y state-index.js.
+test('a subagent cannot run close-session.js or state-index.js; the main thread can', () => {
+  for (const s of ['close-session.js archive', 'state-index.js', 'state-index.js --check']) {
+    denied(call(`node ${P}/scripts/${s}`), s);
+    passes(call(`node ${P}/scripts/${s}`, {}), `main ${s}`);
+  }
+  denied(call('node "${CLAUDE_PLUGIN_ROOT}/scripts/close-session.js" prune'), 'close-session dyn');
+  denied(call(`& node "${P}/scripts/state-index.js"`, SUB, 'PowerShell'), 'state-index ps');
+  passes(call('node scripts/close-session.js archive'), 'project close-session.js');
+});
+
 test('read-only scripts and reading the script are not denied', () => {
   for (const s of ['next.js', 'approved-verify.js', 'plan-check.js --plan p', 'present.js check']) passes(call(`node ${P}/scripts/${s}`), s);
   passes(call(`cat ${P}/scripts/plan.js`), 'cat');
@@ -59,4 +71,44 @@ test('regression: run.js keeps denying a subagent in the same four forms', () =>
   }
   passes(call('node scripts/run.js'), 'project run.js');
   passes(call(`node "${P}/scripts/run.js" end`, {}), 'main thread run.js');
+});
+
+// Protects: I3 de la revisión final del hito 6 (G19: la compuerta reconocía pocas formas) · Breaks if:
+// PLAN_SCRIPT vuelve a exigir .js, o node -e/-p/-r con el script del plugin deja de negarse.
+test('a subagent cannot run the state scripts without the .js extension', () => {
+  for (const s of ['plan', 'plan-audit', 'approved', 'close-session archive', 'state-index', 'state-index --check']) {
+    denied(call(`node ${P}/scripts/${s}`), s);
+    passes(call(`node ${P}/scripts/${s}`, {}), `main ${s}`);
+  }
+  denied(call('node "${CLAUDE_PLUGIN_ROOT}/scripts/close-session" prune'), 'dyn sin extensión');
+  denied(call('node "C:/Users/u/.claude/plugins/cache/pignolo/pignolo/0.7.0/scripts/plan" status'), 'cache sin extensión');
+  denied(call(`& node "${P}/scripts/state-index"`, SUB, 'PowerShell'), 'ps sin extensión');
+  assert.equal(call(`node "${P}/scripts/run" end`).exit, 2, 'run sin extensión');
+  assert.equal(call(`node "${P}/scripts/holdout"`).exit, 2, 'holdout sin extensión');
+  passes(call('node scripts/close-session archive'), 'script relativo de un proyecto');
+  passes(call('node D:/pignolo/scripts/plan status'), 'repo llamado pignolo');
+});
+
+test('a subagent cannot load the state scripts with node -e/-p/-r (their main runs on load); the lib is a declared limit', () => {
+  for (const c of [
+    `node -e "require('${P}/scripts/state-index.js')"`,
+    `node -e "require('${P}/scripts/state-index')"`,
+    `node -p "require('${P}/scripts/close-session.js')"`,
+    `node --eval "require('${P}/scripts/plan.js')"`,
+    `node -r ${P}/scripts/close-session.js -e 1`,
+    'node -e "require(\'${CLAUDE_PLUGIN_ROOT}/scripts/close-session\')"',
+    `node -e "require('${P.replace(/\//g, '\\\\')}\\scripts\\state-index.js')"`,
+  ]) denied(call(c), c);
+  passes(call(`node -e "require('${P}/scripts/state-index.js')"`, {}), 'main thread');
+  passes(call(`node -e "require('${P}/lib/learnings.js')"`), 'la lib: límite declarado (spec 8.3)');
+});
+
+// Protects: G21 (leer no se niega) · Breaks if: la regla niega cat, grep, head, wc o node --check.
+test('reading the state scripts is never denied, with or without the extension', () => {
+  for (const s of ['close-session', 'close-session.js', 'state-index', 'plan', 'plan-audit.js', 'approved']) {
+    for (const reader of ['cat', 'grep -n main', 'head -20', 'wc -l', 'sed -n 1,5p']) passes(call(`${reader} ${P}/scripts/${s}`), `${reader} ${s}`);
+  }
+  passes(call(`node --check ${P}/scripts/state-index.js`), 'node --check');
+  passes(call(`node -c ${P}/scripts/close-session.js`), 'node -c');
+  for (const c of [`Get-Content ${P}/scripts/close-session`, `Select-String -Pattern x -Path ${P}/scripts/state-index.js`]) passes(call(c, SUB, 'PowerShell'), c);
 });

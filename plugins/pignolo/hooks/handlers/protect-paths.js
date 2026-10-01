@@ -8,7 +8,7 @@
 // - Flags del interruptor (§3.3): apagable solo con PIGNOLO_DISABLED.
 const fs = require('node:fs');
 const path = require('node:path');
-const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
+const { readState, flagPaths, mainRoot, projectRoot } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { projectState, readRun } = require('../../lib/project');
 const { resolveClean, cleanPath, isWithin, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
@@ -112,6 +112,39 @@ function roleRule({ input, env, cwd, file }) {
   return alt(`${agent.slice(8)} no escribe ${rel} (test o config de tests) sin autorización. ${ALT_IMPL}`);
 }
 
+// Estado de juicio (spec §8.3, §10.1; hito 6): (a) nadie escribe INDEX.md ni learnings/accepted/**
+// del checkout principal con Edit/Write (los generan los scripts; rige aun con /pignolo:off: son
+// archivos generados, no el interruptor); (b) un subagente (payload con agent_id) no escribe
+// .pignolo/state/** en ninguna copia; (c) el hilo principal tampoco lo escribe desde un worktree
+// que no es el checkout principal (cwd dentro de .pignolo/worktrees/ o de un worktree enlazado).
+// Bash y PowerShell no están cubiertos (límite declarado): los cubre la revisión del diff.
+const STATE_RE = /(^|\/)\.pignolo\/state(\/|$)/;
+const WORKTREES_RE = /(^|\/)\.pignolo\/worktrees(\/|$)/;
+// INDEX.md y learnings/accepted/ de cualquier copia (también la de un worktree de tarea: viaja a
+// main con la rama), y .pignolo/state/ de un worktree que no es el principal.
+const INDEX_COPY_RE = /(^|\/)\.pignolo\/state\/index\.md$/;
+const ACCEPTED_COPY_RE = /(^|\/)\.pignolo\/state\/learnings\/accepted(\/|$)/;
+function inOtherCopy(abs, main) {
+  const m = STATE_RE.exec(abs);
+  const owner = abs.slice(0, m.index);
+  if (!owner || cleanPath(owner) === cleanPath(main)) return false;
+  if (WORKTREES_RE.test(owner)) return true;
+  try { return cleanPath(mainRoot(owner)) === cleanPath(main); } catch (_) { return false; }
+}
+function stateRule({ input, env, cwd, abs }) {
+  if (!STATE_RE.test(abs)) return null;
+  const main = mainRoot(cwd);
+  if (INDEX_COPY_RE.test(abs)) return alt('INDEX.md lo genera pignolo y no se edita a mano. Alternativa: node <plugin>/scripts/state-index.js --cwd <checkout principal>.');
+  if (ACCEPTED_COPY_RE.test(abs)) return alt('learnings/accepted/ lo escribe solo close-session.js al aceptar un aprendizaje. Alternativa: escribí la propuesta en .pignolo/state/learnings/proposed/ y aceptala con node <plugin>/scripts/close-session.js decide --id <id> --answer yes (con el sí del humano).');
+  if (readState({ env, cwd }).hooksOff) return null;
+  if (input.agent_id) return alt('un subagente no escribe .pignolo/state/. Alternativa: devolvé lo que haya que registrar en tu informe y el hilo principal lo escribe.');
+  const cleanCwd = resolveClean(cwd, cwd);
+  if (WORKTREES_RE.test(cleanCwd) || cleanPath(projectRoot(cwd)) !== cleanPath(main) || inOtherCopy(abs, main)) {
+    return alt(`.pignolo/state/ se escribe solo desde el checkout principal, no desde un worktree de tarea ni sobre su copia. Alternativa: escribí la entrada en ${main} (cd al checkout principal o ruta absoluta con el cwd ahí).`);
+  }
+  return null;
+}
+
 // A8-09 (decisión del autor, 2026-10-01): ningún subagente escribe .pignolo/project.md con el proyecto
 // activo; solo el hilo principal y /pignolo:init (script) cambian la configuración. El mensaje empieza
 // como el de roleRule (`<agente> no escribe .pignolo/project.md`). Límite declarado: un `node -e`
@@ -147,5 +180,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return planAuditRule({ input, env, cwd, abs }) || projectMdRule({ input, env, cwd, abs }) || roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
+  return stateRule({ input, env, cwd, abs }) || planAuditRule({ input, env, cwd, abs }) || projectMdRule({ input, env, cwd, abs }) || roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
 };

@@ -1,7 +1,11 @@
 'use strict';
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
-const { readState } = require('../../lib/disabled');
+const { readState, mainRoot } = require('../../lib/disabled');
+const { readRun } = require('../../lib/project');
+const { gitRun } = require('../../lib/git');
+const { KINDS, readEntries } = require('../../lib/state-store');
+const { buildHot, HOT_LIMIT } = require('../../lib/context-budget');
 const { backupRefs, shadowState } = require('../../lib/git-backup');
 const { CANARIES } = require('../../lib/git-guard');
 const { recoverAll } = require('../../lib/sabotage');
@@ -105,22 +109,70 @@ exports.run = (input, ctx = {}) => {
       lines.push(`⚠ pignolo: no se pudo lanzar la siembra del repo sombra (${e.message}).`);
     }
   }
+  // Próxima acción derivada del estado (R-10 del hito 5): solo si hay algo en curso. El sabotaje
+  // interrumpido ya lo informó el bloque de arriba.
+  let nextText = '';
   if (!st.hooksOff) {
-    // Próxima acción derivada del estado (R-10): solo si hay algo en curso. El sabotaje
-    // interrumpido ya lo informó el bloque de arriba.
     try {
       const n = deriveNext({ cwd, env });
-      if (n && n.kind !== 'nothing' && n.text && !String(n.kind).startsWith('sabotage')) lines.push(n.text);
+      if (n && n.kind !== 'nothing' && n.text && !String(n.kind).startsWith('sabotage')) nextText = n.text;
     } catch (e) {
       lines.push(`⚠ pignolo: no se pudo derivar la próxima acción (${e.message}).`);
     }
   }
   if (input.source === 'status') {
+    // /pignolo:status muestra lo de siempre (systemMessage), sin el nivel caliente.
+    if (nextText) lines.push(nextText);
     const hooks = st.guardOff ? 'apagados' : (st.hooksOff ? 'apagados con /pignolo:off' : 'encendidos');
     lines.push(`pignolo: hooks ${hooks}; guardia de git ${st.guardOff ? 'APAGADA' : 'activa'}; canario ${canaryOk ? 'OK' : `FALLÓ (${down.join(', ')})`}${sh ? `; repo sombra ${sh.state}` : ''}.`);
   }
 
-  if (!lines.length) return { exit: 0, stdout: '' };
   const msg = lines.join('\n');
-  return { exit: 0, stdout: JSON.stringify({ systemMessage: msg, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: msg } }) };
+  // Nivel caliente (R-3, R-4 del hito 6): solo en additionalContext, nunca en systemMessage, y
+  // con el tope repartido con los avisos (avisos + nivel caliente <= HOT_LIMIT).
+  let hot = '';
+  if (!st.hooksOff && input.source !== 'status') {
+    const limit = HOT_LIMIT - (msg ? msg.length + 2 : 0);
+    if (limit > 0) {
+      try { hot = hotContext({ cwd, nextText, limit }); } catch (e) {
+        hot = `⚠ pignolo: no se pudo armar el estado del proyecto (${e.message}).`.slice(0, limit);
+      }
+    }
+  }
+
+  if (!msg && !hot) return { exit: 0, stdout: '' };
+  const additionalContext = [msg, hot].filter(Boolean).join('\n\n');
+  const out = { hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext } };
+  return { exit: 0, stdout: JSON.stringify(msg ? { systemMessage: msg, ...out } : out) };
 };
+
+// Rama del checkout principal (el estado vive ahí, spec §10.1): la misma desde un worktree,
+// un subdirectorio o el principal (F13). Plazo corto; si git falla, sin línea de rama.
+function mainBranch(main) {
+  try {
+    const b = String(gitRun(['-C', main, 'rev-parse', '--abbrev-ref', 'HEAD'], main, { timeout: 1000 })).trim();
+    return b || '';
+  } catch (_) { return ''; }
+}
+
+// El nivel caliente leído del checkout principal: entradas de .pignolo/state/, flujo de
+// run.json (uno ilegible cuenta como sin flujo, R-12) y el texto de next. Callado ('') si no
+// hay entradas, ni flujo, ni next, ni entradas ilegibles.
+function hotContext({ cwd, nextText, limit }) {
+  const main = mainRoot(cwd);
+  const r = readRun(main);
+  const flow = r.running && r.run ? { flow: r.run.flow, task: r.run.task } : null;
+  const entries = [];
+  let bad = 0;
+  for (const kind of KINDS) {
+    const got = readEntries({ main, kind });
+    entries.push(...got.entries);
+    bad += got.errors.length;
+  }
+  if (!entries.length && !flow && !nextText && !bad) return '';
+  const badLine = bad ? `${bad} entradas de estado ilegibles (ver INDEX.md y .pignolo/state/).` : '';
+  const room = badLine ? limit - badLine.length - 1 : limit;
+  if (room <= 0) return badLine.slice(0, limit);
+  const { text } = buildHot({ branch: mainBranch(main), nextText, flow, entries }, { limit: room });
+  return badLine ? `${text}\n${badLine}` : text;
+}

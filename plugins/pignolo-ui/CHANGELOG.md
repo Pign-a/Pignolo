@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.6.1 — sin publicar
+
+Pasada de arreglos de la revisión final del hito 4 (un crítico, cinco importantes y los menores). Sube de 0.6.0 a 0.6.1: no cambia la interfaz, salvo las opciones nuevas `check --before` y `design-md.mjs patch --out`.
+
+- **C-1 (pérdida de datos):** `run.mjs init` se niega (exit 2) si `.pignolo-ui` o `.pignolo-ui/runs` es un enlace (symlink o junction), o si `runs` no resuelve con `realpath` dentro del proyecto; antes podaba y borraba carpetas de otro lugar. La poda además exige que cada candidato resuelva directo bajo el `runs` real. Probado con un junction real en Windows.
+- **I-1:** `verdict` da `sin verificar` ("ui-check.json desactualizado") si un archivo de los `inputs` de `ui-check.json` cambió después del chequeo.
+- **I-2:** `verdict` lee `package.json`: si declara `typecheck`, `build` o `lint` y falta `--build-ok`, da `sin verificar` ("build sin informar"); "no declara build" sale solo cuando de verdad no hay ninguno. Las skills `new` e `improve` pasan `--build-ok yes|no`.
+- **I-3:** `run.mjs check --before <ui-check.json del antes>` (y `ui-check.mjs --before`): los fallos de las páginas renderizadas que el "antes" ya tenía salen como deuda, no como nuevos (multiconjunto de id, archivo y clave, sin depender de la carpeta del run). `improve` lo usa.
+- **I-4:** los casos de eval de `ui-option` llevan `Write` en `allowed_tools`; los graders de archivo no distinguen mayúsculas y están alineados con `checkScreens` (aceptan `<!DOCTYPE html>` y `charset="UTF-8"`, rechazan remotos en CSS, `@import`, `//` y `<base>`); se probaron los graders de archivo y los de proceso (`single-dispatch`, `subagent-returned`); un grader nuevo exige que las páginas limpias no reciban `J-01`.
+- **I-5:** `design-md.mjs patch --out <archivo nuevo>` crea `DESIGN.md` desde la plantilla sin sobrescribir nada; `--write` sobre un archivo del plugin se rechaza, así la plantilla instalada no se puede modificar. La skill `new` usa `--out` tras mostrar el diff.
+- **Menores:** m-1 el paso 6 de `apply.md` queda fijado por test; m-2 los subcomandos de `run.mjs` de los tests de skills salen del propio script; m-3 el test transversal mira cada `--run` de cada comando; m-4 tests de la deduplicación de `reportSkeleton` y de la guarda de enlaces de `discard`; m-5 el `map.json` del "después" va en `<run>/after/` y no se repite `--before`; m-6 `menu` solo pre-tilda con hallazgos que `auditor-check` conservó; m-8 `init` imprime la ruta con `/`; m-9 README y descripción de `presentation` sin la promesa falsa de "nunca salen de tu máquina"; m-10 `leak-values` recibe `--email`, `present-and-choose.md` define `<flow>` y `<approved>`, y `report-line` rechaza `facts` incompletos.
+- **Pendientes a propósito:** m-1 (`files restore --delete-list`, cambio del contrato del hito 3, lo decide el autor) y m-7 (medir la ruta de referencia `referencePath` en `new`: sin ella todo cuenta como nuevo, coherente con el spec).
+
+## 0.6.0 — sin publicar
+
+Parte 4b del hito 4: agentes, skills y evals. Sube de 0.5.0 a 0.6.0 porque trae interfaz nueva para el usuario (los tres comandos y los dos agentes).
+
+- **Tres comandos:** `/pignolo-ui:new`, `/pignolo-ui:improve` y `/pignolo-ui:audit`. Cada uno imprime primero `pignolo-ui <versión>` y su informe empieza con la primera línea de `run.mjs report-line` (degradaciones, subagentes lanzados de pedidos, modelo pedido). "Terminado" lo dice solo `run.mjs verdict`.
+- **Dos agentes:** `ui-option` (sonnet, solo `Write`, sin CLAUDE.md, escribe una opción en una carpeta vacía) y `ui-auditor` (opus, solo lectura, cada hallazgo con evidencia, nunca `bloquea` sin evidencia de script o navegador).
+- **Textos de apoyo en `reference/`** (`prepare-run`, `options`, `apply`, `present-and-choose`): usan los marcadores `<root>`, `<data>`, `<N>` y `<presentation>` porque las variables `${CLAUDE_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_DATA}` y `${user_config.*}` solo se sustituyen en `SKILL.md`; un ajuste sin valor guardado llega literal y la skill usa el valor por defecto.
+- **Lienzo "Design": fuera de la v1** (decisión del autor R10, 2026-10-01). Las opciones se comparan en `compare.html`, una página local; no se publica nada y no se invoca `Artifact`.
+- **Costo por flujo** (tabla de la sección 15 del spec, con 3 opciones): `new` en proyecto vacío 7 corridas de agente (más hasta 2 de regeneración), con `DESIGN.md` 4, `improve` 4, `audit` 1.
+- **Evals de agentes** (`tests/evals/ui-cases.mjs`): 8 casos del auditor (5 defectos sembrados y 3 páginas limpias), 3 de `ui-option` y 3 briefs de ablación, con fixtures armados por los scripts reales. Resultados de la corrida paga: pendientes (tope 22 USD aprobado, D-4-1).
+- Permisos: se recomienda el modo `acceptEdits`; en `default` las escrituras de los subagentes piden permiso.
+
+## 0.5.0 — sin publicar
+
+Parte 4a del hito 4: todo lo determinista de los flujos. No gasta tokens de agentes. Sube de 0.4.1 a 0.5.0 porque trae interfaz nueva (`run.mjs`, `compare.mjs`, `catalog/symptoms.json`, `norms/base.md`).
+
+- `scripts/run.mjs` con subcomandos: `env` (versión del plugin, de Node y de Claude Code, mínimo 2.1.271), `init` (carpeta del run con `run.json` y poda de más de 14 días que no atraviesa enlaces), `config` (`project.json` con claves cerradas), `present`, `norms`, `check` (un `--dom` por cada archivo de `dom.json`), `leak-values`, `git-state`, `options-check`, `discard`, `auditor-check`, `menu`, `report-skeleton`, `report-line`, `verdict` y `compare-html`.
+- `scripts/compare.mjs`: huella estructural de mockups (bloques, titulares, columnas, acción primaria) y de style tiles (tono del primario, tipografía, radios); `options` dice qué opción regenerar, `approved` compara un aprobado con su implementación. Informativo: las diferencias nunca dan exit 1. **Medición de A-18: 0 de 6 diferencias falsas** sobre pares aprobado/implementación que solo cambian tokens.
+- Diccionario de 11 síntomas (`catalog/symptoms.json`), normas base con 12 criterios de juicio `J-01` a `J-12` (`norms/base.md`) y normas del autor opcionales (`norms.md`; si son inválidas se ignoran enteras, con aviso).
+- `verdict` decide "terminado", "BLOCKED" o "sin verificar" por script: `ui-check` sin bloqueantes nuevos en alcance, `report-check` en 0 y build verde si existe.
+- El "después" de una confirmación vive en `<run>/after/`: medir otra vez en la misma carpeta deja `ui-check.json` desactualizado y `report-check` retira todo (R-13). Regenerar una opción mueve la anterior a `<run>/discarded/` (R-14).
+- Lienzo "Design": **fuera de la v1** (decisión del autor, 2026-10-01); la presentación es siempre `compare.html` local y no se publica nada.
+- `browser.mjs` exporta `createOpener` (sin cambio de comportamiento) para compartir la apertura con limpieza.
+
 ## 0.4.1 — sin publicar
 
 Arreglos de la revisión final del hito 3 (navegador):

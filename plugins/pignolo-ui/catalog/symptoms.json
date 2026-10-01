@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "symptoms": [
+    { "id": "flat", "label": "Se ve plana, sin profundidad", "words": ["se ve plana", "sin profundidad", "plana"], "rules": ["DEPTH-01"], "fix": "Add an elevation scale (shadow tokens) and use it on surfaces" },
+    { "id": "black-borders", "label": "Los bordes son negros o muy marcados", "words": ["bordes negros", "bordes muy marcados", "bordes marcados"], "rules": ["COLOR-02"], "fix": "Replace pure black borders with a soft neutral border token" },
+    { "id": "cramped", "label": "Se ve apretada, sin aire", "words": ["apretada", "sin aire", "apretado"], "rules": ["LAYOUT-10"], "fix": "Raise the spacing scale and the padding of containers" },
+    { "id": "hard-to-read", "label": "El texto gris es difícil de leer", "words": ["texto gris", "difícil de leer", "poco contraste", "no se lee"], "rules": ["COLOR-03"], "fix": "Darken the muted text token until it reaches 4.5:1" },
+    { "id": "generic", "label": "Se ve genérica, parece hecha por IA", "words": ["se ve genérica", "parece hecha por ia", "genérica"], "rules": ["COLOR-11", "COLOR-12", "ICON-01", "THEME-01", "COPY-01"], "fix": "Replace factory defaults: palette, icons, copy and background" },
+    { "id": "no-focus", "label": "No se ve dónde estoy con el teclado", "words": ["no se ve donde estoy con el teclado", "foco del teclado", "no se ve el foco"], "rules": ["STATE-04", "NAV-01"], "fix": "Add a visible focus-visible style and a clear current-page marker" },
+    { "id": "cut-off-mobile", "label": "Se corta en el celular", "words": ["se corta en el celular", "scroll horizontal", "se corta en el movil"], "rules": ["LAYOUT-11"], "fix": "Fix the element that overflows the viewport at 320 px" },
+    { "id": "uneven-radii", "label": "Los bordes redondeados son distintos entre sí", "words": ["bordes redondeados distintos", "radios distintos", "esquinas distintas"], "rules": ["LAYOUT-04"], "fix": "Use one radius scale and map every component to it" },
+    { "id": "annoying-motion", "label": "Las animaciones molestan", "words": ["animaciones molestas", "demasiado movimiento"], "rules": ["MOTION-03", "MOTION-04", "MOTION-07"], "fix": "Shorten durations, drop non-essential motion and honor reduced motion" },
+    { "id": "no-hierarchy", "label": "No se sabe qué es lo principal", "words": ["no se sabe que es lo principal", "sin jerarquía", "todo pesa igual"], "rules": ["J-01"], "fix": "Keep one primary action and make it the most prominent element" },
+    { "id": "dark-broken", "label": "El modo oscuro se ve mal", "words": ["modo oscuro se ve mal", "oscuro se ve mal"], "rules": ["THEME-03", "COLOR-03"], "fix": "Define dark tokens explicitly and recheck contrast in dark" }
+  ]
+}

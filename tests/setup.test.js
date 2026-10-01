@@ -395,3 +395,10 @@ test('check con perfil economy ya guardado incluye el aviso', () => {
   const r = run(['check'], { env: sb.env, cwd: sb.cwd });
   assert.ok(r.json.notice && r.json.notice.plain);
 });
+
+// Protects: D-6-1 y R-10 del hito 6 (Engram fuera de la v1) · Breaks if: la skill de setup
+// vuelve a nombrar Engram.
+test('the setup skill does not mention Engram (D-6-1)', () => {
+  const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'setup', 'SKILL.md'), 'utf8');
+  assert.doesNotMatch(text, /engram/i);
+});

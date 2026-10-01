@@ -105,3 +105,13 @@ test('the guard deadline is about 3 s and every handler gets one', () => {
   const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks', 'launcher.js'), 'utf8');
   assert.match(src, /DEFAULT_DEADLINE_MS = 3000;/);
 });
+
+// Protects: R-5 del hito 6 (el lanzador nunca niega SubagentStart: FAIL_OPEN) · Breaks if:
+// subagent-start sale con 2 ante una entrada inválida, o egress deja de negar.
+test('subagent-start fails open (exit 0, reason on stderr); egress still fails closed', () => {
+  const sub = runLauncher('subagent-start', '{no es json');
+  assert.strictEqual(sub.status, 0);
+  assert.match(sub.stderr, /entrada JSON inválida/);
+  const eg = runLauncher('egress', '{no es json');
+  assert.strictEqual(eg.status, 2);
+});

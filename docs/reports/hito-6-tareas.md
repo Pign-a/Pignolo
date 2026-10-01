@@ -99,3 +99,7 @@
 - Ruling: R-10/D-6-3(d) decían que la clave `engram` de la config no existe; seguía en `lib/profiles.js` (`engram: false` por defecto) y en el paso 5 de `/pignolo:setup`. Se quitaron, con test (`profiles` deepStrictEqual sin `engram`; `setup` sin la palabra Engram), rojo mostrado restaurando cada uno — costo si está mal: una config vieja con `engram` se sigue leyendo (no se valida esa clave), solo deja de devolverse.
 - Spec: §10.4 (R7 y la skill), §10.5 (idea futura con lo verificado), §7 (fila del learning-validator: sin despachar), §14 (setup sin Engram), §15 (`agents` del learning-validator descartado), §18 punto 6 (hecho). STATE.md (entrada nueva arriba) y gaps G17 (sigue abierto, sin dueño).
 - Doble para el caller: la rama tiene `plugin.json` 0.10.0 sobre 0.7.1 y `main` está en 0.8.1 (5b): conflicto esperable en `plugin.json`, CHANGELOG y STATE.md al unir. Revisión final opus de 6a/6b pendiente (sin subagentes acá). Etiqueta `contract/hito-6a/v2` no creada (el plan la pedía tras las Tasks 3-6; nadie la usa).
+
+## Pasada de arreglos de la revisión final (2026-10-01, 0.10.1)
+
+Corrige lo que este informe da por bueno y la revisión final desmintió: `decide --validation-file` y `--human` se reemplazan por `--answer yes|no` (C1); `findDuplicate`, `checkEvidence` y `flags` se implementan (I1); la Task 10 se hace como herramienta de trazas G17 (I2); el agente `learning-validator` se borró por decisión del autor. El detalle por hallazgo está en `CHANGELOG.md` (0.10.1).
