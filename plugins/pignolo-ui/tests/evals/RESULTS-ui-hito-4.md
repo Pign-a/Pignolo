@@ -1,6 +1,6 @@
 # Resultados de las evals del hito 4 de pignolo-ui (`ui-auditor`, `ui-option`)
 
-Estado: **corrida frenada en la calibración (freno iii), 2026-10-01.** No hay corrida completa (5 por caso) ni ablación. Gasto: **3,39 USD** de un tope de 22 (D-4-1). Decide el autor cómo seguir.
+Estado: **corrida completa frenada (2026-10-01): umbral 4/5 no cumplido en `clean-2` y `clean-3`, y 14 corridas cortadas por el límite de sesión.** Gasto 14,34 USD de 22. La primera calibración se frenó (freno iii); el autor relajó un grader y la recalibración dio 11/11. Ver las secciones siguientes. Decide el autor cómo seguir.
 
 Casos: `plugins/pignolo-ui/tests/evals/ui-cases.mjs` (8 de `ui-auditor`, 3 de `ui-option`, 3 briefs de ablación). Claude Code 2.1.285, Windows nativo con Git Bash por ruta absoluta (D-4-1), pignolo-ui 0.6.2 (main en 8d4119f). `ui-auditor` en opus, `ui-option` en sonnet. Umbral de la spec: al menos 4 de 5 corridas por caso. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
 
@@ -54,3 +54,52 @@ La página "Novedades" (tres enlaces de noticias y "Ver todas", sin botón) es l
 | v. Tope por corrida | no se alcanzó |
 
 Sin corrida completa ni ablación. Los 3 briefs de ablación no se corrieron.
+
+## Cambio de grader por decisión del autor (2026-10-01)
+
+Tras el freno iii el autor decidió relajar `no-false-positive-judgment` de los casos `ui-auditor-clean-*`. Motivo: una página sin defecto sembrado puede tener un criterio de juicio discutible (`J-nn`) de severidad media o baja sin que eso sea un falso positivo. Regla nueva: pasa si ningún hallazgo trae un `id` fuera de `J-nn`, `COLOR-02` y `LAYOUT-04` (los dos `fail` que `ui-check` marca de verdad en las tres páginas: colores y radios escritos a mano, sin `DESIGN.md`); `no-false-positive-bloquea-alto` sigue reprobando cualquier hallazgo `alto` o `bloquea`. Test determinista (`tests/eval-ui-cases.test.mjs`): un `J-01` medio pasa, un `J-01` alto o bloqueante reprueba, una regla que la página no tiene (`COLOR-03`) reprueba. Rojo demostrado contra el grader viejo ("one medium J-01 passes"); 20/20 con el nuevo. Commit `53ebe0c`.
+
+## Recalibración del auditor (grader nuevo)
+
+| Corrida | Costo (USD) | Resultado |
+|---|---|---|
+| `--tag auditor --runs 1 -j 2 --max-cost-usd 4` | 2,035 | 7/8: `defect-a11y-16` sin corrida (`scaffold failed`, 156 s: el arranque del navegador con dos corridas a la vez) |
+| `--case ui-auditor-defect-a11y-16 --runs 1` | 0,275 | 1/1 |
+
+Con `ui-option` (3/3 de la primera calibración), la calibración quedó 11/11. Freno iv: 5 × 2,55 = 12,7 ≤ 16,3 restantes. El SHA de `ui-cases.mjs` no cambió entre la recalibración y la completa.
+
+## Completa (5 corridas por caso)
+
+| Etapa | Comando | Costo (USD) |
+|---|---|---|
+| `ui-option` | `--tag option --runs 5 -j 2 --allow-tools Write --max-cost-usd 1.5` | 1,129 |
+| `ui-auditor` | `--tag auditor --runs 5 -j 1 --max-cost-usd 12` | 7,516 |
+
+| Agente | Caso | Aciertos / corridas | USD por corrida | Segundos por corrida | Umbral 4/5 |
+|---|---|---|---|---|---|
+| ui-option | mockup | 5/5 | 0,088 | 44 | pasa |
+| ui-option | style-tile | 5/5 | 0,080 | 41 | pasa |
+| ui-option | improve | 5/5 | 0,058 | 19 | pasa |
+| ui-auditor | defect-color-03 | 5/5 | 0,309 | 87 | pasa |
+| ui-auditor | defect-a11y-16 | 5/5 | 0,269 | 80 | pasa |
+| ui-auditor | clean-1 | 5/5 | 0,296 | 85 | pasa |
+| ui-auditor | **clean-2** | **1/5** | 0,286 | 95 | **no** |
+| ui-auditor | **clean-3** | **3/5** | 0,283 | 82 | **no** |
+| ui-auditor | defect-j-01 | 1/1 válida (4 sin servicio) | 0,060 | 38 | sin medir |
+| ui-auditor | defect-layout-11 | 0/0 válidas (5 sin servicio) | 0 | 31 | sin medir |
+| ui-auditor | defect-state-04 | 0/0 válidas (5 sin servicio) | 0 | 29 | sin medir |
+
+**Corte de entorno:** HTTP 429 "You've hit your session limit" en 14 corridas (`j-01` 4, `layout-11` 5, `state-04` 5), sin despachar nada: no miden al agente. No se reintentó (freno).
+
+**Fallas reales (`no-false-positive-bloquea-alto`, leídas de las trazas):** el auditor marcó un hallazgo de juicio con severidad `alto` en páginas limpias: en `clean-2` (4 de 5 corridas) `J-08:alto` (no se puede deshacer o salir sin perder el trabajo); en `clean-3` `J-04:alto` y `J-11:alto`. El resto de los hallazgos fue medio o detalle, más `COLOR-02` y `LAYOUT-04` medios. Es el mismo patrón que `clean-3` del primer corte: el auditor sube a `alto` criterios de juicio que el fixture no sembró. Decide el autor: bajar el tope de severidad de los `J-nn` en la carta del agente, relajar el grader (aceptar `alto` en `J-nn`) o rehacer las páginas limpias.
+
+## Frenos (corrida completa)
+
+| Freno | Estado |
+|---|---|
+| iii. Calibración con todos los casos aprobados | cumplido (11/11, con una repetición por timeout del scaffold) |
+| iv. 5 × calibración ≤ tope restante | cumplido |
+| Entorno: límite de sesión (429) | **cortó** 14 corridas de 3 casos de defecto |
+| Umbral 4/5 | **no cumplido** en `clean-2` y `clean-3` |
+
+Gasto total: **14,34 USD** de 22 (3,39 + 2,035 + 0,275 + 1,129 + 7,516). La ablación (3 briefs) no se corrió.
