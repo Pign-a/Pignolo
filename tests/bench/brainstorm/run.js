@@ -4,7 +4,7 @@
 //   node tests/bench/brainstorm/run.js [--arms A,B] [--reps 3] [--first-rep 1] [--cap 10]
 //     [--per-run-cap 2.5] [--max-turns 60] [--probe] [--dry-run] [--out <dir>]
 // Brazo A: el texto de hoy del paso 2 de la skill `plan` (prompts/arm-a.md).
-// Brazo B: el borrador de plugins/pignolo/skills/brainstorm/SKILL.md (sin el encabezado).
+// Brazo B: el borrador de tests/bench/brainstorm/draft/SKILL.md (sin el encabezado).
 // Cada corrida es un `claude -p` con opus sobre una copia limpia del repo en el commit
 // anterior al plan del hito 4c (d0213e8), y termina con un spec escrito. Al autor lo
 // reemplaza ask.js (sonnet con truth.json): en la copia solo queda un envoltorio, la verdad

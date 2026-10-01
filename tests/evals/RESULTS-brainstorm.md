@@ -22,7 +22,7 @@ Un pedido real con verdad conocida: el del lienzo "Design" de pignolo-ui, recons
 ## Brazos
 
 - **A:** el texto de hoy de la skill `plan`: el párrafo inicial, las dos reglas sobre el humano y el paso 2 (`prompts/arm-a.md`).
-- **B:** el borrador de `plugins/pignolo/skills/brainstorm/SKILL.md` (55 líneas, solo texto, sin scripts).
+- **B:** el borrador de `tests/bench/brainstorm/draft/SKILL.md` (55 líneas, solo texto, sin scripts).
 
 Cada corrida es un `claude -p` con opus sobre una copia limpia del repo (`git archive` de `d0213e8`), con `--plugin-dir` de la propia copia, `--setting-sources project,local`, `acceptEdits`, Bash permitido solo para `node ask.js`, sin skills ni subagentes, 60 turnos como máximo; termina con el spec escrito. El texto del brazo va en el prompt (`prompts/common.md` es igual para los dos).
 
