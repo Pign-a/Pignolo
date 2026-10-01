@@ -65,7 +65,8 @@ function validateScopeCard(text, { request = '', decisions = [] } = {}) {
       const qs = quotesOf(t);
       if (qs.length !== 1) { errs.push(`ejemplo ${i + 1}: debe tener exactamente una cita entre comillas ("${t.slice(0, 40)}")`); return; }
       const q = norm(qs[0]);
-      if (!q || !(req.includes(q) || sources.some((s) => s.includes(q)))) errs.push(`ejemplo ${i + 1}: la cita "${qs[0]}" no aparece en el pedido ni en una decisión registrada`);
+      if (q.length < 3) { errs.push(`ejemplo ${i + 1}: la cita "${qs[0]}" es demasiado corta para probar nada (mínimo 3 caracteres)`); return; }
+      if (!(req.includes(q) || sources.some((s) => s.includes(q)))) errs.push(`ejemplo ${i + 1}: la cita "${qs[0]}" no aparece en el pedido ni en una decisión registrada`);
     });
   }
   if ('Added without being asked' in s) {

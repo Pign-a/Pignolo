@@ -107,3 +107,17 @@ test('the main thread cannot write the state, INDEX.md or accepted/ of a task wo
   assert.strictEqual(protect.run(payload(repo, state(inner, 'work', 'x.md')), { env: { PIGNOLO_HOME: off } }).exit, 0, 'con /pignolo:off (b) y (c) no rigen');
   assert.strictEqual(protect.run(payload(repo, state(inner, 'INDEX.md')), { env: { PIGNOLO_HOME: off } }).exit, 2, 'INDEX.md de una copia sigue negado aun con /pignolo:off');
 });
+
+// Protects: spec §4.5/§8.3 (un subagente no escribe decisiones por Edit/Write/MultiEdit/NotebookEdit; el hilo principal sí;
+// leer no pasa por este hook) · Breaks if: stateRule deja de cubrir .pignolo/state/decisions/ o niega al hilo principal.
+test('decisions/: every write tool is denied to a subagent, the main thread passes', () => {
+  const repo = setup();
+  const f = state(repo, 'decisions', '2026-10-01-p1-d-1.md');
+  for (const tool of ['Write', 'Edit', 'MultiEdit']) {
+    const r = protect.run(payload(repo, f, { agent: 'general-purpose', tool }), { env: env() });
+    assert.strictEqual(r.exit, 2, tool);
+    assert.match(r.stderr, /subagente.*Alternativa:/, tool);
+    assert.strictEqual(protect.run(payload(repo, f, { tool }), { env: env() }).exit, 0, `main ${tool}`);
+  }
+  assert.strictEqual(protect.run(payload(repo, path.join(repo, 'src', 'x.js'), { agent: 'general-purpose' }), { env: env() }).exit, 0, 'otra ruta');
+});

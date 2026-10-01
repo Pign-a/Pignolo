@@ -6,7 +6,7 @@
 const fs = require('node:fs');
 const store = require('./state-store');
 
-const DECISION_ID_RE = /^D-\d{1,4}$/;
+const DECISION_ID_RE = /^D-[1-9]\d{0,3}$/;
 const oneLine = (s) => String(s).replace(/\s+/g, ' ').trim();
 const entryId = ({ plan, id, date }) => `${date}-${plan}-${id.toLowerCase()}`;
 
@@ -31,10 +31,13 @@ function addDecision({ main, plan, id, text, quote, date }) {
 // { decisions: [{ id, plan, date, text, quote, file }], errors } de un plan, en orden de id.
 // Una entrada ilegible va a `errors`; nunca respalda una cita.
 function listDecisions({ main, plan }) {
+  // También lee archive/: `archive` mueve las decisiones cerradas a los 14 días y una decisión
+  // archivada de un plan vivo debe seguir respaldando sus citas y bloqueando su id repetido.
   const read = store.readEntries({ main, kind: 'decisions' });
+  const old = store.readEntries({ main, kind: 'archive' });
   const decisions = [];
-  const errors = [...read.errors];
-  for (const e of read.entries) {
+  const errors = [...read.errors, ...old.errors];
+  for (const e of [...read.entries, ...old.entries]) {
     const f = e.fields;
     if (!f.decision || !DECISION_ID_RE.test(String(f.decision)) || (plan !== undefined && f.plan !== plan)) continue;
     let raw;
@@ -43,10 +46,16 @@ function listDecisions({ main, plan }) {
     const at = lines.findIndex((l) => /^- quote: /.test(l));
     if (at < 0) { errors.push({ file: e.file, error: 'sin línea "- quote:"' }); continue; }
     const text = lines.slice(at + 1).join('\n').trim();
-    decisions.push({ id: String(f.decision), plan: String(f.plan), date: String(f.created), text, quote: lines[at].slice('- quote: '.length).trim(), file: e.file });
+    decisions.push({ id: String(f.decision), status: String(f.status), source: String(f.source), plan: String(f.plan), date: String(f.created), text, quote: lines[at].slice('- quote: '.length).trim(), file: e.file });
   }
   decisions.sort((a, b) => Number(a.id.slice(2)) - Number(b.id.slice(2)));
   return { decisions, errors };
 }
 
-module.exports = { DECISION_ID_RE, addDecision, listDecisions };
+// Lo único que respalda una cita (spec §4.5): decisiones vigentes (`decided`), registradas como del
+// humano y de ESTE plan. Una reemplazada, abierta o de otra fuente no cuenta.
+function backingDecisions({ main, plan }) {
+  return listDecisions({ main, plan }).decisions.filter((d) => d.status === 'decided' && d.source === 'human' && d.plan === plan);
+}
+
+module.exports = { DECISION_ID_RE, addDecision, listDecisions, backingDecisions };

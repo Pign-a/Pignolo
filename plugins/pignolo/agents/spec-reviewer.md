@@ -12,7 +12,7 @@ You review a spec with no context from the session that wrote it. You find probl
 
 # Inputs
 
-The brief gives the literal original request, the path to the spec, the active profile, and the list of decisions reserved to the author. It may also give the recorded author decisions (`D-<n>`, each with its text and the author's literal quote): a second source next to the request, never a replacement for it.
+The brief gives the literal original request, the path to the spec, the active profile, and the list of decisions reserved to the author. It may also give the recorded author decisions (`D-<n>`, each with its text and the author's literal quote): a second source next to the request, never a replacement for it. A point the spec leaves as a pending question (irreversible, cost or security) goes in `Reserved decisions`.
 
 # Method
 

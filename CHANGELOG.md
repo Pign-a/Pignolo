@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.1 — 2026-10-01
+
+Arreglos de la revisión final de 0.12.0 (cada uno con un test que falla sin el arreglo).
+
+- **I1:** solo una decisión vigente (`decided`), registrada como del humano y del plan que se valida respalda una cita; una `superseded`, abierta, de otra fuente o de otro plan ya no (`backingDecisions`).
+- **I2:** `listDecisions` lee también `archive/`: el archivado a los 14 días no deja una tarjeta sin su segunda fuente, y un id archivado no se puede volver a registrar.
+- **I3:** el límite queda declarado (spec §4.5/§8.3): ningún script autentica la cita; la prueba es el turno del humano y su aprobación de la tarjeta. "Solo el hilo principal" se precisa: `protect-paths` frena Edit/Write/MultiEdit de un subagente sobre `.pignolo/state/decisions/` y la regla `pignolo-plan` frena `plan.js`; la escritura por Bash (redirección, `cp`, `node -e` con la lib) es el hueco ya conocido de la guardia, anotado como G32 en `docs/gaps.md`. Test: leer las decisiones sigue permitido a un subagente.
+- **I4:** tres mutantes muertos con tests nuevos: decisión de otro plan en la compuerta (`plan-cli`), decisión sin cita con texto igual a la cita buscada (`scope-card`) y control de duplicado con otra fecha (`decisions`).
+- **Menores:** M1 declarado (las `accepted` viejas siguen sin poder cerrarse); M2 `D-01` ya no se acepta; M3 una cita de menos de 3 caracteres no prueba nada; M4 `CREDITS.md` atribuye bien (la pregunta de a una es de superpowers; la respuesta recomendada y leer el código, de Pocock); M5 el `spec-reviewer` nombra las preguntas pendientes (van en `Reserved decisions`); M6 los patrones flojos del test de la skill se ajustan.
+
 ## 0.12.0 — 2026-10-01
 
 Versión menor y no un parche: cambia la interfaz (verbo nuevo de `plan.js`, segunda fuente de citas en `validateScopeCard` y en el contrato del `spec-reviewer`, orden de las opciones de `templates/question.md`).

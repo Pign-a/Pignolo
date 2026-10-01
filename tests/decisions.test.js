@@ -30,7 +30,7 @@ function repoWithPlan() {
   assert.strictEqual(plan(repo, ['new', '--plan', 'p1', '--request-file', file(REQUEST)]).status, 0);
   return repo;
 }
-const add = (repo, id, text, quote, extra = []) => plan(repo, ['decision', 'add', '--plan', 'p1', '--id', id, '--text-file', file(text), '--quote-file', file(quote), '--date', '2026-10-01', ...extra]);
+const add = (repo, id, text, quote, extra = []) => plan(repo, ['decision', 'add', '--plan', 'p1', '--id', id, '--text-file', file(text), '--quote-file', file(quote), ...(extra.includes('--date') ? [] : ['--date', '2026-10-01']), ...extra]);
 
 test('decision add writes a decided entry with the quote, and decision list reads it back', () => {
   const repo = repoWithPlan();
@@ -85,4 +85,55 @@ test('the status of an approved-visual decision is one that state-store knows (c
   const entry = store.readEntries({ main: root, kind: 'decisions' }).entries[0];
   assert.ok(store.STATUSES.decisions.includes(entry.status), `status ${entry.status}`);
   assert.strictEqual(store.setStatus({ main: root, kind: 'decisions', id: entry.id, status: 'superseded' }).ok, true);
+});
+
+// Protects: spec §4.5 (solo una decisión vigente, humana y de ESTE plan respalda una cita) · Breaks if:
+// backingDecisions deja de filtrar status/source/plan (una reemplazada o abierta volvería a respaldar citas).
+test('only a current, human, same-plan decision backs a quote: superseded, open and non-human entries do not', () => {
+  const repo = repoWithPlan();
+  const dec = require(path.join(PLUGIN_ROOT, 'lib', 'decisions.js'));
+  add(repo, 'D-1', 'vieja', 'cita de la vieja');
+  add(repo, 'D-2', 'vigente', 'cita de la vigente');
+  assert.strictEqual(store.setStatus({ main: repo, kind: 'decisions', id: '2026-10-01-p1-d-1', status: 'superseded' }).ok, true);
+  const forged = (id, status, source) => store.writeEntry({ main: repo, kind: 'decisions', id: `2026-10-01-p1-${id}`, fields: { status, source, plan: 'p1', decision: id.toUpperCase(), created: '2026-10-01' }, body: `# ${id}\n\n- quote: cita ${id}\n\ntexto\n` });
+  assert.ok(forged('d-3', 'open', 'human').ok);
+  assert.ok(forged('d-4', 'decided', 'agent').ok);
+  assert.deepStrictEqual(dec.backingDecisions({ main: repo, plan: 'p1' }).map((d) => d.id), ['D-2']);
+  const card = (q) => plan(repo, ['scope-card', 'save', '--plan', 'p1', '--file', file(`# T\n\n## Goal\ng\n\n## Acceptance examples\n- Con "${REQUEST.slice(0, 12)}" a\n- Con "${REQUEST.slice(6, 20)}" b\n- Con "${q}" c\n\n## Request to spec\n- x\n\n## Not included or reinterpreted\n- none\n\n## Added without being asked\n- none\n\n## Out of scope\n- x\n\n## Reserved decisions\n- none\n\n## Cost estimate\n- x\n`)]).status;
+  assert.strictEqual(card('cita de la vieja'), 1, 'reemplazada');
+  assert.strictEqual(card('cita d-3'), 1, 'abierta');
+  assert.strictEqual(card('cita d-4'), 1, 'no humana');
+  assert.strictEqual(card('cita de la vigente'), 0, 'vigente');
+});
+
+// Protects: spec §4.5 (el archivado no deja sin respaldo a un plan vivo) · Breaks if: listDecisions
+// vuelve a leer solo decisions/ y no archive/.
+test('an archived decision still backs its quote and still blocks re-adding its id', () => {
+  const repo = repoWithPlan();
+  assert.strictEqual(add(repo, 'D-1', 'Un lienzo por proyecto', 'sí, un solo lienzo por proyecto', ['--date', '2026-09-01']).status, 0);
+  const { archiveEntries } = require(path.join(PLUGIN_ROOT, 'lib', 'archive.js'));
+  const moved = archiveEntries({ main: repo, days: 14, now: Date.parse('2026-10-01') });
+  assert.ok(fs.existsSync(path.join(repo, '.pignolo', 'state', 'archive', '2026-09-01-p1-d-1.md')), JSON.stringify(moved));
+  assert.deepStrictEqual(require(path.join(PLUGIN_ROOT, 'lib', 'decisions.js')).backingDecisions({ main: repo, plan: 'p1' }).map((d) => d.id), ['D-1']);
+  const again = add(repo, 'D-1', 'otro texto', 'otra cita', ['--date', '2026-10-02']);
+  assert.strictEqual(again.status, 1);
+  assert.match(again.stderr, /ya existe/);
+});
+
+// Protects: M2 de la revisión · Breaks if: DECISION_ID_RE vuelve a aceptar D-01 / D-0.
+test('decision ids have no leading zero: D-01 and D-0 are refused', () => {
+  const repo = repoWithPlan();
+  assert.strictEqual(add(repo, 'D-1', 'a', 'dale').status, 0);
+  assert.strictEqual(add(repo, 'D-01', 'b', 'dale').status, 1);
+  assert.strictEqual(add(repo, 'D-0', 'b', 'dale').status, 1);
+});
+
+// Protects: la mutación "control de duplicado apagado" · Breaks if: addDecision no mira las ya registradas
+// (con otra fecha el nombre de archivo cambia, así que writeEntry no lo frena solo).
+test('repeating an id with another date is refused by the duplicate check, not by the file name', () => {
+  const repo = repoWithPlan();
+  assert.strictEqual(add(repo, 'D-1', 'a', 'dale').status, 0);
+  const r = add(repo, 'D-1', 'b', 'dale', ['--date', '2026-10-05']);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /ya existe la decisión D-1/);
 });

@@ -27,7 +27,7 @@ test('plan step 2: it is found, and the skill stays compact', () => {
 
 test('plan step 2: read before asking, reflect back, and an "Ok" confirms only the understanding', () => {
   assert.match(step2, /Read before asking/);
-  for (const re of [/the request/, /`project\.md`/, /earlier decisions/, /the code the request touches/]) assert.match(step2, re);
+  assert.match(step2, /Read before asking:\*\* the request, `project\.md`, earlier decisions \(`[^`]+`\) and the code the request touches/);
   assert.match(step2, /one short message/);
   assert.match(step2, /"Ok"[^.]*confirms that reading and nothing else/);
   assert.match(step2, /never an assumption/i);
@@ -48,7 +48,7 @@ test('plan step 2: the seven classes of open point', () => {
 test('plan step 2: one reserved question per message, recommended option first, low-risk batch', () => {
   assert.match(step2, /one per message/);
   assert.match(step2, /recommended option first/);
-  assert.match(step2, /batch/i);
+  assert.match(step2, /low-risk, reversible points in one numbered batch of assumptions with one question/);
   assert.match(step2, /¿van así, o cambiás alguno\?/);
 });
 
@@ -98,4 +98,14 @@ test('CREDITS.md: one line per MIT source, own text only', () => {
   assert.match(t, /MIT/);
   assert.match(t, /own text|texto propio/i);
   assert.strictEqual(t.split('\n').filter((l) => /^- /.test(l)).length, 2);
+});
+
+// Protects: M4/M5 de la revisión de 0.12.0 · Breaks if: CREDITS vuelve a atribuirle a Pocock "una pregunta por vez"
+// (es de superpowers) o el spec-reviewer deja de saber dónde van las preguntas pendientes.
+test('CREDITS attributes one-question-at-a-time to superpowers, and the spec-reviewer knows pending questions', () => {
+  const t = fs.readFileSync(path.join(PLUGIN_ROOT, 'CREDITS.md'), 'utf8').split('\n');
+  assert.doesNotMatch(t.find((l) => /Pocock/.test(l)), /one question at a time/);
+  assert.match(t.find((l) => /Vincent/.test(l)), /one question at a time/);
+  const agent = fs.readFileSync(path.join(PLUGIN_ROOT, 'agents', 'spec-reviewer.md'), 'utf8');
+  assert.match(agent, /pending question[^.\n]*`Reserved decisions`/);
 });

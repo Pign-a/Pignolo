@@ -7,7 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { validateScopeCard, parseScopeCard } = require('./scope-card');
-const { listDecisions } = require('./decisions');
+const { backingDecisions } = require('./decisions');
 const { execFileSync } = require('node:child_process');
 const { gitRun, isGitFailure } = require('./git');
 
@@ -167,7 +167,7 @@ function claimsOpen(planObj) {
 
 function saveScopeCard({ main, plan, text }) {
   return update({ main, plan }, (p) => {
-    const errs = validateScopeCard(text, { request: p.request, decisions: listDecisions({ main, plan }).decisions });
+    const errs = validateScopeCard(text, { request: p.request, decisions: backingDecisions({ main, plan }) });
     if (errs.length) return { error: `la tarjeta no valida: ${errs.join('; ')}`, errors: errs };
     const body = String(text).replace(/\r\n/g, '\n');
     writeAtomic(cardFileOf(main, plan), body);
@@ -199,7 +199,7 @@ function approveScopeCard({ main, plan, quote, now }) {
     if (!sc.sha256) return { error: 'no hay tarjeta guardada para aprobar' };
     let body;
     try { body = fs.readFileSync(cardFileOf(main, plan), 'utf8'); } catch (_) { return { error: 'falta scope-card.md; guardala de nuevo' }; }
-    const errs = validateScopeCard(body, { request: p.request, decisions: listDecisions({ main, plan }).decisions });
+    const errs = validateScopeCard(body, { request: p.request, decisions: backingDecisions({ main, plan }) });
     if (errs.length) return { error: `la tarjeta no valida: ${errs.join('; ')}` };
     const h = sha256(body);
     p.scopeCard = { sha256: h, added: parseScopeCard(body).added, approved: { at: now || new Date().toISOString(), quote: quote.trim(), sha256: h } };
