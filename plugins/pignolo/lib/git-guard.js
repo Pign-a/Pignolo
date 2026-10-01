@@ -59,6 +59,7 @@ const RULES = {
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
   'pignolo-run': ['deny', 'un subagente no opera el flujo de pignolo (scripts/run.js): solo el hilo principal lo registra, lo renueva o lo cierra', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el flujo'],
   'pignolo-plan': ['deny', 'un subagente no opera el plan ni el estado de pignolo (plan.js, plan-audit.js, approved.js, close-session.js, state-index.js): solo el hilo principal', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el plan'],
+  'pignolo-init': ['deny', 'un subagente no opera init.js: solo el hilo principal y con el sí del humano', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en project.md'],
   'pignolo-holdout': ['deny', 'solo el hilo principal y el validator ejecutan el holdout de pignolo (scripts/holdout.js)', 'el holdout lo corre el validator; pedile el resultado al hilo principal'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
@@ -857,6 +858,7 @@ function checkRunScript(name, words, st, ctx, out) {
     for (const w of argv) { if (w.dyn || !w.value.startsWith('-')) break; leading.push(w.value); }
     if (!evalFlag && leading.some((v) => v === '--check' || v === '-c')) return;
     if (evalFlag && argv.some((w) => namesStateScript(w.value))) { out.push(hit('pignolo-plan')); return; }
+    if (evalFlag && argv.some((w) => namesInitScript(w.value))) { out.push(hit('pignolo-init')); return; }
   }
   const executes = (w) => w === words[0] || INTERP.has(name);
   for (const w of words) {
@@ -870,6 +872,7 @@ function checkRunScript(name, words, st, ctx, out) {
     }
     if (is) { out.push(hit('pignolo-run')); return; }
     if (isPlanScript(w, st, ctx)) { out.push(hit('pignolo-plan')); return; }
+    if (isInitScript(w, st, ctx)) { out.push(hit('pignolo-init')); return; }
   }
 }
 
@@ -895,6 +898,23 @@ function isPlanScript(w, st, ctx) {
   const p = resolveAt(w.value, st, ctx);
   const c = p === null ? cleanPath(w.value) : p;
   return PLAN_JS_LITERAL.test(c) || PLAN_JS_OWN.test(c);
+}
+
+// init.js (/pignolo:init) escribe project.md, .git/config y .claude/settings.local.json: solo el hilo
+// principal y con el sí del humano. Misma detección anclada al plugin que isPlanScript (el
+// scripts/init.js de un proyecto cualquiera pasa) y solo cuando se EJECUTA: checkRunScript mira
+// el argv del intérprete, así que `cat`, `grep` o `Get-Content` sobre el script no lo casan.
+const INIT_JS_LITERAL = /(?:^|\/)(?:plugins\/pignolo|\.claude\/plugins\/cache\/[^/]+\/pignolo\/[^/]+)\/scripts\/init(?:\.js)?$/;
+const INIT_JS_DYN = /^\$(?:\{(?:env:)?CLAUDE_PLUGIN_ROOT\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\/]scripts[\\/]init(?:\.js)?$/i;
+const INIT_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/init(?:\\.js)?$`);
+// init.js cargado con `node -e|-p|-r` también corre su main (la lib init-actions es un límite declarado, §8.3).
+const EVAL_INIT_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${OWN_PLUGIN_ROOT}/)scripts/init(?![\\w-])`, 'i');
+const namesInitScript = (value) => EVAL_INIT_SCRIPT.test(value.replace(/\\+/g, '/').replace(/\/+/g, '/'));
+function isInitScript(w, st, ctx) {
+  if (w.dyn) return INIT_JS_DYN.test(w.value);
+  const p = resolveAt(w.value, st, ctx);
+  const c = p === null ? cleanPath(w.value) : p;
+  return INIT_JS_LITERAL.test(c) || INIT_JS_OWN.test(c);
 }
 
 // El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el

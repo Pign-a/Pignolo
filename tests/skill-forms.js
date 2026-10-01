@@ -10,6 +10,7 @@ const VERBS = {
   'run.js': ['start', 'task', 'renew', 'status', 'end'],
   'ledger.js': ['validate', 'plan', 'judgment', 'refute', 'build', 'repro', 'round', 'next', 'frozen', 'save'],
   'setup.js': ['check', 'models', 'permissions', 'config', 'conflicts'],
+  'init.js': ['detect', 'preview', 'apply', 'verify'],
 };
 
 function readSkill(name) {
@@ -23,7 +24,7 @@ function brokenReferences(text) {
   for (const m of text.matchAll(/(?:\$\{CLAUDE_PLUGIN_ROOT\}|<P>)\/((?:scripts|templates)\/[\w.-]+)/g)) {
     if (!fs.existsSync(path.join(PLUGIN_ROOT, m[1]))) out.push(m[1]);
   }
-  for (const m of text.matchAll(/\b(run\.js|ledger\.js|setup\.js)"? ([a-z][a-z-]*)/g)) {
+  for (const m of text.matchAll(/\b(run\.js|ledger\.js|setup\.js|init\.js)"? ([a-z][a-z-]*)/g)) {
     if (!VERBS[m[1]].includes(m[2])) out.push(`${m[1]} ${m[2]}`);
   }
   return out;

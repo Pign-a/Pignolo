@@ -48,6 +48,7 @@ function validateSeal(o) {
   if (!nullableStr(o.task)) errs.push('task debe ser texto o null');
   if (!nullableStr(o.noTestsReason)) errs.push('noTestsReason debe ser texto o null');
   if (o.seedOffered !== undefined && !Number.isInteger(o.seedOffered)) errs.push('seedOffered debe ser un entero');
+  if (o.seedInCommand !== undefined && typeof o.seedInCommand !== 'boolean') errs.push('seedInCommand debe ser un booleano');
   if (!isObj(o.checks)) errs.push('checks debe ser un objeto');
   else {
     for (const k of LISTS) if (!Array.isArray(o.checks[k]) || !o.checks[k].every((x) => typeof x === 'string')) errs.push(`checks.${k} debe ser una lista de textos`);
