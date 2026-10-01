@@ -140,3 +140,38 @@ test('A8-09 also denies a path that reaches project.md through a junction alias 
   fs.writeFileSync(path.join(r, 'other.md'), 'x');
   assert.equal(edit(r, path.join(r, 'other.md'), { agent_id: 'a', agent_type: 'pignolo:implementer' }).exit, 0, 'otro archivo');
 });
+
+// --- Hito 8d, Task 9: places.js entero solo para el hilo principal (misma regla pignolo-init) ---
+test('a subagent cannot run places.js (where, fix, undo, any form); the main thread can', () => {
+  for (const c of [
+    `node "${P}/scripts/places.js" where spec`,
+    `node "${P}/scripts/places.js" fix apply --moves m.json --expect abc`,
+    `node "${P}/scripts/places.js" undo --record r.json`,
+    `node "${P}/scripts/places.js" --cwd x fix apply --moves m.json --expect abc`,
+    `node "${P}/scripts/places" fix apply`,
+    'node "$CLAUDE_PLUGIN_ROOT/scripts/places.js" fix apply --moves m.json',
+    'node "${CLAUDE_PLUGIN_ROOT}/scripts/places" undo --record r.json',
+    'node "C:/Users/u/.claude/plugins/cache/m/pignolo/0.14.0/scripts/places.js" where plan',
+  ]) {
+    denied(call(c), c);
+    passes(call(c, {}), `main: ${c}`);
+  }
+  denied(call(`& node "${P}/scripts/places.js" fix apply`, SUB, 'PowerShell'), 'ps');
+  passes(call(`& node "${P}/scripts/places.js" fix apply`, {}, 'PowerShell'), 'ps main');
+  denied(call(`node -e "require('${P}/scripts/places.js')"`), 'node -e con .js');
+  denied(call('node -e "require(\'${CLAUDE_PLUGIN_ROOT}/scripts/places\')"'), 'node -e dinámico');
+  passes(call(`node -e "require('${P}/scripts/places.js')"`, {}), 'main node -e');
+});
+
+test('places.js: reading it or running a foreign places.js is not executing the plugin one (must-allow de lectura)', () => {
+  for (const c of [`cat ${P}/scripts/places.js`, `grep -n undo ${P}/scripts/places.js`, `head -n 20 ${P}/scripts/places.js`, `sed -n 1,40p ${P}/scripts/places.js`]) passes(call(c), c);
+  passes(call(`Get-Content ${P}/scripts/places.js`, SUB, 'PowerShell'), 'Get-Content');
+  passes(call(`Select-String -Path ${P}/scripts/places.js -Pattern undo`, SUB, 'PowerShell'), 'Select-String');
+  passes(call('node scripts/places.js where'), 'places.js de otro proyecto');
+  passes(call('node tests/helpers/my-places.js'), 'nombre parecido');
+  passes(call(`node "${P}/scripts/places-detect.js"`), 'otro nombre');
+});
+
+test('init.js apply sigue negado a un subagente (regresión de 8a)', () => {
+  denied(call(`node "${P}/scripts/init.js" apply --plan p.json --expect abc`), 'init apply');
+});
