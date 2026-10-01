@@ -16,6 +16,8 @@ Pignolo no le cree a un agente que dice "anda": lo verifica. Aplicamos lo mismo 
 | Revisión independiente de cada hito | Cada hito pasa por una revisión final opus antes de unirse. La del hito 4a encontró 1 problema crítico y 4 importantes; se arreglaron con un test que falla sin el arreglo, y una re-revisión lo confirmó | [CHANGELOG 0.5.0](CHANGELOG.md), [plan del hito 4](docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md) |
 | Suite propia | 2.007 tests en verde, sin dependencias npm; todo test nuevo se ve fallar antes rompiendo lo que protege | `npm test` |
 
+Para comparar con Claude Code sin plugins o con otros plugins de metodología, con cuánto cuesta y cuánto rinde cada forma de trabajar: [`docs/benchmarks.md`](docs/benchmarks.md).
+
 **Lo que todavía no está medido:** los agentes que corren comandos (`refuter`, `fixer`, `implementer`, `review-testability`) esperan su etapa de evals en WSL2; los casos de las evals son chicos y sintéticos, así que no dicen cómo les va con cambios grandes; los checklists manuales en una sesión real están pendientes.
 
 Diseño: `docs/specs/2026-09-26-pignolo-v1-design.md`.
