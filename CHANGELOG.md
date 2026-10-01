@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.10.1 — 2026-10-01
+
+- Arreglos de la revisión final del hito 6 (cada uno con un test que falla sin el arreglo). Se quitó el agente learning-validator por decisión del autor tras la auditoría del 2026-10-01; los aprendizajes se filtran con scanLearning y el sí del humano.
+- Crítico: `close-session.js decide` ya no acepta `--validation-file` ni `--human`; solo `--answer yes|no` y `--reserved`. Sin `--answer` nunca acepta (devuelve `human` con `flags`); un informe de validador ya no mueve nada a `accepted/`. Se quitan `parseValidation` y `decideByHuman`.
+- Comprobaciones deterministas de R-9 (Task 5 y 7 del plan en `main`): `findDuplicate`, `checkEvidence` y `flags` (`web`, `reserved`, `evidence-unverified`); `scan` devuelve `{ findings, duplicate, evidence }`; un duplicado se rechaza sin preguntar; la skill muestra los flags y pasa `--answer`.
+- Task 10 (G17): `tests/evals/keep-failed-traces.js` (`persistFailedTraces`) copia la traza de cada corrida fallada de `claude plugin eval` a una carpeta persistente; G17 pasa a hecho.
+- Guardia: la regla `pignolo-plan` casa los scripts de estado, `run` y `holdout` con y sin `.js` y niega `node -e|-p|--eval|-r|--import` con un script de estado del plugin; `node --check` y las lecturas (`cat`, `grep`, `head`, `wc`) siguen permitidas. Cargar la lib con `require` queda como límite declarado (spec §8.3).
+- `evidence --since`: una fecha ISO o algo que git resuelve a un commit (`HEAD~2`, rama, sha); lo demás sale con `refused: bad-since` (antes devolvía vacío o todo sin avisar).
+- Menores: `protect-paths` niega `.pignolo/state/`, `INDEX.md` y `accepted/` de un worktree de tarea o enlazado aunque el cwd sea el principal (M2); un git que falla no se toma por "sin merge" ni por "no versionada" (`git-failed`, M3 y M5); `index` y `archive` responden `not-configured` sin `project.md` ni `state/` y no crean `.pignolo/` (M4); `node --check` ya no se niega (M1); CHANGELOG y versión sobre 0.8.2 de `main` (M6).
+
+## 0.10.0 — 2026-10-01
+
+- Hito 6b (continuidad: skill). Decisión del autor R7 (2026-10-01): sin `learning-validator` (ni carta en opus, ni evals); la aceptación de aprendizajes es el piso mecánico más el sí explícito del humano.
+- Skill `close-session` (la invoca el humano, `disable-model-invocation`): evidencia real, entradas nuevas con las decisiones del humano citadas literalmente, `scan`, decisión del humano, `archive` con `--dry-run` antes, `index`, `prune` y un commit propio de `.pignolo/state/`. No despacha agentes y para con un merge en curso.
+- `close-session.js decide --human accept|reject` (excluyente con `--validation-file`) y `decideByHuman` en `lib/learnings.js`: el piso mecánico rechaza aunque el humano diga que sí; lo general queda como candidato a promover.
+- Engram fuera de la v1 (D-6-1): la config ya no tiene la clave `engram` y `/pignolo:setup` deja de nombrarlo. Spec §10.5 pasa a idea futura con lo verificado contra su documentación.
+- Spec: §10.4 (verbos y skill, R7), §10.5, §14 (`setup`), §15, §18 punto 6.
+
+## 0.9.0 — 2026-10-01
+
+- Hito 6a (continuidad, parte determinista): todo lo que no gasta tokens de agentes. La skill `close-session` es de 6b.
+- Estado de juicio: `lib/state-store.js` (un archivo por entrada en `.pignolo/state/<tipo>/`, estados por tipo, campo aditivo `priority`, escrituras atómicas, una entrada ilegible se informa) y `scripts/state-index.js` (`INDEX.md` generado sin fecha, planes listados sin moverlos, `archive` como contador, `--check`).
+- Nivel caliente: `lib/context-budget.js` (degradación en 4 niveles, tope 8.000) y `SessionStart` lo emite solo en `additionalContext`, con la rama del checkout principal y el tope repartido con los avisos.
+- `SubagentStart` (`hooks/handlers/subagent-start.js`): inyecta `rules/core.md` a todo agente `pignolo:*` y la tarjeta de la tarea al agente que la tarea nombra; nunca niega (el lanzador suma `FAIL_OPEN`).
+- Egreso (`hooks/handlers/egress.js`, `lib/egress.js`, D-6-3.a): mientras hay un flujo en curso, ningún subagente usa web salvo `pignolo:researcher` (con la consulta filtrada por `pii-patterns` e identificadores del proyecto) y ninguno usa MCP; el hilo principal y lo que pasa fuera de un flujo no se tocan.
+- `protect-paths`: `INDEX.md` y `learnings/accepted/` no se editan a mano (aun con `/pignolo:off`); un subagente o un worktree que no es el principal no escriben `.pignolo/state/`. La guardia niega a los subagentes `close-session.js` y `state-index.js`.
+- Aprendizajes: `lib/learnings.js` (`proposeLearning`, piso mecánico `scanLearning`, `parseValidation`, `decideAcceptance`, `applyDecision`). Decisión del autor R7 (2026-10-01): sin `learning-validator` en este hito; la aceptación es determinista más el sí del humano.
+- `scripts/close-session.js` (`evidence`, `scan`, `decide`, `archive`, `index`, `prune`) y `lib/archive.js`: nunca borra, archiva plano con `git mv` o `rename`, se niega con un merge, cherry-pick o rebase en curso.
+- Sombra al cerrar la sesión: `gc` con heurística (más de 2.000 sueltos o 24 h) y poda corta bajo un solo lock con la poda, con la sesión resuelta (`--session` o `CLAUDE_CODE_SESSION_ID`, no documentada) y sin otra sesión activa; sesiones vivas conservan su última ref. Rehacer el índice de sesión: medido y descartado.
+- Pruebas: `tests/e2e-hito-6a.test.js` y checklist manual `tests/manual/hito-6.md`. Límite declarado: `INDEX.md` y `accepted/` siguen escribibles por Bash/PowerShell.
+
 ## 0.8.2 — 2026-10-01
 
 - `scope-gate`: cierra las formas que llevaban un plan a `main` sin que el texto dijera `int/<p>` (G19, auditoría del hito 7; cada una con un test que falla sin el arreglo). Un `merge`, `cherry-pick`, `pull`, `reset`... a `main` con una etiqueta `cp/<p>/<n>`, cualquier otra etiqueta o rama, un sha (completo, corto, `~n`, un commit del medio), `FETCH_HEAD` (línea por línea, también en `git fetch . int/b && git merge FETCH_HEAD`), `ORIG_HEAD` o una ref remota se resuelve con git: si lleva commits de una rama o etiqueta de plan que no están en `main` (ni en un `main` remoto), ese plan debe tener la tarjeta aprobada. Una llamada a `cat-file --batch-check` y dos `for-each-ref` por commit distinto, 1 s por llamada y 2,5 s en total; un git que no responde falla cerrado.

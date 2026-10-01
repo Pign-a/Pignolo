@@ -15,6 +15,8 @@ const VERB_RE = /\b(merge|push|pull|rebase|fetch|branch|update-ref|reset|cherry-
 function skips(name, input) {
   if (!input || typeof input !== 'object') return false;
   if (name === 'plan-audit-gate') return input.agent_type !== REVIEW_AGENT && input.agent_type !== VERIFY_AGENT;
+  // egress rige solo para subagentes (R-7 del hito 6): el hilo principal queda libre por construcción.
+  if (name === 'egress') return !input.agent_id;
   if (name === 'scope-gate') {
     const ti = input.tool_input;
     const command = ti && typeof ti === 'object' ? ti.command : undefined;

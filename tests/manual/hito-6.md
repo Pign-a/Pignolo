@@ -1,0 +1,11 @@
+# Checklist manual — hito 6a (continuidad, parte determinista)
+
+Sesión real de Claude Code, Windows nativo, repo de prueba sin datos del autor y con `.pignolo/project.md`. Cada punto: anotar fecha, versión de Claude Code y resultado. Nada de esto se corrió al cerrar 6a (cuesta tokens de una sesión real).
+
+1. **`SubagentStart`, forma del payload y de la salida (R-5, C9):** despachar un `pignolo:explorer`; anotar las claves reales del payload (`agent_id`, `agent_type` con el prefijo `pignolo:`, `cwd`) y que el subagente ve el texto de `rules/core.md` (pedirle que cite su primera regla). Con un flujo en curso y la tarjeta en `.pignolo/tmp/task-<id>.md`, el agente de la tarea ve la tarjeta, el worktree y la rama.
+2. **`SubagentStart` y la auto-compactación de un subagente (§8.3, hipótesis):** en un subagente largo que llega a compactar, anotar si el hook vuelve a correr (log de `PIGNOLO_HOME` o una tarjeta marcada). Si no corre, corregir la frase de §8.3 en el cierre de 6b.
+3. **Un exit 2 de `SubagentStart` no bloquea (C10):** con un handler de prueba que sale 2, el subagente arranca igual; anotar qué muestra el host. El lanzador real ya sale con 0 (`FAIL_OPEN`).
+4. **Egreso (R-7, C11):** anotar los nombres reales de los campos del `tool_input` de `WebSearch`, `WebFetch` y de un `mcp__*` real; que el matcher `mcp__.*` dispara el hook para ese MCP; que `agent_id` y `agent_type` llegan en un subagente y que **también** llegan en el hilo principal de una sesión `claude --agent <x>` (si llegan, ese hilo principal queda bajo la regla durante un flujo: anotarlo).
+5. **`CLAUDE_CODE_SESSION_ID` (R-6, F1; no documentada):** en Bash, `echo $CLAUDE_CODE_SESSION_ID` coincide con el `session_id` que reciben los hooks (comparar con el `index-<clave>` del repo sombra). Si no existe o difiere, `close-session.js prune` necesita `--session` explícito.
+6. **Nivel caliente tras `/compact` (R-3, R-4):** con entradas abiertas en `.pignolo/state/`, un plan en curso y un aviso de la guardia, `/compact`; el contexto nuevo trae el nivel caliente (rama del checkout principal, `next`, punteros) y el `systemMessage` visible trae solo los avisos.
+7. **Límite declarado (F15):** desde un subagente, `cp` o `Set-Content` sobre `.pignolo/state/INDEX.md` no se niega (solo la revisión del diff lo ve); anotar que sigue siendo así.

@@ -58,7 +58,7 @@ const RULES = {
   'protected-flag': ['deny', 'los flags del interruptor solo los escribe /pignolo:off y /pignolo:on', 'pedile al humano que escriba /pignolo:off o /pignolo:on'],
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
   'pignolo-run': ['deny', 'un subagente no opera el flujo de pignolo (scripts/run.js): solo el hilo principal lo registra, lo renueva o lo cierra', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el flujo'],
-  'pignolo-plan': ['deny', 'un subagente no opera el plan de pignolo (plan.js, plan-audit.js, approved.js): solo el hilo principal', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el plan'],
+  'pignolo-plan': ['deny', 'un subagente no opera el plan ni el estado de pignolo (plan.js, plan-audit.js, approved.js, close-session.js, state-index.js): solo el hilo principal', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el plan'],
   'pignolo-holdout': ['deny', 'solo el hilo principal y el validator ejecutan el holdout de pignolo (scripts/holdout.js)', 'el holdout lo corre el validator; pedile el resultado al hilo principal'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
@@ -845,33 +845,51 @@ function checkLauncher(name, words, st, ctx, out) {
 // Se reconoce el run.js de este plugin o uno bajo un directorio `pignolo` (copias del caché);
 // el run.js de un proyecto cualquiera no. Solo cuando se ejecuta, no cuando se lee.
 const PIGNOLO_RUN_JS = `${cleanPath(path.join(__dirname, '..'))}/scripts/run.js`;
-const RUN_JS_RE = /(^|\/)pignolo\/(?:[^/]+\/)*scripts\/run\.js$/;
+const RUN_JS_RE = /(^|\/)pignolo\/(?:[^/]+\/)*scripts\/run(?:\.js)?$/;
 function checkRunScript(name, words, st, ctx, out) {
   if (!ctx.subagent) return;
+  const argv = words.slice(1);
+  const evalFlag = argv.some((w) => !w.dyn && NODE_CODE_FLAG.test(w.value));
+  if (name === 'node' || name === 'nodejs') {
+    // `node --check <script>` solo mira la sintaxis: leer no se niega (G21).
+    // Solo vale como opción de node (antes del script): `state-index.js --check` es del script.
+    const leading = [];
+    for (const w of argv) { if (w.dyn || !w.value.startsWith('-')) break; leading.push(w.value); }
+    if (!evalFlag && leading.some((v) => v === '--check' || v === '-c')) return;
+    if (evalFlag && argv.some((w) => namesStateScript(w.value))) { out.push(hit('pignolo-plan')); return; }
+  }
   const executes = (w) => w === words[0] || INTERP.has(name);
   for (const w of words) {
     if (!executes(w)) continue;
     let is;
-    if (w.dyn) is = /(^|[\\/])scripts[\\/]run\.js$/i.test(w.value);
+    if (w.dyn) is = /(^|[\\/])scripts[\\/]run(?:\.js)?$/i.test(w.value);
     else {
       const p = resolveAt(w.value, st, ctx);
       const c = p === null ? cleanPath(w.value) : p;
-      is = c === PIGNOLO_RUN_JS || RUN_JS_RE.test(c);
+      is = c === PIGNOLO_RUN_JS || c === PIGNOLO_RUN_JS.slice(0, -3) || RUN_JS_RE.test(c);
     }
     if (is) { out.push(hit('pignolo-run')); return; }
     if (isPlanScript(w, st, ctx)) { out.push(hit('pignolo-plan')); return; }
   }
 }
 
-// plan.js, plan-audit.js y approved.js escriben el estado del plan: solo el hilo principal (R-14).
+// plan.js, plan-audit.js y approved.js escriben el estado del plan; close-session.js y
+// state-index.js, el de .pignolo/state/ (hito 6, Task 8): solo el hilo principal (R-14).
 // Detección más estrecha que la de run.js (plan.js es un nombre común en cualquier proyecto): la
 // ruta de este plugin, la caché del plugin (.claude/plugins/cache/<mercado>/pignolo/<versión>/),
 // plugins/pignolo/scripts/, o una palabra que empieza con CLAUDE_PLUGIN_ROOT (también ${env:...}).
 // No entran next.js, approved-verify.js, plan-check.js ni present.js.
-const PLAN_SCRIPT = '(?:plan|plan-audit|approved)\\.js';
+const PLAN_SCRIPT = '(?:plan|plan-audit|approved|close-session|state-index)(?:\\.js)?';
 const PLAN_JS_LITERAL = new RegExp(`(?:^|/)(?:plugins/pignolo|\\.claude/plugins/cache/[^/]+/pignolo/[^/]+)/scripts/${PLAN_SCRIPT}$`);
 const PLAN_JS_DYN = new RegExp(`^\\$(?:\\{(?:env:)?CLAUDE_PLUGIN_ROOT\\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\\\/]scripts[\\\\/]${PLAN_SCRIPT}$`, 'i');
 const PLAN_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/${PLAN_SCRIPT}$`);
+// `node -e|-p|--eval|--print|-r|--require|--import` con una palabra que nombra uno de los scripts
+// de estado bajo la ruta del plugin los ejecuta al cargarlos (corren su main). Cargar la lib con
+// require(...) es un límite declarado (spec §8.3): no se cubre.
+const NODE_CODE_FLAG = /^(?:-e|-p|-pe|-r|--eval|--print|--require|--import)(?:=|$)/;
+const OWN_PLUGIN_ROOT = cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const EVAL_STATE_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${OWN_PLUGIN_ROOT}/)scripts/(?:run|holdout|${PLAN_SCRIPT})(?![\\w-])`, 'i');
+const namesStateScript = (value) => EVAL_STATE_SCRIPT.test(value.replace(/\\+/g, '/').replace(/\/+/g, '/'));
 function isPlanScript(w, st, ctx) {
   if (w.dyn) return PLAN_JS_DYN.test(w.value);
   const p = resolveAt(w.value, st, ctx);
@@ -882,18 +900,18 @@ function isPlanScript(w, st, ctx) {
 // El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el
 // implementer no ve los tests de aceptación. Misma detección que checkRunScript.
 const PIGNOLO_HOLDOUT_JS = `${cleanPath(path.join(__dirname, '..'))}/scripts/holdout.js`;
-const HOLDOUT_JS_RE = /(^|\/)pignolo\/(?:[^/]+\/)*scripts\/holdout\.js$/;
+const HOLDOUT_JS_RE = /(^|\/)pignolo\/(?:[^/]+\/)*scripts\/holdout(?:\.js)?$/;
 function checkHoldoutScript(name, words, st, ctx, out) {
   if (!ctx.subagent || ctx.agentType === 'pignolo:validator') return;
   const executes = (w) => w === words[0] || INTERP.has(name);
   for (const w of words) {
     if (!executes(w)) continue;
     let is;
-    if (w.dyn) is = /(^|[\\/])scripts[\\/]holdout\.js$/i.test(w.value);
+    if (w.dyn) is = /(^|[\\/])scripts[\\/]holdout(?:\.js)?$/i.test(w.value);
     else {
       const p = resolveAt(w.value, st, ctx);
       const c = p === null ? cleanPath(w.value) : p;
-      is = c === PIGNOLO_HOLDOUT_JS || HOLDOUT_JS_RE.test(c);
+      is = c === PIGNOLO_HOLDOUT_JS || c === PIGNOLO_HOLDOUT_JS.slice(0, -3) || HOLDOUT_JS_RE.test(c);
     }
     if (is) { out.push(hit('pignolo-holdout')); return; }
   }

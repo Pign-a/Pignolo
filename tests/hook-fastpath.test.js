@@ -42,3 +42,11 @@ test('I-2: the prefilter is case-insensitive and sees checkout/switch', () => {
   assert.equal(skips('scope-gate', cmd('git checkout -B main int/p1')), false);
   assert.equal(skips('scope-gate', cmd('git switch -C main int/p1')), false);
 });
+
+// Protects: F11a del hito 6 (egreso sin costo en el hilo principal) · Breaks if: skips no
+// conoce egress o lo saltea también con agent_id.
+test('egress: skipped on the main thread, never for a subagent', () => {
+  assert.equal(skips('egress', { tool_name: 'mcp__x__y' }), true);
+  assert.equal(skips('egress', { tool_name: 'WebSearch', agent_id: 'a1', agent_type: 'pignolo:researcher' }), false);
+  assert.equal(skips('egress', null), false);
+});

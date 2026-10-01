@@ -33,7 +33,7 @@ const envOf = () => ({ PIGNOLO_HOME: makeTempDir() });
 test('readConfig without file returns defaults', () => {
   const env = envOf();
   assert.deepStrictEqual(readConfig({ env }), {
-    profile: 'balanced', models: {}, presentation: 'ask', engram: false, language: null,
+    profile: 'balanced', models: {}, presentation: 'ask', language: null,
   });
 });
 

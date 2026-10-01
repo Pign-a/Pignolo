@@ -39,7 +39,6 @@ const ROLES = Object.freeze({
   fixer: role(['Read', 'Edit', 'Write', 'Bash'], 'high', 'opus', 'sonnet', 'sonnet', 'writer'),
   validator: role(ROB, 'high', 'opus', 'opus', 'opus', 'reviewer'),
   integrator: role(['Read', 'Bash'], 'low', 'sonnet', 'sonnet', 'sonnet', 'writer'),
-  'learning-validator': role(RO, 'medium', 'opus', 'sonnet', 'sonnet', 'reader'),
   debugger: role(ROB, 'high', 'opus', 'opus', 'opus', 'writer'),
 });
 

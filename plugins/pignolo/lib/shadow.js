@@ -127,6 +127,13 @@ function commitIndex({ run, env, prefix, reason, now, parent }) {
   return { ref, sha: commit, tree, reused: false };
 }
 
+// El mtime del índice de la sesión es "la última vez que la sesión tocó la sombra" (F16: una
+// sesión viva conserva su última ref; gc: otra sesión activa en los últimos 10 min). Se fija
+// con el `now` de la operación, no con el reloj, para que la retención se mida con la misma fecha.
+function touchIndex(file, now) {
+  try { fs.utimesSync(file, now, now); } catch (_) { /* sin índice: nada que marcar */ }
+}
+
 // Instantánea en la sombra. undefined si la sombra no está sembrada para esta
 // sesión (el llamador cae al modo dentro del repo).
 function shadowSnapshot({ run, env, info, key, reason, now }) {
@@ -141,7 +148,7 @@ function shadowSnapshot({ run, env, info, key, reason, now }) {
     const genv = { ...process.env, GIT_INDEX_FILE: tmp };
     const partial = addAll(sg, { env: genv });
     const r = commitIndex({ run: sg, env: genv, prefix: `refs/pignolo/wip/${key}/`, reason, now });
-    try { fs.renameSync(tmp, p.index); } catch (_) { /* otro proceso lo tiene abierto: se pierde solo la caché */ }
+    try { fs.renameSync(tmp, p.index); touchIndex(p.index, now); } catch (_) { /* otro proceso lo tiene abierto: se pierde solo la caché */ }
     return { ...r, store: 'shadow', gitDir: p.dir, partial };
   } finally {
     fs.rmSync(tmp, { force: true });
@@ -253,7 +260,28 @@ function deleteRefs(run, gitDirArgs, refs) {
   run([...gitDirArgs, 'update-ref', '--stdin'], { input: refs.map((r) => `delete ${r.ref} ${r.sha}\n`).join('') });
 }
 
-function prune({ run, p, key, now }) {
+// Sesiones vivas (F16, R-6): un grupo cuyo index-<clave> se tocó hace menos de 14 días conserva
+// su última ref aunque quede fuera de las 3 previas (una sesión abierta con el árbol sin cambios
+// reutiliza su ref vieja). Sin index-<clave>, nada cambia.
+function aliveNewest(units, p, now) {
+  const keep = new Set();
+  const newest = new Map();
+  for (const u of units) {
+    const n = newest.get(u.group);
+    if (!n || u.time > n.time) newest.set(u.group, u);
+  }
+  for (const [group, u] of newest) {
+    if (!group) continue;
+    let mtime = null;
+    try { mtime = fs.statSync(path.join(p.own, `index-${group}`)).mtimeMs; } catch (_) { continue; }
+    if (now - mtime < KEEP_MS) keep.add(u.id);
+  }
+  return keep;
+}
+
+// gcAuto: false cuando el llamador corre su propio gc después (closeSession), para que el
+// `gc --auto` de acá no se le cruce (F2).
+function prune({ run, p, key, now, gcAuto = true }) {
   const G = ['--git-dir', p.dir];
   // 1. Dentro del repo: solo lo que la sombra ya tiene (nunca la única copia).
   const inShadow = new Map(listRefs(run, 'refs/pignolo/wip/', G).map((x) => [x.ref, x.sha]));
@@ -261,10 +289,11 @@ function prune({ run, p, key, now }) {
   const repoGone = new Set(retentionPrune(repoUnits, now, key));
   const repoDel = repoUnits.filter((u) => repoGone.has(u.id) && inShadow.get(u.id) === u.sha).map((u) => ({ ref: u.id, sha: u.sha }));
   deleteRefs(run, [], repoDel);
-  // 2. Instantáneas de la sombra.
+  // 2. Instantáneas de la sombra (menos la última de cada sesión viva).
   const shUnits = wipUnits(run, G);
   const shGone = new Set(retentionPrune(shUnits, now, key));
-  const shDel = shUnits.filter((u) => shGone.has(u.id)).map((u) => ({ ref: u.id, sha: u.sha }));
+  const alive = aliveNewest(shUnits, p, now);
+  const shDel = shUnits.filter((u) => shGone.has(u.id) && !alive.has(u.id)).map((u) => ({ ref: u.id, sha: u.sha }));
   deleteRefs(run, G, shDel);
   // 3. Juegos de refs: cada juego es una unidad y su propio grupo; el actual es el último.
   const sets = new Map();
@@ -300,9 +329,99 @@ function prune({ run, p, key, now }) {
     if (age > (m[2] ? 60 * 60 * 1000 : KEEP_MS)) { fs.rmSync(path.join(p.own, f), { force: true }); files += 1; }
   }
   // gc --auto con el vencimiento por defecto (2 semanas): seguro con otras
-  // sesiones escribiendo, así que no hace falta el lock exclusivo.
-  run([...G, 'gc', '--auto', '--quiet']);
+  // sesiones escribiendo, así que no hace falta el lock exclusivo. En primer plano
+  // (autoDetach=false) para que ningún gc quede corriendo detrás del lock (F2).
+  if (gcAuto) run([...G, '-c', 'gc.autoDetach=false', 'gc', '--auto', '--quiet']);
   return { repoWip: repoDel.length, shadowWip: shDel.length, refSets: new Set(setDel.map((x) => x.ref.split('/').slice(0, 4).join('/'))).size, repoBackups: bDel.length, files };
+}
+
+// ---- gc de la sombra al cerrar la sesión (R-6; diferido del hito 1) ----
+const GC_LOOSE_LIMIT = 2000;
+const GC_AGE_MS = DAY_MS;
+const GC_ACTIVE_MS = SEED_STALE_MS; // otra sesión que tocó su índice hace menos de 10 min
+const GC_LOCK_AHEAD_MS = 2 * 60 * 60 * 1000;
+
+// Más de 2.000 objetos sueltos o más de 24 h desde el último gc (ausente = nunca).
+function needsGc({ loose, lastGcAt, now = Date.now(), looseLimit = GC_LOOSE_LIMIT } = {}) {
+  const t = now instanceof Date ? now.getTime() : Number(now);
+  if (Number(loose) > looseLimit) return { run: true, reason: 'loose' };
+  const last = lastGcAt ? Date.parse(lastGcAt) : NaN;
+  if (Number.isNaN(last) || t - last > GC_AGE_MS) return { run: true, reason: 'age' };
+  return { run: false, reason: 'none' };
+}
+
+function looseCount(run, G) {
+  const m = /^count:\s*(\d+)/m.exec(run([...G, 'count-objects', '-v']));
+  return m ? Number(m[1]) : 0;
+}
+
+// Índice de otra sesión tocado hace menos de GC_ACTIVE_MS: la sombra no es exclusiva.
+function otherSessionActive(p, key, t) {
+  let names = [];
+  try { names = fs.readdirSync(p.own); } catch (_) { return false; }
+  for (const f of names) {
+    const m = /^index-([0-9a-f]+)$/.exec(f);
+    if (!m || m[1] === key) continue;
+    try { if (t - fs.statSync(path.join(p.own, f)).mtimeMs < GC_ACTIVE_MS) return true; } catch (_) { /* borrado entre medio */ }
+  }
+  return false;
+}
+
+// Corre DENTRO del lock de closeSession (no toma uno propio). Nunca borra refs: la poda corta
+// (--prune=1.day.ago) vence por el mtime del objeto suelto, y la ventana entre commit-tree y
+// update-ref dura milisegundos. Sin plazo (C5: un plazo mata solo git.exe y deja repack huérfano
+// y gc.pid): runGc corre con timeout 0 y mientras tanto el mtime del lock se adelanta para que
+// acquireLock no se lo robe a los 10 min.
+function gcShadow({ run, runGc, p, key, now = new Date(), looseLimit = GC_LOOSE_LIMIT }) {
+  const t = now instanceof Date ? now.getTime() : Number(now);
+  const G = ['--git-dir', p.dir];
+  const looseBefore = looseCount(run, G);
+  const lastFile = path.join(p.own, 'last-gc');
+  let lastGcAt = null;
+  try { lastGcAt = fs.readFileSync(lastFile, 'utf8').trim(); } catch (_) { /* nunca */ }
+  const need = needsGc({ loose: looseBefore, lastGcAt, now: t, looseLimit });
+  if (!need.run) return { ran: false, reason: 'none', looseBefore, looseAfter: null };
+  if (otherSessionActive(p, key, t)) {
+    run([...G, '-c', 'gc.autoDetach=false', 'gc', '--auto', '--quiet']);
+    return { ran: false, reason: 'other-session-active', looseBefore, looseAfter: null };
+  }
+  const ahead = new Date(t + GC_LOCK_AHEAD_MS);
+  try { fs.utimesSync(p.lock, ahead, ahead); } catch (_) { /* sin lock (llamada directa): nada que adelantar */ }
+  const gc = runGc || ((args, opts) => run(args, opts));
+  gc([...G, '-c', 'gc.autoDetach=false', 'gc', '--quiet', '--prune=1.day.ago'], { timeout: 0 });
+  fs.mkdirSync(p.own, { recursive: true });
+  fs.writeFileSync(lastFile, `${new Date(t).toISOString()}\n`);
+  return { ran: true, reason: need.reason, looseBefore, looseAfter: looseCount(run, G) };
+}
+
+// Cierre de la sesión: un solo lock alrededor de prune (sin su gc --auto) y gcShadow. Uno que
+// falla no corta al otro; el error va a recordFailure y al resultado. Sin sombra sembrada no
+// la crea: { pruned: null, gc: null }.
+function closeSession({ run, runGc, env, info, key, now = new Date(), looseLimit }) {
+  const p = shadowPaths(env, info, key);
+  if (!fs.existsSync(path.join(p.dir, 'HEAD'))) return { pruned: null, gc: null };
+  if (!acquireLock(p.lock)) return { pruned: null, gc: { ran: false, reason: 'busy' } };
+  let pruned = null;
+  let gc = null;
+  try {
+    try {
+      pruned = prune({ run, p, key, now, gcAuto: false });
+    } catch (e) {
+      const error = String(e.message || e).split('\n')[0];
+      recordFailure(env, 'poda', { repo: info.top, error });
+      pruned = { error };
+    }
+    try {
+      gc = gcShadow({ run, runGc, p, key, now, looseLimit });
+    } catch (e) {
+      const error = String(e.message || e).split('\n')[0];
+      recordFailure(env, 'gc', { repo: info.top, error });
+      gc = { ran: false, reason: 'error', error };
+    }
+  } finally {
+    fs.rmSync(p.lock, { recursive: true, force: true });
+  }
+  return { pruned, gc };
 }
 
 function parseStamp(s) {
@@ -366,6 +485,7 @@ function seedShadow({ run, env, info, key, now = new Date(), sizeLimit }) {
         const partial = addAll(sg, { env: genv });
         snap = { ...commitIndex({ run: sg, env: genv, prefix: `refs/pignolo/wip/${key}/`, reason: 'siembra', now }), partial };
         fs.renameSync(tmp, p.index);
+        touchIndex(p.index, now);
       } finally {
         fs.rmSync(tmp, { force: true });
         fs.rmSync(`${tmp}.lock`, { force: true });
@@ -389,4 +509,5 @@ function seedShadow({ run, env, info, key, now = new Date(), sizeLimit }) {
 module.exports = {
   IDENTITY, stamp, repoIdForGitDir, sessionKey, repoInfo, shadowPaths, readStatus, recordFailure,
   addAll, commitIndex, shadowSnapshot, seedWarning, seedShadow, mirrorRefs, retentionPrune, prune,
+  needsGc, gcShadow, closeSession, acquireLock, SEED_STALE_MS, KEEP_MS,
 };

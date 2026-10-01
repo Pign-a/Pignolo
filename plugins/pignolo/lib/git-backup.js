@@ -64,6 +64,24 @@ function seedShadow({ cwd, env = process.env, sessionId, now = new Date(), timeo
   return shadow.seedShadow({ run, env, info, key: shadow.sessionKey(sessionId, info.top), now, sizeLimit });
 }
 
+// Cierre de la sesión (R-6, hito 6): poda con la retención y gc con heurística, bajo un solo
+// lock. La clave de sesión se resuelve, no se supone (F1): el argumento `sessionId` o, si falta,
+// CLAUDE_CODE_SESSION_ID del entorno (observado en Claude Code 2.1.285; no documentado: se
+// verifica en tests/manual/hito-6.md). Sin ninguno, refused 'no-session' y no se hace nada:
+// con la clave equivocada el propio índice contaría como otra sesión y el gc nunca correría.
+// Fuera de un repo: null. Todo con plazo (120 s) salvo el gc, que corre sin plazo (C5).
+function closeShadow({ cwd, env = process.env, sessionId, now = new Date(), timeoutMs = 120000, looseLimit } = {}) {
+  const id = sessionId || env.CLAUDE_CODE_SESSION_ID;
+  if (!id) return { ok: false, refused: 'no-session', reason: 'sin --session ni CLAUDE_CODE_SESSION_ID no se puede saber qué sesión cierra; no se poda nada', pruned: null, gc: null };
+  if (!cwd || !fs.existsSync(cwd)) return null;
+  const run = withDeadline(cwd, timeoutMs);
+  const info = shadow.repoInfo(run);
+  if (!info) return null;
+  const key = shadow.sessionKey(id, info.top);
+  const runGc = (args, opts = {}) => gitRun(args, info.top, { ...opts, timeout: 0 });
+  return { ok: true, key, ...shadow.closeSession({ run, runGc, env, info, key, now, looseLimit }) };
+}
+
 // Estado de la sombra para SessionStart: null fuera de un repo; si no,
 // { state: 'absent'|'seeding'|'ok'|'error', error?, warnings?, gitDir }.
 function shadowState({ cwd, env = process.env, timeoutMs = 3000 } = {}) {
@@ -137,4 +155,4 @@ function setReflogPolicy({ cwd } = {}) {
   gitRun(['config', '--local', 'gc.reflogExpireUnreachable', 'never'], cwd);
 }
 
-module.exports = { snapshotWip, seedShadow, shadowState, backupRefs, setReflogPolicy };
+module.exports = { snapshotWip, seedShadow, shadowState, backupRefs, setReflogPolicy, closeShadow };
