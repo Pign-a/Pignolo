@@ -1,13 +1,15 @@
 // One headless browser over --remote-debugging-pipe (spec §11.1, A-12). Always a temporary
 // profile of its own (--user-data-dir, absolute), never the user's browser; cleanup in finally.
 //
-// openBrowser({ executable, startTimeoutMs = 15000, closeTimeoutMs = 8000 }) -> Promise<browser>
+// openBrowser({ executable, startTimeoutMs = 15000, closeTimeoutMs = 8000, removeProfile }) -> Promise<browser>
+//   removeProfile(dir) -> Promise<boolean>  removes the profile folder (default: retries up to 20 s); a test passes its own
 //   browser { product, pid, profile, cdp, newPage() -> Promise<page>, close({ graceful = true }) -> Promise<cleanup> }
 //   cleanup { graceful, killed, profileRemoved }: close() first closes its pages, then Browser.close;
 //   after closeTimeoutMs it kills the process tree; the profile is removed with retries.
 //   Throws BrowserUnavailable (reason in English, for `unverified`) when the browser
 //   does not start or does not answer (for example a policy that blocks remote debugging);
-//   the profile is removed before throwing.
+//   the profile is removed before throwing, and the error carries { profile, cleanup } with the
+//   same cleanup shape as close(): a profile that could not be removed is not lost.
 // page {
 //   sessionId,
 //   setViewport({ width, height })                       DPR 1, mobile: false (spike: mobile: true gives 980 px)
@@ -36,7 +38,7 @@ export const LAUNCH_ARGS = [
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // A closed or killed browser can hold its profile files for a while (Windows, under load): retry up to 20 s.
-async function removeProfile(dir, deadlineMs = 20000) {
+async function removeProfileWithRetries(dir, deadlineMs = 20000) {
   const until = Date.now() + deadlineMs;
   for (;;) {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* retried below */ }
@@ -67,7 +69,7 @@ function exited(child, ms) {
   });
 }
 
-export async function openBrowser({ executable, startTimeoutMs = 15000, closeTimeoutMs = 8000 } = {}) {
+export async function openBrowser({ executable, startTimeoutMs = 15000, closeTimeoutMs = 8000, removeProfile = removeProfileWithRetries } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-ui-browser-'));
   let child;
   try {
@@ -77,8 +79,8 @@ export async function openBrowser({ executable, startTimeoutMs = 15000, closeTim
       detached: process.platform !== 'win32',
     });
   } catch (e) {
-    await removeProfile(profile);
-    throw Object.assign(new BrowserUnavailable(`the browser could not start (${e.code || e.message})`), { profile });
+    const cleanup = { graceful: false, killed: false, profileRemoved: await removeProfile(profile) };
+    throw Object.assign(new BrowserUnavailable(`the browser could not start (${e.code || e.message})`), { profile, cleanup });
   }
   const spawnError = new Promise((resolve) => child.once('error', resolve));
   const cdp = createCdpClient({ writable: child.stdio[3], readable: child.stdio[4], timeoutMs: 30000 });
@@ -114,8 +116,8 @@ export async function openBrowser({ executable, startTimeoutMs = 15000, closeTim
     ]);
     product = version.product;
   } catch (e) {
-    await close({ graceful: false });
-    throw Object.assign(new BrowserUnavailable(`the browser did not answer over the pipe (${e.message})`), { profile });
+    const cleanup = await close({ graceful: false });
+    throw Object.assign(new BrowserUnavailable(`the browser did not answer over the pipe (${e.message})`), { profile, cleanup });
   }
 
   async function newPage() {

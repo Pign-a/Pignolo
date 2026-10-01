@@ -173,3 +173,37 @@ test('dom: the rendered DOM per width, with what scripts added, readable by ui-c
     await site.close();
   }
 });
+
+// Fixes of the final review of hito 3.
+const SPA = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Panel</title></head><body><main><h1>Panel</h1><button id="g">Continue with Google</button></main><script>setTimeout(() => history.replaceState(null, "", "/login"), 300);</script></body></html>';
+
+test('measure: a client redirect after load (history.replaceState to /login) is "requires session", not a pass', { skip }, async () => {
+  const { root, run } = project();
+  const site = await serveRoutes({ '/dashboard': { headers: HTML, body: SPA } });
+  try {
+    const r = await cli(['measure', '--project', root, '--run', run, '--url', `${site.base}/dashboard`, '--platform', 'desktop']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.json.degraded, /requires session: \/dashboard redirected to \/login/);
+    const json = readJson(path.join(run, 'browser.json'));
+    assert.ok(json.entries.length > 0 && json.entries.every((e) => e.status === 'unverified'), 'nothing is "pass"');
+    assert.match(json.finalUrl, /\/login$/);
+    const d = await cli(['dom', '--project', root, '--run', run, '--url', `${site.base}/dashboard`, '--platform', 'desktop']);
+    assert.match(d.json.degraded, /requires session: \/dashboard redirected to \/login/);
+    assert.deepEqual(d.json.doms, []);
+  } finally {
+    await site.close();
+  }
+});
+
+test('measure: a visible password field on the page asked for is "requires session" (no redirect involved)', { skip }, async () => {
+  const { root, run } = project();
+  const site = await serveRoutes({ '/login': { headers: HTML, body: '<!doctype html><title>Entrar</title><form><input type="password" aria-label="clave"></form>' } });
+  try {
+    const r = await cli(['measure', '--project', root, '--run', run, '--url', `${site.base}/login`, '--platform', 'desktop']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.degraded, 'requires session: a password field is visible');
+    assert.ok(readJson(path.join(run, 'browser.json')).entries.every((e) => e.status === 'unverified'));
+  } finally {
+    await site.close();
+  }
+});

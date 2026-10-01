@@ -9,11 +9,16 @@
 //   plan  shotPlan() result; open(fn) runs fn(browser) with a fresh browser and always closes it
 //         (withBrowser bound to the executable), or throws BrowserUnavailable.
 //   before  a previous browser.json (object) or null: its fails are debt (multiset by fingerprint).
+//   A page that does not load (PageLoadError) is not tried again at the other widths and themes:
+//   the rest is `unverified` with the same reason (a hanging URL costs one timeout, not sixteen).
+//   A client redirect after `load` (history.replaceState to /login) is seen: the URL is read again
+//   after a short settle (settleMs) and after the checks; if it left the page, all is `unverified`.
 // preflight(url, { timeoutMs = 5000, fetchImpl }) -> null | reason   (spec §11.2: 5 s)
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadCatalog } from './catalog.mjs';
-import { runChecks, runReducedMotionCheck } from './browser-checks.mjs';
+import { runChecks, runReducedMotionCheck, visibleTextSelectors } from './browser-checks.mjs';
+import { PageLoadError } from './browser-session.mjs';
 import { checkPng } from './png.mjs';
 
 export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07'];
@@ -38,6 +43,10 @@ const samePage = (a, b) => {
   try { return norm(a) === norm(b); } catch { return a === b; }
 };
 
+const SETTLE_MS = 500;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const hrefOf = (tab) => tab.evaluate(() => location.href);
+
 // "Requires session" (spec §11.2): the final URL is another page, or a password field is visible.
 async function sessionReason(page, url, finalUrl) {
   if (!samePage(url, finalUrl)) return `requires session: ${pathOf(url)} redirected to ${pathOf(finalUrl)}`;
@@ -46,12 +55,21 @@ async function sessionReason(page, url, finalUrl) {
   return pwd ? 'requires session: a password field is visible' : null;
 }
 
-async function load(page, { url, width, height, theme, reducedMotion = false }) {
+// settleMs > 0: a client-side redirect right after `load` has time to happen before the URL is read.
+async function load(page, { url, width, height, theme, reducedMotion = false, navTimeoutMs = 30000, settleMs = 0 }) {
   await page.setViewport({ width, height });
   await page.setMedia({ theme, reducedMotion });
-  const { finalUrl } = await page.navigate(url);
+  const { finalUrl } = await page.navigate(url, { timeoutMs: navTimeoutMs });
   await page.waitReady();
-  return finalUrl;
+  if (!settleMs) return finalUrl;
+  await sleep(settleMs);
+  return hrefOf(page);
+}
+
+// The page left the URL asked for after the checks began (client redirect): the reason, or null.
+async function leftThePage(page, url) {
+  const now = await hrefOf(page);
+  return samePage(url, now) ? null : `requires session: ${pathOf(url)} redirected to ${pathOf(now)}`;
 }
 
 function unverifiedAll(reason, extra = {}) {
@@ -81,7 +99,7 @@ function toEntries(raw, { page, catalog, before }) {
   });
 }
 
-export async function measurePage({ url, plan, open, before = null, catalog = loadCatalog(), page = pathOf(url) }) {
+export async function measurePage({ url, plan, open, before = null, catalog = loadCatalog(), page = pathOf(url), navTimeoutMs = 30000, settleMs = SETTLE_MS }) {
   const down = await preflight(url);
   if (down) return { browser: null, finalUrl: null, degraded: down, entries: toEntries(unverifiedAll(down), { page, catalog, before }) };
   let product = null;
@@ -92,18 +110,29 @@ export async function measurePage({ url, plan, open, before = null, catalog = lo
     await open(async (browser) => {
       product = browser.product;
       const tab = await browser.newPage();
+      let unloadable = null; // reason of the first PageLoadError: the same page will not load at the rest
       for (const { width, height } of plan.widths) {
         for (const theme of plan.themes) {
           const at = { width, theme };
+          if (unloadable) { raw.push(...unverifiedAll(unloadable, at)); continue; }
           try {
-            finalUrl = await load(tab, { url, width, height, theme });
+            finalUrl = await load(tab, { url, width, height, theme, navTimeoutMs, settleMs });
             const session = await sessionReason(tab, url, finalUrl);
             if (session) { degraded = session; raw.push(...unverifiedAll(session, at)); return; }
-            for (const f of await runChecks(tab)) raw.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
-            await load(tab, { url, width, height, theme, reducedMotion: true });
-            for (const f of await runReducedMotionCheck(tab)) raw.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
+            const found = [];
+            for (const f of await runChecks(tab)) found.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
+            const visible = await visibleTextSelectors(tab);
+            const left = await leftThePage(tab, url);
+            if (left) { degraded = left; raw.push(...unverifiedAll(left, at)); return; }
+            await load(tab, { url, width, height, theme, reducedMotion: true, navTimeoutMs });
+            for (const f of await runReducedMotionCheck(tab, visible)) found.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
+            const leftLater = await leftThePage(tab, url);
+            if (leftLater) { degraded = leftLater; raw.push(...unverifiedAll(leftLater, at)); return; }
+            raw.push(...found);
           } catch (e) {
-            raw.push(...unverifiedAll(`not measured: ${e.message}`, at));
+            const reason = `not measured: ${e.message}`;
+            if (e instanceof PageLoadError) unloadable = reason;
+            raw.push(...unverifiedAll(reason, at));
           }
         }
       }
@@ -130,7 +159,7 @@ export async function capturePage({ url, plan, open, outDir }) {
       fs.mkdirSync(outDir, { recursive: true });
       for (const { width, height } of plan.widths.filter((w) => w.capture)) {
         for (const theme of plan.themes) {
-          finalUrl = await load(tab, { url, width, height, theme });
+          finalUrl = await load(tab, { url, width, height, theme, settleMs: SETTLE_MS });
           const session = await sessionReason(tab, url, finalUrl);
           if (session) { degraded = session; unverified.push({ width, theme, reason: session }); return; }
           const total = await tab.evaluate(() => document.documentElement.scrollHeight);
@@ -174,13 +203,15 @@ export async function dumpDom({ url, plan, open, outDir }) {
       product = browser.product;
       const tab = await browser.newPage();
       for (const { width, height } of plan.widths) {
-        finalUrl = await load(tab, { url, width, height, theme: 'light' });
+        finalUrl = await load(tab, { url, width, height, theme: 'light', settleMs: SETTLE_MS });
         const session = await sessionReason(tab, url, finalUrl);
         if (session) { degraded = session; unverified.push({ width, reason: session }); return; }
         const html = await tab.evaluate(() => {
           const dt = document.doctype;
           return `${dt ? `<!doctype ${dt.name}>` : ''}\n${document.documentElement.outerHTML}\n`;
         });
+        const left = await leftThePage(tab, url);
+        if (left) { degraded = left; unverified.push({ width, reason: left }); return; }
         const name = `dom-${width}.html`;
         fs.writeFileSync(path.join(outDir, name), html);
         doms.push({ path: name, width });

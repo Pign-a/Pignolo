@@ -9,8 +9,9 @@
 //
 // runChecks(page) -> raw findings [{ id, status, key, reason?, selector?, severity?, measure? }]
 //   B1-B3 on the page as it is (the caller set viewport and theme and navigated);
-// runReducedMotionCheck(page) -> raw findings of B4 (the caller
-//   navigated again with prefers-reduced-motion: reduce).
+// visibleTextSelectors(page) -> selectors of the first two viewports with opacity > 0 (normal load)
+// runReducedMotionCheck(page, visible) -> raw findings of B4 (the caller navigated again with
+//   prefers-reduced-motion: reduce; only text in `visible` is flagged).
 import { parseColor, contrastRatio, composite } from './color.mjs';
 
 // ---- page side (serialized with toString; they use the helpers below as free names) ---------
@@ -29,13 +30,28 @@ const PAGE_HELPERS = String.raw`
     return parts.join(' > ');
   };
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TITLE', 'HEAD', 'OPTION']);
+  // Text hidden on purpose from the eye (sr-only, visually-hidden): a 1 px box that clips, a zero clip.
+  const hiddenOnPurpose = new Map();
+  const isVisuallyHidden = (el) => {
+    if (hiddenOnPurpose.has(el)) return hiddenOnPurpose.get(el);
+    let hidden = false;
+    for (let e = el; e && e !== document.body && e !== document.documentElement; e = e.parentElement) {
+      const s = getComputedStyle(e);
+      const r = e.getBoundingClientRect();
+      const clips = s.overflowX !== 'visible' || s.overflowY !== 'visible';
+      const zeroClip = /^rect\(\s*0(px)?[ ,]+0(px)?[ ,]+0(px)?[ ,]+0(px)?\s*\)$/.test(s.clip) || /^inset\(\s*(50|100)%/.test(s.clipPath);
+      if ((clips && r.width <= 1 && r.height <= 1) || (zeroClip && (s.position === 'absolute' || s.position === 'fixed'))) { hidden = true; break; }
+    }
+    hiddenOnPurpose.set(el, hidden);
+    return hidden;
+  };
   const textNodes = () => {
     const out = [];
     const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       if (!n.nodeValue.trim() || !n.parentElement || SKIP.has(n.parentElement.tagName)) continue;
       const cs = getComputedStyle(n.parentElement);
-      if (cs.display === 'none' || cs.visibility !== 'visible') continue;
+      if (cs.display === 'none' || cs.visibility !== 'visible' || isVisuallyHidden(n.parentElement)) continue;
       const range = document.createRange();
       range.selectNodeContents(n);
       const r = range.getBoundingClientRect();
@@ -49,7 +65,7 @@ const PAGE_HELPERS = String.raw`
 
 // One expression that defines the helpers and runs fn: nothing is added to the page as a <script>,
 // which a strict CSP would block (Runtime.evaluate itself is not subject to the page CSP).
-const inPage = (fn) => `(() => { ${PAGE_HELPERS}; return (${fn.toString()})(); })()`;
+const inPage = (fn, arg) => `(() => { ${PAGE_HELPERS}; return (${fn.toString()})(${JSON.stringify(arg ?? null)}); })()`;
 
 // B1: foreground, background layers up to the first opaque one, font size and weight.
 function collectContrast() {
@@ -85,7 +101,9 @@ function collectReflow() {
       const r = e.getBoundingClientRect();
       const s = getComputedStyle(e);
       const painted = (s.backgroundColor && !/rgba\(0, 0, 0, 0\)|transparent/.test(s.backgroundColor)) || s.backgroundImage !== 'none' || parseFloat(s.borderBottomWidth) > 0 || parseFloat(s.borderTopWidth) > 0;
-      if (painted && r.left <= 0 && r.right >= vw) return true;
+      // A bar is a header/nav/footer or a short strip: a painted wrapper as tall as the page is not.
+      const barLike = ['HEADER', 'NAV', 'FOOTER'].includes(e.tagName) || r.height < innerHeight * 0.25;
+      if (painted && barLike && r.left <= 0 && r.right >= vw) return true;
     }
     return false;
   };
@@ -116,21 +134,21 @@ function collectReflow() {
   return out;
 }
 
-// B4: text of the first two viewports whose effective opacity is 0.
-function collectHiddenText() {
+// B4: text of the first two viewports with its effective opacity. In the normal load the finite
+// animations are finished first (the settled page); under reduced motion nothing is touched.
+function collectOpacities(settle) {
+  if (settle) for (const a of document.getAnimations()) { try { a.finish(); } catch { /* infinite */ } }
   const limit = innerHeight * 2;
-  const hidden = [];
-  let checked = 0;
+  const text = [];
   const seen = new Set();
   for (const { el, rect } of textNodes()) {
     if (rect.top >= limit || rect.bottom <= 0 || seen.has(el)) continue;
     seen.add(el);
-    checked++;
     let opacity = 1;
     for (let e = el; e; e = e.parentElement) opacity *= Number(getComputedStyle(e).opacity);
-    if (opacity <= 0) hidden.push({ selector: selectorOf(el) });
+    text.push({ selector: selectorOf(el), opacity });
   }
-  return { hidden, checked };
+  return text;
 }
 
 // B2, step 1: the elements a keyboard user must reach, with their unfocused styles.
@@ -151,7 +169,9 @@ function collectFocusables() {
   for (const el of document.querySelectorAll(`${NATIVE}, ${ROLES}`)) {
     if (!visible(el) || isDisabled(el)) continue;
     if (el.getAttribute('tabindex') !== null && el.tabIndex < 0) continue;
-    list.push({ selector: selectorOf(el), style: styleOf(el), focusable: el.tabIndex >= 0 });
+    // Tab enters a radio group once; the arrows move inside it (HTML focus order).
+    const group = el.matches('input[type="radio"][name]') ? `${el.form ? selectorOf(el.form) : ''}|${el.name}` : null;
+    list.push({ selector: selectorOf(el), style: styleOf(el), focusable: el.tabIndex >= 0, group });
   }
   return list;
 }
@@ -241,6 +261,8 @@ export async function keyboardFindings(page, { maxSteps = 200 } = {}) {
   }
   const out = [];
   for (const e of expected) {
+    // A radio of a group that Tab did enter counts as reached (the arrows get to the rest).
+    if (e.group && !reached.has(e.selector) && expected.some((o) => o.group === e.group && reached.has(o.selector))) continue;
     if (!reached.has(e.selector)) {
       out.push({ id: 'NAV-01', status: 'fail', key: e.selector, selector: e.selector, reason: e.focusable ? 'not reached with Tab' : 'interactive role without tabindex: not reachable with Tab' });
       continue;
@@ -265,8 +287,19 @@ export async function runChecks(page) {
   return findings;
 }
 
-export async function runReducedMotionCheck(page) {
-  const { hidden, checked } = await page.evaluate(inPage(collectHiddenText));
+// Text visible (opacity > 0) in the normal, settled load: what the reduced-motion page must also show.
+export async function visibleTextSelectors(page) {
+  return (await page.evaluate(inPage(collectOpacities, true))).filter((t) => t.opacity > 0).map((t) => t.selector);
+}
+
+// visible: visibleTextSelectors of the same page in the normal load. Text that is already at
+// opacity 0 there (a tooltip shown on hover) is not a reduced-motion problem.
+export async function runReducedMotionCheck(page, visible) {
+  if (!Array.isArray(visible)) throw new TypeError('runReducedMotionCheck needs the visibleTextSelectors of the normal load');
+  const normal = new Set(visible);
+  const text = (await page.evaluate(inPage(collectOpacities, false))).filter((t) => normal.has(t.selector));
+  const checked = text.length;
+  const hidden = text.filter((t) => t.opacity <= 0);
   const out = hidden.map((h) => ({ id: 'MOTION-07', status: 'fail', key: h.selector, selector: h.selector, reason: 'text with opacity 0 under prefers-reduced-motion: reduce' }));
   if (!out.length) out.push({ id: 'MOTION-07', status: 'pass', key: 'checked', measure: { checked } });
   return out;

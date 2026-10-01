@@ -105,14 +105,19 @@ export const BROWSER_SKIP = FOUND_BROWSER.path ? false : `sin navegador: ${FOUND
 export const browserPath = () => FOUND_BROWSER.path;
 
 // Process ids whose command line mentions the temporary profile (orphan check, spec §11.1).
-export function processesWith(profile) {
+// The oracle fails closed: if the listing itself did not run (PowerShell timed out or did not
+// start, ps failed) it throws, so "no orphans" is never reported without having looked.
+// run is injectable (spawnSync-shaped) for the test of that rule.
+export function processesWith(profile, { run = spawnSync } = {}) {
   const marker = path.basename(profile);
-  if (process.platform === 'win32') {
-    const script = `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*${marker}*' } | ForEach-Object { $_.ProcessId }`;
-    const res = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { encoding: 'utf8', timeout: 30000, windowsHide: true });
-    return res.stdout.split(/\s+/).filter(Boolean).map(Number);
+  const win = process.platform === 'win32';
+  const res = win
+    ? run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -like '*${marker}*' } | ForEach-Object { $_.ProcessId }`], { encoding: 'utf8', timeout: 30000, windowsHide: true })
+    : run('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', timeout: 10000 });
+  if (res.error || res.status !== 0) {
+    throw new Error(`the process listing did not run, so orphans were not measured (${res.error ? res.error.message : `exit ${res.status}`})`);
   }
-  const res = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8', timeout: 10000 });
+  if (win) return res.stdout.split(/\s+/).filter(Boolean).map(Number);
   return res.stdout.split('\n').filter((l) => l.includes(marker)).map((l) => Number(l.trim().split(/\s+/)[0]));
 }
 

@@ -13,7 +13,8 @@
 //            B1-B4 as entries of the ui-check shape; --before makes its fails debt.
 //   dom      <run>/dom-<width>.html (rendered DOM, for ui-check --dom) and <run>/dom.json
 // cleanup = { graceful, killed, profileRemoved, profile } (null without a browser); a profile that
-// could not be removed is also printed as leftoverProfile.
+// could not be removed is also printed as leftoverProfile. Ctrl+C (SIGINT) or SIGTERM kills the
+// browser, tries to remove the profile and prints { interrupted, cleanup, leftoverProfile? }.
 // Prints { out, degraded, ... } on stdout. Exit codes: 0 done (what could not be measured is
 // `unverified`, never a pass); 1 measure found a new `bloquea`; 2 usage or own error.
 import fs from 'node:fs';
@@ -77,7 +78,29 @@ function readBefore(file) {
   }
 }
 
-export async function main(argv, { cwd = process.cwd(), env = process.env } = {}) {
+// SIGINT/SIGTERM: kill the browser tree, remove the profile and say what is left (never prune).
+// current() -> the open browser or null. Returns { dispose, settled } (settled: the handler's last run).
+export function watchSignals({ proc = process, current, stdout = process.stdout, exit = (code) => process.exit(code) }) {
+  const guard = { settled: null, dispose: () => { proc.off('SIGINT', onInt); proc.off('SIGTERM', onTerm); } };
+  const handle = (signal, code) => {
+    guard.settled = (async () => {
+      const browser = current();
+      const cleanup = browser ? { ...(await browser.close({ graceful: false })), profile: browser.profile } : null;
+      const leftover = cleanup && !cleanup.profileRemoved ? { leftoverProfile: cleanup.profile } : {};
+      stdout.write(`${JSON.stringify({ interrupted: signal, cleanup, ...leftover }, null, 2)}\n`);
+      exit(code);
+    })();
+  };
+  const onInt = () => handle('SIGINT', 130);
+  const onTerm = () => handle('SIGTERM', 143);
+  proc.on('SIGINT', onInt);
+  proc.on('SIGTERM', onTerm);
+  return guard;
+}
+
+// browserOptions: extra options for openBrowser (tests); stdout: where the result is printed.
+export async function main(argv, { cwd = process.cwd(), env = process.env, browserOptions = {}, stdout = process.stdout, proc = process } = {}) {
+  let signals = null;
   try {
     const opts = parseArgs(argv);
     if (opts.project === undefined) throw new UsageError('falta --project <raíz del repo>');
@@ -99,13 +122,24 @@ export async function main(argv, { cwd = process.cwd(), env = process.env } = {}
     // cleanup of the browser (§11.1) goes into the JSON: a profile that could not be removed is
     // said, with its path, instead of staying behind in silence.
     let cleanup = null;
+    let current = null;
+    signals = watchSignals({ proc, current: () => current, stdout });
     const open = async (fn) => {
       if (!found.path) throw new BrowserUnavailable(`no browser: ${found.reason}`);
-      const browser = await openBrowser({ executable: found.path });
+      let browser;
+      try {
+        browser = await openBrowser({ executable: found.path, ...browserOptions });
+      } catch (e) {
+        // A browser that did not start still had a profile: say whether it could be removed.
+        if (e instanceof BrowserUnavailable && e.cleanup) cleanup = { ...e.cleanup, profile: e.profile };
+        throw e;
+      }
+      current = browser;
       try {
         return await fn(browser);
       } finally {
         cleanup = { ...(await browser.close()), profile: browser.profile };
+        current = null;
       }
     };
 
@@ -136,11 +170,13 @@ export async function main(argv, { cwd = process.cwd(), env = process.env } = {}
     }
     const degraded = JSON.parse(fs.readFileSync(out, 'utf8')).degraded ?? null;
     const leftover = cleanup && !cleanup.profileRemoved ? { leftoverProfile: cleanup.profile } : {};
-    process.stdout.write(`${JSON.stringify({ out, degraded, ...leftover, ...summary, exitCode }, null, 2)}\n`);
+    stdout.write(`${JSON.stringify({ out, degraded, ...leftover, ...summary, exitCode }, null, 2)}\n`);
     return exitCode;
   } catch (e) {
     process.stderr.write(`browser: ${e instanceof UsageError ? e.message : `error interno (${e.stack || e.message})`}\n`);
     return 2;
+  } finally {
+    signals?.dispose();
   }
 }
 

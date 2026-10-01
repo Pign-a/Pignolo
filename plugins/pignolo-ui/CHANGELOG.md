@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.1 — sin publicar
+
+Arreglos de la revisión final del hito 3 (navegador):
+
+- Sin falsos `bloquea` en patrones comunes: el texto oculto a propósito (`sr-only` de Tailwind, `visually-hidden` de Bootstrap) ya no cuenta como texto recortado (LAYOUT-11); un grupo de radios con el mismo `name` se alcanza con un solo Tab y las flechas hacen el resto (NAV-01); un tooltip que aparece con `:hover` (`opacity: 0`) ya no falla MOTION-07, que solo marca el texto con opacidad > 0 en la carga normal ya asentada.
+- LAYOUT-10 ya no da `pass` con un contenedor pintado de borde a borde: solo es "barra" un `header`, `nav` o `footer`, o una franja pintada de menos del 25 % del alto del viewport (el `min-h-screen bg-gray-50` de casi todo layout no lo es). Límite: una franja pintada corta con un solo párrafo pegado al borde sigue pasando.
+- "Requiere sesión" ve una redirección del lado del cliente después de `load` (`history.replaceState('/login')`): la URL se lee de nuevo tras 0,5 s, tras los chequeos y tras la pasada de movimiento reducido; `dom` también la revisa. El camino del campo de contraseña visible ahora tiene su test.
+- Una URL que cuelga ya no cuesta 4 min 28 s con `--platform both --dark`: tras el primer `PageLoadError` el resto de anchos y temas sale `unverified` con el mismo motivo, sin reintentar. Cada carga de `measure`, `capture` y `dom` espera 0,5 s para ver esas redirecciones (0,5 s por ancho y tema).
+- Ctrl+C o SIGTERM sobre `browser.mjs` mata el navegador, intenta borrar el perfil e imprime `{ interrupted, cleanup, leftoverProfile? }` (exit 130 o 143). Un navegador que no arrancó ahora informa en `cleanup` si su perfil quedó sin borrar. Los dos caminos tienen test.
+- Los tests de procesos huérfanos fallan si no pudieron medir (PowerShell sin arrancar o con plazo vencido): antes devolvían "sin huérfanos".
+
 ## 0.4.0 — sin publicar
 
 - Hito 3: `scripts/browser.mjs` maneja el Chrome o Edge instalado por `--remote-debugging-pipe` (perfil temporal propio, nunca el del usuario) con tres subcomandos: `measure` (B1–B4: COLOR-03, STATE-04, NAV-01, LAYOUT-10, LAYOUT-11 y MOTION-07, en todos los anchos y temas de §11.3, a `browser.json`), `capture` (capturas de viewport validadas, con sha256, en la carpeta del run) y `dom` (DOM renderizado a `dom-<ancho>.html`, para las reglas `document` de `ui-check`). `ui-check --measures <browser.json>` suma esas entradas a su salida y a su código de salida.

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serveRoutes, BROWSER_SKIP, browserPath } from './helpers.mjs';
 import { withBrowser } from '../lib/browser-session.mjs';
-import { parseComputedColor, contrastFindings, reflowFindings, runChecks, runReducedMotionCheck } from '../lib/browser-checks.mjs';
+import { parseComputedColor, contrastFindings, reflowFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
 
 const skip = BROWSER_SKIP;
 const HTML = { 'content-type': 'text/html; charset=utf-8' };
@@ -60,10 +60,15 @@ async function checkPage(html, { width = 1440, height = 900, theme = 'light', re
     return await withBrowser({ executable: browserPath() }, async (browser) => {
       const p = await browser.newPage();
       await p.setViewport({ width, height });
-      await p.setMedia({ theme, reducedMotion: reduced });
+      await p.setMedia({ theme, reducedMotion: false });
       await p.navigate(`${site.base}/`);
       await p.waitReady();
-      return reduced ? runReducedMotionCheck(p) : runChecks(p);
+      if (!reduced) return runChecks(p);
+      const visible = await visibleTextSelectors(p); // the normal, settled load, as measurePage does
+      await p.setMedia({ theme, reducedMotion: true });
+      await p.navigate(`${site.base}/`);
+      await p.waitReady();
+      return runReducedMotionCheck(p, visible);
     });
   } finally {
     await site.close();
@@ -137,4 +142,43 @@ test('B4 in the browser: text left at opacity 0 by a reveal animation fails unde
   assert.deepEqual(ok.map((x) => [x.id, x.status]), [['MOTION-07', 'pass']]);
   const below = page(`<div style="height:2000px"></div><p class="fade" id="far">Lejos</p>`, `${reveal}@media (prefers-reduced-motion: reduce){.fade{animation:none}}`);
   assert.deepEqual(ids(await checkPage(below, { reduced: true, height: 600 }), 'MOTION-07'), [], 'only the first two viewports');
+});
+
+// Fixes of the final review of hito 3: common page patterns that must not be false `bloquea`.
+test('B3 in the browser at 320: sr-only and visually-hidden text is not clipped text', { skip }, async () => {
+  const f = await checkPage(page(`
+    <span id="tw" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border-width:0">Saltar al contenido principal de la página</span>
+    <span id="bs" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">Texto solo para lectores de pantalla</span>
+    <p id="cut" style="white-space: nowrap; overflow: hidden; width: 100px">Un texto que no entra en su caja</p>`), { width: 320, height: 640 });
+  assert.deepEqual(ids(f, 'LAYOUT-11').map((x) => x.key), ['#cut'], 'only the text that is really cut');
+});
+
+test('B2 in the browser: a radio group is reached once with Tab (arrows move inside it)', { skip }, async () => {
+  const f = await checkPage(page(`
+    <label><input type="radio" name="plan" id="r1" value="a"> Uno</label>
+    <label><input type="radio" name="plan" id="r2" value="b"> Dos</label>
+    <label><input type="radio" name="plan" id="r3" value="c"> Tres</label>
+    <label><input type="radio" name="otro" id="s1" value="a"> Otro</label>
+    <button id="b">Enviar</button>`, 'input:focus-visible,button:focus-visible{outline:3px solid #0b6bcb}'));
+  assert.deepEqual(ids(f, 'NAV-01'), [], 'radios 2 and 3 are reached with the arrows');
+  assert.deepEqual(ids(f, 'STATE-04'), []);
+  assert.equal(ids(f, 'NAV-01', 'pass').length, 1);
+  // A group Tab cannot enter at all (every radio out of the tab order) still fails.
+  const trap = await checkPage(page(`<input type="radio" name="g" id="x1" aria-label="x1" onfocus="this.blur()"><input type="radio" name="g" id="x2" aria-label="x2" onfocus="this.blur()">`));
+  assert.deepEqual(ids(trap, 'NAV-01').map((x) => x.selector), ['#x1', '#x2']);
+});
+
+test('LAYOUT-10 in the browser: a painted full-width container is not a bar unless it is short or header/nav/footer', { skip }, async () => {
+  const tall = (style) => `<div style="background:#f9fafb;margin:0 -24px;min-height:100vh;${style}"><p id="edge" style="margin:0 4px">Texto pegado al borde</p></div>`;
+  for (const width of [1440, 320]) {
+    assert.deepEqual(ids(await checkPage(page(tall('')), { width, height: 700 }), 'LAYOUT-10').map((x) => x.selector), ['#edge'], `painted page wrapper at ${width}`);
+  }
+  const bar = await checkPage(page('<header style="background:#f9fafb;margin:0 -24px;min-height:100vh"><p id="hb" style="margin:0 4px">Cabecera</p></header><div style="background:#0b6bcb;margin:0 -24px;padding:8px 0"><span id="short" style="margin:0 4px;color:#fff">Aviso</span></div>'), { width: 320, height: 640 });
+  assert.deepEqual(ids(bar, 'LAYOUT-10'), [], 'header, and a short painted strip, are bars');
+});
+
+test('B4 in the browser: only text visible in the normal load is flagged under reduced motion (hover tooltips are not)', { skip }, async () => {
+  const html = page('<div class="g"><span id="tip" class="tip">Ayuda al pasar el mouse</span></div><h1 class="fade" id="hero">Título</h1>',
+    '.tip{opacity:0;transition:opacity .2s}.g:hover .tip{opacity:1}.fade{opacity:0;animation:in 1s forwards}@keyframes in{to{opacity:1}}@media (prefers-reduced-motion: reduce){.fade{animation:none}}');
+  assert.deepEqual(ids(await checkPage(html, { reduced: true }), 'MOTION-07').map((x) => x.selector), ['#hero']);
 });

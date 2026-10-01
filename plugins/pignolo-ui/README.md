@@ -107,9 +107,9 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 
 - Siempre lanza el navegador con un perfil temporal propio y sin ventana (`--headless=new`, por pipe, sin puerto): nunca toca el navegador ni el perfil del usuario. No levanta el servidor de desarrollo: la URL tiene que estar respondiendo (solo `localhost`, `127.0.0.0/8` o `[::1]`; un archivo va por `--file`, dentro del proyecto).
 - `measure` escribe `browser.json` (B1–B4 en cada ancho y tema), `capture` escribe `captures.json` y `captures/<ancho>-<tema>-<n>.png`, y `dom` escribe `dom.json` y `dom-<ancho>.html`. Todo queda en la carpeta del run; las capturas nunca van al repo.
-- Si la página redirige a otra ruta o muestra un campo de contraseña, es "requiere sesión": todas las reglas salen "no verificado" y no se mide nada más. Lo que no se pudo medir (sin navegador, URL caída, plazo vencido) también sale "no verificado" con su motivo.
+- Si la página redirige a otra ruta (también con una redirección del lado del cliente poco después de cargar) o muestra un campo de contraseña, es "requiere sesión": todas las reglas salen "no verificado" y no se mide nada más. Lo que no se pudo medir (sin navegador, URL caída, plazo vencido) también sale "no verificado" con su motivo.
 - `measure --before <browser.json>` marca como deuda las fallas que ya estaban en la medición anterior. `ui-check --measures <browser.json>` suma las entradas a `ui-check.json`.
-- Si el perfil temporal no se pudo borrar, `browser.json` lo dice en `cleanup` y la CLI imprime `leftoverProfile`: no se borra nada que esta corrida no haya creado.
+- Si el perfil temporal no se pudo borrar (también si el navegador no llegó a arrancar, o se cortó con Ctrl+C), `browser.json` lo dice en `cleanup` y la CLI imprime `leftoverProfile`: no se borra nada que esta corrida no haya creado. Una URL que no carga cuesta un plazo de 30 s; el resto de anchos y temas sale "no verificado" sin reintentar.
 - Los tests de navegador, sin navegador instalado, salen como skip visible.
 
 ## Aplicar sin romper (`files`)
