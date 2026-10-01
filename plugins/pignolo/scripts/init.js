@@ -20,6 +20,7 @@ const { parseFrontmatter, YamlLiteError } = require('../lib/yaml-lite');
 const { locateAutoMemory } = require('../lib/auto-memory');
 const { applyAutoMemoryOff, gitIgnoredStatus } = require('../lib/claude-settings');
 const A = require('../lib/init-actions');
+const { detectPlaces } = require('../lib/places-detect');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
 
 const STEP_IDS = ['ignores', 'gitattributes', 'reflog', 'project-md', 'security-md', 'auto-memory-off'];
@@ -110,6 +111,7 @@ function detect({ cwd, env, run }) {
       pignoloGitignoreTracked: tracked,
     },
     claudeSettingsIgnored: gitIgnoredStatus({ main, run: git }).ignored,
+    places: detectPlaces({ root: main, run }),
     steps: STEP_IDS.map((id) => ({ id, needsAnswer: NEEDS[id] || [] })),
   };
 }

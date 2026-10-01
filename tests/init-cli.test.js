@@ -363,3 +363,27 @@ test('m-8: with settings.local.json tracked, the note says it is versioned and w
   assert.ok(!/sin seguimiento/.test(note));
   assert.match(porcelain(repo), /^M\s+\.claude\/settings\.local\.json/);
 });
+
+// Hito 8d, Task 4: detect suma `places` (solo lectura).
+test('detect: places lists the existing folders and writes nothing', () => {
+  const repo = nodeRepo();
+  write(repo, 'doc/specs/a.md', 'a\n');
+  write(repo, 'plans/p.md', 'p\n');
+  commitAll(repo, 'docs');
+  const before = listing(repo);
+  const status = porcelain(repo);
+  const r = cli(['detect', '--cwd', repo]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(Object.keys(r.json.places).sort(), ['ambiguous', 'candidates', 'caseCollisions', 'existing']);
+  assert.deepEqual(r.json.places.candidates.map((c) => [c.kind, c.path]), [['spec', 'doc/specs/'], ['plan', 'plans/']]);
+  assert.equal(r.json.places.existing, true);
+  assert.deepEqual(listing(repo), before);
+  assert.equal(porcelain(repo), status);
+
+  const bare = makeTempDir('pignolo-bare-');
+  git(['init', '-q', '-b', 'main'], bare);
+  const e = cli(['detect', '--cwd', bare]);
+  assert.equal(e.status, 0, e.stderr);
+  assert.equal(e.json.places.existing, false);
+  assert.deepEqual(e.json.places.candidates, []);
+});
