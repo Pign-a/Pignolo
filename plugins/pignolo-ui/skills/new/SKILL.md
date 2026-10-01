@@ -15,10 +15,11 @@ These are substituted by Claude Code when the skill loads. The support files in 
 - `<root>` = `${CLAUDE_PLUGIN_ROOT}`
 - `<data>` = `${CLAUDE_PLUGIN_DATA}`
 - `<N>` = `${user_config.optionsPerDecision}`
+- `<profile>` = `${user_config.profile}`
 - `<presentation>` = `${user_config.presentation}`
 - `<repo>` = the root of the project (the git root of the working directory)
 
-If a value above still starts with `${`, Claude Code did not substitute it (a setting the user never saved arrives like that): use the default from plugin.json (`<N>` is 3, `<presentation>` is auto) and say so.
+If a value above still starts with `${`, Claude Code did not substitute it (a setting the user never saved arrives like that): use the default from plugin.json (`<N>` is 3, `<profile>` is balanced, `<presentation>` is auto) and say so.
 
 ## Steps
 

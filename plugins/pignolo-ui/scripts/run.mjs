@@ -15,6 +15,7 @@
 //   run.mjs auditor-check --project <repo> --run <run>
 //   run.mjs menu --run <run> [--norms <file>] [--extra-symptoms-file <json>] [--words-file <txt>]
 //   run.mjs report-skeleton --project <repo> --run <run> [--implements <design/approved/flow>]
+//   run.mjs option-model --profile <max|balanced|economy>
 //   run.mjs report-line --facts <json file>
 //   run.mjs verdict --project <repo> --run <run> [--build-ok yes|no]
 //   run.mjs compare-html --run <run> --platform desktop|mobile|both --screens <a.html,b.html> [--kind option|direction] [--no-open]
@@ -31,6 +32,7 @@ import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { loadSymptoms, mergeUserSymptoms, buildMenu, matchWords } from '../lib/symptoms.mjs';
 import { collectLeakValues } from '../lib/leak-values.mjs';
+import { optionModel } from '../lib/option-model.mjs';
 import { gitState, checkOption } from '../lib/option-check.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
 import { findDesignFile } from '../lib/approved.mjs';
@@ -358,6 +360,13 @@ const COMMANDS = {
       let out;
       try { out = reportSkeleton({ project, run, implementsPath: opts.implements }); } catch (e) { throw new UsageError(`no se pudo armar el esqueleto: ${e.message}`); }
       return { out, code: 0 };
+    },
+  },
+
+  'option-model': {
+    spec: { value: ['profile'] },
+    run(opts) {
+      return { out: optionModel(opts.profile), code: 0 };
     },
   },
 

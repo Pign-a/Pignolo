@@ -20,6 +20,7 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 ## Configuración (`userConfig`)
 
 - `optionsPerDecision` (`1` o `3`, por defecto `3`): cuántas opciones se generan por decisión, cada una con su subagente. Con `1` las opciones salen en secuencia del hilo principal y el informe lo dice.
+- `profile` (`max`, `balanced` o `economy`, por defecto `balanced`): modelo de los subagentes que generan las opciones. `max` usa opus; `balanced` y `economy` usan sonnet. Es un ajuste propio de este plugin y no depende del núcleo. Si el entorno fuerza el modelo de los subagentes (`CLAUDE_CODE_SUBAGENT_MODEL`), manda el entorno y el informe dice solo el modelo pedido.
 - `presentation` (`auto` o `local`, por defecto `auto`): en la v1 las dos dan lo mismo, una página local `compare.html`.
 
 Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega literal), la skill usa el valor por defecto y lo dice.

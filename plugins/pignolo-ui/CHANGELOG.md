@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.2 — sin publicar
+
+`ui-option` mejor hecho y con modelo por perfil (decisiones del autor, 2026-10-01, tras un A/B donde las opciones de opus salieron "algo mejor estructuradas y menos genéricas" que las de sonnet). Sube de 0.6.1 a 0.6.2: no cambia los comandos; suma el ajuste `profile`.
+
+- **Carta de oficio** (`agents/ui-option.md`, sección `# Craft`): comprometerse con un look nombrable y decirlo en una línea; derivar la jerarquía de lo único para lo que sirve la pantalla; diferir en ESTRUCTURA sobre el eje asignado (layout, agrupación, navegación, densidad) y no solo en colores; contenido con su forma real y marcadores visibles, nunca datos inventados; evitar los defaults genéricos (tarjeta centrada sobre gris, tres tarjetas iguales, hero con degradado). Todas las reglas duras siguen.
+- **Modelo por perfil:** nueva clave `userConfig.profile` (`max`, `balanced`, `economy`; por defecto `balanced`). `run.mjs option-model --profile <perfil>` da `opus` en `max` y `sonnet` en los otros dos (un valor desconocido o sin sustituir cuenta como `balanced`); `options.md` pasa ese modelo en cada invocación. No depende del núcleo.
+- **Límite (Ruling):** el frontmatter sigue en `model: sonnet` y el modelo por perfil se pasa en el parámetro `model` de la invocación. Si el entorno fija `CLAUDE_CODE_SUBAGENT_MODEL`, manda el entorno; el informe dice solo el modelo pedido.
+- Tests nuevos en `tests/option-craft.test.mjs`.
+
 ## 0.6.1 — sin publicar
 
 Pasada de arreglos de la revisión final del hito 4 (un crítico, cinco importantes y los menores). Sube de 0.6.0 a 0.6.1: no cambia la interfaz, salvo las opciones nuevas `check --before` y `design-md.mjs patch --out`.
