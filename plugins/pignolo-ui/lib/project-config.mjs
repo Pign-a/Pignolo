@@ -3,7 +3,8 @@
 // (plugins/pignolo/lib/shadow.js): sha256 of the normalized git-common-dir, 16 hex chars.
 //
 // repoIdFor(project, { run }) -> string      (run: injectable git runner (args, cwd) -> stdout)
-// readConfig({ data, project }) -> { repoId, file, config }   (unreadable file -> ConfigError)
+// readConfig({ data, project }) -> { repoId, file, config, optOut }   (unreadable file -> ConfigError)
+//   optOut: null | 'project-opt-out' (publish: never) | 'legacy-consent-declined' (canvasConsent: false of 0.6.x without publish)
 // writeConfig({ data, project, key, value }) -> { repoId, file, config }
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -39,7 +40,7 @@ const VALIDATORS = {
   devUrl: (v) => (typeof v === 'string' && isLoopbackUrl(v) ? null : 'devUrl debe ser una URL local (localhost o 127.x)'),
   routes: (v) => (Array.isArray(v) && v.every(relInside) ? null : 'routes debe ser una lista de rutas relativas dentro del proyecto'),
   referencePath: (v) => (relInside(v) ? null : 'referencePath debe ser una ruta relativa dentro del proyecto'),
-  canvasConsent: (v) => (typeof v === 'boolean' ? null : 'canvasConsent debe ser true o false'),
+  publish: (v) => (v === 'auto' || v === 'never' ? null : 'publish debe ser auto o never'),
 };
 
 function configFile(data, project, opts) {
@@ -47,13 +48,19 @@ function configFile(data, project, opts) {
   return { repoId, file: path.join(data, repoId, 'project.json') };
 }
 
+// R-18: anything but an explicit "auto" fails closed; a "no" of 0.6.x (canvasConsent: false) still counts.
+function optOutOf(config) {
+  if (Object.prototype.hasOwnProperty.call(config, 'publish')) return config.publish === 'auto' ? null : 'project-opt-out';
+  return config.canvasConsent === false ? 'legacy-consent-declined' : null;
+}
+
 export function readConfig({ data, project, ...opts }) {
   const { repoId, file } = configFile(data, project, opts);
-  if (!fs.existsSync(file)) return { repoId, file, config: {} };
+  if (!fs.existsSync(file)) return { repoId, file, config: {}, optOut: null };
   try {
     const config = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
     if (!config || typeof config !== 'object' || Array.isArray(config)) throw new Error('not an object');
-    return { repoId, file, config };
+    return { repoId, file, config, optOut: optOutOf(config) };
   } catch (e) {
     throw new ConfigError(`no se pudo leer ${file}: ${e.message}`);
   }
@@ -65,9 +72,14 @@ export function writeConfig({ data, project, key, value, ...opts }) {
   if (problem) throw new ConfigError(problem);
   const { repoId, file, config } = readConfig({ data, project, ...opts });
   const next = { ...config, [key]: value };
+  // canvasConsent is gone: it is dropped, but a "no" already said must survive as publish: never (A4C2-17)
+  if (Object.prototype.hasOwnProperty.call(next, 'canvasConsent')) {
+    if (next.canvasConsent === false && !Object.prototype.hasOwnProperty.call(next, 'publish')) next.publish = 'never';
+    delete next.canvasConsent;
+  }
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
   fs.renameSync(tmp, file);
-  return { repoId, file, config: next };
+  return { repoId, file, config: next, optOut: optOutOf(next) };
 }

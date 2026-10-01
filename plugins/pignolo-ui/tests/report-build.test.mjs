@@ -28,6 +28,15 @@ test('firstLine: normal, degraded, sequential and non-independent audit', () => 
   assert.ok(seq[1].startsWith('pignolo-ui'));
 });
 
+test('firstLine: the canvas fact says "lienzo: publicado" or "lienzo: local (<motivo>)" (hito 4c)', () => {
+  const base = { pluginVersion: '0.7.0', degraded: [], subagents: { requested: 3, launched: 3, model: 'sonnet' } };
+  assert.equal(firstLine({ ...base, canvas: 'published' }), 'pignolo-ui 0.7.0 · sin degradaciones · subagentes: 3 de 3 (modelo pedido: sonnet) · lienzo: publicado');
+  assert.ok(firstLine({ ...base, canvas: 'local-fallback', reasons: ['no-design-type'] }).endsWith('lienzo: local (no-design-type)'));
+  assert.ok(firstLine({ ...base, canvas: 'local-fallback', reasons: ['project-opt-out', 'run-opt-out'] }).endsWith('lienzo: local (project-opt-out, run-opt-out)'));
+  assert.ok(!firstLine(base).includes('lienzo'), 'without the fact the line is the old one');
+  assert.throws(() => firstLine({ ...base, canvas: 'otro' }));
+});
+
 test('reportSkeleton builds candidates and evidence from the run', () => {
   const uiCheck = JSON.stringify({ entries: [entry({ id: 'A11Y-04', fingerprint: 'fp-u' }), entry({ status: 'pass', fingerprint: 'fp-p' })] });
   const browser = JSON.stringify({ entries: [entry()] });

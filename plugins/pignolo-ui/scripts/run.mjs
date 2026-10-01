@@ -5,7 +5,9 @@
 //   run.mjs env [--claude-min <x.y.z>]
 //   run.mjs init --project <repo> --command new|improve|audit --slug <slug> [--now <ISO>] [--url <local URL> | --file <path>] [--files <a,b>]
 //   run.mjs config get|set --data <dir> --project <repo> [--key <k> --value <v>]
-//   run.mjs present --data <dir> --project <repo> --presentation auto|local --artifact yes|no --design-type yes|no
+//   run.mjs present --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> --kind option|direction --artifact yes|no --design-type yes|no [--run <run>]
+//   run.mjs publish-gate --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> [--run <run>]
+//   run.mjs no-publish --run <run>
 //   run.mjs norms --run <run> [--norms <norms.md>]
 //   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>] [--before <ui-check.json>]
 //   run.mjs leak-values --project <repo> --out <file> [--email <mail>]
@@ -27,7 +29,7 @@ import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { envReport } from '../lib/env-check.mjs';
 import { initRun } from '../lib/run-init.mjs';
 import { readConfig, writeConfig, ConfigError } from '../lib/project-config.mjs';
-import { decidePresentation } from '../lib/presentation.mjs';
+import { decidePresentation, gateDecision, NOTICE } from '../lib/presentation.mjs';
 import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { loadSymptoms, mergeUserSymptoms, buildMenu, matchWords } from '../lib/symptoms.mjs';
@@ -41,6 +43,7 @@ import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
 import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { isLink, linkProblem } from '../lib/link-guard.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
 
 class UsageError extends Error {}
@@ -170,19 +173,57 @@ const COMMANDS = {
     },
   },
 
-  present: {
-    spec: { value: ['data', 'project', 'presentation', 'artifact', 'design-type'] },
+  // The gate runs BEFORE any Artifact call (also before action: "list"): exit 0 allowed, exit 1 not.
+  // Anything but the literal "auto" (the text ${user_config.presentation} that Claude Code did not substitute
+  // included) counts as local: an unreadable setting never opens a publication (D-4c-15).
+  'publish-gate': {
+    spec: { value: ['data', 'project', 'presentation', 'run'] },
     run(opts, { cwd }) {
-      need(opts, 'data', 'presentation', 'artifact', 'design-type');
+      need(opts, 'data', 'project', 'presentation');
       const project = projectDir(cwd, opts);
-      if (!['auto', 'local'].includes(opts.presentation)) throw new UsageError('--presentation debe ser auto o local');
-      const { config } = readConfig({ data: path.resolve(cwd, opts.data), project });
-      const out = decidePresentation({
+      const { optOut } = readConfig({ data: path.resolve(cwd, opts.data), project });
+      const runOptOut = opts.run !== undefined && fs.existsSync(path.join(runDirOf(cwd, project, opts), 'no-publish'));
+      const out = gateDecision({ presentation: opts.presentation, projectOptOut: optOut, runOptOut });
+      return { out, code: out.allowed ? 0 : 1 };
+    },
+  },
+
+  'no-publish': {
+    spec: { value: ['run'] },
+    run(opts, { cwd }) {
+      const { project, run } = projectOfRun(cwd, opts);
+      if (!isInsideRunRoot(project, run) || !isDir(run)) throw new UsageError('--run no existe o está fuera de .pignolo-ui/');
+      if (linkProblem(run)) throw new UsageError('--run es un enlace: se rechaza');
+      const file = path.join(run, 'no-publish');
+      if (isLink(file)) throw new UsageError('no-publish es un enlace: se rechaza');
+      const tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, 'no-publish\n');
+      fs.renameSync(tmp, file);
+      return { out: { out: file }, code: 0 };
+    },
+  },
+
+  present: {
+    spec: { value: ['data', 'project', 'presentation', 'kind', 'artifact', 'design-type', 'run'] },
+    run(opts, { cwd }) {
+      need(opts, 'data', 'project', 'presentation', 'kind', 'artifact', 'design-type');
+      const project = projectDir(cwd, opts);
+      const kind = kindOf(opts);
+      const unresolved = !['auto', 'local'].includes(opts.presentation);
+      const { optOut } = readConfig({ data: path.resolve(cwd, opts.data), project });
+      const runOptOut = opts.run !== undefined && fs.existsSync(path.join(runDirOf(cwd, project, opts), 'no-publish'));
+      const decision = decidePresentation({
         presentation: opts.presentation,
+        kind,
         artifact: yesNo(opts.artifact, 'artifact'),
         designType: yesNo(opts['design-type'], 'design-type'),
-        canvasConsent: config.canvasConsent,
+        optOut,
       });
+      const reasons = runOptOut ? [...decision.reasons.filter((r) => r !== 'run-opt-out'), 'run-opt-out'] : decision.reasons;
+      const mode = runOptOut ? 'local' : decision.mode;
+      const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local' };
+      if (mode === 'canvas') out.notice = NOTICE;
+      if (unresolved) out.presentationUnresolved = true;
       return { out, code: 0 };
     },
   },
@@ -447,8 +488,7 @@ async function configCommand(argv, { cwd }) {
   }
   need(opts, 'key', 'value');
   let value = opts.value;
-  if (opts.key === 'canvasConsent') value = opts.value === 'true' ? true : opts.value === 'false' ? false : opts.value;
-  else if (opts.key === 'routes') value = list(opts.value);
+  if (opts.key === 'routes') value = list(opts.value);
   const { repoId, file, config } = writeConfig({ data, project, key: opts.key, value });
   return { out: { repoId, file, config }, code: 0 };
 }

@@ -43,10 +43,10 @@ test('writeConfig stores closed keys and reads them back; no tmp file is left', 
   const data = makeTempDir();
   const w = writeConfig({ data, project: repo, key: 'devUrl', value: 'http://localhost:3000' });
   assert.equal(readConfig({ data, project: repo }).config.devUrl, 'http://localhost:3000');
-  writeConfig({ data, project: repo, key: 'canvasConsent', value: true });
+  writeConfig({ data, project: repo, key: 'publish', value: 'never' });
   writeConfig({ data, project: repo, key: 'routes', value: ['index.html', 'a/b'] });
   const cfg = readConfig({ data, project: repo }).config;
-  assert.equal(cfg.canvasConsent, true);
+  assert.equal(cfg.publish, 'never');
   assert.equal(cfg.devUrl, 'http://localhost:3000');
   assert.deepEqual(fs.readdirSync(path.dirname(w.file)).filter((n) => n.endsWith('.tmp')), []);
 });
@@ -59,7 +59,9 @@ test('writeConfig rejects bad keys and values with ConfigError', () => {
   bad('routes', ['../x']);
   bad('routes', ['/abs']);
   bad('foo', 'x');
-  bad('canvasConsent', 'maybe');
+  bad('publish', 'maybe');
+  bad('canvasConsent', true);
+  bad('presentation', 'local');
   bad('referencePath', '../out');
 });
 
@@ -70,5 +72,51 @@ test('a broken project.json makes readConfig throw, never return {}', () => {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, '{ nope');
   assert.throws(() => readConfig({ data, project: repo }), ConfigError);
-  assert.throws(() => writeConfig({ data, project: repo, key: 'canvasConsent', value: false }), ConfigError);
+  assert.throws(() => writeConfig({ data, project: repo, key: 'publish', value: 'never' }), ConfigError);
+});
+
+function seed(repo, data, config) {
+  const { file } = readConfig({ data, project: repo });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(config));
+  return file;
+}
+
+test('publish: auto and never read back; readConfig reports the opt-out (A4C-01)', () => {
+  const repo = makeRepo();
+  const data = makeTempDir();
+  assert.equal(readConfig({ data, project: repo }).optOut, null);
+  writeConfig({ data, project: repo, key: 'publish', value: 'auto' });
+  assert.equal(readConfig({ data, project: repo }).optOut, null);
+  writeConfig({ data, project: repo, key: 'publish', value: 'never' });
+  assert.equal(readConfig({ data, project: repo }).optOut, 'project-opt-out');
+  seed(repo, data, { publish: 'maybe' });
+  assert.equal(readConfig({ data, project: repo }).optOut, 'project-opt-out', 'a hand-edited value fails closed');
+});
+
+test('a legacy canvasConsent is read without error and is dropped by any writeConfig (A4C-17 a)', () => {
+  const repo = makeRepo();
+  const data = makeTempDir();
+  const file = seed(repo, data, { canvasConsent: true, devUrl: 'http://localhost:3000' });
+  assert.equal(readConfig({ data, project: repo }).optOut, null);
+  writeConfig({ data, project: repo, key: 'routes', value: ['a'] });
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal('canvasConsent' in stored, false);
+  assert.equal(stored.devUrl, 'http://localhost:3000');
+  assert.equal('publish' in stored, false, 'a true is only dropped');
+});
+
+test('a legacy canvasConsent: false counts as a no and survives as publish: never (A4C2-17)', () => {
+  const repo = makeRepo();
+  const data = makeTempDir();
+  const file = seed(repo, data, { canvasConsent: false });
+  assert.equal(readConfig({ data, project: repo }).optOut, 'legacy-consent-declined');
+  writeConfig({ data, project: repo, key: 'devUrl', value: 'http://localhost:3000' });
+  const stored = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual([stored.publish, 'canvasConsent' in stored], ['never', false]);
+  assert.equal(readConfig({ data, project: repo }).optOut, 'project-opt-out');
+  // an explicit publish wins over the legacy no
+  const file2 = seed(repo, data, { canvasConsent: false, publish: 'auto' });
+  writeConfig({ data, project: repo, key: 'routes', value: ['a'] });
+  assert.equal(JSON.parse(fs.readFileSync(file2, 'utf8')).publish, 'auto');
 });
