@@ -172,7 +172,7 @@ function runSteps({ cwd, env, run, plan, dry }) {
     steps.push(step);
   }
   const ignored = gitIgnoredStatus({ main, run: git }).ignored;
-  if (plan.approved.includes('auto-memory-off') && ignored === false) notes.push('.claude/settings.local.json no está ignorado por git en este repo (depende del excludes global de cada persona): no lo agregues al commit');
+  if (plan.approved.includes('auto-memory-off') && ignored === false) notes.push('.claude/settings.local.json no está ignorado por git en este repo (depende del excludes global de cada persona): no lo agregues al commit y, mientras esté sin seguimiento, el piso de riesgo (claude-config) sube el primer flujo a daily; ignoralo en tu excludes global o en .git/info/exclude');
   return { main, steps, conflicts, notes };
 }
 
