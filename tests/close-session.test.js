@@ -14,8 +14,6 @@ const SCRIPT = path.join(PLUGIN_ROOT, 'scripts', 'close-session.js');
 
 const DAY = 24 * 60 * 60 * 1000;
 const day = (d) => new Date(Date.now() - d * DAY).toISOString().slice(0, 10);
-const PASS = { novelty: 'pass', evidence: 'pass', contradictions: 'pass', safety: 'pass', size: 'pass', scope: 'pass' };
-const report = (id, checks = {}, word = 'DONE') => `Informe\n\n\`\`\`json\n${JSON.stringify({ results: [{ id, checks: { ...PASS, ...checks }, contradicts: [], promoteCandidate: false, notes: '' }] })}\n\`\`\`\n\n${word}\n`;
 
 function cli(args, { cwd, env = {} } = {}) {
   const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', env: { ...process.env, CLAUDE_CODE_SESSION_ID: '', ...env } });
@@ -33,7 +31,7 @@ test('usage: no verb, unknown verb or missing option exit 2', () => {
   const repo = makeRepo();
   assert.strictEqual(cli([], { cwd: repo }).status, 2);
   assert.strictEqual(cli(['bogus'], { cwd: repo }).status, 2);
-  assert.strictEqual(cli(['decide', '--id', 'x'], { cwd: repo }).status, 2);
+  assert.strictEqual(cli(['decide'], { cwd: repo }).status, 2);
   assert.strictEqual(cli(['archive', '--days', 'muchos'], { cwd: repo }).status, 2);
 });
 
@@ -96,7 +94,7 @@ test('every verb refuses with merge-in-progress during a real merge, cherry-pick
     git(['commit', '-q', '-am', `main ${branch}`], repo);
   };
   conflict('m');
-  const verbs = [['evidence', '--since', 'HEAD~1'], ['scan', '--id', `${day(20)}-old`], ['decide', '--id', 'x', '--validation-file', 'v.md'], ['archive'], ['index'], ['prune', '--session', 's']];
+  const verbs = [['evidence', '--since', 'HEAD~1'], ['scan', '--id', `${day(20)}-old`], ['decide', '--id', 'x', '--answer', 'yes'], ['archive'], ['index'], ['prune', '--session', 's']];
   const check = (op) => {
     for (const v of verbs) {
       const r = cli(v, { cwd: repo });
@@ -153,34 +151,74 @@ test('prune: without --session or CLAUDE_CODE_SESSION_ID exits 1 with no-session
   assert.strictEqual(viaEnv.json.gc.ran, true, JSON.stringify(viaEnv.json));
 });
 
-test('decide: session+pass goes to accepted/, web stays as human, a ghp_ secret is rejected, an unparseable validation is pending', () => {
+// Protects: R7 / R-8 (nada se acepta sin el sí del humano) · Breaks if: decide acepta sin --answer yes
+// (aun con un informe de validador), el piso o un duplicado ceden al sí, un sha o ruta inexistente
+// no se marca, o los flags no salen.
+test('decide: without --answer nothing is accepted (human + flags); yes accepts, no rejects; the floor and duplicates win over a yes', () => {
   const repo = makeRepo();
   project(repo);
-  const tmp = makeTempDir('pignolo-val-');
-  const propose = (id, source, body = '# Usar LF\n\nSiempre LF.\n') => assert.ok(L.proposeLearning({ main: repo, id, source, evidence: 'tests/x.test.js', body }).ok);
-  const vfile = (id, text) => { const f = path.join(tmp, `${id}.md`); fs.writeFileSync(f, text); return f; };
+  fs.mkdirSync(path.join(repo, 'src'));
+  fs.writeFileSync(path.join(repo, 'src', 'a.js'), 'uno\ndos\n');
+  const propose = (id, source, body = '# Usar LF\n\nSiempre LF.\n', evidence = 'src/a.js:1') => assert.ok(L.proposeLearning({ main: repo, id, source, evidence, body }).ok);
+  const where = (kind, id) => fs.existsSync(path.join(store.stateDir(repo, kind), `${id}.md`));
   propose('2026-09-30-a', 'session');
-  const a = cli(['decide', '--id', '2026-09-30-a', '--validation-file', vfile('a', report('2026-09-30-a'))], { cwd: repo });
-  assert.strictEqual(a.status, 0, a.stderr);
-  assert.deepStrictEqual([a.json.decision, a.json.moved, a.json.how], ['accepted', true, 'rename']);
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/accepted'), '2026-09-30-a.md')));
-  propose('2026-09-30-b', 'web');
-  const b = cli(['decide', '--id', '2026-09-30-b', '--validation-file', vfile('b', report('2026-09-30-b'))], { cwd: repo });
-  assert.deepStrictEqual([b.json.decision, b.json.moved], ['human', false]);
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/proposed'), '2026-09-30-b.md')));
+  const a0 = cli(['decide', '--id', '2026-09-30-a'], { cwd: repo });
+  assert.strictEqual(a0.status, 0, a0.stderr);
+  assert.deepStrictEqual([a0.json.decision, a0.json.moved, a0.json.flags], ['human', false, []]);
+  assert.ok(where('learnings/proposed', '2026-09-30-a'));
+  const a1 = cli(['decide', '--id', '2026-09-30-a', '--answer', 'yes'], { cwd: repo });
+  assert.deepStrictEqual([a1.status, a1.json.decision, a1.json.moved, a1.json.how], [0, 'accepted', true, 'rename']);
+  assert.ok(where('learnings/accepted', '2026-09-30-a'));
+  propose('2026-09-30-b', 'web', '# Otra cosa\n\nWeb.\n');
+  const b = cli(['decide', '--id', '2026-09-30-b', '--reserved'], { cwd: repo });
+  assert.deepStrictEqual([b.json.decision, b.json.flags], ['human', ['web', 'reserved']]);
+  assert.strictEqual(cli(['decide', '--id', '2026-09-30-b', '--answer', 'no'], { cwd: repo }).json.decision, 'rejected');
+  assert.ok(where('learnings/rejected', '2026-09-30-b'));
   propose('2026-09-30-c', 'session', `# Token\n\nusá ghp_${'a'.repeat(36)}\n`);
-  const sc = cli(['scan', '--id', '2026-09-30-c'], { cwd: repo });
-  assert.deepStrictEqual([sc.status, sc.json.clean, sc.json.findings[0].kind], [0, false, 'secret']);
-  const c = cli(['decide', '--id', '2026-09-30-c', '--validation-file', vfile('c', report('2026-09-30-c'))], { cwd: repo });
-  assert.strictEqual(c.json.decision, 'rejected');
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/rejected'), '2026-09-30-c.md')));
-  propose('2026-09-30-d', 'session');
-  const d = cli(['decide', '--id', '2026-09-30-d', '--validation-file', vfile('d', 'sin bloque json\nDONE\n')], { cwd: repo });
-  assert.deepStrictEqual([d.json.decision, d.json.moved], ['pending', false]);
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/proposed'), '2026-09-30-d.md')));
-  const r = cli(['decide', '--id', '2026-09-30-d', '--validation-file', vfile('r', report('2026-09-30-d')), '--reserved'], { cwd: repo });
-  assert.strictEqual(r.json.decision, 'human');
-  assert.strictEqual(cli(['decide', '--id', '2026-09-30-nope', '--validation-file', vfile('n', 'x')], { cwd: repo }).status, 1);
+  assert.strictEqual(cli(['decide', '--id', '2026-09-30-c', '--answer', 'yes'], { cwd: repo }).json.decision, 'rejected', 'el piso gana al sí');
+  assert.ok(where('learnings/rejected', '2026-09-30-c'));
+  propose('2026-09-30-d', 'session', '# otra cosa!\n\nWEB.\n');
+  const d = cli(['decide', '--id', '2026-09-30-d', '--answer', 'yes'], { cwd: repo });
+  assert.deepStrictEqual([d.json.decision, /2026-09-30-b/.test(d.json.reason)], ['rejected', true], 'duplicado de una rechazada: sin preguntar');
+  propose('2026-09-30-e', 'session', '# Distinta\n\nTexto propio.\n', 'src/a.js:99');
+  const e = cli(['decide', '--id', '2026-09-30-e'], { cwd: repo });
+  assert.deepStrictEqual([e.json.decision, e.json.flags], ['human', ['evidence-unverified']]);
+  assert.ok(where('learnings/proposed', '2026-09-30-e'));
+  for (const args of [['--answer', 'accept'], ['--answer', 'maybe'], ['--human', 'accept'], ['--human', 'reject']]) {
+    assert.strictEqual(cli(['decide', '--id', '2026-09-30-e', ...args], { cwd: repo }).status, 2, args.join(' '));
+  }
+  assert.strictEqual(cli(['decide', '--id', '2026-09-30-nope', '--answer', 'yes'], { cwd: repo }).status, 1);
+});
+
+// Protects: C1 de la revisión final (un informe de validador movía a accepted/ sin el humano) ·
+// Breaks if: vuelve --validation-file, o un bloque json "todo en pass" acepta una propuesta.
+test('decide --validation-file no longer exists: a validator report can never move a learning to accepted/', () => {
+  const repo = makeRepo();
+  project(repo);
+  const id = '2026-10-01-tip';
+  assert.ok(L.proposeLearning({ main: repo, id, source: 'session', evidence: 'src/a.js:1', body: '# Tip\n\nAlgo.\n' }).ok);
+  const v = path.join(makeTempDir('pignolo-val-'), 'v.md');
+  const pass = { novelty: 'pass', evidence: 'pass', contradictions: 'pass', safety: 'pass', size: 'pass', scope: 'pass' };
+  fs.writeFileSync(v, `Informe\n\n\`\`\`json\n${JSON.stringify({ results: [{ id, checks: pass }] })}\n\`\`\`\n\nDONE\n`);
+  const r = cli(['decide', '--id', id, '--validation-file', v], { cwd: repo });
+  assert.strictEqual(r.status, 2, `${r.stdout}${r.stderr}`);
+  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/proposed'), `${id}.md`)));
+  assert.ok(!fs.existsSync(path.join(store.stateDir(repo, 'learnings/accepted'), `${id}.md`)));
+  const sc = cli(['scan', '--id', id], { cwd: repo });
+  assert.deepStrictEqual([sc.json.evidence.verified, sc.json.duplicate.duplicate, sc.json.clean], [false, false, true], 'la evidencia inexistente se ve en scan');
+});
+
+test('scan returns findings, duplicate and evidence; a duplicate never matches itself', () => {
+  const repo = makeRepo();
+  project(repo);
+  const sha = git(['rev-parse', 'HEAD'], repo);
+  assert.ok(L.proposeLearning({ main: repo, id: '2026-09-30-one', source: 'session', evidence: sha, body: '# Uno\n\nTexto.\n' }).ok);
+  const own = cli(['scan', '--id', '2026-09-30-one'], { cwd: repo });
+  assert.strictEqual(own.status, 0, own.stderr);
+  assert.deepStrictEqual([own.json.duplicate, own.json.evidence.verified, own.json.evidence.checked[0].kind], [{ duplicate: false }, true, 'commit']);
+  assert.ok(L.proposeLearning({ main: repo, id: '2026-09-30-two', source: 'session', evidence: sha, body: '# UNO\n\ntexto\n' }).ok);
+  const dup = cli(['scan', '--id', '2026-09-30-two'], { cwd: repo });
+  assert.deepStrictEqual(dup.json.duplicate, { duplicate: true, of: '2026-09-30-one' });
 });
 
 test('evidence: commits and files since a sha, seals from the seal dir, run with the shape of readRun', () => {
@@ -207,29 +245,29 @@ test('evidence: commits and files since a sha, seals from the seal dir, run with
   assert.deepStrictEqual(r2.json.seals, [path.basename(file)]);
   assert.strictEqual(r2.json.commits.length, 3);
   const bad = cli(['evidence', '--since', 'deadbeef'], { cwd: repo });
-  assert.deepStrictEqual([bad.status, bad.json.refused], [1, 'git-failed']);
+  assert.deepStrictEqual([bad.status, bad.json.refused], [1, 'bad-since']);
 });
 
-// Protects: R7 del autor (2026-10-01): `decide --human` es el camino de aceptación sin
-// learning-validator · Breaks if: --human no mueve, el piso no gana al sí, o el uso acepta
-// --human y --validation-file juntos.
-test('decide --human: accept moves to accepted/, reject to rejected/, the floor wins over a yes; usage is exclusive', () => {
+// Protects: I4 de la revisión final (una ref o fecha que git no entiende devolvía vacío o todo en
+// silencio) · Breaks if: HEAD~2 vuelve a dar [] o "yesterday-ish" a dar los 3 commits sin error.
+test('evidence --since: a ref resolves to <sha>..HEAD; anything git cannot resolve fails loudly', () => {
   const repo = makeRepo();
-  project(repo);
-  const propose = (id, source, body = '# Usar LF\n\nSiempre LF.\n') => assert.ok(L.proposeLearning({ main: repo, id, source, evidence: 'tests/x.test.js', body }).ok);
-  propose('2026-09-30-h1', 'web');
-  const a = cli(['decide', '--id', '2026-09-30-h1', '--human', 'accept'], { cwd: repo });
-  assert.strictEqual(a.status, 0, a.stderr);
-  assert.deepStrictEqual([a.json.decision, a.json.moved, a.json.validation], ['accepted', true, 'human']);
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/accepted'), '2026-09-30-h1.md')));
-  propose('2026-09-30-h2', 'session');
-  assert.strictEqual(cli(['decide', '--id', '2026-09-30-h2', '--human', 'reject'], { cwd: repo }).json.decision, 'rejected');
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/rejected'), '2026-09-30-h2.md')));
-  propose('2026-09-30-h3', 'session', `# Token\n\nusá ghp_${'a'.repeat(36)}\n`);
-  assert.strictEqual(cli(['decide', '--id', '2026-09-30-h3', '--human', 'accept'], { cwd: repo }).json.decision, 'rejected');
-  propose('2026-09-30-h4', 'session');
-  for (const args of [['--human', 'yes'], ['--human', 'accept', '--validation-file', 'v.md'], ['--human', 'accept', '--reserved'], []]) {
-    assert.strictEqual(cli(['decide', '--id', '2026-09-30-h4', ...args], { cwd: repo }).status, 2, args.join(' '));
+  for (const n of ['b', 'c']) {
+    fs.writeFileSync(path.join(repo, `${n}.txt`), `${n}
+`);
+    git(['add', `${n}.txt`], repo);
+    git(['commit', '-q', '-m', n], repo);
   }
-  assert.ok(fs.existsSync(path.join(store.stateDir(repo, 'learnings/proposed'), '2026-09-30-h4.md')));
+  const ref = cli(['evidence', '--since', 'HEAD~2'], { cwd: repo });
+  assert.strictEqual(ref.status, 0, ref.stderr);
+  assert.deepStrictEqual(ref.json.commits.map((c) => c.subject), ['c', 'b']);
+  assert.deepStrictEqual(ref.json.files, ['b.txt', 'c.txt']);
+  const branch = cli(['evidence', '--since', 'main~1'], { cwd: repo });
+  assert.deepStrictEqual(branch.json.commits.map((c) => c.subject), ['c']);
+  const iso = cli(['evidence', '--since', '2000-01-01T00:00:00Z'], { cwd: repo });
+  assert.strictEqual(iso.json.commits.length, 3);
+  for (const since of ['yesterday-ish', 'ayer', '2026-13-45', '--all', 'HEAD~99']) {
+    const r = cli(['evidence', '--since', since], { cwd: repo });
+    assert.deepStrictEqual([r.status, r.json && r.json.refused], [1, 'bad-since'], since);
+  }
 });

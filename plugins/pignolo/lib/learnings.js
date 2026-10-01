@@ -1,16 +1,13 @@
 'use strict';
-// Aprendizajes (spec §10.4; R-8 y R-9 del hito 6). Propuesta en learnings/proposed/, piso mecánico
-// sin modelo (scanLearning), lectura de la salida del learning-validator (parseValidation), decisión
-// pura (decideAcceptance) y movimiento del archivo (applyDecision). Subir al plugin sigue siendo
-// del humano. Engram queda fuera de la v1 (D-6-1): la memoria es learnings/accepted/, en git.
+// Aprendizajes (spec §10.4; R-8 y R-9 del hito 6). Propuesta en learnings/proposed/, piso mecánico, duplicados
+// y evidencia sin modelo, decisión pura (decideAcceptance: nada se acepta sin el sí del humano) y
+// movimiento del archivo (applyDecision). Subir al plugin sigue siendo del humano. Engram queda fuera de la v1 (D-6-1): la memoria es learnings/accepted/, en git.
 const { writeEntry, readEntries, setStatus, moveEntry, stateDir } = require('./state-store');
 const path = require('node:path');
 const fs = require('node:fs');
 
 const SOURCES = Object.freeze(['session', 'web', 'human']);
 const SCOPES = Object.freeze(['project', 'general']);
-const CHECKS = Object.freeze(['novelty', 'evidence', 'contradictions', 'safety', 'size', 'scope']);
-const STATUS_WORDS = Object.freeze(['DONE', 'BLOCKED', 'NEEDS_CONTEXT']);
 const SIZE_LIMIT = 1200;
 const SECRET_RES = [
   /\bAKIA[0-9A-Z]{16}\b/,
@@ -23,7 +20,7 @@ const PERMISSION_RES = [/\bbypass\b/i, /\bdangerously\b/i, /\ballow all\b/i, /\b
 
 const refuse = (refused, reason) => ({ ok: false, refused, reason });
 
-// Es lo que usará /pignolo:init (hito 8) para migrar la auto-memoria.
+// La usa close-session (init ya no migra la auto-memoria, R7).
 function proposeLearning({ main, id, source, evidence, scope = 'project', body = '', created, fields = {} }) {
   if (!SOURCES.includes(source)) return refuse('invalid-source', `source "${source}" no es ninguno de ${SOURCES.join(', ')}`);
   if (!SCOPES.includes(scope)) return refuse('invalid-scope', `scope "${scope}" no es ninguno de ${SCOPES.join(', ')}`);
@@ -48,79 +45,93 @@ function scanLearning({ text, piiPatterns = [] } = {}) {
   return { findings };
 }
 
-// Último bloque ```json del informe y la última palabra DONE | BLOCKED | NEEDS_CONTEXT.
-// { ok: true, results, status } | { ok: false, error }. Con `ids`, un id que no se pidió es error.
-function parseValidation(text, { ids } = {}) {
-  if (typeof text !== 'string') return { ok: false, error: 'el informe no es texto' };
-  const blocks = [...text.matchAll(/```json\s*\n([\s\S]*?)\n\s*```/g)].map((m) => m[1]);
-  if (!blocks.length) return { ok: false, error: 'el informe no trae un bloque ```json' };
-  let parsed;
-  try { parsed = JSON.parse(blocks[blocks.length - 1]); } catch (e) { return { ok: false, error: `el bloque json no parsea: ${e.message}` }; }
-  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.results)) return { ok: false, error: 'el bloque json no trae results' };
-  const words = text.trim().split(/\s+/);
-  const status = words[words.length - 1].replace(/[^A-Z_]/g, '');
-  if (!STATUS_WORDS.includes(status)) return { ok: false, error: `el informe no termina con DONE, BLOCKED o NEEDS_CONTEXT (termina con "${words[words.length - 1]}")` };
-  const seen = new Set();
-  const results = [];
-  for (const r of parsed.results) {
-    if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !r.id) return { ok: false, error: 'un resultado no tiene id' };
-    if (seen.has(r.id)) return { ok: false, error: `id repetido en results: ${r.id}` };
-    seen.add(r.id);
-    if (Array.isArray(ids) && !ids.includes(r.id)) return { ok: false, error: `el validador informó un aprendizaje que no se pidió: ${r.id}` };
-    const checks = r.checks && typeof r.checks === 'object' ? r.checks : {};
-    const out = {};
-    for (const c of CHECKS) {
-      if (checks[c] !== 'pass' && checks[c] !== 'fail') return { ok: false, error: `${r.id}: el chequeo ${c} falta o no es pass/fail` };
-      out[c] = checks[c];
-    }
-    results.push({
-      id: r.id,
-      checks: out,
-      contradicts: Array.isArray(r.contradicts) ? r.contradicts.map(String) : [],
-      promoteCandidate: r.promoteCandidate === true,
-      notes: typeof r.notes === 'string' ? r.notes : '',
-    });
+// Cuerpo de una entrada: el texto sin el frontmatter.
+function bodyOf(text) {
+  const m = /^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(String(text));
+  return m ? String(text).slice(m[0].length) : String(text);
+}
+const normalize = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+// R-9: duplicado exacto tras normalizar (minúsculas, sin espacios ni puntuación) contra `existing`
+// (entradas de readEntries con `file`, o con `body`). Un texto vacío nunca es duplicado.
+function findDuplicate({ body, existing = [] } = {}) {
+  const n = normalize(bodyOf(body || ''));
+  if (!n) return { duplicate: false };
+  for (const e of existing) {
+    let text = typeof e.body === 'string' ? e.body : null;
+    if (text === null && e.file) { try { text = bodyOf(fs.readFileSync(e.file, 'utf8')); } catch (_) { text = null; } }
+    if (text !== null && normalize(text) === n) return { duplicate: true, of: e.id };
   }
-  return { ok: true, results, status };
+  return { duplicate: false };
 }
 
-// R-8, en este orden. `entry` es la entrada parseada (fields.source, fields.scope); `validation` lo que
-// devuelve parseValidation; `scan` lo que devuelve scanLearning; `reservedMatch` lo decide la skill.
-function decideAcceptance({ entry, validation, scan, reservedMatch = false } = {}) {
-  const id = entry && entry.id;
-  const fields = (entry && entry.fields) || {};
-  if (!validation || validation.ok !== true) return { decision: 'pending', reason: `sin resultado legible del validador${validation && validation.error ? `: ${validation.error}` : ''}`, promoteCandidate: false };
-  if (validation.status !== 'DONE') return { decision: 'pending', reason: `el validador terminó en ${validation.status}`, promoteCandidate: false };
-  const result = validation.results.find((r) => r.id === id);
-  if (!result) return { decision: 'pending', reason: `el validador no informó ${id}`, promoteCandidate: false };
-  const findings = (scan && Array.isArray(scan.findings)) ? scan.findings : [];
-  if (findings.length) return { decision: 'rejected', reason: `piso mecánico: ${findings.map((f) => `${f.kind} (${f.match})`).join(', ')}`, promoteCandidate: false };
-  const failed = CHECKS.filter((c) => result.checks[c] !== 'pass');
-  if (failed.length) return { decision: 'rejected', reason: `chequeos en fail: ${failed.join(', ')}${result.notes ? ` — ${result.notes}` : ''}`, promoteCandidate: false };
-  if (fields.source === 'web') return { decision: 'human', reason: 'source: web nunca se acepta solo', promoteCandidate: false };
-  if (reservedMatch) return { decision: 'human', reason: 'toca una decisión reservada al humano', promoteCandidate: false };
-  if (result.contradicts.length) return { decision: 'human', reason: `contradice: ${result.contradicts.join(', ')}`, promoteCandidate: false };
-  if (fields.source !== 'session' && fields.source !== 'human') return { decision: 'human', reason: `source desconocido: ${fields.source}`, promoteCandidate: false };
-  const promoteCandidate = fields.scope === 'general' || result.promoteCandidate === true;
-  return { decision: 'accepted', reason: 'los seis chequeos en pass', promoteCandidate };
+// Las entradas contra las que se compara una propuesta: accepted/, rejected/ y el resto de
+// proposed/, nunca ella misma.
+function existingFor({ main, id }) {
+  const out = [];
+  for (const kind of ['learnings/accepted', 'learnings/rejected', 'learnings/proposed']) {
+    for (const e of readEntries({ main, kind }).entries) if (!(kind === 'learnings/proposed' && e.id === id)) out.push(e);
+  }
+  return out;
 }
 
-// Decisión del humano (R7 del autor, 2026-10-01: sin learning-validator, la aceptación es el piso
-// mecánico más el sí del humano). El piso gana siempre: un hallazgo de scanLearning rechaza aunque
-// el humano diga que sí. answer: 'accept' | 'reject'; otra cosa → pending.
-function decideByHuman({ entry, scan, answer } = {}) {
+const SHA_RE = /^[0-9a-f]{7,40}$/i;
+const FILE_LINE_RE = /^(.+):(\d+)$/;
+
+// R-9: cada `ruta:línea` existe dentro del repo y cada sha existe como commit (`run(args)` ejecuta git
+// y lanza si falla). Sin referencia reconocible → verified false. Nunca lee fuera del repo.
+function checkEvidence({ main, evidence, run } = {}) {
+  const checked = [];
+  let root;
+  try { root = fs.realpathSync(main); } catch (_) { root = path.resolve(main); }
+  for (const ref of String(evidence || '').split(/[\s,;"'()<>[\]]+/).filter(Boolean)) {
+    const fl = FILE_LINE_RE.exec(ref);
+    if (fl) {
+      const rel = fl[1];
+      const line = Number(fl[2]);
+      let ok = false;
+      const unsafe = path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel) || /^[\\/]/.test(rel) || rel.split(/[\\/]/).includes('..');
+      if (!unsafe) {
+        try {
+          const real = fs.realpathSync(path.resolve(root, rel));
+          if (real.startsWith(root + path.sep) && fs.statSync(real).isFile()) {
+            const lines = fs.readFileSync(real, 'utf8').split(/\r?\n/);
+            if (lines[lines.length - 1] === '') lines.pop();
+            ok = line >= 1 && line <= lines.length;
+          }
+        } catch (_) { ok = false; }
+      }
+      checked.push({ ref, kind: 'file-line', ok });
+    } else if (SHA_RE.test(ref)) {
+      let ok = false;
+      try { if (typeof run === 'function') { run(['cat-file', '-e', `${ref}^{commit}`]); ok = true; } } catch (_) { ok = false; }
+      checked.push({ ref, kind: 'commit', ok });
+    }
+  }
+  return { verified: checked.length > 0 && checked.every((c) => c.ok), checked };
+}
+
+// R-8, en este orden: un hallazgo del piso mecánico → rejected; un duplicado → rejected; "no" del
+// humano → rejected; "yes" → accepted; sin respuesta → human con flags. Nada se acepta sin
+// answer === 'yes' (ni siquiera un session limpio). Lo general aceptado suma promoteCandidate.
+function decideAcceptance({ entry, scan, duplicate, evidence, reservedMatch = false, answer } = {}) {
   const fields = (entry && entry.fields) || {};
+  const flags = [];
+  if (fields.source === 'web') flags.push('web');
+  if (reservedMatch) flags.push('reserved');
+  if (!evidence || evidence.verified !== true) flags.push('evidence-unverified');
   const findings = (scan && Array.isArray(scan.findings)) ? scan.findings : [];
-  if (findings.length) return { decision: 'rejected', reason: `piso mecánico: ${findings.map((f) => `${f.kind} (${f.match})`).join(', ')}`, promoteCandidate: false };
-  if (answer === 'reject') return { decision: 'rejected', reason: 'el humano dijo que no', promoteCandidate: false };
-  if (answer !== 'accept') return { decision: 'pending', reason: `respuesta del humano desconocida: ${answer}`, promoteCandidate: false };
-  return { decision: 'accepted', reason: 'el humano dijo que sí', promoteCandidate: fields.scope === 'general' };
+  if (findings.length) return { decision: 'rejected', reason: `piso mecánico: ${findings.map((f) => `${f.kind} (${f.match})`).join(', ')}`, promoteCandidate: false, flags };
+  if (duplicate && duplicate.duplicate) return { decision: 'rejected', reason: `duplicado de ${duplicate.of}`, promoteCandidate: false, flags };
+  if (answer === 'no') return { decision: 'rejected', reason: 'human-no', promoteCandidate: false, flags };
+  if (answer === 'yes') return { decision: 'accepted', reason: 'human-yes', promoteCandidate: fields.scope === 'general', flags };
+  return { decision: 'human', reason: answer === undefined ? 'sin respuesta del humano: se le pregunta' : `respuesta desconocida: ${answer}`, promoteCandidate: false, flags };
 }
 
 // Mueve de proposed/ a accepted/ o rejected/ (git mv si está versionada, rename si no) y fija el status.
-// human y pending no mueven nada.
+// human no mueve nada.
 function applyDecision({ main, id, decision }) {
-  if (decision === 'human' || decision === 'pending') return { ok: true, moved: false, decision };
+  if (decision === 'human') return { ok: true, moved: false, decision };
   if (decision !== 'accepted' && decision !== 'rejected') return refuse('invalid-decision', `decisión desconocida: ${decision}`);
   const toKind = `learnings/${decision}`;
   const mv = moveEntry({ main, fromKind: 'learnings/proposed', toKind, id });
@@ -139,4 +150,4 @@ function readProposal({ main, id }) {
   return { ok: true, entry, text: fs.readFileSync(file, 'utf8') };
 }
 
-module.exports = { SOURCES, SCOPES, CHECKS, SIZE_LIMIT, proposeLearning, scanLearning, parseValidation, decideAcceptance, decideByHuman, applyDecision, readProposal };
+module.exports = { SOURCES, SCOPES, SIZE_LIMIT, proposeLearning, scanLearning, findDuplicate, existingFor, checkEvidence, decideAcceptance, applyDecision, readProposal, bodyOf };

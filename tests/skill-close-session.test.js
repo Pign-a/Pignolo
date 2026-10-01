@@ -29,8 +29,11 @@ test('the steps name exactly the six verbs of the script, and every verb used ex
   assert.deepEqual([...new Set(used)].sort(), [...VERBS].sort());
   for (const v of used) assert.ok(USAGE_VERBS.includes(v), v);
   for (const m of s.text.matchAll(/<P>\/(scripts\/[\w.-]+)/g)) assert.ok(fs.existsSync(path.join(PLUGIN_ROOT, m[1])), m[1]);
-  assert.match(s.text, /decide --id <id> --human accept/);
-  assert.match(s.text, /decide --id <id> --human reject/);
+  assert.match(s.text, /decide --id <id> --answer yes/);
+  assert.match(s.text, /decide --id <id> --answer no/);
+  assert.doesNotMatch(s.text, /--human|--validation-file/);
+  assert.match(s.text, /`flags`/);
+  assert.match(s.text, /`duplicate`/);
   assert.match(s.text, /archive --dry-run/);
 });
 

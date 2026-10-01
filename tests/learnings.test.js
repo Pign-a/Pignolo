@@ -8,34 +8,93 @@ const L = require(path.join(PLUGIN_ROOT, 'lib', 'learnings.js'));
 const store = require(path.join(PLUGIN_ROOT, 'lib', 'state-store.js'));
 
 const ID = '2026-09-30-use-lf';
-const PASS = { novelty: 'pass', evidence: 'pass', contradictions: 'pass', safety: 'pass', size: 'pass', scope: 'pass' };
-const validation = (overrides = {}, status = 'DONE', id = ID) => ({ ok: true, status, results: [{ id, checks: { ...PASS, ...overrides.checks }, contradicts: overrides.contradicts || [], promoteCandidate: false, notes: '' }] });
 const entry = (source, scope = 'project') => ({ id: ID, status: 'proposed', fields: { source, scope } });
 const clean = { findings: [] };
-const report = (json, word = 'DONE') => `Informe.\n\n\`\`\`json\n${JSON.stringify(json, null, 2)}\n\`\`\`\n\n${word}\n`;
+const good = { verified: true, checked: [{ ref: 'src/a.js:1', kind: 'file-line', ok: true }] };
+const bad = { verified: false, checked: [{ ref: 'src/a.js:99', kind: 'file-line', ok: false }] };
+const NOT_DUP = { duplicate: false };
+const decide = (o = {}) => L.decideAcceptance({ entry: entry('session'), scan: clean, duplicate: NOT_DUP, evidence: good, ...o });
 
-test('decideAcceptance follows R-8 in order (table)', () => {
-  const d = (e, v, s = clean, r = false) => L.decideAcceptance({ entry: e, validation: v, scan: s, reservedMatch: r });
-  assert.strictEqual(d(entry('session'), validation()).decision, 'accepted');
-  assert.strictEqual(d(entry('human'), validation()).decision, 'accepted');
-  assert.strictEqual(d(entry('web'), validation()).decision, 'human');
-  assert.strictEqual(d(entry('session'), validation(), clean, true).decision, 'human');
-  assert.strictEqual(d(entry('session'), validation({ contradicts: ['rules/core.md'] })).decision, 'human');
-  const rej = d(entry('session'), validation({ checks: { contradictions: 'fail' } }));
-  assert.strictEqual(rej.decision, 'rejected');
-  assert.match(rej.reason, /contradictions/);
-  const floor = d(entry('session'), validation(), { findings: [{ kind: 'secret', match: 'ghp_x' }] });
-  assert.strictEqual(floor.decision, 'rejected');
+// Protects: R-8 (nada se acepta solo, ni un session limpio) · Breaks if: algo acepta sin answer 'yes',
+// el piso o un duplicado no ganan al sí, o los flags no avisan al humano.
+test('decideAcceptance follows R-8 in order (table, one row per rule)', () => {
+  const r0 = decide();
+  assert.deepStrictEqual([r0.decision, r0.flags], ['human', []], 'todo limpio y sin respuesta: se pregunta, nunca accepted');
+  for (const source of ['session', 'human', 'web']) assert.notStrictEqual(decide({ entry: entry(source) }).decision, 'accepted', source);
+  assert.strictEqual(decide({ answer: 'yes' }).decision, 'accepted');
+  const no = decide({ answer: 'no' });
+  assert.deepStrictEqual([no.decision, no.reason], ['rejected', 'human-no']);
+  const floor = decide({ answer: 'yes', scan: { findings: [{ kind: 'secret', match: 'ghp_x' }] } });
+  assert.strictEqual(floor.decision, 'rejected', 'el piso gana al sí');
   assert.match(floor.reason, /piso mecánico/);
-  assert.strictEqual(d(entry('web'), validation({ checks: { safety: 'fail' } })).decision, 'rejected', 'un fail gana sobre web');
-  assert.strictEqual(d(entry('session'), validation({}, 'BLOCKED')).decision, 'pending');
-  assert.strictEqual(d(entry('session'), validation({}, 'NEEDS_CONTEXT')).decision, 'pending');
-  assert.strictEqual(d(entry('session'), { ok: false, error: 'x' }).decision, 'pending');
-  assert.strictEqual(d(entry('session'), validation({}, 'DONE', '2026-09-30-other')).decision, 'pending', 'no informado');
-  assert.strictEqual(d(entry('session'), validation({ checks: { safety: 'fail' } }, 'BLOCKED')).decision, 'pending', 'pending gana sobre rejected');
-  const gen = d(entry('session', 'general'), validation());
+  const dup = decide({ answer: 'yes', duplicate: { duplicate: true, of: 'otra' } });
+  assert.deepStrictEqual([dup.decision, /otra/.test(dup.reason)], ['rejected', true], 'un duplicado se rechaza sin preguntar');
+  assert.strictEqual(decide({ duplicate: { duplicate: true, of: 'otra' } }).decision, 'rejected', 'ni siquiera sin respuesta');
+  const web = decide({ entry: entry('web') });
+  assert.deepStrictEqual([web.decision, web.flags.includes('web')], ['human', true]);
+  assert.ok(decide({ reservedMatch: true }).flags.includes('reserved'));
+  const ev = decide({ evidence: bad });
+  assert.deepStrictEqual([ev.decision, ev.flags], ['human', ['evidence-unverified']]);
+  const gen = decide({ entry: entry('session', 'general'), answer: 'yes' });
   assert.deepStrictEqual([gen.decision, gen.promoteCandidate], ['accepted', true]);
-  assert.strictEqual(d(entry('session'), validation()).promoteCandidate, false);
+  assert.strictEqual(decide({ answer: 'yes' }).promoteCandidate, false);
+  assert.strictEqual(decide({ answer: 'maybe' }).decision, 'human', 'una respuesta desconocida no acepta');
+});
+
+// Protects: R-9 duplicados · Breaks if: la comparación distingue mayúsculas o puntuación, compara contra
+// sí misma, o ignora accepted/rejected/otras proposed.
+test('findDuplicate normalizes case, spaces and punctuation; existingFor reads accepted, rejected and other proposed, never itself', () => {
+  const ex = [{ id: 'a', body: '# Usar LF\n\nSiempre LF, en todo.\n' }];
+  assert.deepStrictEqual(L.findDuplicate({ body: '# usar   lf\n\nsiempre lf en todo', existing: ex }), { duplicate: true, of: 'a' });
+  assert.deepStrictEqual(L.findDuplicate({ body: '# Otra cosa\n', existing: ex }), { duplicate: false });
+  assert.strictEqual(L.findDuplicate({ body: '', existing: [{ id: 'v', body: '' }] }).duplicate, false, 'vacío no es duplicado');
+  const main = makeTempDir('pignolo-dup-');
+  const put = (kind, id, body) => assert.ok(store.writeEntry({ main, kind, id, fields: { status: kind.split('/')[1], source: 'session', scope: 'project', evidence: 'e', created: '2026-09-30' }, body }).ok);
+  put('learnings/proposed', '2026-09-30-me', '# Mía\n\ntexto uno\n');
+  put('learnings/proposed', '2026-09-30-other', '# Otra\n\ntexto dos\n');
+  put('learnings/accepted', '2026-09-30-acc', '# Acc\n\ntexto tres\n');
+  put('learnings/rejected', '2026-09-30-rej', '# Rej\n\ntexto cuatro\n');
+  const ids = L.existingFor({ main, id: '2026-09-30-me' }).map((e) => e.id).sort();
+  assert.deepStrictEqual(ids, ['2026-09-30-acc', '2026-09-30-other', '2026-09-30-rej']);
+  const mine = fs.readFileSync(path.join(store.stateDir(main, 'learnings/proposed'), '2026-09-30-me.md'), 'utf8');
+  assert.strictEqual(L.findDuplicate({ body: mine, existing: L.existingFor({ main, id: '2026-09-30-me' }) }).duplicate, false, 'nunca contra sí misma');
+  const rej = fs.readFileSync(path.join(store.stateDir(main, 'learnings/rejected'), '2026-09-30-rej.md'), 'utf8');
+  assert.deepStrictEqual(L.findDuplicate({ body: rej.replace('id: 2026-09-30-rej', 'id: x'), existing: L.existingFor({ main, id: '2026-09-30-me' }) }), { duplicate: true, of: '2026-09-30-rej' });
+});
+
+// Protects: R-9 evidencia · Breaks if: una línea inexistente verifica, se lee fuera del repo, un sha
+// inexistente verifica o una evidencia sin referencia reconocible verifica.
+test('checkEvidence verifies path:line and commit shas, never reads outside the repo', () => {
+  const main = makeRepo();
+  fs.mkdirSync(path.join(main, 'src'));
+  fs.writeFileSync(path.join(main, 'src', 'a.js'), '1\n2\n3\n4\n5\n');
+  const run = (args) => git(args, main);
+  const sha = git(['rev-parse', 'HEAD'], main);
+  const c = (evidence) => L.checkEvidence({ main, evidence, run });
+  assert.strictEqual(c('src/a.js:3').verified, true);
+  assert.strictEqual(c('src/a.js:5').verified, true);
+  assert.strictEqual(c('src/a.js:99').verified, false);
+  assert.strictEqual(c('src/a.js:0').verified, false);
+  assert.strictEqual(c('src/nope.js:1').verified, false);
+  assert.deepStrictEqual(c('src/a.js:3').checked, [{ ref: 'src/a.js:3', kind: 'file-line', ok: true }]);
+  const outside = makeTempDir('pignolo-outside-');
+  fs.writeFileSync(path.join(outside, 'marker.txt'), 'x\ny\n');
+  const reads = [];
+  const orig = fs.readFileSync;
+  fs.readFileSync = function patched(p, ...rest) { reads.push(String(p)); return orig.call(this, p, ...rest); };
+  try {
+    const rel = path.relative(main, path.join(outside, 'marker.txt')).split(path.sep).join('/');
+    assert.strictEqual(c(`${rel}:1`).verified, false, '.. no se sigue');
+    assert.strictEqual(c(`${path.join(outside, 'marker.txt')}:1`).verified, false, 'una ruta absoluta no se sigue');
+  } finally { fs.readFileSync = orig; }
+  assert.ok(!reads.some((p) => p.includes('marker.txt')), 'el archivo de afuera no se leyó');
+  const real = c(sha);
+  assert.deepStrictEqual([real.verified, real.checked[0].kind, real.checked[0].ok], [true, 'commit', true]);
+  assert.strictEqual(c('deadbeefdeadbeef').verified, false);
+  assert.strictEqual(c('tests/x.test.js').verified, false, 'sin referencia reconocible');
+  assert.deepStrictEqual(c(''), { verified: false, checked: [] });
+  assert.strictEqual(c(`src/a.js:3 ${sha}`).verified, true);
+  assert.strictEqual(c(`src/a.js:3 deadbeefdeadbeef`).verified, false, 'una referencia mala invalida el conjunto');
 });
 
 test('scanLearning finds secrets, permissions, size and pii; a clean text has no findings', () => {
@@ -51,28 +110,6 @@ test('scanLearning finds secrets, permissions, size and pii; a clean text has no
   assert.throws(() => L.scanLearning({ text: 'x', piiPatterns: ['('] }), /pii-patterns: "\("/);
 });
 
-test('parseValidation takes the last json block and the final word; missing check, no word or an unrequested id fail', () => {
-  const json = { results: [{ id: ID, checks: PASS, contradicts: [], promoteCandidate: true, notes: 'ok' }] };
-  const two = `${report({ results: [{ id: ID, checks: { ...PASS, novelty: 'fail' } }] }, '')}\nSegundo bloque:\n${report(json)}`;
-  const r = L.parseValidation(two, { ids: [ID] });
-  assert.strictEqual(r.ok, true, JSON.stringify(r));
-  assert.strictEqual(r.status, 'DONE');
-  assert.strictEqual(r.results[0].checks.novelty, 'pass');
-  assert.strictEqual(r.results[0].promoteCandidate, true);
-  const missing = L.parseValidation(report({ results: [{ id: ID, checks: { ...PASS, novelty: undefined } }] }));
-  assert.strictEqual(missing.ok, false);
-  assert.match(missing.error, /novelty/);
-  const noWord = L.parseValidation(report(json, 'fin'));
-  assert.strictEqual(noWord.ok, false);
-  const unknown = L.parseValidation(report(json), { ids: ['2026-09-30-other'] });
-  assert.strictEqual(unknown.ok, false);
-  assert.match(unknown.error, /no se pidió/);
-  const dup = L.parseValidation(report({ results: [json.results[0], json.results[0]] }));
-  assert.strictEqual(dup.ok, false);
-  assert.strictEqual(L.parseValidation('sin bloque\nDONE').ok, false);
-  assert.strictEqual(L.parseValidation(report(json, 'BLOCKED')).status, 'BLOCKED');
-});
-
 test('proposeLearning refuses without evidence or with an unknown source; otherwise writes proposed/', () => {
   const main = makeTempDir('pignolo-learn-');
   assert.strictEqual(L.proposeLearning({ main, id: ID, source: 'session', scope: 'project', body: 'x' }).refused, 'no-evidence');
@@ -84,11 +121,11 @@ test('proposeLearning refuses without evidence or with an unknown source; otherw
   assert.deepStrictEqual([e.status, e.fields.source, e.fields.scope, e.fields.evidence], ['proposed', 'session', 'general', 'tests/x.test.js']);
 });
 
-test('applyDecision moves accepted to accepted/ with its status; human and pending do not move; a duplicate keeps the original', () => {
+test('applyDecision moves accepted to accepted/ with its status; human does not move; a duplicate keeps the original', () => {
   const main = makeTempDir('pignolo-learn-');
   const propose = (id) => assert.ok(L.proposeLearning({ main, id, source: 'session', evidence: 'e', body: '# T\n' }).ok);
   propose(ID);
-  for (const decision of ['human', 'pending']) {
+  for (const decision of ['human']) {
     const r = L.applyDecision({ main, id: ID, decision });
     assert.deepStrictEqual([r.ok, r.moved], [true, false]);
     assert.ok(fs.existsSync(path.join(store.stateDir(main, 'learnings/proposed'), `${ID}.md`)));
@@ -125,18 +162,4 @@ test('applyDecision uses git mv for a versioned proposal and rename for an uncom
   assert.strictEqual(r2.ok, true, JSON.stringify(r2));
   assert.strictEqual(r2.how, 'rename');
   assert.ok(!git(['status', '--porcelain'], main).includes(`proposed/${other}`), 'el índice de git no ve la que no estaba versionada');
-});
-
-// Protects: R7 del autor (2026-10-01: sin learning-validator, piso mecánico + sí del humano) ·
-// Breaks if: el sí del humano gana al piso, un "no" acepta, una respuesta desconocida mueve, o
-// lo general no queda como promote-candidate.
-test('decideByHuman: the floor wins over a yes; accept and reject move; unknown answer is pending', () => {
-  const d = (e, s, a) => L.decideByHuman({ entry: e, scan: s, answer: a });
-  const dirty = { findings: [{ kind: 'secret', match: 'ghp_x' }] };
-  assert.deepStrictEqual([d(entry('web'), dirty, 'accept').decision, d(entry('web'), dirty, 'accept').reason], ['rejected', 'piso mecánico: secret (ghp_x)']);
-  assert.strictEqual(d(entry('web'), clean, 'accept').decision, 'accepted');
-  assert.strictEqual(d(entry('session'), clean, 'reject').decision, 'rejected');
-  assert.strictEqual(d(entry('session'), clean, 'maybe').decision, 'pending');
-  assert.strictEqual(d(entry('session', 'general'), clean, 'accept').promoteCandidate, true);
-  assert.strictEqual(d(entry('session', 'project'), clean, 'accept').promoteCandidate, false);
 });

@@ -4,9 +4,9 @@
 // qué citar, commitear) es de la skill close-session. Solo lo ejecuta el hilo principal (la
 // guardia lo niega a los subagentes). JSON por stdout.
 // Uso: node close-session.js <verbo> [--cwd <dir>] [--session <id>]
-//   evidence --since <iso|sha>             commits, archivos, sellos y el run.json vigente
-//   scan --id <id>                         piso mecánico sobre una propuesta
-//   decide --id <id> (--human <accept|reject> | --validation-file <md> [--reserved])
+//   evidence --since <iso|sha|ref>         commits, archivos, sellos y el run.json vigente
+//   scan --id <id>                         piso mecánico, duplicados y evidencia de una propuesta
+//   decide --id <id> [--answer yes|no] [--reserved]   sin --answer nunca acepta (devuelve human)
 //   archive [--days 14] [--dry-run]        mueve lo cerrado y viejo a archive/ (nunca borra)
 //   index                                  regenera INDEX.md
 //   prune                                  poda y gc de la sombra (necesita la sesión)
@@ -20,7 +20,7 @@ const { mainRoot } = require('../lib/disabled');
 const VERBS = {
   evidence: { value: ['since'], need: ['since'] },
   scan: { value: ['id'], need: ['id'] },
-  decide: { value: ['id', 'validation-file', 'human'], bool: ['reserved'], need: ['id'] },
+  decide: { value: ['id', 'answer'], bool: ['reserved'], need: ['id'] },
   archive: { value: ['days'], bool: ['dry-run'], need: [] },
   index: { value: [], need: [] },
   prune: { value: [], need: [] },
@@ -51,13 +51,7 @@ function parse(argv) {
     return usage(`opción desconocida para ${verb}: ${a}`);
   }
   for (const n of spec.need) if (opts[n] === undefined) return usage(`${verb} necesita --${n}`);
-  if (verb === 'decide') {
-    const hasV = opts['validation-file'] !== undefined;
-    const hasH = opts.human !== undefined;
-    if (hasV === hasH) return usage('decide necesita --human <accept|reject> o --validation-file <md> (uno solo)');
-    if (hasH && !['accept', 'reject'].includes(opts.human)) return usage(`--human debe ser accept o reject (${opts.human})`);
-    if (hasH && opts.reserved) return usage('--reserved va con --validation-file; con --human la decisión ya es del humano');
-  }
+  if (verb === 'decide' && opts.answer !== undefined && !['yes', 'no'].includes(opts.answer)) return usage(`--answer debe ser yes o no (${opts.answer})`);
   return opts;
 }
 
@@ -70,14 +64,24 @@ function evidence({ main, since, env }) {
   const { sealDir, repoIdFor } = require('../lib/seals');
   let commits = [];
   let files = [];
-  const isSha = /^[0-9a-f]{7,40}$/i.test(since);
-  const range = isSha ? [`${since}..HEAD`] : [`--since=${since}`, 'HEAD'];
+  // --since: una fecha ISO (YYYY-MM-DD[Thh:mm...]) o algo que git resuelve a un commit (sha, HEAD~2, rama).
+  // Cualquier otra cosa se rechaza: pasársela a --since= devolvía vacío o todo sin avisar.
+  const isIso = /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(since) && !Number.isNaN(Date.parse(since));
+  let from = null;
+  if (!isIso) {
+    try {
+      if (since.startsWith('-')) throw new Error('empieza con -');
+      from = gitRun(['rev-parse', '--verify', '--quiet', `${since}^{commit}`], main, { timeout: 5000 }).trim();
+      if (!from) throw new Error('no resuelve');
+    } catch (_) {
+      return refuse('bad-since', `--since "${since}" no es una fecha ISO ni algo que git resuelva a un commit (sha, HEAD~2, rama)`);
+    }
+  }
+  const range = isIso ? [`--since=${since}`, 'HEAD'] : [`${from}..HEAD`];
   try {
     const log = gitRun(['log', '--format=%H%x09%s', ...range], main, { timeout: 10000 });
     commits = log.split(/\r?\n/).filter(Boolean).map((l) => { const [sha, ...s] = l.split('\t'); return { sha, subject: s.join('\t') }; });
-    const names = isSha
-      ? gitRun(['diff', '--name-only', `${since}..HEAD`], main, { timeout: 10000 })
-      : gitRun(['log', '--name-only', '--format=', ...range], main, { timeout: 10000 });
+    const names = gitRun(['log', '--name-only', '--format=', ...range], main, { timeout: 10000 });
     files = [...new Set(names.split(/\r?\n/).filter(Boolean))].sort();
   } catch (e) {
     if (!isGitFailure(e) && e.code !== 'ENOENT') throw e;
@@ -96,39 +100,34 @@ function piiOf(main) {
   return readProjectConfig({ root: main }).piiPatterns;
 }
 
-function scan({ main, id }) {
+// Piso mecánico, duplicado y evidencia de una propuesta (R-9).
+function inspect({ main, id }) {
   const L = require('../lib/learnings');
+  const { gitRun } = require('../lib/git');
   const p = L.readProposal({ main, id });
-  if (!p.ok) return refuse(p.refused, p.reason);
+  if (!p.ok) return { refusal: p };
   let piiPatterns;
-  try { piiPatterns = piiOf(main); } catch (e) { return refuse('project-md', e.message); }
-  const r = L.scanLearning({ text: p.text, piiPatterns });
-  return { ok: true, id, findings: r.findings, clean: r.findings.length === 0 };
+  try { piiPatterns = piiOf(main); } catch (e) { return { refusal: { refused: 'project-md', reason: e.message } }; }
+  const scanned = L.scanLearning({ text: p.text, piiPatterns });
+  const duplicate = L.findDuplicate({ body: p.text, existing: L.existingFor({ main, id }) });
+  const evidence = L.checkEvidence({ main, evidence: p.entry.fields.evidence, run: (args) => gitRun(args, main, { timeout: 5000 }) });
+  return { p, scanned, duplicate, evidence };
 }
 
-function decide({ main, id, validationFile, reserved, human }) {
+function scan({ main, id }) {
+  const x = inspect({ main, id });
+  if (x.refusal) return refuse(x.refusal.refused, x.refusal.reason);
+  return { ok: true, id, findings: x.scanned.findings, clean: x.scanned.findings.length === 0, duplicate: x.duplicate, evidence: x.evidence };
+}
+
+function decide({ main, id, answer, reserved }) {
   const L = require('../lib/learnings');
-  const p = L.readProposal({ main, id });
-  if (!p.ok) return refuse(p.refused, p.reason);
-  if (human) {
-    let pii;
-    try { pii = piiOf(main); } catch (e) { return refuse('project-md', e.message); }
-    const scanned = L.scanLearning({ text: p.text, piiPatterns: pii });
-    const d = L.decideByHuman({ entry: p.entry, scan: scanned, answer: human });
-    const applied = L.applyDecision({ main, id, decision: d.decision });
-    if (!applied.ok) return refuse(applied.refused, applied.reason, { decision: d.decision, reason: d.reason });
-    return { ok: true, id, decision: d.decision, reason: d.reason, promoteCandidate: d.promoteCandidate, moved: applied.moved, file: applied.file || null, how: applied.how || null, validation: 'human' };
-  }
-  let text;
-  try { text = fs.readFileSync(path.resolve(validationFile), 'utf8'); } catch (e) { return refuse('validation-file', `no se pudo leer ${validationFile}: ${e.message}`); }
-  let piiPatterns;
-  try { piiPatterns = piiOf(main); } catch (e) { return refuse('project-md', e.message); }
-  const validation = L.parseValidation(text, { ids: [id] });
-  const scanned = L.scanLearning({ text: p.text, piiPatterns });
-  const d = L.decideAcceptance({ entry: p.entry, validation, scan: scanned, reservedMatch: Boolean(reserved) });
+  const x = inspect({ main, id });
+  if (x.refusal) return refuse(x.refusal.refused, x.refusal.reason);
+  const d = L.decideAcceptance({ entry: x.p.entry, scan: x.scanned, duplicate: x.duplicate, evidence: x.evidence, reservedMatch: Boolean(reserved), answer });
   const applied = L.applyDecision({ main, id, decision: d.decision });
   if (!applied.ok) return refuse(applied.refused, applied.reason, { decision: d.decision, reason: d.reason });
-  return { ok: true, id, decision: d.decision, reason: d.reason, promoteCandidate: d.promoteCandidate, moved: applied.moved, file: applied.file || null, how: applied.how || null, validation: validation.ok ? validation.status : `ilegible: ${validation.error}` };
+  return { ok: true, id, decision: d.decision, reason: d.reason, promoteCandidate: d.promoteCandidate, flags: d.flags, moved: applied.moved, file: applied.file || null, how: applied.how || null };
 }
 
 function archive({ main, days, dryRun }) {
@@ -164,7 +163,7 @@ function main() {
   switch (opts.verb) {
     case 'evidence': r = evidence({ main: root, since: opts.since, env }); break;
     case 'scan': r = scan({ main: root, id: opts.id }); break;
-    case 'decide': r = decide({ main: root, id: opts.id, validationFile: opts['validation-file'], reserved: opts.reserved, human: opts.human }); break;
+    case 'decide': r = decide({ main: root, id: opts.id, answer: opts.answer, reserved: opts.reserved }); break;
     case 'archive': r = archive({ main: root, days: opts.days, dryRun: opts['dry-run'] }); break;
     case 'index': r = index({ main: root }); break;
     case 'prune': r = prune({ main: root, env, session: opts.session }); break;
