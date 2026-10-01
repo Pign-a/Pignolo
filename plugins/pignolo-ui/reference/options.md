@@ -22,7 +22,7 @@ Each option gets its own brief, written in the prompt (never a path inside the p
 1. For each letter, first record the state of the repository: `node "<root>/scripts/run.mjs" git-state --project <repo> --out <run>/git-before-<X>.txt`.
 2. Dispatch all options in parallel, in a single message, with the Agent tool: `subagent_type: "pignolo-ui:ui-option"`, `model: "sonnet"`. The instruction of each dispatch includes the text `The user asked for <N> subagents for this decision.`, then the brief.
 3. When an option returns, verify what it wrote (the main thread, never the subagent): `node "<root>/scripts/run.mjs" options-check --project <repo> --run <run> --option <X> --kind <kind> --expected <screen1.html,screen2.html> --git-before <run>/git-before-<X>.txt`. Exit 1 means the option failed: it is not a result. `contradicted` lists the rules that the script contradicts: drop any claim of the option that cites them.
-4. Leak check of every option: `node "<root>/scripts/run.mjs" leak-values --project <repo> --out <run>/leak-values.json` and `node "<root>/scripts/leak-check.mjs" --dir <run>/<kind>-<X> --values-file <run>/leak-values.json`. Anything found stops that option. Saving an option as approved (`approve.mjs save`) happens later and only after `leak-check.mjs` passed.
+4. Leak check of every option: `node "<root>/scripts/run.mjs" leak-values --project <repo> --out <run>/leak-values.json --email <the email of the user's account, when your context shows it>` and `node "<root>/scripts/leak-check.mjs" --dir <run>/<kind>-<X> --values-file <run>/leak-values.json`. Anything found stops that option. Saving an option as approved (`approve.mjs save`) happens later and only after `leak-check.mjs` passed.
 
 ## Diversity
 

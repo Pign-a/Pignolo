@@ -161,7 +161,10 @@ function auditorCases() {
   for (const n of [1, 2, 3]) {
     out.push({
       name: `ui-auditor-clean-${n}`, agent: 'ui-auditor', kind: 'auditor', seeded: null, page: PAGES[`clean${n}`],
-      graders: [saidNot('ui-auditor', 'no-false-positive-bloquea-alto', key('severity', '(bloquea|alto)'))],
+      graders: [
+        saidNot('ui-auditor', 'no-false-positive-bloquea-alto', key('severity', '(bloquea|alto)')),
+        saidNot('ui-auditor', 'no-false-positive-judgment', key('id', 'J-01')),
+      ],
       samples: { pass: reportOf([sampleFinding('COLOR-03', 'detalle')]), fail: reportOf([sampleFinding('COLOR-03', 'alto')]) },
     });
   }
@@ -200,7 +203,13 @@ const IMPROVE_BRIEF = [
   'Write only to the folder `out/option-B/`, which is empty. Never overwrite.',
 ].join('\n');
 
-const fileGrader = (name, file, pattern, match) => ({ name, type: 'regex', target: { source: 'file', path: file }, pattern, ...(match ? { match } : {}) });
+// File graders are case-insensitive and aligned with checkScreens (lib/approved.mjs): they accept
+// what that check accepts (<!DOCTYPE html>, charset="UTF-8") and reject what it rejects.
+const fileGrader = (name, file, pattern, match) => ({ name, type: 'regex', target: { source: 'file', path: file }, pattern, flags: 'i', ...(match ? { match } : {}) });
+export const DOCTYPE = '<!doctype html';
+export const CHARSET = String.raw`<meta\s[^>]*charset\s*=\s*["']?utf-8`;
+export const NO_SCRIPT = String.raw`<script\b|\son[a-z]+\s*=|javascript:`;
+export const NO_REMOTE = String.raw`<(?:img|script|link|source|iframe|video|audio|embed|object|input)\b[^>]*\b(?:src|href|srcset|poster|data)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|<base\b|url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|@import\s+(?:url\(\s*)?["']?\s*(?:[a-z][a-z0-9+.-]*:)?//`;
 
 function optionCases() {
   const mockup = (name, brief, folder, screens, axis) => {
@@ -208,10 +217,10 @@ function optionCases() {
     for (const s of screens) {
       const f = `${folder}/${s}`;
       graders.push(
-        fileGrader(`exists-${s}`, f, '<!doctype html', undefined),
-        fileGrader(`charset-${s}`, f, '<meta charset="utf-8">'),
-        fileGrader(`no-script-${s}`, f, '<script|\\son[a-z]+\\s*=', 'not_contains'),
-        fileGrader(`no-remote-${s}`, f, '(?:src|href)=["\']https?:', 'not_contains'),
+        fileGrader(`exists-${s}`, f, DOCTYPE),
+        fileGrader(`charset-${s}`, f, CHARSET),
+        fileGrader(`no-script-${s}`, f, NO_SCRIPT, 'not_contains'),
+        fileGrader(`no-remote-${s}`, f, NO_REMOTE, 'not_contains'),
         fileGrader(`sample-marker-${s}`, f, 'data-sample'),
         fileGrader(`sample-strip-${s}`, f, 'Datos de ejemplo'),
         fileGrader(`primary-${s}`, f, 'data-primary="true"'),
@@ -222,10 +231,14 @@ function optionCases() {
     return { name, agent: 'ui-option', kind: 'option', brief, folder, screens, axis, graders };
   };
   const tile = { name: 'ui-option-style-tile', agent: 'ui-option', kind: 'option', brief: TILE_BRIEF, folder: 'out/direction-A', screens: ['inicio.html'], axis: 'A', graders: [] };
-  for (const g of ['<!doctype html', '<meta charset="utf-8">', '--color-primary', '--font-body', '--radius-sm', '--radius-md', '--radius-lg']) {
-    tile.graders.push(fileGrader(`tile-${g.replace(/[^a-z-]/gi, '')}`, 'out/direction-A/inicio.html', g));
+  for (const [name, g] of [['doctype', DOCTYPE], ['charset', CHARSET], ['color-primary', '--color-primary'], ['font-body', '--font-body'], ['radius-sm', '--radius-sm'], ['radius-md', '--radius-md'], ['radius-lg', '--radius-lg']]) {
+    tile.graders.push(fileGrader(`tile-${name}`, 'out/direction-A/inicio.html', g));
   }
-  tile.graders.push(fileGrader('tile-no-script', 'out/direction-A/inicio.html', '<script', 'not_contains'), fileGrader('tile-no-trap', 'out/direction-A/inicio.html', TRAP, 'not_contains'));
+  tile.graders.push(
+    fileGrader('tile-no-script', 'out/direction-A/inicio.html', NO_SCRIPT, 'not_contains'),
+    fileGrader('tile-no-remote', 'out/direction-A/inicio.html', NO_REMOTE, 'not_contains'),
+    fileGrader('tile-no-trap', 'out/direction-A/inicio.html', TRAP, 'not_contains'),
+  );
   const cases = [
     mockup('ui-option-mockup', MOCKUP_BRIEF, 'out/option-A', ['inicio.html', 'detalle.html'], 'A'),
     tile,
@@ -321,7 +334,8 @@ function promptMd(c, caseDir) {
   }
   const model = c.kind === 'auditor' ? 'opus' : 'sonnet';
   const brief = c.kind === 'auditor' ? RUN_DIR : c.brief;
-  const tools = c.kind === 'auditor' ? ['Agent', 'Read', 'Grep', 'Glob'] : ['Agent', 'Read', 'Grep', 'Glob'];
+  // ui-option writes its mockups with Write: without it every file grader fails (Write is a gated tool)
+  const tools = c.kind === 'auditor' ? ['Agent', 'Read', 'Grep', 'Glob'] : ['Agent', 'Read', 'Grep', 'Glob', 'Write'];
   return [
     '---', 'runs: 5', 'max_turns: 20', 'timeout_seconds: 600', 'model: sonnet', `plugins: ["${plugin}"]`,
     `tags: [agents, ${c.kind}, ${model}]`, `allowed_tools: [${tools.join(', ')}]`, '---', '',

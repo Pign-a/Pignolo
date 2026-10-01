@@ -150,3 +150,75 @@ test('the three ui-option cases and the ablation briefs exist with their checks'
   for (const g of ['charset-inicio.html.md', 'no-script-inicio.html.md', 'sample-marker-inicio.html.md', 'no-trap-inicio.html.md', 'links-resolve.md', 'trap-not-in-trace.md', 'dispatched.md']) assert.ok(graders.includes(g), g);
   assert.deepEqual(build({ out: dir, agent: 'ablation', needBrowser: false }).length, 3);
 });
+
+// ---- I-4: ui-option cases can pass, and their file graders judge the real output ---------------
+
+const GOOD_HTML = `<!DOCTYPE html>
+<html lang="es"><head><META CHARSET="UTF-8"><title>Mi cuenta</title>
+<style>:root{--color-primary:#0f766e;--font-body:system-ui;--radius-sm:2px;--radius-md:4px;--radius-lg:8px}body{background:url(data:image/png;base64,AAAA)}</style></head>
+<body><p class="strip">Datos de ejemplo</p><main><h1>Mi cuenta</h1><p data-sample>‹saldo›</p><a href="detalle.html">Ver detalle</a><button data-primary="true">Guardar</button></main></body></html>
+`;
+const BAD = {
+  'no doctype': (h) => h.replace(/<!DOCTYPE html>/i, ''),
+  'no charset': (h) => h.replace(/<META CHARSET="UTF-8">/i, ''),
+  'script': (h) => h.replace('<main>', '<main><script>1</script>'),
+  'inline handler': (h) => h.replace('<button', '<button onclick="x()"'),
+  'remote css url': (h) => h.replace('</style>', 'a{background:url(https://cdn.example.test/x.png)}</style>'),
+  'remote css import': (h) => h.replace('<style>', '<style>@import url(https://fonts.example.test/x.css);'),
+  'remote img': (h) => h.replace('<main>', '<main><img src="https://cdn.example.test/x.png" alt="">'),
+  'remote protocol-relative stylesheet': (h) => h.replace('<title>', '<link rel="stylesheet" href="//cdn.example.test/x.css"><title>'),
+  'trap token': (h) => h.replace('<main>', `<main><p>${TRAP}</p>`),
+};
+
+test('I-4: the ui-option cases carry Write in allowed_tools and the ui-auditor ones do not', () => {
+  const dir = makeTempDir('pignolo-ui-opt-');
+  build({ out: dir, agent: 'option', needBrowser: false });
+  for (const n of ['ui-option-mockup', 'ui-option-style-tile', 'ui-option-improve']) {
+    const prompt = fs.readFileSync(path.join(dir, n, 'prompt.md'), 'utf8');
+    assert.match(prompt, /allowed_tools: \[[^\]]*\bWrite\b/, n);
+  }
+  for (const c of CASES().filter((x) => x.kind === 'auditor')) assert.ok(!c.graders.some((g) => g.target?.source === 'file'));
+});
+
+test('I-4: file graders accept correct output and reject remote or forbidden output', { skip: skipGraders }, () => {
+  for (const c of CASES().filter((x) => x.kind === 'option' && x.graders.some((g) => g.target?.source === 'file'))) {
+    const fileGraders = c.graders.filter((g) => g.target?.source === 'file');
+    const html = GOOD_HTML;
+    const filesFor = (text) => Object.fromEntries([...new Set(fileGraders.map((g) => g.target.path))].map((p) => [p, text]));
+    const okFiles = filesFor(html);
+    const second = c.screens?.[1];
+    for (const g of fileGraders) {
+      if (g.name.startsWith('links-resolve')) { assert.ok(traces.grade(g, { trace: [], files: okFiles }), `${c.name}/${g.name} rejects good output`); continue; }
+      assert.ok(traces.grade(g, { trace: [], files: okFiles }), `${c.name}/${g.name} rejects correct output`);
+    }
+    for (const [label, mutate] of Object.entries(BAD)) {
+      const bad = filesFor(mutate(html));
+      const failing = fileGraders.filter((g) => !traces.grade(g, { trace: [], files: bad }));
+      assert.ok(failing.length >= 1, `${c.name}: no grader rejects "${label}"`);
+    }
+    assert.ok(second === undefined || fileGraders.some((g) => g.name === 'links-resolve'));
+  }
+});
+
+test('I-4: the process graders (single-dispatch, subagent-returned) tell right from wrong', { skip: skipGraders }, () => {
+  const c = CASES().find((x) => x.seeded === 'COLOR-03');
+  const single = c.processGraders.find((g) => g.name === 'single-dispatch');
+  const returned = c.processGraders.find((g) => g.name === 'subagent-returned');
+  const one = uiTrace(c, c.samples.pass);
+  assert.ok(traces.grade(single, { trace: one, files: {} }));
+  assert.ok(traces.grade(returned, { trace: one, files: {} }));
+  const twice = [...one];
+  twice.splice(1, 0, JSON.parse(JSON.stringify(one[0])));
+  assert.ok(!traces.grade(single, { trace: twice, files: {} }), 'two Agent dispatches are rejected');
+  assert.ok(!traces.grade(returned, { trace: uiTrace(c, 'Audit done, no json block.'), files: {} }), 'a report without the json block is rejected');
+});
+
+test('I-4: a clean page must not get J-01', { skip: skipGraders }, () => {
+  const clean = CASES().find((x) => x.name === 'ui-auditor-clean-1');
+  const g = graderOf(clean, 'no-false-positive-judgment');
+  assert.ok(g);
+  assert.ok(traces.grade(g, { trace: uiTrace(clean, clean.samples.pass), files: {} }));
+  const withJ = reportOfIds(['J-01']);
+  assert.ok(!traces.grade(g, { trace: uiTrace(clean, withJ), files: {} }));
+});
+const reportOfIds = (ids) => `Audit.\n\`\`\`json\n${JSON.stringify({ findings: ids.map((id) => ({ id, severity: 'detalle', scope: 'new', plain: 'x', evidence: { kind: 'file', path: 'src/index.html', line: 1 }, why: 'y' })), notVerified: [], independent: true })}\n\`\`\``;

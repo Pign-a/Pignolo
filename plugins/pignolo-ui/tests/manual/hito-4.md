@@ -1,6 +1,6 @@
 # Checklist manual — pignolo-ui hito 4 (spec 16.4)
 
-Correr en una sesión INTERACTIVA de Claude Code, en Windows nativo, con pignolo-ui 0.6.0 instalado, en un proyecto web propio con una pantalla servida en local. Registrar fecha, versión de Claude Code y resultado de cada punto en `plugins/pignolo-ui/tests/manual/hito-4-resultados.md`. Esta lista es la 16.4 del spec, no una lista nueva. Las filas "con el núcleo instalado" quedan para el hito 5. El lienzo "Design" no está en la v1 (decisión del autor, R10): no hay filas de lienzo.
+Correr en una sesión INTERACTIVA de Claude Code, en Windows nativo, con pignolo-ui 0.6.1 instalado, en un proyecto web propio con una pantalla servida en local. Registrar fecha, versión de Claude Code y resultado de cada punto en `plugins/pignolo-ui/tests/manual/hito-4-resultados.md`. Esta lista es la 16.4 del spec, no una lista nueva. Las filas "con el núcleo instalado" quedan para el hito 5. El lienzo "Design" no está en la v1 (decisión del autor, R10): no hay filas de lienzo.
 
 1. [ ] `/pignolo-ui:audit <URL local>`, `/pignolo-ui:improve <URL local>` y `/pignolo-ui:new <pantalla>` de punta a punta. Anotar la primera línea de cada informe (`pignolo-ui <versión> · …`).
 2. [ ] En Opus 5 y en otro modelo: cuántos subagentes se lanzaron y **con qué modelo real, leído del transcript** (la primera línea del informe solo dice `modelo pedido`, R-15).

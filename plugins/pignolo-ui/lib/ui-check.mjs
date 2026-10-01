@@ -17,6 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { RUN_ROOT } from './run-folder.mjs';
 import { loadCatalog } from './catalog.mjs';
 import { routeFile } from './route.mjs';
 import { stripComments } from './strip-comments.mjs';
@@ -274,7 +275,26 @@ function sourceFilesOf(project, relFiles, designRel) {
   return [...new Set(list)];
 }
 
-export async function runCheck({ project, files = [], design = null, base = null, dom = [], urls = [], measures = null, inject = {} } = {}) {
+// I-3: key of a rendered-page entry that does not depend on the run folder it came from.
+const domKey = (e) => {
+  const file = e.file ?? '';
+  const fp = typeof e.fingerprint === 'string' ? e.fingerprint : '';
+  const head = `${e.id}|${file}|`;
+  return `${e.id}|${path.posix.basename(file.split('\\').join('/'))}|${fp.startsWith(head) ? fp.slice(head.length) : fp}`;
+};
+
+// Multiset of the failures the "before" reading already had; an "after" entry that matches one is debt.
+function beforeCounter(before) {
+  const counts = new Map();
+  for (const e of before ?? []) {
+    if (!e || e.status !== 'fail' || typeof e.file !== 'string' || !e.file.startsWith(`${RUN_ROOT}/`)) continue;
+    const k = domKey(e);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export async function runCheck({ project, files = [], design = null, base = null, dom = [], urls = [], measures = null, before = null, inject = {} } = {}) {
   const root = path.resolve(project);
   const rules = inject.rules ?? DISK_RULES;
   const catalog = inject.catalog ?? loadCatalog();
@@ -295,8 +315,17 @@ export async function runCheck({ project, files = [], design = null, base = null
     ? await scopeRun({ project: root, base, relFiles, sourceFiles: sourceFilesOf(root, relFiles, designRel), designRel, evaluate })
     : null;
   const domSet = new Set(domFiles);
+  const preexisting = beforeCounter(before);
   const scoped = classifyScope(current, baseFindings ?? null)
-    .map((e) => ({ ...e, scope: domSet.has(e.file) ? 'new' : e.scope === 'debt' ? 'debt' : 'new' }));
+    .map((e) => {
+      if (!domSet.has(e.file)) return { ...e, scope: e.scope === 'debt' ? 'debt' : 'new' };
+      if (e.status === 'fail') {
+        const k = domKey(e);
+        const left = preexisting.get(k) ?? 0;
+        if (left > 0) { preexisting.set(k, left - 1); return { ...e, scope: 'debt' }; }
+      }
+      return { ...e, scope: 'new' };
+    });
   // (5) severity, (6) aggregation and order
   const entries = aggregate(scoped.map((e) => ({ ...e, severity: effectiveSeverity(e, byId.get(e.id)) }))).map(publicEntry);
   // Browser measures (browser.json) come scoped and with their severity: appended as they are.

@@ -68,9 +68,10 @@ test('transversal contract of the three skills and the reference files', () => {
     // after apply.md, every measure/capture/dom/check/report-skeleton/verdict command points at <run>/after
     const first = text.indexOf('apply.md');
     if (first >= 0) {
-      for (const l of text.slice(first).split('\n')) {
-        if (/(browser\.mjs"|run\.mjs" (check|report-skeleton|verdict)|report-check\.mjs")/.test(l)) assert.ok(l.includes('<run>/after'), `${name}: ${l.slice(0, 90)}`);
-      }
+      // per command, not per line: each --run argument must be <run>/after (m-3)
+      const cmds = [...text.slice(first).matchAll(/(browser\.mjs"|run\.mjs" (?:check|report-skeleton|verdict)|report-check\.mjs"|compare\.mjs" approved)[^`]*?--run (\S+)/g)];
+      assert.ok(cmds.length >= 4, `${name}: found ${cmds.length} commands after apply.md`);
+      for (const m of cmds) assert.ok(m[2].startsWith('<run>/after'), `${name}: ${m[1]} uses --run ${m[2]}`);
     }
   }
   for (const name of REFERENCES) {

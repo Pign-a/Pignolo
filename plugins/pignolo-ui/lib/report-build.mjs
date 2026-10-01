@@ -3,12 +3,19 @@
 // firstLine(facts) -> string
 // reportSkeleton({ project, run, implementsPath }) -> { version, implemented, implements?, evidence, claims, candidates }
 // verdict({ uiCheck, reportCheck, build }) -> { status: 'terminado' | 'BLOCKED' | 'sin verificar', reasons }
+//   uiCheck.stale  (string) ui-check.json no longer matches the files it checked: sin verificar
+//   build.declared the project declares typecheck/build/lint: without build.ran it is sin verificar
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { manifestSha } from './approved.mjs';
 
 export function firstLine(facts) {
+  const s = facts && facts.subagents;
+  if (!facts || typeof facts.pluginVersion !== 'string' || !facts.pluginVersion) throw new Error('facts: falta pluginVersion');
+  if (!s || !Number.isInteger(s.requested) || !Number.isInteger(s.launched) || typeof s.model !== 'string' || !s.model) {
+    throw new Error('facts: subagents necesita requested y launched (enteros) y model');
+  }
   const { pluginVersion, subagents = {}, sequential = false, notIndependentAudit = false } = facts;
   const degraded = [...(facts.degraded || [])];
   if (notIndependentAudit) degraded.push('auditoría no independiente');
@@ -56,6 +63,7 @@ export function verdict({ uiCheck, reportCheck, build }) {
   const unverified = [];
   if (!uiCheck) unverified.push('ui-check no corrió');
   else if (uiCheck.exitCode === 2) unverified.push('ui-check falló (exit 2)');
+  else if (uiCheck.stale) unverified.push(`ui-check.json desactualizado: ${uiCheck.stale}`);
   if (!reportCheck) unverified.push('report-check no corrió');
   else if (reportCheck.exitCode === 2) unverified.push('report-check falló (exit 2)');
   const blocked = [];
@@ -65,7 +73,8 @@ export function verdict({ uiCheck, reportCheck, build }) {
   if (reportCheck && reportCheck.exitCode === 1) blocked.push(`report-check retiró ${(reportCheck.retired || []).length} afirmaciones`);
   if (build && build.ran && build.ok === false) blocked.push(`build roto (${build.script ?? 'build'})`);
   const noBuild = !build || build.ran === false;
-  if (noBuild) reasons.push('no verificado: el proyecto no declara build');
+  if (noBuild && build && build.declared) unverified.push('build sin informar: el proyecto declara typecheck, build o lint y falta --build-ok');
+  else if (noBuild) reasons.push('no verificado: el proyecto no declara build');
   if (unverified.length) return { status: 'sin verificar', reasons: [...unverified, ...reasons] };
   if (blocked.length) return { status: 'BLOCKED', reasons: [...blocked, ...reasons] };
   return { status: 'terminado', reasons };

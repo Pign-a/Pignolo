@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { PLUGIN_ROOT } from '../helpers.mjs';
+import { SUBCOMMANDS as RUN_SUBCOMMANDS } from '../../scripts/run.mjs';
 
 export function readSkill(name) {
   const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', name, 'SKILL.md'), 'utf8');
@@ -33,7 +34,7 @@ export function scriptCalls(text) {
 
 // Subcommands each multi-command script accepts (anything else is a usage error at run time).
 export const SUBCOMMANDS = {
-  'run.mjs': ['env', 'init', 'config', 'present', 'norms', 'check', 'leak-values', 'git-state', 'options-check', 'discard', 'auditor-check', 'menu', 'report-skeleton', 'report-line', 'verdict', 'compare-html'],
+  'run.mjs': RUN_SUBCOMMANDS, // taken from the script itself: renaming a subcommand there breaks the skill tests
   'design-md.mjs': ['validate', 'extract', 'patch'],
   'files.mjs': ['save', 'verify', 'restore'],
   'approve.mjs': ['save', 'record', 'verify'],

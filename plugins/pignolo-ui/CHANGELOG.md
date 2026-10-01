@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.1 — sin publicar
+
+Pasada de arreglos de la revisión final del hito 4 (un crítico, cinco importantes y los menores). Sube de 0.6.0 a 0.6.1: no cambia la interfaz, salvo las opciones nuevas `check --before` y `design-md.mjs patch --out`.
+
+- **C-1 (pérdida de datos):** `run.mjs init` se niega (exit 2) si `.pignolo-ui` o `.pignolo-ui/runs` es un enlace (symlink o junction), o si `runs` no resuelve con `realpath` dentro del proyecto; antes podaba y borraba carpetas de otro lugar. La poda además exige que cada candidato resuelva directo bajo el `runs` real. Probado con un junction real en Windows.
+- **I-1:** `verdict` da `sin verificar` ("ui-check.json desactualizado") si un archivo de los `inputs` de `ui-check.json` cambió después del chequeo.
+- **I-2:** `verdict` lee `package.json`: si declara `typecheck`, `build` o `lint` y falta `--build-ok`, da `sin verificar` ("build sin informar"); "no declara build" sale solo cuando de verdad no hay ninguno. Las skills `new` e `improve` pasan `--build-ok yes|no`.
+- **I-3:** `run.mjs check --before <ui-check.json del antes>` (y `ui-check.mjs --before`): los fallos de las páginas renderizadas que el "antes" ya tenía salen como deuda, no como nuevos (multiconjunto de id, archivo y clave, sin depender de la carpeta del run). `improve` lo usa.
+- **I-4:** los casos de eval de `ui-option` llevan `Write` en `allowed_tools`; los graders de archivo no distinguen mayúsculas y están alineados con `checkScreens` (aceptan `<!DOCTYPE html>` y `charset="UTF-8"`, rechazan remotos en CSS, `@import`, `//` y `<base>`); se probaron los graders de archivo y los de proceso (`single-dispatch`, `subagent-returned`); un grader nuevo exige que las páginas limpias no reciban `J-01`.
+- **I-5:** `design-md.mjs patch --out <archivo nuevo>` crea `DESIGN.md` desde la plantilla sin sobrescribir nada; `--write` sobre un archivo del plugin se rechaza, así la plantilla instalada no se puede modificar. La skill `new` usa `--out` tras mostrar el diff.
+- **Menores:** m-1 el paso 6 de `apply.md` queda fijado por test; m-2 los subcomandos de `run.mjs` de los tests de skills salen del propio script; m-3 el test transversal mira cada `--run` de cada comando; m-4 tests de la deduplicación de `reportSkeleton` y de la guarda de enlaces de `discard`; m-5 el `map.json` del "después" va en `<run>/after/` y no se repite `--before`; m-6 `menu` solo pre-tilda con hallazgos que `auditor-check` conservó; m-8 `init` imprime la ruta con `/`; m-9 README y descripción de `presentation` sin la promesa falsa de "nunca salen de tu máquina"; m-10 `leak-values` recibe `--email`, `present-and-choose.md` define `<flow>` y `<approved>`, y `report-line` rechaza `facts` incompletos.
+- **Pendientes a propósito:** m-1 (`files restore --delete-list`, cambio del contrato del hito 3, lo decide el autor) y m-7 (medir la ruta de referencia `referencePath` en `new`: sin ella todo cuenta como nuevo, coherente con el spec).
+
 ## 0.6.0 — sin publicar
 
 Parte 4b del hito 4: agentes, skills y evals. Sube de 0.5.0 a 0.6.0 porque trae interfaz nueva para el usuario (los tres comandos y los dos agentes).

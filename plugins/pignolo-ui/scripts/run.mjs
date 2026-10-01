@@ -7,7 +7,7 @@
 //   run.mjs config get|set --data <dir> --project <repo> [--key <k> --value <v>]
 //   run.mjs present --data <dir> --project <repo> --presentation auto|local --artifact yes|no --design-type yes|no
 //   run.mjs norms --run <run> [--norms <norms.md>]
-//   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>]
+//   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>] [--before <ui-check.json>]
 //   run.mjs leak-values --project <repo> --out <file> [--email <mail>]
 //   run.mjs git-state --project <repo> --out <file>
 //   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file>
@@ -37,6 +37,7 @@ import { findDesignFile } from '../lib/approved.mjs';
 import { validateFindings } from '../lib/auditor-output.mjs';
 import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
+import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
 
@@ -106,6 +107,24 @@ function projectOfRun(cwd, opts) {
   return { project, run };
 }
 
+// I-1: the first file listed in ui-check.json inputs whose sha256 no longer matches the disk.
+function staleInput(project, ui) {
+  for (const i of Array.isArray(ui.inputs) ? ui.inputs : []) {
+    if (!i || typeof i.file !== 'string') continue;
+    let sha = null;
+    try { sha = crypto.createHash('sha256').update(fs.readFileSync(path.join(project, ...i.file.split('/')))).digest('hex'); } catch { /* missing counts as changed */ }
+    if (sha !== i.sha256) return i.file;
+  }
+  return null;
+}
+
+// I-2: does package.json declare a script the flow has to run (typecheck, build or lint)?
+function declaresBuild(project) {
+  const pkg = readJsonIf(path.join(project, 'package.json'));
+  const scripts = pkg && typeof pkg.scripts === 'object' && pkg.scripts ? pkg.scripts : {};
+  return ['typecheck', 'build', 'lint'].some((s) => typeof scripts[s] === 'string');
+}
+
 function kindOf(opts) {
   const kind = opts.kind ?? 'option';
   if (!['option', 'direction'].includes(kind)) throw new UsageError('--kind debe ser option o direction');
@@ -145,7 +164,7 @@ const COMMANDS = {
       if (Number.isNaN(now.getTime())) throw new UsageError('--now debe ser una fecha ISO');
       let res;
       try { res = initRun({ project, command: opts.command, slug: opts.slug, now, meta }); } catch (e) { throw new UsageError(e.message); }
-      return { out: res, code: 0 };
+      return { out: { ...res, run: res.run.split(path.sep).join('/') }, code: 0 };
     },
   },
 
@@ -181,7 +200,7 @@ const COMMANDS = {
   },
 
   check: {
-    spec: { value: ['project', 'run', 'files', 'design', 'base', 'url'] },
+    spec: { value: ['project', 'run', 'files', 'design', 'base', 'url', 'before'] },
     run(opts, { cwd }) {
       const project = projectDir(cwd, opts);
       const run = runDirOf(cwd, project, opts);
@@ -197,6 +216,7 @@ const COMMANDS = {
       if (opts.design !== undefined) args.push('--design', path.resolve(project, opts.design));
       if (opts.base !== undefined) args.push('--base', opts.base);
       if (opts.url !== undefined) args.push('--url', opts.url);
+      if (opts.before !== undefined) args.push('--before', path.resolve(cwd, opts.before));
       const res = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 300000, windowsHide: true });
       if (res.stderr) process.stderr.write(res.stderr);
       let json = null;
@@ -313,8 +333,14 @@ const COMMANDS = {
         const j = readJsonIf(path.join(run, name));
         for (const e of (j && Array.isArray(j.entries) ? j.entries : [])) if (e.status === 'fail') failed.add(e.id);
       }
+      // only the findings auditor-check kept pre-tick a symptom
       const aud = readJsonIf(path.join(run, 'auditor.json'));
-      for (const f of (aud && Array.isArray(aud.findings) ? aud.findings : [])) if (f && typeof f.id === 'string') failed.add(f.id);
+      if (aud && Array.isArray(aud.findings)) {
+        const { project } = projectOfRun(cwd, opts);
+        const check = validateFindings({ output: aud, run, project, catalog: loadCatalog(), judgmentIds: judgmentIds(loadNorms({}).base) });
+        const dropped = new Set(check.problems.map((p) => p.index));
+        if (!dropped.has(-1)) aud.findings.forEach((f, i) => { if (!dropped.has(i) && f && typeof f.id === 'string') failed.add(f.id); });
+      }
       const out = { menu: buildMenu({ symptoms: dict.symptoms, failedIds: [...failed] }) };
       if (opts['words-file'] !== undefined) {
         out.matched = matchWords(fs.readFileSync(path.resolve(cwd, opts['words-file']), 'utf8'), dict.symptoms);
@@ -340,7 +366,7 @@ const COMMANDS = {
     run(opts, { cwd }) {
       need(opts, 'facts');
       const facts = readJson(path.resolve(cwd, opts.facts), '--facts');
-      return { out: { line: firstLine(facts) }, code: 0 };
+      try { return { out: { line: firstLine(facts) }, code: 0 }; } catch (e) { throw new UsageError(e.message); }
     },
   },
 
@@ -354,6 +380,8 @@ const COMMANDS = {
       if (ui && Array.isArray(ui.entries)) {
         const blockingNew = ui.entries.filter((e) => e.status === 'fail' && e.severity === 'bloquea' && e.scope === 'new').length;
         uiCheck = { exitCode: blockingNew > 0 ? 1 : 0, blockingNew };
+        const stale = staleInput(project, ui);
+        if (stale) uiCheck.stale = `${stale} cambió después del chequeo`;
       }
       let reportCheck = null;
       const reportFile = path.join(run, 'report.json');
@@ -366,7 +394,7 @@ const COMMANDS = {
           reportCheck = { exitCode: 2, retired: [], reason: e.message };
         }
       }
-      let build = { ran: false };
+      let build = { ran: false, declared: declaresBuild(project) };
       if (opts['build-ok'] !== undefined) build = { ran: true, ok: yesNo(opts['build-ok'], 'build-ok') };
       const res = verdict({ uiCheck, reportCheck, build });
       return { out: res, code: res.status === 'terminado' ? 0 : 1 };
@@ -416,6 +444,9 @@ async function configCommand(argv, { cwd }) {
   return { out: { repoId, file, config }, code: 0 };
 }
 
+// Subcommands the CLI accepts; the skill tests check every call of a skill against this list.
+export const SUBCOMMANDS = ['config', ...Object.keys(COMMANDS)];
+
 export async function main(argv, { cwd = process.cwd(), stdout = process.stdout } = {}) {
   try {
     const [name, ...rest] = argv;
@@ -423,7 +454,7 @@ export async function main(argv, { cwd = process.cwd(), stdout = process.stdout 
     if (name === 'config') result = await configCommand(rest, { cwd });
     else {
       const cmd = COMMANDS[name];
-      if (!cmd) throw new UsageError(`falta el subcomando: ${['config', ...Object.keys(COMMANDS)].join(' | ')}`);
+      if (!cmd) throw new UsageError(`falta el subcomando: ${SUBCOMMANDS.join(' | ')}`);
       result = await cmd.run(parse(rest, cmd.spec), { cwd });
     }
     stdout.write(`${JSON.stringify(result.out, null, 2)}\n`);

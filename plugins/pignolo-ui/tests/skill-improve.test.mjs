@@ -68,6 +68,9 @@ test('apply.md: batch limits, what restore deletes is shown before it, the verdi
   const restore = text.indexOf('files.mjs" restore');
   assert.ok(restore > 0);
   assert.ok(text.indexOf('unexpected') >= 0 && text.indexOf('unexpected') < restore);
+  // the revert step itself names `unexpected` before it runs restore (m-1)
+  const step6 = text.slice(text.indexOf('6. **Revert**'), text.indexOf('7. **Say'));
+  assert.ok(step6.includes('unexpected') && step6.indexOf('unexpected') < step6.indexOf('files.mjs" restore'));
   assert.ok(text.indexOf('exists: false') >= 0 && text.indexOf('exists: false') < restore);
   assert.doesNotMatch(text, /git reset|git checkout --|git clean/);
   assert.ok(!/git commit/.test(text.replace('does not commit', '')));

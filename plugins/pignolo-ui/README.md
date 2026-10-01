@@ -26,7 +26,7 @@ Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega litera
 
 ## Qué se publica y qué nunca
 
-En la v1 no se publica nada: el lienzo "Design" quedó para una versión posterior. Las capturas, el código y los datos de tu proyecto nunca salen de tu máquina. Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`); `.pignolo-ui/` y `design/approved/` quedan en tu repo.
+En la v1 no se publica nada: el lienzo "Design" quedó para una versión posterior. Las capturas, el código y los datos de tu proyecto no se publican ni se suben a ningún servicio aparte de Claude Code (el modelo lee el código y las capturas para trabajar). Desinstalar el plugin borra las URLs y rutas confirmadas (`project.json`); `.pignolo-ui/` y `design/approved/` quedan en tu repo.
 
 ## Aviso
 

@@ -79,3 +79,50 @@ test('prune never follows a link out of runs/', (t) => {
   assert.ok(fs.existsSync(path.join(outside, 'keep.txt')));
   assert.ok(fs.existsSync(link));
 });
+
+// C-1: a link (junction on Windows, symlink elsewhere) at .pignolo-ui or .pignolo-ui/runs must
+// never let the prune (or any write) reach outside the real runs folder.
+function link(target, at) {
+  fs.mkdirSync(path.dirname(at), { recursive: true });
+  fs.symlinkSync(target, at, process.platform === 'win32' ? 'junction' : 'dir');
+}
+function victim() {
+  const v = makeTempDir();
+  const thesis = path.join(v, 'old-work', 'thesis.txt');
+  fs.mkdirSync(path.dirname(thesis), { recursive: true });
+  fs.writeFileSync(thesis, 'mi tesis\n');
+  oldDir(path.join(v, 'old-work'), 30);
+  return { v, thesis };
+}
+
+test('C-1: initRun refuses and deletes nothing when .pignolo-ui/runs is a link to another folder', () => {
+  const repo = makeRepo();
+  const { v, thesis } = victim();
+  link(v, path.join(repo, '.pignolo-ui', 'runs'));
+  assert.throws(() => initRun({ project: repo, command: 'audit', slug: 'x', now: NOW }), /enlace/);
+  assert.equal(fs.readFileSync(thesis, 'utf8'), 'mi tesis\n');
+  assert.deepEqual(fs.readdirSync(v), ['old-work']);
+});
+
+test('C-1: initRun refuses and deletes nothing when .pignolo-ui itself is a link', () => {
+  const repo = makeRepo();
+  const outside = makeTempDir();
+  const { v, thesis } = victim();
+  fs.mkdirSync(path.join(outside, 'runs'), { recursive: true });
+  fs.renameSync(path.join(v, 'old-work'), path.join(outside, 'runs', 'old-work'));
+  link(outside, path.join(repo, '.pignolo-ui'));
+  assert.throws(() => initRun({ project: repo, command: 'audit', slug: 'x', now: NOW }), /enlace/);
+  assert.ok(fs.existsSync(path.join(outside, 'runs', 'old-work', 'thesis.txt')));
+  assert.equal(fs.existsSync(thesis), false);
+});
+
+test('C-1: run.mjs init exits 2 over a linked runs folder and keeps the user files', async () => {
+  const { runScript } = await import('./helpers.mjs');
+  const repo = makeRepo();
+  const { v, thesis } = victim();
+  link(v, path.join(repo, '.pignolo-ui', 'runs'));
+  const r = runScript('run.mjs', ['init', '--project', repo, '--command', 'audit', '--slug', 'x']);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /enlace/);
+  assert.equal(fs.readFileSync(thesis, 'utf8'), 'mi tesis\n');
+});

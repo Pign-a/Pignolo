@@ -1,6 +1,6 @@
 # Present the options and record the choice (shared by new and improve)
 
-Markers: `<root>` is the plugin root, `<data>` the plugin data folder, `<presentation>` the user's presentation setting, `<repo>` the project root, `<run>` the run folder, `<kind>` is `option` for mockups or `direction` for style tiles, `<X>` the letter of an option. The skill resolves them in its "Values" block; replace them before running anything.
+Markers: `<root>` is the plugin root, `<data>` the plugin data folder, `<presentation>` the user's presentation setting, `<repo>` the project root, `<run>` the run folder, `<kind>` is `option` for mockups or `direction` for style tiles, `<X>` the letter of an option, `<flow>` the name of the flow being approved (`direction` for style tiles; otherwise a short slug of the screen from the brief) and `<approved>` the path `design/approved/<flow>` that `approve.mjs save` prints. The skill resolves them in its "Values" block; replace them before running anything.
 
 1. **Decide how to show them.** `node "<root>/scripts/run.mjs" present --data <data> --project <repo> --presentation <presentation> --artifact no --design-type no`. In v1 it always answers `mode: local` with the reason `canvas-not-in-v1`: the canvas "Design" is not available in v1. Never call Artifact, never publish anything, and do not ask the user for any consent about publishing.
 
