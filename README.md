@@ -105,7 +105,7 @@ Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los a
 
 ## Métricas de las evals del modo plan
 
-**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). **Medición parcial del 2026-10-01:** `spec-reviewer` (Windows, 5 corridas por caso, 0,84 USD) aprobó 10 de 10 tras relajar por decisión del autor el calificador del caso limpio (aceptar REQUEST_CHANGES si no hay alcance agregado). `plan-auditor` y `validator` (WSL2) no se midieron: la calibración chocó con el límite de sesión de la cuenta (HTTP 429).
+**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). **Medición del 2026-10-01 (35 de 35 corridas aprobadas, 6,07 USD de un tope de 17):** `spec-reviewer` (Windows, 5 corridas por caso) aprobó 10 de 10 tras relajar por decisión del autor el calificador del caso limpio (aceptar REQUEST_CHANGES si no hay alcance agregado); `plan-auditor` y `validator` (WSL2, 5 corridas por caso) aprobaron 25 de 25.
 
 **Detalle técnico.** Casos en `tests/evals/plan-cases.js`, calificadores probados en `tests/eval-plan-cases.test.js`. Todo en opus, Claude Code 2.1.285.
 
@@ -113,10 +113,10 @@ Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los a
 | --- | --- | --- | --- | --- |
 | spec-reviewer | alcance agregado | 5/5 | 0,086 | pasa |
 | spec-reviewer | limpio | 5/5 | 0,081 | pasa (grader relajado por el autor) |
-| plan-auditor | 3 casos | no medido | — | pendiente (WSL2, límite de sesión) |
-| validator | 2 casos | no medido | — | pendiente (WSL2, límite de sesión) |
+| plan-auditor | defecto / limpio / verificar afirmación | 5/5 en cada uno (WSL2) | 0,157 / 0,123 / 0,177 | pasa |
+| validator | deriva / sin holdout | 5/5 en cada uno (WSL2) | 0,143 / 0,130 | pasa |
 
-Comandos, frenos y el motivo de la falla en [`tests/evals/RESULTS-hito-5.md`](tests/evals/RESULTS-hito-5.md).
+Comandos, frenos y la corrida abortada por el límite de sesión en [`tests/evals/RESULTS-hito-5.md`](tests/evals/RESULTS-hito-5.md).
 
 ## Validación de planes
 
