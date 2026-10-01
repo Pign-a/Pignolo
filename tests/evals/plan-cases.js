@@ -266,7 +266,7 @@ const CASES = [
     graders: [
       R.said('spec-reviewer', 'eight-headings', HEADINGS),
       R.said('spec-reviewer', 'added-none', ADDED_NONE),
-      R.said('spec-reviewer', 'verdict-approve', R.lastLine('APPROVE')),
+      R.said('spec-reviewer', 'verdict-not-escalate', R.lastLine('(?:APPROVE|REQUEST_CHANGES)')),
       noBlocking('spec-reviewer'),
     ],
     samples: {
@@ -276,7 +276,7 @@ const CASES = [
     rejects: {
       'eight-headings': specReport(card({ added: '- none' }), 'APPROVE').replace('## Out of scope', '## Out-of-scope'),
       'added-none': specReport(card({ added: '- A1: CSV export (not requested)' }), 'APPROVE'),
-      'verdict-approve': specReport(card({ added: '- none' }), 'REQUEST_CHANGES'),
+      'verdict-not-escalate': specReport(card({ added: '- none' }), 'ESCALATE'),
       'no-blocking-finding': specReport(card({ added: '- none' }), 'APPROVE').replace('- IMPORTANT spec.md:5: the Export button was not requested.', '- BLOCKER spec.md:3: contradiction'),
     },
   },

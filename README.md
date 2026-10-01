@@ -105,9 +105,18 @@ Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los a
 
 ## Métricas de las evals del modo plan
 
-**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). Los siete casos están escritos y sus calificadores probados sin gastar nada; **todavía no se corrieron con el modelo**, así que no hay cifras. Cuando se corran se publican tal como salgan, buenas o malas.
+**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). **Medición parcial del 2026-10-01:** `spec-reviewer` (Windows, 5 corridas por caso, 0,84 USD) aprobó 10 de 10 tras relajar por decisión del autor el calificador del caso limpio (aceptar REQUEST_CHANGES si no hay alcance agregado). `plan-auditor` y `validator` (WSL2) no se midieron: la calibración chocó con el límite de sesión de la cuenta (HTTP 429).
 
-**Detalle técnico.** Casos en `tests/evals/plan-cases.js`, calificadores probados en `tests/eval-plan-cases.test.js`. Todo en opus. Cuando haya corridas, la tabla va acá y en `tests/evals/RESULTS-hito-5.md` (comando, fecha, versión de Claude Code, aciertos por caso, costo).
+**Detalle técnico.** Casos en `tests/evals/plan-cases.js`, calificadores probados en `tests/eval-plan-cases.test.js`. Todo en opus, Claude Code 2.1.285.
+
+| Agente | Caso | Aciertos / corridas | USD por corrida | Estado |
+| --- | --- | --- | --- | --- |
+| spec-reviewer | alcance agregado | 5/5 | 0,086 | pasa |
+| spec-reviewer | limpio | 5/5 | 0,081 | pasa (grader relajado por el autor) |
+| plan-auditor | 3 casos | no medido | — | pendiente (WSL2, límite de sesión) |
+| validator | 2 casos | no medido | — | pendiente (WSL2, límite de sesión) |
+
+Comandos, frenos y el motivo de la falla en [`tests/evals/RESULTS-hito-5.md`](tests/evals/RESULTS-hito-5.md).
 
 ## Validación de planes
 

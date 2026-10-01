@@ -210,6 +210,16 @@ test('evals 5b: spec-reviewer-clean reprueba con un hallazgo BLOCKER o CRITICAL 
   assert.ok(!ok('Findings\n- none\nbut I have no verdict'), 'aprueba sin palabra de veredicto');
 });
 
+test('evals 5b (decisión del autor 2026-10-01): spec-reviewer-clean acepta REQUEST_CHANGES con Added = none y reprueba ESCALATE o un ítem agregado', () => {
+  const c = caseOf('spec-reviewer-clean');
+  const gs = graders(c.name);
+  const all = (report) => gs.every((g) => grade(g, { trace: run(c, { report }), files: c.files }));
+  const none = c.samples.pass;
+  assert.ok(all(none.replace(/APPROVEs*$/, 'REQUEST_CHANGES')), 'REQUEST_CHANGES con Added = none debe pasar');
+  assert.ok(!all(none.replace(/APPROVEs*$/, 'ESCALATE')), 'ESCALATE debe reprobar');
+  assert.ok(!all(c.samples.fail), 'REQUEST_CHANGES con un ítem agregado debe reprobar');
+});
+
 // ---- arreglos de la revisión final de 5b (0.8.1): I4, I5, I6 y M1 ----
 const verifyReportOf = (entries) => `Experiments done.\n\`\`\`json\n${JSON.stringify(entries, null, 2)}\n\`\`\`\nREQUEST_CHANGES`;
 
