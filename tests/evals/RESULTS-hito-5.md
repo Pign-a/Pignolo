@@ -1,6 +1,6 @@
 # Resultados de las evals del hito 5b (spec-reviewer, plan-auditor, validator)
 
-Estado: **etapa Windows completa (10/10); WSL2 sin medir por el límite de sesión (HTTP 429), 2026-10-01.** Gasto: **1,482 USD** de un tope total de 17 (D-5-2). La combinación 2a + 2b sobre el plan del hito 6 se omitió por pedido. Sin transcripciones completas; los fixtures son sintéticos. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
+Estado: **etapas Windows (10/10) y WSL2 (25/25) completas, 2026-10-01.** Gasto: **6,066 USD** de un tope total de 17 (D-5-2). La combinación 2a + 2b sobre el plan del hito 6 se omitió por pedido. Sin transcripciones completas; los fixtures son sintéticos. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
 
 Diseño: spec §15 y `tests/evals/plan-cases.js`. Casos generados con `node tests/evals/plan-cases.js --out tests/evals/generated/plan`. Todo en opus. Umbral de la spec (§0 d): al menos 4 de 5 corridas por caso. Claude Code 2.1.285, Windows nativo, pignolo 0.8.1 (main en 4ac552d).
 
@@ -52,4 +52,24 @@ Tras el freno iii el autor decidió relajar `verdict-approve` de `spec-reviewer-
 
 ## Etapa WSL2: calibración invalidada por el límite de sesión (2026-10-01)
 
-Comando (script `wsl5-calib.sh`, `PATH` mínimo, trazas copiadas fuera de `/tmp`): `claude plugin eval . --eval-dir tests/evals/generated/plan --tag wsl2 --runs 1 -j 2 --ablation none --scaffold --trust-plugin --allow-tools Bash Edit Write --keep-temp --no-publish --max-cost-usd 1.5 --json tests/evals/generated/calib-wsl.json`. Costo 0,179 USD. **Cortó el freno de entorno: HTTP 429 "You've hit your session limit, resets 9am (UTC)"** en las 5 corridas (cuatro sin despachar nada, una con el `plan-auditor` fallado). Las 5 reprobaron, pero por falta de servicio, no por conducta de los agentes: no miden nada. No se reintentó. Pendiente: recalibrar WSL2 (5 casos) y la completa tras el reinicio del límite; el gasto acumulado es 1,482 USD de 17.
+Comando (script `wsl5-calib.sh`, `PATH` mínimo, trazas copiadas fuera de `/tmp`): `claude plugin eval . --eval-dir tests/evals/generated/plan --tag wsl2 --runs 1 -j 2 --ablation none --scaffold --trust-plugin --allow-tools Bash Edit Write --keep-temp --no-publish --max-cost-usd 1.5 --json tests/evals/generated/calib-wsl.json`. Costo 0,179 USD. **Cortó el freno de entorno: HTTP 429 "You've hit your session limit, resets 9am (UTC)"** en las 5 corridas (cuatro sin despachar nada, una con el `plan-auditor` fallado). Las 5 reprobaron, pero por falta de servicio, no por conducta de los agentes: no miden nada. No se reintentó. Esa calibración no mide nada y se repitió tras el reinicio del límite (abajo).
+
+## Etapa WSL2 repetida y completa (2026-10-01, con el grader relajado)
+
+Script `ev5w-run.sh` (`PATH` mínimo `$HOME/.local/node/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin`, trazas copiadas fuera de `/tmp` apenas termina cada corrida, `MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu -- bash …`). Flags comunes: `--eval-dir tests/evals/generated/plan --ablation none --scaffold --trust-plugin --allow-tools Bash Edit Write --keep-temp --no-publish`. `git diff --quiet` sobre `plan-cases.js` sale 0 (freno ii).
+
+| Etapa | Selección | Costo (USD) | Resultado |
+|---|---|---|---|
+| Sonda | `--case plan-auditor-review-defect --runs 1 --max-cost-usd 0.6` | 0,175 | 1/1, 5 eventos SUB (freno i) |
+| Calibración | `--tag wsl2 --runs 1 -j 2 --max-cost-usd 1.5` | 0,757 | 5/5; 5 × 0,757 = 3,79 ≤ tope de 5 (freno iv) |
+| Completa | `--tag wsl2 --runs 5 -j 2 --max-cost-usd 5` | 3,652 | 25/25 |
+
+| Agente | Caso | Aciertos / corridas | USD por corrida | Segundos por corrida | Umbral 4/5 |
+|---|---|---|---|---|---|
+| plan-auditor | plan-auditor-review-defect | 5/5 | 0,157 | 43 | pasa |
+| plan-auditor | plan-auditor-review-clean | 5/5 | 0,123 | 33 | pasa |
+| plan-auditor | plan-auditor-verify-claim | 5/5 | 0,177 | 47 | pasa |
+| validator | validator-drift | 5/5 | 0,143 | 34 | pasa |
+| validator | validator-no-holdout | 5/5 | 0,130 | 32 | pasa |
+
+Gasto acumulado de 5b: 1,482 + 0,175 + 0,757 + 3,652 = **6,066 USD de 17**. Windows ya tenía 5 corridas por caso, así que no se repitió. Sin frenos activados. Los temporales de `--keep-temp` (Windows y WSL2) se borraron tras leer las trazas.
