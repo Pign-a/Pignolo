@@ -1,6 +1,6 @@
 {
   "catalogVersion": "0.3.0",
-  "note": "v1 catalog (spec §5): the 25 checker rules of §5.4, THEME-03 (checked by design-md validate), the 4 browser checks (hito 3) and the 7 static SEO ids of §5.4 (only when DESIGN.md declares web.public: true).",
+  "note": "v1 catalog (spec §5): the 25 checker rules of §5.4, THEME-03 (checked by design-md validate), the 4 browser checks (browser.mjs measure, hito 3) and the 7 static SEO ids of §5.4 (only when DESIGN.md declares web.public: true).",
   "rules": [
     { "id": "A11Y-01", "criterion": "<html lang> present and a valid BCP 47 tag", "class": "script", "level": "document", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 3.1.1 (A); BCP 47 (RFC 5646)", "checker": "ui-check", "related": [], "conflicts": [] },
     { "id": "A11Y-02", "criterion": "<title> present and not empty", "class": "script", "level": "document", "platform": "D+M", "severity": "bloquea", "floor": true, "acceptsIntentional": false, "source": "WCAG 2.2 SC 2.4.2 (A)", "checker": "ui-check", "related": [], "conflicts": [] },

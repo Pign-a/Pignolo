@@ -1,7 +1,8 @@
 // ui-check runner (spec §5.3, §5.5). Reads the inputs, runs the rules and returns entries;
 // it never writes anything (scripts/ui-check.mjs writes <run>/ui-check.json).
 //
-// runCheck({ project, files, design, base, dom, inject }) -> Promise<{ entries, inputs, exitCode }>
+// runCheck({ project, files, design, base, dom, urls, measures, inject }) -> Promise<{ entries, inputs, exitCode }>
+//   measures   { file, entries } of a browser.json (scripts/browser.mjs measure) or null.
 //   files/dom  paths relative to `project` (or absolute inside it); `files: []` is valid and
 //              runs only the project rules (checkProject).
 //   design     path of DESIGN.md or null.   base  git ref or null.
@@ -273,7 +274,7 @@ function sourceFilesOf(project, relFiles, designRel) {
   return [...new Set(list)];
 }
 
-export async function runCheck({ project, files = [], design = null, base = null, dom = [], urls = [], inject = {} } = {}) {
+export async function runCheck({ project, files = [], design = null, base = null, dom = [], urls = [], measures = null, inject = {} } = {}) {
   const root = path.resolve(project);
   const rules = inject.rules ?? DISK_RULES;
   const catalog = inject.catalog ?? loadCatalog();
@@ -298,8 +299,10 @@ export async function runCheck({ project, files = [], design = null, base = null
     .map((e) => ({ ...e, scope: domSet.has(e.file) ? 'new' : e.scope === 'debt' ? 'debt' : 'new' }));
   // (5) severity, (6) aggregation and order
   const entries = aggregate(scoped.map((e) => ({ ...e, severity: effectiveSeverity(e, byId.get(e.id)) }))).map(publicEntry);
+  // Browser measures (browser.json) come scoped and with their severity: appended as they are.
+  if (measures) entries.push(...measures.entries.map(publicEntry));
 
-  const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : [])]
+  const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : []), ...(measures ? [measures.file] : [])]
     .map((rel) => ({ file: rel, sha256: sha256(path.join(root, rel)) }));
   if (site) {
     for (const r of [...site.pages, site.robots, ...site.sitemaps]) if (r.sha256) inputs.push({ url: r.finalUrl, sha256: r.sha256 });

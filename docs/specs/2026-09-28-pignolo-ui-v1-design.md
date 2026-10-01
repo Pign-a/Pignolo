@@ -365,9 +365,9 @@ Leyenda de las columnas: **Nivel** = `d` document, `e` element, `s` style. **Int
 | # | Chequeo | Regla | Severidad |
 |---|---|---|---|
 | B1 | Contraste computado del texto sobre el fondo sólido de su contenedor; se eximen los controles deshabilitados, como lo hace WCAG. Imagen o degradé: "no verificado". Resuelve `rgb()` con alfa, `lab()` y `oklch()` computados, con fixtures de cada uno | COLOR-03 | `bloquea` si es nuevo |
-| B2 | Recorrido con Tab: se llega a cada enfocable (incluido el botón del menú de navegación) y, al enfocarlo, cambian sus estilos computados. Se eximen los controles deshabilitados | STATE-04 (2.4.7), NAV-01 parte teclado (2.1.1) | `bloquea` si es nuevo |
-| B3 | Ningún texto con `scrollWidth > clientWidth + 1` sin `text-overflow`, sin scroll horizontal y con margen lateral ≥ 16 px. Las barras de borde a borde (por ejemplo, la nav móvil) no cuentan como violación del margen | LAYOUT-11 a 320 px (1.4.10) → `bloquea`; a otros anchos → `alto`; LAYOUT-10 → `alto` | ver regla |
-| B4 | Con `prefers-reduced-motion: reduce` y sin scroll, todo el texto de los dos primeros viewports tiene opacidad > 0 | MOTION-07 | `alto` |
+| B2 | Recorrido con Tab: se llega a cada enfocable (incluido el botón del menú de navegación) y, al enfocarlo, cambian sus estilos computados. Un grupo de radios con el mismo `name` cuenta como alcanzado si Tab entró en uno (las flechas mueven dentro). Se eximen los controles deshabilitados | STATE-04 (2.4.7), NAV-01 parte teclado (2.1.1) | `bloquea` si es nuevo |
+| B3 | Ningún texto con `scrollWidth > clientWidth + 1` sin `text-overflow`, sin scroll horizontal y con margen lateral ≥ 16 px. Las barras de borde a borde (por ejemplo, la nav móvil) no cuentan como violación del margen; el texto oculto a propósito (`sr-only`, `visually-hidden`) no se mide | LAYOUT-11 a 320 px (1.4.10) → `bloquea`; a otros anchos → `alto`; LAYOUT-10 → `alto` | ver regla |
+| B4 | Con `prefers-reduced-motion: reduce` y sin scroll, todo el texto de los dos primeros viewports que en la carga normal ya asentada tiene opacidad > 0 sigue teniéndola (un tooltip de `:hover` no cuenta) | MOTION-07 | `alto` |
 
 NAV-01 bloquea solo en su parte de teclado (2.1.1) y de objetivo de 24 px (2.5.8); el resto es `medio`. En v1 solo la parte de teclado tiene checker (B2). PROC-02 (nada de teatro de diseño en el informe) lo hace cumplir `report-check` (§12).
 
@@ -452,6 +452,22 @@ Registradas al construir el SEO estático, `files` y `report-check` (plan `docs/
 - **`files.json`.** Registro por lote en `<run>/<lote>/`: copias byte a byte, estado inicial de git y, tras `verify`, el sha256 de cada archivo esperado y de cada cambio inesperado. `restore` reescribe o borra solo con prueba de sha256 y nunca a través de un enlace que salga del proyecto. Los archivos ignorados por git no se vigilan, pero `save` anota sus rutas (`git ls-files --others --ignored --exclude-standard --directory`, sin leerlos): un archivo sin seguimiento que ya existía antes de `save` (estaba ignorado, estaba en `HEAD` o tiene otra entrada en el estado, como tras `git rm --cached`) nunca se borra y queda `BLOCKED` con `existed-before-the-batch`; una ruta que sigue ahí pero no se puede leer queda `unreadable`. `save` anota también tamaño y mtime de cada archivo ignorado; si un origen se movió, `restore` no borra ningún archivo sin seguimiento inesperado (`source-moved`, §9). `verify` avisa (`problems`, exit 1) si a un archivo esperado ahora se llega por un enlace que sale del proyecto. El lote vive dentro de un run (`.pignolo-ui/runs/<run>/<lote>`); `files.mjs` rechaza otra ubicación.
 - **`report.json`** (contrato interno, lo escribe la skill): `version`, `implemented`, `implements: { path, manifestSha256 }`, `evidence` (sha256 de `ui-check.json` y `browser.json`) y `claims` con `id`, `text`, `rule`, `status`, `measure` y `ref` (`ui-check` por fingerprint, `browser`, `capture` o `file` con sha256). `measure` compara por igualdad exacta las claves que trae la afirmación; una afirmación con `rule`, `status` o `measure` necesita `ui-check` o `browser` (con `capture` o `file` se retira). Un run con un lote (`files.json`, verificado o no) se trata como implementado aunque diga `false`; un `ui-check.json` vencido (algún `inputs` cambió) retira toda afirmación que lo cita.
 - **`browser.json`** (contrato que hereda el hito 3): un objeto con `entries` de la misma forma que las de `ui-check.json`. Hasta el hito 3, una afirmación que lo cita se retira con `browser.json not in the run`.
+
+### 5.10 Aclaraciones técnicas del hito 3
+
+Registradas al construir el navegador (plan `docs/plans/2026-09-30-pignolo-ui-hito-3-navegador.md`). Son decisiones técnicas del agente: no cambian un contrato que consuma el núcleo.
+
+- **Alturas** de los anchos que solo se miden: 768×1024 y 320×640 (§11.3 no las da; B4 depende de ellas).
+- **Navegador:** en Windows se prueba Edge antes que Chrome. `PIGNOLO_UI_BROWSER` inexistente es "sin navegador", no otro navegador.
+- **B1 (COLOR-03):** capas de fondo compuestas hasta la primera opaca; fondo con imagen o degradé, texto con opacidad < 1 y lienzo desconocido son `unverified`; texto grande a 3:1; deshabilitados exentos.
+- **B2 (STATE-04 y NAV-01):** se aprieta Tab hasta (esperados + 5) veces; un esperado no alcanzado es NAV-01 y uno alcanzado sin ningún estilo distinto es STATE-04. Un cambio solo de `cursor` o `transform` no cuenta.
+- **B3 (LAYOUT-11 y LAYOUT-10):** `overflow-x: auto|scroll` queda exento (1.4.10); LAYOUT-11 es `bloquea` a 320 px y `alto` en los otros anchos; las barras de borde a borde no violan el margen: una "barra" es un `header`, `nav` o `footer`, o una franja pintada de menos de un 25 % del alto del viewport; el contenedor pintado de toda la página no lo es. El texto oculto a propósito (caja de 1 px que recorta, `clip: rect(0…)`, `clip-path: inset(50%)`) queda fuera de B1 a B4. B2: un grupo de radios con el mismo `name` (y formulario) cuenta como alcanzado si Tab entró en uno.
+- **B4 (MOTION-07):** texto en los dos primeros viewports con opacidad efectiva 0 bajo `prefers-reduced-motion: reduce` y opacidad > 0 en la carga normal con las animaciones finitas terminadas.
+- **Requiere sesión:** otra ruta u origen que el pedido, o un `input[type=password]` visible: todo `unverified`. La URL se lee de nuevo tras 0,5 s de la carga, después de los chequeos y después de la pasada con movimiento reducido: una redirección del lado del cliente (`history.replaceState('/login')`) también cuenta. Una página que no carga (`PageLoadError`) no se reintenta en los otros anchos y temas: el resto sale `unverified` con el mismo motivo, así una URL colgada cuesta un plazo y no dieciséis.
+- **Huella** `<id>|<página>|<ancho>|<tema>|<selector o clave>`, sin valores ni número de línea. **`--before`:** multiconjunto por huella, como `--base` en `ui-check`.
+- **`browser.json`** crece de forma aditiva: `{ version, browser, url, finalUrl, degraded, cleanup, plan, entries }`, con `cleanup = { graceful, killed, profileRemoved, profile }` o `null`.
+- **`--url` solo local** también en `browser.mjs` (§8 dice "URL o ruta"): una URL de la red local o de staging se rechaza; un archivo va por `--file`.
+- Los estados vacío, cargando y error siguen "no verificado" (A-18).
 
 ---
 
@@ -630,7 +646,7 @@ Transporte **`--remote-debugging-pipe`** (A-12): mensajes JSON separados por `\0
   - macOS: `/Applications`.
   - Linux: `google-chrome`, `chromium` y `microsoft-edge` en `PATH`.
   - `PIGNOLO_UI_BROWSER` fuerza la ruta (R-28).
-- **Limpieza en `finally`:** se cierra el navegador con `Browser.close`. Si no termina en un plazo fijo, se mata el árbol de procesos sin shell (en el spike hizo falta 1 vez de 16) y se borra el perfil; teclas y botones se liberan.
+- **Limpieza en `finally`:** se cierran primero sus páginas y después el navegador con `Browser.close`. Si no termina en un plazo fijo, se mata el árbol de procesos sin shell (en el spike hizo falta 1 vez de 16) y se borra el perfil, con reintentos hasta 20 s; teclas y botones se liberan. Con Ctrl+C o SIGTERM se mata el árbol, se intenta borrar el perfil y se imprime `{ interrupted, cleanup, leftoverProfile? }`; un navegador que no arrancó también informa en `cleanup` si su perfil quedó.
 - **Plazos:** si vence cualquiera, "no verificado" con el motivo, y limpieza. Una política corporativa que bloquea la depuración remota también da "no verificado".
 - **Tema y anchos:** `prefers-color-scheme` se fija **siempre** de forma explícita (claro, u oscuro solo cuando se mide el oscuro) — porque el headless hereda el tema del SO. Los anchos se emulan con `mobile: false`, para que el ancho medido sea el del viewport pedido.
 - **Framing:** el buffer del pipe se arma sobre `Buffer`, no sobre cadenas, para no romper UTF-8 partido entre dos lecturas.

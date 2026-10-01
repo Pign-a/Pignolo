@@ -2,7 +2,7 @@
 //
 // node <root>/scripts/ui-check.mjs [--project <repo root>] --run <folder in .pignolo-ui/>
 //   (--files <path>)... [--files-from <list.json>] [--design <DESIGN.md>] [--base <ref>]
-//   [--dom <file>]... [--url <development URL>]... [--gate]
+//   [--dom <file>]... [--url <development URL>]... [--measures <browser.json>] [--gate]
 //
 // --url (at most 20, one origin, loopback only: nothing remote at run time) feeds the static
 // SEO rules with what the development server returns; it needs --design (spec §5.4, A-06).
@@ -24,7 +24,7 @@ import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 
 class UsageError extends Error {}
 
-const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url']);
+const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url', 'measures']);
 const REPEATED = new Set(['files', 'dom', 'url']);
 const MAX_URLS = 20;
 const FLAGS = new Set(['gate']);
@@ -103,6 +103,22 @@ function readFilesFrom(file) {
   return list;
 }
 
+// browser.json of scripts/browser.mjs measure (spec §5.9): entries already carry severity,
+// scope and fingerprint; they join ui-check.json as they are.
+const STATUS = new Set(['pass', 'fail', 'unverified']);
+const SEVERITY = new Set(['bloquea', 'alto', 'medio', 'detalle']);
+const SCOPE = new Set(['new', 'debt']);
+function readMeasures(project, file) {
+  let json;
+  try { json = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { throw new UsageError('--measures: browser.json no es JSON válido'); }
+  if (!json || !Array.isArray(json.entries)) throw new UsageError('--measures: browser.json no tiene la lista entries');
+  json.entries.forEach((e, i) => {
+    const ok = e && typeof e.id === 'string' && STATUS.has(e.status) && SEVERITY.has(e.severity) && SCOPE.has(e.scope) && typeof e.fingerprint === 'string';
+    if (!ok) throw new UsageError(`--measures: browser.json: entrada ${i + 1} inválida (id, status, severity, scope y fingerprint)`);
+  });
+  return { file: path.relative(project, file).split(path.sep).join('/'), entries: json.entries };
+}
+
 function checkUrls(urls, design) {
   if (!urls.length) return [];
   if (!design) throw new UsageError('--url necesita --design: el SEO estático solo corre si DESIGN.md declara web.public');
@@ -131,11 +147,12 @@ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {})
     const dom = opts.dom.map((f) => inputFile(project, path.resolve(cwd, f), '--dom'));
     const design = opts.design !== undefined ? inputFile(project, path.resolve(cwd, opts.design), '--design') : null;
     const urls = checkUrls(opts.url, design);
-    if (!files.length && !dom.length && !design) throw new UsageError('falta --files, --dom o --design: no hay nada que chequear');
+    const measures = opts.measures !== undefined ? readMeasures(project, inputFile(project, path.resolve(cwd, opts.measures), '--measures')) : null;
+    if (!files.length && !dom.length && !design && !measures) throw new UsageError('falta --files, --dom, --design o --measures: no hay nada que chequear');
 
     const base = opts.base ?? null;
     if (base !== null) assertRef(project, base); // an invalid ref is a usage error, before any rule runs
-    const result = await check({ project, files, design, base, dom, urls });
+    const result = await check({ project, files, design, base, dom, urls, measures });
 
     ensureRunRoot(project); // .pignolo-ui/.gitignore before the first write (spec §3.2)
     fs.mkdirSync(runDir, { recursive: true });
