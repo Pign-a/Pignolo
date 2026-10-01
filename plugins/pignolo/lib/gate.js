@@ -12,6 +12,7 @@ const { workingTree, changedFiles, addedLines, headSha } = require('./changes');
 const { weakenings } = require('./test-integrity');
 const { repoIdFor, writeSeal } = require('./seals');
 const { expandSeed } = require('./init-seed');
+const { gitRun } = require('./git');
 
 const LEVELS = ['on-edit', 'on-done', 'pre-merge'];
 const SEALED = ['on-done', 'pre-merge'];
@@ -46,7 +47,21 @@ function defaultExec(command, { cwd, timeoutMs, logFile, env }) {
   }
 }
 
-const inFiles = (files, p) => files.includes(p) || matchAny(files, p);
+// Rutas declaradas contra rutas del diff (D-7-9, C-08): se normalizan (`/`, sin `./`) y, con
+// core.ignorecase = true, sin distinguir mayúsculas (git informa la ruta con las del índice).
+const normPath = (p, ic) => {
+  const s = String(p).replace(/\\/g, '/').replace(/^(\.\/)+/, '');
+  return ic ? s.toLowerCase() : s;
+};
+const inFiles = (files, p, ic = false) => {
+  const list = files.map((f) => normPath(f, ic));
+  const q = normPath(p, ic);
+  return list.includes(q) || matchAny(list, q);
+};
+
+function ignoreCase(cwd) {
+  try { return gitRun(['config', '--get', 'core.ignorecase'], cwd, { timeout: GIT_MS }).toLowerCase() === 'true'; } catch (_) { return false; }
+}
 
 function hasProtects(cwd, rel) {
   try {
@@ -114,11 +129,12 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
         const files = changedFiles({ ...gitOpts, base: ref, tree: treeHash });
         const listed = task.files || [];
         const writer = (task.agents || []).includes('pignolo:test-writer') || task.testAuthorization === true;
+        const ic = ignoreCase(cwd);
         for (const f of files) {
-          if (!inFiles(listed, f.path) && !c.scope.includes(f.path)) c.scope.push(f.path);
+          if (!inFiles(listed, f.path, ic) && !c.scope.includes(f.path)) c.scope.push(f.path);
           if (f.emptied) c.emptied.push(f.path);
           const isTest = matchAny(config.testPaths, f.path) || matchAny(config.protectedTestConfig, f.path);
-          if (isTest && !(writer && inFiles(listed, f.path))) c.integrity.push(f.path);
+          if (isTest && !(writer && inFiles(listed, f.path, ic))) c.integrity.push(f.path);
         }
       }
     }

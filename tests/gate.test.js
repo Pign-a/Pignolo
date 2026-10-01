@@ -301,3 +301,20 @@ test('CLI: --seed inválido y --base inexistente salen 2', () => {
   assert.equal(r.status, 0);
   assert.equal(JSON.parse(r.stdout).seedOffered, 5);
 });
+
+test('alcance con mayúsculas (D-7-9, C-08): con core.ignorecase una ruta declarada con otra capitalización cuenta; sin él son archivos distintos', () => {
+  for (const [ic, want] of [['true', []], ['false', ['src/a.js']]]) {
+    const { cwd, base } = setup();
+    git(cwd, 'config', 'core.ignorecase', ic);
+    write(cwd, 'src/a.js', 'module.exports = 9;\n');
+    commit(cwd, 'cambio');
+    const s = gate(cwd, { task: task(cwd, base, { files: ['Src/A.js'] }) });
+    assert.deepEqual(s.checks.scope, want, `ignorecase=${ic}`);
+    assert.equal(s.status, ic === 'true' ? 'PASS' : 'SCOPE');
+  }
+  // las rutas declaradas se normalizan: './' y '\'
+  const { cwd, base } = setup();
+  write(cwd, 'src/a.js', 'module.exports = 9;\n');
+  commit(cwd, 'cambio');
+  assert.deepEqual(gate(cwd, { task: task(cwd, base, { files: ['.\\src\\a.js'] }) }).checks.scope, []);
+});

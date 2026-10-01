@@ -104,10 +104,12 @@ test('task: registers an absolute worktree from a real worktree', () => {
   assert.strictEqual(r.status, 0, r.stderr);
   const obj = readRunFile(repo);
   assert.deepStrictEqual(validateRun(obj), []);
-  assert.ok(path.isAbsolute(obj.task.worktree));
-  assert.strictEqual(obj.task.base, base);
-  assert.deepStrictEqual(obj.task.files, ['src/a.js', 'src/b.js']);
-  assert.deepStrictEqual(obj.task.agents, ['pignolo:implementer']);
+  assert.strictEqual(obj.v, 2);
+  const t = obj.tasks.uno;
+  assert.ok(path.isAbsolute(t.worktree));
+  assert.strictEqual(t.base, base);
+  assert.deepStrictEqual(t.files, ['src/a.js', 'src/b.js']);
+  assert.deepStrictEqual(t.agents, ['pignolo:implementer']);
   // Desde la worktree se resuelve el mismo run.json del principal.
   assert.strictEqual(run(wt, ['status']).out.run.task.id, 'uno');
 });
@@ -169,7 +171,7 @@ test('task: same id updates (keeps base, adds testRef, replaces lists) and clear
   assert.ok(fs.existsSync(counterPath(process.env, repo, 'x')));
   const r = run(repo, ['task', '--id', 'x', '--test-ref', T, '--file', 'src/a.js', '--agent', 'pignolo:implementer']);
   assert.strictEqual(r.status, 0, r.stderr);
-  const t = readRunFile(repo).task;
+  const t = readRunFile(repo).tasks.x;
   assert.strictEqual(t.base, base);
   assert.strictEqual(t.testRef, T);
   assert.deepStrictEqual(t.files, ['src/a.js']);
@@ -185,7 +187,7 @@ test('task --test-authorization is recorded and valid', () => {
   run(repo, ['start', '--flow', 'daily']);
   assert.strictEqual(run(repo, ['task', '--id', 'x', '--worktree', wt, '--base', base, '--test-authorization']).status, 0);
   const obj = readRunFile(repo);
-  assert.strictEqual(obj.task.testAuthorization, true);
+  assert.strictEqual(obj.tasks.x.testAuthorization, true);
   assert.deepStrictEqual(validateRun(obj), []);
 });
 
