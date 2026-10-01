@@ -163,9 +163,11 @@ function auditorCases() {
       name: `ui-auditor-clean-${n}`, agent: 'ui-auditor', kind: 'auditor', seeded: null, page: PAGES[`clean${n}`],
       graders: [
         saidNot('ui-auditor', 'no-false-positive-bloquea-alto', key('severity', '(bloquea|alto)')),
-        saidNot('ui-auditor', 'no-false-positive-judgment', key('id', 'J-01')),
+        // author decision 2026-10-01: a medio/detalle judgment finding (J-nn) is accepted on a clean page; a rule finding is only
+        // accepted for the two ui-check fails every clean page really has (hard-coded colors and radii, no DESIGN.md)
+        saidNot('ui-auditor', 'no-false-positive-judgment', `\\\\"id\\\\":\\s*\\\\"(?!(?:J-\\d\\d|COLOR-02|LAYOUT-04)\\\\")`),
       ],
-      samples: { pass: reportOf([sampleFinding('COLOR-03', 'detalle')]), fail: reportOf([sampleFinding('COLOR-03', 'alto')]) },
+      samples: { pass: reportOf([sampleFinding('COLOR-02', 'detalle')]), fail: reportOf([sampleFinding('COLOR-03', 'alto')]) },
     });
   }
   for (const c of out) {

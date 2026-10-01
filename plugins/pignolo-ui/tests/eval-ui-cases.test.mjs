@@ -213,12 +213,18 @@ test('I-4: the process graders (single-dispatch, subagent-returned) tell right f
   assert.ok(!traces.grade(returned, { trace: uiTrace(c, 'Audit done, no json block.'), files: {} }), 'a report without the json block is rejected');
 });
 
-test('I-4: a clean page must not get J-01', { skip: skipGraders }, () => {
+test('I-4: a clean page accepts a medium judgment finding but not a rule finding the page does not have', { skip: skipGraders }, () => {
   const clean = CASES().find((x) => x.name === 'ui-auditor-clean-1');
   const g = graderOf(clean, 'no-false-positive-judgment');
+  const hi = graderOf(clean, 'no-false-positive-bloquea-alto');
   assert.ok(g);
   assert.ok(traces.grade(g, { trace: uiTrace(clean, clean.samples.pass), files: {} }));
-  const withJ = reportOfIds(['J-01']);
-  assert.ok(!traces.grade(g, { trace: uiTrace(clean, withJ), files: {} }));
+  const medJ = reportOfIds(['J-01'], 'medio');
+  assert.ok(traces.grade(g, { trace: uiTrace(clean, medJ), files: {} }), 'one medium J-01 passes');
+  assert.ok(traces.grade(hi, { trace: uiTrace(clean, medJ), files: {} }));
+  assert.ok(traces.grade(g, { trace: uiTrace(clean, reportOfIds(['COLOR-02', 'LAYOUT-04', 'J-04'], 'medio')), files: {} }), 'the ui-check fails the page has pass');
+  assert.ok(!traces.grade(hi, { trace: uiTrace(clean, reportOfIds(['J-01'], 'alto')), files: {} }), 'a high J-01 fails');
+  assert.ok(!traces.grade(hi, { trace: uiTrace(clean, reportOfIds(['J-01'], 'bloquea')), files: {} }), 'a blocking J-01 fails');
+  assert.ok(!traces.grade(g, { trace: uiTrace(clean, reportOfIds(['COLOR-03'], 'medio')), files: {} }), 'a rule finding the page does not have fails');
 });
-const reportOfIds = (ids) => `Audit.\n\`\`\`json\n${JSON.stringify({ findings: ids.map((id) => ({ id, severity: 'detalle', scope: 'new', plain: 'x', evidence: { kind: 'file', path: 'src/index.html', line: 1 }, why: 'y' })), notVerified: [], independent: true })}\n\`\`\``;
+const reportOfIds = (ids, severity = 'detalle') => `Audit.\n\`\`\`json\n${JSON.stringify({ findings: ids.map((id) => ({ id, severity, scope: 'new', plain: 'x', evidence: { kind: 'file', path: 'src/index.html', line: 1 }, why: 'y' })), notVerified: [], independent: true })}\n\`\`\``;
