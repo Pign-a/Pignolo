@@ -13,6 +13,11 @@ const DEFAULT_DEADLINE_MS = 3000;
 // SessionStart no es una compuerta (no puede bloquear) y corre el canario: más plazo.
 const DEADLINES_MS = { 'session-start': 25000 };
 
+// Hooks que nunca niegan (R-5 del hito 6): SubagentStart no puede bloquear según la doc del
+// host; un exit 2 solo mostraría un aviso engañoso y perdería la inyección. Ante un fallo o
+// un plazo vencido: motivo a stderr y exit 0.
+const FAIL_OPEN = new Set(['subagent-start']);
+
 function deadlineFor(name) {
   return DEADLINES_MS[name] || DEFAULT_DEADLINE_MS;
 }
@@ -49,16 +54,16 @@ function runInWorker() {
 
 function main() {
   let done = false;
+  const name = process.argv[2];
   function fail(msg) {
     if (done) return;
     done = true;
     try { process.stderr.write(`pignolo: ${msg}\n`); } catch (_) { /* nada más que hacer */ }
-    process.exit(2);
+    process.exit(FAIL_OPEN.has(name) ? 0 : 2);
   }
   process.on('uncaughtException', (e) => fail(`error interno del hook (${e && e.message})`));
   process.on('unhandledRejection', (e) => fail(`error interno del hook (${e && e.message})`));
 
-  const name = process.argv[2];
   if (!name || !/^[a-z_][a-z0-9_-]*$/.test(name)) fail('nombre de hook inválido');
 
   let input;

@@ -1,5 +1,5 @@
 {
-  "description": "pignolo: guardia de git, protección del interruptor, canario y respaldo",
+  "description": "pignolo: guardia de git, protección del interruptor, canario, respaldo, egreso y continuidad",
   "hooks": {
     "PreToolUse": [
       {
@@ -48,6 +48,20 @@
         "matcher": "Artifact",
         "hooks": [
           { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "present-gate"], "timeout": 30 }
+        ]
+      },
+      {
+        "matcher": "WebSearch|WebFetch|mcp__.*",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "egress"], "timeout": 30 }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "^pignolo:",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "subagent-start"], "timeout": 30 }
         ]
       }
     ],

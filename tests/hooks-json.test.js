@@ -75,3 +75,15 @@ test('scope-gate, plan-audit-gate and present-gate are registered exactly as exp
   const own = hooks.PreToolUse.find((m) => m.hooks.some((h) => h.args[1] === 'scope-gate'));
   assert.strictEqual(own.hooks.length, 1);
 });
+
+// Hito 6 (Task 8): SubagentStart y egreso, cada uno en su entrada y con su matcher exacto.
+test('subagent-start and egress are registered exactly as expected', () => {
+  const pick = (event, name) => handlersFor(event).filter((h) => h.args[1] === name);
+  const sub = pick('SubagentStart', 'subagent-start');
+  assert.deepStrictEqual(sub.map((h) => h.matcher), ['^pignolo:']);
+  const eg = pick('PreToolUse', 'egress');
+  assert.deepStrictEqual(eg.map((h) => h.matcher), ['WebSearch|WebFetch|mcp__.*']);
+  for (const h of [...sub, ...eg]) assert.ok(h.timeout >= 30 && h.timeout <= 60, h.args[1]);
+  const own = hooks.PreToolUse.find((m) => m.hooks.some((h) => h.args[1] === 'egress'));
+  assert.strictEqual(own.hooks.length, 1);
+});

@@ -21,6 +21,18 @@ test('a subagent cannot run plan.js, plan-audit.js or approved.js; the main thre
   }
 });
 
+// Protects: hito 6, Task 8 (los scripts que escriben .pignolo/state/ son del hilo principal) ·
+// Breaks if: PLAN_SCRIPT no suma close-session.js y state-index.js.
+test('a subagent cannot run close-session.js or state-index.js; the main thread can', () => {
+  for (const s of ['close-session.js archive', 'state-index.js', 'state-index.js --check']) {
+    denied(call(`node ${P}/scripts/${s}`), s);
+    passes(call(`node ${P}/scripts/${s}`, {}), `main ${s}`);
+  }
+  denied(call('node "${CLAUDE_PLUGIN_ROOT}/scripts/close-session.js" prune'), 'close-session dyn');
+  denied(call(`& node "${P}/scripts/state-index.js"`, SUB, 'PowerShell'), 'state-index ps');
+  passes(call('node scripts/close-session.js archive'), 'project close-session.js');
+});
+
 test('read-only scripts and reading the script are not denied', () => {
   for (const s of ['next.js', 'approved-verify.js', 'plan-check.js --plan p', 'present.js check']) passes(call(`node ${P}/scripts/${s}`), s);
   passes(call(`cat ${P}/scripts/plan.js`), 'cat');
