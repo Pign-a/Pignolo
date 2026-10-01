@@ -62,3 +62,7 @@ Mismo brief y misma tarea (4 pantallas HTML más la página de comparación), co
 | Opus, carta mejorada | ~79 mil | 134 s | 9 | 18,6 KB | A "dense ledger"; B "quiet monument" |
 
 **Lectura:** las reglas de oficio no encarecen (sonnet igual, opus algo menos porque esta vez no hubo repetición). Opus sigue tardando el doble que sonnet. Si la carta mejorada alcanza para que sonnet deje de ser genérico lo decide el autor mirando los resultados; hasta entonces rige opus en `max` y sonnet en `balanced` y `economy`. Una corrida por brazo.
+
+## Juicio del autor tras mirar los seis resultados (2026-10-01)
+
+El que más le gustó fue **el lienzo generado por opus con el brief original** (brazo "Lienzo, opus"). Ese brazo no usó la carta de `ui-option`: siguió las instrucciones del propio tipo "Design" (que traen reglas de oficio y permiten fuentes de Google) y lo escribió opus. La carta mejorada de `ui-option` no cambió su preferencia. Consecuencia para el plan del hito 4c: la calidad que el autor prefirió salió de opus más las reglas del tipo, así que el modelo de `ui-option` y qué reglas de oficio recibe se deciden con ese dato (decisión del autor pendiente al momento de escribir esto).
