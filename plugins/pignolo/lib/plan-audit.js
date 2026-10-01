@@ -104,6 +104,16 @@ const countLines = (file, only) => {
   } catch (_) { return 0; }
 };
 
+// Los contadores de un plan aunque su modo haya vencido (los usa plan-audit.js finish).
+function readCounters({ main, plan }) {
+  const dir = auditDir(main, plan);
+  return {
+    experiments: countLines(path.join(dir, 'bash-calls.log')),
+    attempts: countLines(path.join(dir, 'stops.log'), 'stop'),
+    incomplete: countLines(path.join(dir, 'stops.log'), 'incomplete') > 0,
+  };
+}
+
 // El modo vigente más reciente. Vencido, ausente o ilegible = inactivo (no bloquea: un
 // mode.json viejo no puede dejar al plan-auditor sin Bash para siempre).
 function readMode({ main, now } = {}) {
@@ -203,5 +213,5 @@ function buildAudit({ review, probe, verification, planCheck, mode }) {
 
 module.exports = {
   MAX_CLAIMS, MAX_BLOCKS, TTL_MIN, auditDir, parseReview, parseVerification,
-  beginMode, readMode, recordExperiment, recordStop, markIncomplete, endMode, stopDecision, buildAudit,
+  beginMode, readMode, readCounters, recordExperiment, recordStop, markIncomplete, endMode, stopDecision, buildAudit,
 };
