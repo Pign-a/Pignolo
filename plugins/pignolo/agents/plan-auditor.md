@@ -1,7 +1,7 @@
 ---
 name: plan-auditor
 description: Dispatched only by pignolo skills with a task-card; never use directly. Checks a plan against the real code, compiling its blocks and testing that each test can fail.
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, Write
 model: opus
 effort: high
 ---

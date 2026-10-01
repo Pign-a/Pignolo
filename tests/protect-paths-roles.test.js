@@ -139,3 +139,64 @@ test('una entrada de task.files con otras mayúsculas autoriza el test en Window
   const { wt } = setup({ testAuthorization: true, files: ['Tests/A.test.js'] });
   assert.strictEqual(protect.run(payload(wt, path.join(wt, 'tests', 'a.test.js'), IMPL), { env: env() }).exit, 0);
 });
+
+// ---- Task 10 (D-5-1): Write acotado del agente que experimenta (VERIFY_AGENT) ----
+const { VERIFY_AGENT } = require('../plugins/pignolo/lib/plan-agents');
+const planAudit = require('../plugins/pignolo/lib/plan-audit');
+
+function auditSetup(mode = 'verify', plan = 'p1') {
+  const repo = makeRepo();
+  fs.mkdirSync(path.join(repo, '.pignolo'), { recursive: true });
+  fs.writeFileSync(path.join(repo, '.pignolo', 'project.md'), '---\ntype: code-tested\n---\n');
+  planAudit.beginMode({ main: repo, plan, mode, claims: [{ id: 'C1', claim: 'c', how: 'h' }] });
+  return repo;
+}
+const auditPay = (repo, file, tool = 'Write', agent = VERIFY_AGENT) => payload(repo, file, agent, tool);
+const scratch = (repo, plan = 'p1') => path.join(repo, '.pignolo', 'tmp', 'plan-audit', plan, 'scratch');
+
+test('verify agent: Write, Edit and MultiEdit are allowed inside the scratch of the live verify mode', () => {
+  const repo = auditSetup();
+  for (const tool of ['Write', 'Edit', 'MultiEdit']) {
+    assert.strictEqual(protect.run(auditPay(repo, path.join(scratch(repo), 'exp1.js'), tool), { env: env() }).exit, 0, tool);
+  }
+});
+
+test('verify agent: everything outside the scratch is denied with an Alternativa', () => {
+  const repo = auditSetup();
+  const deny = (file, label) => {
+    const r = protect.run(auditPay(repo, file), { env: env() });
+    assert.strictEqual(r.exit, 2, label);
+    assert.match(r.stderr, /Alternativa:/, label);
+  };
+  deny(path.join(repo, 'src', 'a.js'), 'source');
+  deny(path.join(repo, '.pignolo', 'tmp', 'plan-audit', 'p1', 'review.json'), 'review.json');
+  deny(path.join(scratch(repo), '..', 'review.json'), 'traversal');
+  deny(path.join(scratch(repo, 'p2'), 'x.js'), 'another plan');
+  deny(path.join(repo, '.pignolo', 'tmp', 'plan-audit', 'p1', 'scratch'), 'the folder itself is not a file inside');
+  if (process.platform === 'win32') {
+    deny(path.join(repo, '.PIGNOLO', 'TMP', 'plan-audit', 'p1', 'review.json'), 'uppercase');
+    deny(path.join(repo, '.pignolo', 'tmp', 'plan-audit', 'p1', 'review.json').replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).split(path.sep).join('/'), 'git bash path');
+  }
+});
+
+test('verify agent: the same scratch path with other case or as /c/... is allowed on win32', { skip: process.platform !== 'win32' }, () => {
+  const repo = auditSetup();
+  const file = path.join(scratch(repo), 'exp1.js');
+  assert.strictEqual(protect.run(auditPay(repo, file.toUpperCase()), { env: env() }).exit, 0, 'case');
+  const gitBash = file.replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`).split(path.sep).join('/');
+  assert.strictEqual(protect.run(auditPay(repo, gitBash), { env: env() }).exit, 0, '/c/...');
+});
+
+test('verify agent: review mode and no live mode deny even the scratch; the main thread is not bound', () => {
+  const rev = auditSetup('review');
+  assert.strictEqual(protect.run(auditPay(rev, path.join(scratch(rev), 'x.js')), { env: env() }).exit, 2);
+  const none = makeRepo();
+  fs.mkdirSync(path.join(none, '.pignolo'), { recursive: true });
+  fs.writeFileSync(path.join(none, '.pignolo', 'project.md'), '---\ntype: code-tested\n---\n');
+  const r = protect.run(auditPay(none, path.join(scratch(none), 'x.js')), { env: env() });
+  assert.strictEqual(r.exit, 2);
+  assert.match(r.stderr, /Alternativa:/);
+  const verify = auditSetup();
+  assert.strictEqual(protect.run(payload(verify, path.join(verify, 'src', 'a.js')), { env: env() }).exit, 0, 'main thread');
+  assert.strictEqual(protect.run(auditPay(verify, path.join(verify, 'src', 'a.js'), 'Write', 'pignolo:explorer'), { env: env() }).exit, 0, 'other role');
+});

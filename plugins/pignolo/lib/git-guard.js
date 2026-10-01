@@ -58,6 +58,7 @@ const RULES = {
   'protected-flag': ['deny', 'los flags del interruptor solo los escribe /pignolo:off y /pignolo:on', 'pedile al humano que escriba /pignolo:off o /pignolo:on'],
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
   'pignolo-run': ['deny', 'un subagente no opera el flujo de pignolo (scripts/run.js): solo el hilo principal lo registra, lo renueva o lo cierra', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el flujo'],
+  'pignolo-plan': ['deny', 'un subagente no opera el plan de pignolo (plan.js, plan-audit.js, approved.js): solo el hilo principal', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el plan'],
   'pignolo-holdout': ['deny', 'solo el hilo principal y el validator ejecutan el holdout de pignolo (scripts/holdout.js)', 'el holdout lo corre el validator; pedile el resultado al hilo principal'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
@@ -297,6 +298,7 @@ function evaluate(command, opts = {}) {
     psTimeoutMs: opts.psTimeoutMs, // solo tests: plazo holgado para el parseo con la máquina cargada
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
     onlyCatastrophic: Boolean(opts.onlyCatastrophic),
+    collect: Array.isArray(opts.collect) ? opts.collect : null, // solo gitCommands: una entrada por `git`
     subagent: Boolean(opts.subagent), // el payload trae agent_id
     agentType: typeof opts.agentType === 'string' ? opts.agentType : null, // agent_type del payload
     trace: [],
@@ -312,6 +314,7 @@ function evaluate(command, opts = {}) {
       found.push(hit('too-deep'));
     }
   }
+  if (Array.isArray(opts.rules)) opts.rules.push(...found.map((v) => v.rule));
   const list = opts.onlyCatastrophic ? found.filter((v) => v.cls === 'catastrophic') : found;
   return decide(list, ctx);
 }
@@ -856,7 +859,24 @@ function checkRunScript(name, words, st, ctx, out) {
       is = c === PIGNOLO_RUN_JS || RUN_JS_RE.test(c);
     }
     if (is) { out.push(hit('pignolo-run')); return; }
+    if (isPlanScript(w, st, ctx)) { out.push(hit('pignolo-plan')); return; }
   }
+}
+
+// plan.js, plan-audit.js y approved.js escriben el estado del plan: solo el hilo principal (R-14).
+// Detección más estrecha que la de run.js (plan.js es un nombre común en cualquier proyecto): la
+// ruta de este plugin, la caché del plugin (.claude/plugins/cache/<mercado>/pignolo/<versión>/),
+// plugins/pignolo/scripts/, o una palabra que empieza con CLAUDE_PLUGIN_ROOT (también ${env:...}).
+// No entran next.js, approved-verify.js, plan-check.js ni present.js.
+const PLAN_SCRIPT = '(?:plan|plan-audit|approved)\\.js';
+const PLAN_JS_LITERAL = new RegExp(`(?:^|/)(?:plugins/pignolo|\\.claude/plugins/cache/[^/]+/pignolo/[^/]+)/scripts/${PLAN_SCRIPT}$`);
+const PLAN_JS_DYN = new RegExp(`^\\$(?:\\{(?:env:)?CLAUDE_PLUGIN_ROOT\\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\\\/]scripts[\\\\/]${PLAN_SCRIPT}$`, 'i');
+const PLAN_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/${PLAN_SCRIPT}$`);
+function isPlanScript(w, st, ctx) {
+  if (w.dyn) return PLAN_JS_DYN.test(w.value);
+  const p = resolveAt(w.value, st, ctx);
+  const c = p === null ? cleanPath(w.value) : p;
+  return PLAN_JS_LITERAL.test(c) || PLAN_JS_OWN.test(c);
 }
 
 // El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el
@@ -891,6 +911,7 @@ function claudePluginOff(args) {
 }
 
 function changeDir(name, args, st, ctx, negated) {
+  st.moved = true; // gitCommands: un comando git posterior corre en otro directorio
   const t = args.find((w) => w.kind !== 'param' && !(w.value.startsWith('-') && w.value.length > 1));
   const before = possible(st);
   let next;
@@ -915,6 +936,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   let i = 1;
   let sub;
   let redirected = Boolean(cmd.gitRedirect);
+  const lost = () => { if (ctx.collect) ctx.collect.push({ sub: null, incomplete: true }); };
   const cfg = [];
   let cfgUnknown = false;
   const done = () => { if (cfgUnknown) out.push(hit('git-config-unknown')); };
@@ -928,12 +950,12 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       if (!w.dyn && (v === '-C' || v === '--git-dir' || v === '--work-tree')) { redirected = true; i++; continue; }
       const dirOpt = /^(-C|--git-dir=|--work-tree=)/.exec(v);
       if (dirOpt && (!w.dyn || w.dynAt >= dirOpt[0].length)) { redirected = true; continue; }
-      if (w.dyn) { out.push(hit('dynamic-argument')); return; }
+      if (w.dyn) { lost(); out.push(hit('dynamic-argument')); return; }
       if (!v.startsWith('-') || v === '-') break;
       if (v === '-c' || v === '--config-env') {
         const nx = words[i + 1];
-        if (!nx) { out.push(hit('git-unknown-option')); return; }
-        if (nx.dyn) { out.push(hit('git-config-override')); return; }
+        if (!nx) { lost(); out.push(hit('git-unknown-option')); return; }
+        if (nx.dyn) { lost(); out.push(hit('git-config-override')); return; }
         cfg.push(nx.value);
         i++;
         continue;
@@ -943,10 +965,11 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       const eq = v.indexOf('=');
       const opt = eq < 0 ? v : v.slice(0, eq);
       if (GIT_GLOBAL_VALUE.has(opt)) {
-        if (eq < 0) { if (!words[i + 1]) { out.push(hit('git-unknown-option')); return; } i++; }
+        if (eq < 0) { if (!words[i + 1]) { lost(); out.push(hit('git-unknown-option')); return; } i++; }
         continue;
       }
       if (GIT_GLOBAL_FLAGS.has(opt)) continue;
+      lost();
       out.push(hit('git-unknown-option'));
       return;
     }
@@ -955,12 +978,19 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     // Después de las reglas del subcomando: si una más específica niega, esa se informa.
     if (keys.some((k) => !CONFIG_ALLOW.test(k) && !OVERRIDE_ALLOW.test(k))) cfgUnknown = true;
     if (i >= words.length) { done(); return; }
-    if (words[i].dyn) { out.push(hit('dynamic-argument')); done(); return; }
+    if (words[i].dyn) { lost(); out.push(hit('dynamic-argument')); done(); return; }
     sub = words[i].value;
   }
-  if (!GIT_BUILTINS.has(sub)) { out.push(hit('unknown-git-subcommand')); done(); return; }
+  if (!GIT_BUILTINS.has(sub)) { lost(); out.push(hit('unknown-git-subcommand')); done(); return; }
   const args = words.slice(i + 1);
   const o = parseOpts(args, SPECS[sub]);
+  if (ctx.collect) {
+    ctx.collect.push({
+      sub, args: args.map((w) => w.value), positionals: o.positionals.map((w) => w.value),
+      shorts: [...o.shorts], longs: [...o.longs],
+      onMain: Boolean(st.onMain), cwdChanged: Boolean(st.moved || redirected),
+    });
+  }
   // Con -C / --git-dir / --work-tree todo se evalúa con sus reglas; lo que depende
   // del estado del otro directorio no se puede ver: `checkout <x>` (¿archivo o rama?)
   // se niega y `merge` pide confirmación (no se sabe si la rama es main).
@@ -1631,6 +1661,24 @@ function psCommands(text, ctx, st) {
   return { cmds: r.cmds, extra };
 }
 
+// ------------------------------------------------------------ git para otros hooks (R-14)
+
+// Reglas que significan "no se supo qué corre": quien llama falla cerrado (devuelve null).
+const BLIND = new Set(['invalid-input', 'unparseable', 'ps-unavailable', 'too-deep', 'dynamic-command', 'hidden-code', 'ps-sink', 'ps-encoded']);
+
+// Una entrada por cada `git` del comando, con la misma tokenización y el mismo estado que
+// `evaluate`: [{ sub, args, positionals, shorts, longs, onMain, cwdChanged }]. `onMain`: un
+// checkout/switch a main/master ya ocurrió antes en el comando; `cwdChanged`: un cd, pushd,
+// Set-Location o `git -C` lo precede. `null` si no se pudo analizar (también un git cuyo
+// subcomando o cuyas opciones salen de una variable).
+function gitCommands(command, opts = {}) {
+  const collect = [];
+  const rules = [];
+  evaluate(command, { shell: opts.shell, psExe: opts.psExe, psTimeoutMs: opts.psTimeoutMs, cwd: opts.cwd, collect, rules });
+  if (rules.some((r) => BLIND.has(r)) || collect.some((c) => c.incomplete)) return null;
+  return collect;
+}
+
 // ------------------------------------------------------------ diagnóstico
 
 function explain(command, opts = {}) {
@@ -1656,4 +1704,4 @@ if (require.main === module) {
   process.stdout.write(`${explain(argv[k + 1], { shell, mode, cwd })}\n`);
 }
 
-module.exports = { evaluate, explain, RULES, CANARIES, AUTO_MODES, UNKNOWN_BRANCH };
+module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES, UNKNOWN_BRANCH };

@@ -356,3 +356,48 @@ test('every rule in the catalog has a class, a reason, and every non-ask an alte
     if (cls !== 'ask') assert.ok(alternative, id);
   }
 });
+
+// ---- gitCommands (R-14): el parser de la guardia expuesto a scope-gate
+const { gitCommands } = require('../plugins/pignolo/lib/git-guard');
+
+test('gitCommands: -C marks cwdChanged and sub is the first non-option word', () => {
+  const r = gitCommands('git -C x merge a', { shell: 'bash' });
+  assert.equal(r.length, 1);
+  assert.equal(r[0].sub, 'merge');
+  assert.equal(r[0].cwdChanged, true);
+  assert.deepEqual(r[0].positionals, ['a']);
+  const c = gitCommands('git -c core.autocrlf=false commit -F f', { shell: 'bash' });
+  assert.equal(c[0].sub, 'commit');
+  assert.equal(c[0].cwdChanged, false);
+});
+
+test('gitCommands: onMain is the state before the command, not the current branch', () => {
+  const r = gitCommands('git checkout main && git merge a', { shell: 'bash' });
+  assert.deepEqual(r.map((c) => c.sub), ['checkout', 'merge']);
+  assert.equal(r[0].onMain, false);
+  assert.equal(r[1].onMain, true);
+  const sw = gitCommands('git switch master; git merge a', { shell: 'bash' });
+  assert.equal(sw[1].onMain, true);
+  const none = gitCommands('git merge a', { shell: 'bash' });
+  assert.equal(none[0].onMain, false);
+});
+
+test('gitCommands: cd before git marks cwdChanged; one entry per git; non-git gives []', () => {
+  const r = gitCommands('cd /tmp/x && git merge a; git log --grep merge', { shell: 'bash' });
+  assert.deepEqual(r.map((c) => [c.sub, c.cwdChanged]), [['merge', true], ['log', true]]);
+  assert.deepEqual(gitCommands('echo merge main', { shell: 'bash' }), []);
+});
+
+test('gitCommands: unparseable or hidden commands give null', () => {
+  assert.equal(gitCommands('git merge "a', { shell: 'bash' }), null);
+  assert.equal(gitCommands('$g merge a', { shell: 'bash' }), null);
+  assert.equal(gitCommands('git $x', { shell: 'bash' }), null);
+  assert.equal(gitCommands('', { shell: 'bash' }), null);
+});
+
+test('gitCommands: PowerShell gives the same result as Bash', () => {
+  const cmd = 'git checkout main; git merge a';
+  const b = gitCommands(cmd, { shell: 'bash' });
+  const p = gitCommands(cmd, { shell: 'powershell', psTimeoutMs: PS_T });
+  assert.deepEqual(p.map((c) => [c.sub, c.onMain, c.cwdChanged, c.positionals]), b.map((c) => [c.sub, c.onMain, c.cwdChanged, c.positionals]));
+});

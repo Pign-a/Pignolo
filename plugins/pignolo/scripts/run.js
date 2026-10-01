@@ -1,7 +1,7 @@
 'use strict';
 // Ciclo de vida de <main>/.pignolo/run.json (spec §6): start | task | renew | status | end.
 // Salida JSON por stdout. Exit 0; 1 con el motivo en stderr; 2 por uso incorrecto.
-// Uso: node run.js <verbo> [opciones] [--cwd <dir>]
+// Uso: node run.js <verbo> [opciones] [--cwd <dir>]  (start --flow plan exige --plan <slug>)
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -23,7 +23,7 @@ const MALFORMED = '_malformed';
 const IGNORED = ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/'];
 const WRITERS_NO_TESTS = ['pignolo:implementer', 'pignolo:fixer'];
 const VERBS = {
-  start: { value: ['flow', 'ttl-min', 'cwd'], bool: ['replace'] },
+  start: { value: ['flow', 'plan', 'ttl-min', 'cwd'], bool: ['replace'] },
   task: { value: ['id', 'worktree', 'base', 'test-ref', 'cwd'], multi: ['file', 'agent'], bool: ['test-authorization'] },
   renew: { value: ['ttl-min', 'cwd'], bool: [] },
   status: { value: ['cwd'], bool: [] },
@@ -81,6 +81,9 @@ function current(main, { needRunning = true } = {}) {
 
 function start(o, main, env) {
   if (!FLOWS.includes(o.flow)) throw new Usage(`--flow debe ser uno de ${FLOWS.join(', ')}`);
+  if (o.flow === 'plan' && !o.plan) throw new Usage('--flow plan necesita --plan <slug>');
+  if (o.plan !== undefined && o.flow !== 'plan') throw new Usage('--plan solo va con --flow plan');
+  if (o.plan !== undefined && !ID_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${ID_RE}`);
   const ms = ttlMs(o);
   const st = readRun(main);
   if (!o.replace) {
@@ -91,6 +94,7 @@ function start(o, main, env) {
   clearCounter(env, main, MALFORMED);
   const now = Date.now();
   const run = { v: 1, flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
+  if (o.plan) run.plan = o.plan;
   ensureIgnored(main, IGNORED);
   writeRun(st.file, run);
   out({ ok: true, run });

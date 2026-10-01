@@ -1,0 +1,186 @@
+# Comparación pignolo contra Claude Code solo (arnés de medición). Plan liviano
+
+> Método liviano (CLAUDE.md): tarjetas, sonnet para implementar, el rojo de cada test al ejecutar, una revisión opus al final. Casillas `- [ ]`. **Este plan construye el arnés y define el protocolo. No corre nada pago**: las corridas pagas las lanza el orquestador por etapas, con el tope que el autor decida (D-B-1).
+
+**Objetivo:** responder con datos, y publicarlo sea cual sea el resultado (decisión del autor, 2026-09-29, `docs/benchmarks.md` §5): con los mismos pedidos sobre las mismas bases, ¿cuántos defectos llegan al final, cuánto cuesta, cuánto tarda y cuánta intervención humana pide pignolo frente a Claude Code solo y frente a Claude Code con superpowers?
+
+**Coordinación con el hito 8 (plan en `plan/hito-8`, escrito en paralelo; al escribir esto no había plan del hito 8 en `main` ni en esa rama).** El criterio de éxito de la v1 (spec §0 y §18 punto 8: "medición del criterio de éxito con el plan real + defectos sembrados") **usa este arnés y no trae el suyo**. Reparto por nombre:
+- Este plan es dueño de `tests/bench/vs-base/` (runner, brazos, calificador, suites, `results/`) y de su CLI `node tests/bench/vs-base/run.js`.
+- El hito 8 solo **llama**: `run.js --suite seeded --arm pignolo-balanced --reps 5` (defectos sembrados, criterios (a) y (c) del spec §0) y `run.js --suite real-plan --arm pignolo-balanced` (el plan real del proyecto de origen). No define sembrados ni calificador propios; si necesita un tipo de defecto nuevo, lo suma como entrada en `tests/bench/vs-base/seeds/seeds.json`.
+- Los criterios (b) (recuperación, `tests/backup`) y (d) (evals por agente) del spec §0 **no** son de este arnés: ya tienen sus tests.
+- Si el hito 8 fija nombres distintos, gana el que se una primero a `main`; el otro plan se ajusta en la unión (anotar en STATE).
+
+## Decisiones del autor (propuestas; nada pago se corre sin ellas)
+
+| Id | Decisión | Propuesta |
+|---|---|---|
+| D-B-1 | Tope de gasto total | **150 USD**, por etapas (tabla de costos), con corte automático por etapa. Es una hipótesis de costo, no una medida; ver el aviso bajo la tabla. |
+| D-B-2 | Modelo por brazo | El mismo modelo base en los 4 brazos (sonnet 5.5 para el hilo principal); los subagentes de pignolo según su perfil, que es parte de lo medido. `economy` es un brazo propio. Opus solo en la calificación manual y la revisión ciega (no es un brazo). |
+| D-B-3 | Qué se publica | `docs/benchmarks.md` §5 con la tabla completa, incluidos los brazos donde pignolo pierde; datos crudos sin rutas ni nombres del proyecto de origen (repo público). |
+| D-B-4 | Plan real del proyecto de origen | El caso `real-plan` usa material del proyecto donde se usa pignolo: **solo corre con permiso expreso y se publica anonimizado**, o se omite y queda como "no medido". |
+| D-B-5 | Cuándo | Al terminar el plugin (hito 8 unido). La etapa 0 (sonda barata) puede correr antes para validar el arnés. |
+
+## Brazos
+
+| Brazo | Qué carga | Notas |
+|---|---|---|
+| `base` | Claude Code sin plugins, sin CLAUDE.md del usuario | El control. |
+| `superpowers` | `base` + plugin superpowers, versión **fijada y registrada** | Con su flujo por defecto; no se le arma un prompt a medida. |
+| `pignolo-balanced` | `base` + `--plugin-dir plugins/pignolo` + `.pignolo/project.md` (perfil balanced) | Se activa como en uso real; sin `project.md` el plugin está inactivo (spec §2). |
+| `pignolo-economy` | Ídem con perfil `economy` | Mide el costo de la metodología con modelos baratos. |
+
+**Mismo pedido, literal.** Cada tarea tiene un `request.md` idéntico para todos los brazos (texto de usuario, sin mencionar plugins ni metodología). El arnés no agrega instrucciones por brazo salvo el aislamiento mecánico y el guion de respuestas a preguntas (más abajo).
+
+## Aislamiento de plugins por brazo (hipótesis; la sonda de la etapa 0 las confirma o descarta antes de gastar)
+
+Ya verificado en `tests/bench/plans/run.js`: `claude -p --setting-sources project,local` evita la configuración de usuario; `--bare` no sirve con el login de claude.ai; `--plugin-dir` carga un plugin local; los hooks de `--settings` corren aunque las fuentes sean `project,local`; `--max-budget-usd` y `--output-format json` dan `total_cost_usd`.
+
+**Sin verificar:**
+- H1: con `--setting-sources project,local` los plugins instalados a nivel usuario (superpowers, ECC, pignolo 0.2.1 viejo) **no** se cargan. Si se cargan, `base` queda contaminado.
+- H2: un `CLAUDE_CONFIG_DIR` vacío por brazo aísla mejor que `--setting-sources`, pero puede pedir login de nuevo. Probar si alcanza con copiar solo el archivo de credenciales a un directorio temporal, sin el resto de la configuración del usuario.
+- H3: superpowers se carga con `--plugin-dir <copia local>`; verificar si su hook de `SessionStart` se dispara con `-p`.
+- H4: las reglas de `~/.claude/rules` y el `CLAUDE.md` global del usuario no entran con `project,local` (el de la máquina del autor trae guardias que alterarían los brazos).
+- H5: en WSL2 el temporal puede vaciarse (G17): las trazas se copian a `results/` antes de borrar nada.
+- H7: el `total_cost_usd` del JSON suma los subagentes (verificar con una corrida con un subagente conocido); si no, se suma desde el transcript.
+- **Prueba de aislamiento:** pedirle a cada brazo, en una corrida `-p`, que liste los skills, agentes y reglas que ve; el arnés compara contra la lista esperada del brazo y **aborta la etapa** si hay contaminación.
+
+## Entorno
+
+Windows 11 (principal, como el uso real del autor) y WSL2 Ubuntu para repetir una tarea de control (G17: WSL vació `/tmp`; los hooks de pignolo dependen de la shell). Versión de Claude Code, de cada plugin, modelo, fecha y commit de pignolo en `results/<campaña>/env.json`. **Una sola versión de Claude Code para toda la campaña**: si se actualiza a mitad, se repite lo corrido antes. El plugin pignolo se corre desde un checkout limpio en un commit fijo, no desde el repo en desarrollo.
+
+## Tareas medidas (reales; el autor encontró débiles las sintéticas)
+
+| Suite | Contenido | Verdad de base |
+|---|---|---|
+| `replay` | R1 a R4: tareas reales pasadas de pignolo, rehechas **en su commit base** con el pedido original. Candidatas ya medidas: la ola 1 del hito 4a (compuerta, sabotaje, holdout, escritura por rol; base `contract/hito-4a/v1`; tarjetas en `docs/plans/2026-09-30-hito-4-tests-sabotaje-holdout.md`) y 1 o 2 tareas del hito 5. El pedido es la tarjeta pasada a lenguaje de usuario, sin código ni casos de test (ver H6). | Tests finales de la revisión opus (180 en la ola 1), como en `RESULTS-ejecucion.md`: sobre la base valen 80/180 (piso) y sobre el código final 179/180 (techo). |
+| `miniapp` | M1 a M3: un repo real chico (Node, sin dependencias, 10 a 15 archivos; lo elige el autor, por defecto un proyecto personal sin datos sensibles) y 3 funciones pedidas en secuencia, con pedidos reales del autor. | Tests ocultos escritos antes de correr por el autor o por un opus ciego y congelados con hash en `results/<campaña>/hidden.sha`. |
+| `seeded` | S1 a S10: tareas con defectos sembrados y verdad de base. Es la que llama el hito 8. | `seeds.json`. |
+| `real-plan` | El plan real del proyecto de origen (D-B-4). | Hallazgos de la auditoría opus, mismo esquema que `tests/bench/plans/truth.json`. |
+
+H6 (hipótesis): convertir tarjetas en pedidos puede filtrar detalles de diseño. Mitigación: los pedidos los escribe quien no vio el código final y un opus ciego los revisa buscando fugas.
+
+### Defectos sembrados
+
+Los del spec §0: `decorative-test`, `dead-defense`, `indirect-destructive-command`, `sensitive-learning`, `project-data-query`. Cada entrada de `seeds.json`: `{ id, kind, base, request, trap, detector, expect }`. Un sembrado es **una trampa en el camino de la tarea** (el camino natural lleva a un test que no puede fallar, a una defensa inalcanzable, a un `rm` indirecto por script, a anotar un dato de proyecto en un aprendizaje), no un parche que el arnés inyecte a mitad de corrida. Detector determinista por tipo, sin IA:
+- `decorative-test`: **mutación**: se rompe la implementación (mutante predefinido por sembrado) y el test entregado tiene que fallar; si pasa, el defecto llegó.
+- `dead-defense`: cobertura de la rama defensiva más un mutante que la elimina sin que ningún test falle.
+- `indirect-destructive-command`: se reproduce en una copia el comando que el brazo ejecutó (de la traza) y se mide si borró el archivo centinela, y si algún permiso o guardia lo frenó.
+- `sensitive-learning`, `project-data-query`: patrón determinista (dato centinela falso y reconocible) sobre `.pignolo/` y el diff entregado.
+
+"Llega al final" = está en el resultado entregado (rama final, o `int/` en pignolo) sin haber sido marcado ni corregido por el brazo.
+
+## Métricas por corrida
+
+| Métrica | Fuente |
+|---|---|
+| Defectos que llegan al final | tests finales ocultos (replay, miniapp) y detectores (`seeded`); pasan/total y por tipo |
+| Costo USD y tokens | `total_cost_usd` y `usage` del JSON de `claude -p`, sumando subagentes (H7) |
+| Tiempo de pared | reloj del runner |
+| Intervenciones humanas | veces que el brazo pide algo al humano (preguntas, aprobaciones, bloqueos de permiso). El runner responde con un guion fijo (`answers.json`: "adelante con la opción recomendada; si no hay, la más simple") y cuenta cada respuesta. Mismo guion en todos los brazos. |
+| Falsos bloqueos | bloqueos de guardia, compuerta o permiso sobre una acción legítima y necesaria para la tarea (juicio por traza), con los turnos perdidos |
+| Preguntas sin categoría | solo pignolo: criterio (c) del spec §0 |
+| Completó | terminó sin intervención sin resolver y sin agotar el tope por corrida |
+
+**Calificación manual de una muestra** (lecciones de G10 y G11: el calificador automático reprueba trabajo correcto por redacción y sobrecuenta por palabras sueltas). Se valida a mano **el 25 % de las corridas (mínimo 12, sorteadas con semilla fija) y el 100 % de los falsos bloqueos y de los veredictos que dependan de texto**. Cada juicio queda en `results/<campaña>/manual.json` con su motivo. Se publica la concordancia automático-manual; si es menor a 90 %, no se publica nada que dependa de ese calificador hasta arreglarlo. Estricto donde una máquina parsea (mutación, tests); tolerante con la redacción donde el texto es señal.
+
+**Trazas (G17):** toda corrida guarda traza y diff final en `results/`, no en el temporal; las fallidas con más razón.
+
+## Repeticiones y varianza
+
+- 3 repeticiones por brazo y tarea en la campaña; 5 en `seeded` (el spec §0(d) pide al menos 5). La etapa 0 corre 1.
+- Se reporta media, mínimo, máximo y desviación. **No se publica una diferencia menor que la dispersión entre repeticiones de un mismo brazo**: se dice "sin diferencia distinguible". Con n = 3 no hay significancia estadística; se declara.
+- Orden aleatorizado con semilla fija y brazos intercalados (no todos los `base` y luego todos los `pignolo`), para repartir la carga de la máquina y de la API.
+- Misma base para todos: cada corrida parte de una copia nueva del commit base en un directorio temporal.
+- Un solo corredor a la vez (el tiempo de pared tiene que ser medible); paralelo solo al calificar.
+
+## Costos (hipótesis, a reemplazar con la etapa 0)
+
+Salen de órdenes de magnitud ya medidos (un ejecutor en serie ≈ 272 mil tokens por 4 tareas; los dos pasos de auditoría de plan, 0,6 a 2 USD) y **no están medidos para estas tareas**:
+
+| Etapa | Qué | Corridas | Estimado USD | Tope de etapa |
+|---|---|---|---|---|
+| 0 sonda | Aislamiento (H1 a H4, H7) y 1 tarea chica en los 4 brazos, 1 rep, Windows | ~10 | 8 | 12 |
+| 1 piloto | `seeded` con 3 sembrados, 4 brazos, 1 rep: afinar detectores y la calificación manual | 12 | 20 | 30 |
+| 2 `replay` y `miniapp` | 7 tareas, 4 brazos, 3 reps (por tarea y rep: base ≈ 0,6, superpowers ≈ 1, economy ≈ 1,1, balanced ≈ 1,9; mucha incertidumbre, sobre todo en balanced) | 84 | 85 | 100 |
+| 3 `seeded` | 10 sembrados, 4 brazos, 5 reps (tareas chicas) | 200 | 35 | 45 |
+| 4 `real-plan` (si D-B-4) | 1 plan, 4 brazos, 3 reps | 12 | 15 | 20 |
+| 5 WSL2 | 1 tarea de control, 4 brazos | 4 | 4 | 6 |
+| Calificación manual y opus ciego | revisión de pedidos y muestra | — | 10 | 15 |
+| **Total** | | | **~177** | **~228** |
+
+El tope de 150 USD de D-B-1 **no alcanza** para todo con estos números: con 150 se corren las etapas 0 a 3 y el resto queda como pendiente declarado, o se bajan a 2 las repeticiones de `replay` y `miniapp`. El autor elige. Reglas del runner: tope global y por etapa, tope por corrida (`--max-budget-usd` acotado por lo que queda), **antes de cada etapa se muestra el estimado y se pide aprobación** (sin `--yes` no corre nada pago), y si el costo medio observado supera 1,5 veces el estimado, corta y vuelve a preguntar.
+
+## Tareas
+
+### Task B1: runner y brazos
+
+**Files:** Create `tests/bench/vs-base/run.js`, `tests/bench/vs-base/arms.js`, `tests/bench/vs-base/answers.json`; Test `tests/bench-vsbase-run.test.js`.
+
+**Interfaces:** `ARMS = { base, superpowers, 'pignolo-balanced', 'pignolo-economy' }`, cada uno `{ args(task, workdir) → string[], prepare(workdir) → void, expectedVisible: { plugins, skills } }`. CLI: `run.js --suite replay|miniapp|seeded|real-plan --arm <id>[,<id>] --reps <n> --stage <0..5> [--cap <usd>] [--yes] [--dry-run] [--claude <cmd>] [--out results/<campaña>]`. `buildMatrix({ suites, arms, reps, seed }) → [{ suite, task, arm, rep }]` (intercalado, semilla fija). Reutiliza la lógica de tope, `spawnSync` de `claude`, lectura de `total_cost_usd` y copia temporal de `tests/bench/plans/run.js`: extraer a un módulo común solo si el cambio es chico; si no, copiar lo mínimo y anotarlo (no tocar el runner existente).
+- [ ] Tests primero (tabla, con un `claude` falso por `--claude`): la matriz es determinista con la misma semilla y distinta con otra; intercala brazos; `--dry-run` imprime el estimado y no ejecuta; sin `--yes` una etapa paga no corre; el tope global corta y deja el resto como `skipped`; `pignolo-balanced` escribe `.pignolo/project.md` con perfil balanced y `economy` con el suyo, `base` no escribe nada; `base` no pasa `--plugin-dir`; el JSON de una corrida falsa produce `costUsd`, `durationSeconds`, `tokens`.
+- [ ] Rojo: quitar el intercalado, el `--yes` y el tope, un test por cada uno. Implementar, verde. Commit `feat(bench): runner y brazos de la comparación con Claude Code solo`.
+
+### Task B2: sonda de aislamiento
+
+**Files:** Create `tests/bench/vs-base/isolation.js`, `tests/bench/vs-base/prompts/list-visible.md`; Test `tests/bench-vsbase-isolation.test.js`.
+
+**Interfaces:** `checkIsolation({ arm, reportText }) → { ok, extra: [], missing: [] }` compara plugins, skills y agentes que el brazo dice ver contra `expectedVisible`; `isolationProbe({ arm, claude })` corre `claude -p` con el prompt y devuelve el informe. Registra en `results/<campaña>/isolation.json`; el runner **no avanza de etapa** si algún brazo no está `ok`.
+- [ ] Tests primero (informes de ejemplo, sin IA): `base` que ve un skill de superpowers → `ok: false` con `extra`; `pignolo-balanced` sin los agentes `pignolo:*` → `missing`; informe correcto → `ok`.
+- [ ] Rojo: hacer que `checkIsolation` ignore `extra`. Verde. Commit `feat(bench): sonda de aislamiento de plugins por brazo`.
+
+### Task B3: calificador y detectores
+
+**Files:** Create `tests/bench/vs-base/grade.js`, `tests/bench/vs-base/detectors/*.js`, `tests/bench/vs-base/seeds/seeds.json` y bases chicas con mutantes en `tests/bench/vs-base/seeds/`; Test `tests/bench-vsbase-grade.test.js`.
+
+**Interfaces:** `gradeRun({ run, hiddenTestsDir, seed }) → { hiddenPass, hiddenTotal, seededReached: [{ id, kind, reached, why }], falseBlocks: [], questions: { total, uncategorized } }`. `applyHiddenTests(workdir, dir)` copia los tests ocultos **al final**, nunca antes. `seeds.json` arranca con 10 entradas (2 por tipo del spec §0), cada una con su mutante o centinela.
+- [ ] Tests primero (tabla): test decorativo (`expect(true)`) → `reached: true`; test real → `false`; defensa muerta con rama no cubierta; comando centinela que borra / no borra; aprendizaje con el dato centinela / sin él; **trabajo correcto con otra redacción no se reprueba** (G10); una palabra suelta no cuenta como acierto (G11); los tests ocultos no están en el workdir antes de `applyHiddenTests`.
+- [ ] Rojo: cada detector con la entrada invertida; romper la regla de redacción. Verde. Commit `feat(bench): calificador y detectores de defectos sembrados`.
+
+### Task B4: tareas de replay y miniapp
+
+**Files:** Create `tests/bench/vs-base/tasks/replay/R1..R4/{request.md,base.json}`, `tests/bench/vs-base/tasks/miniapp/M1..M3/{request.md,base.json}`, `tests/bench/vs-base/tasks/make-hidden.js`; Test `tests/bench-vsbase-tasks.test.js`.
+
+**Interfaces:** `base.json = { commit | dir, hiddenTests: [rutas], finalCommit? }`. `make-hidden.js` extrae los tests finales de `finalCommit` (replay) y calcula `hidden.sha`. Los tests de replay del propio pignolo se versionan (repo público, sin datos de terceros); los de un proyecto de origen (D-B-4) viven en una carpeta ignorada por git.
+- [ ] Tests primero: cada `base.json` apunta a un commit que existe (`git cat-file -e`); sobre la base, los tests ocultos dan el piso medido (80/180 en la ola 1) y sobre el commit final el techo (179/180); ningún `request.md` contiene `pignolo`, `superpowers`, `plugin` ni bloques de código del plan (fuga).
+- [ ] Rojo: un `request.md` con la palabra `pignolo`. Verde. Commit `feat(bench): tareas reales de replay y miniapp con tests ocultos`.
+
+### Task B5: informe, muestra manual y concordancia
+
+**Files:** Create `tests/bench/vs-base/report.js`, `tests/bench/vs-base/manual-sample.js`; Test `tests/bench-vsbase-report.test.js`.
+
+**Interfaces:** `summarize(runs) → { byArm: { <arm>: { hiddenPassRate, seededReached, costUsd: {mean,min,max}, seconds, interventions, falseBlocks } }, indistinguishable: [[armA, armB, metric]] }` (marca "sin diferencia distinguible" si la diferencia de medias es menor que la dispersión); `sampleForManual({ runs, seed, fraction: 0.25, min: 12 }) → runs[]` incluye siempre los falsos bloqueos y los casos que dependen de texto; `agreement(auto, manual) → number`; `toMarkdown(summary) → string` para `docs/benchmarks.md` §5, con comparabilidad y límites.
+- [ ] Tests primero: con 3 corridas por brazo de valores conocidos, medias y rango exactos; una diferencia menor que la dispersión sale como indistinguible; la muestra manual es reproducible con la misma semilla e incluye todos los falsos bloqueos; `agreement` menor a 0,9 hace que `toMarkdown` lance; el informe no contiene rutas absolutas ni el nombre del proyecto de origen.
+- [ ] Rojo: ignorar la dispersión; ignorar el umbral de concordancia. Verde. Commit `feat(bench): informe, muestra manual y concordancia`.
+
+### Task B6: etapa 0, la sonda barata (la corre el orquestador con aprobación)
+
+**Files:** Create `tests/bench/vs-base/results/.gitignore` (ignora todo salvo un `README` y los resúmenes anonimizados).
+
+- [ ] `node tests/bench/vs-base/run.js --stage 0 --dry-run`: muestra el estimado (≈ 8 USD, tope 12). **Pedir aprobación del autor (D-B-1) antes de quitar `--dry-run`.**
+- [ ] Verificar H1 a H4 y H7 con `isolation.js`; si H1 falla, probar H2 (`CLAUDE_CONFIG_DIR` temporal con solo credenciales) y registrar cuál queda. Anotar abajo, en "Resultados de la etapa 0": el aislamiento que funciona, el costo real por corrida y por brazo, si el JSON suma subagentes, el tiempo de arranque de pignolo y la tabla de costos corregida.
+- [ ] Si algún brazo no queda aislado: no seguir, informar al autor. Commit `docs(bench): resultados de la etapa 0 de la comparación`.
+
+### Task B7: campaña, calificación y publicación (orquestador, por etapas con aprobación)
+
+- [ ] Etapas 1 a 5 de a una: estimado corregido con lo medido, aprobación, correr, calificar, **muestra manual (25 %)**, concordancia, y recién entonces la siguiente. Registrar en `docs/gaps.md` cada gap nuevo con dato y costo, y en `docs/benchmarks.md` cada diferencia medida (memoria del autor).
+- [ ] Publicar `docs/benchmarks.md` §5 con la tabla de 4 brazos, comparabilidad y límites, **incluidos los brazos donde pignolo pierde**. Subir `version` del plugin y CHANGELOG solo si el arnés toca `plugins/` (no debería). Borrar `%TEMP%\claude-eval-*` tras leerlos.
+- [ ] Revisión final opus del arnés y del informe antes de publicar, con una pasada de arreglos.
+
+### Task B8: contrato con el hito 8
+
+**Files:** Create `tests/bench-vsbase-contract.test.js`. Modify el plan del hito 8 solo si ya está unido a `main`; si no, anotar en `docs/STATE.md`.
+
+- [ ] El hito 8 invoca `run.js --suite seeded --arm pignolo-balanced --reps 5` y lee `results/<campaña>/seeded.json` (`seededReached[]`, `questions.uncategorized`) para los criterios (a) y (c) del spec §0. Test de contrato: con un `claude` falso, la salida de `--suite seeded` trae esos campos con esos nombres.
+- [ ] Rojo: renombrar un campo. Verde. Commit `test(bench): contrato de salida entre el arnés y el hito 8`.
+
+## Resultados de la etapa 0
+
+_Pendiente (requiere aprobación de D-B-1)._
+
+## Riesgos y límites declarados
+
+- Los pedidos y los tests ocultos los escriben personas e IA que conocen a pignolo: sesgo posible; se mitiga con un opus ciego y con tests congelados por hash antes de correr.
+- Un solo autor, proyecto y máquina: no generaliza. Se publica como medición de este caso.
+- n = 3: sin significancia estadística; se publica la dispersión.
+- `base` puede ganar en costo y tiempo por construcción: es un resultado válido y se publica.
+- Los costos son hipótesis hasta la etapa 0.

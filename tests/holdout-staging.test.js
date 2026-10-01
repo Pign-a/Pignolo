@@ -36,7 +36,7 @@ function setup() {
     try { json = JSON.parse(r.stdout); } catch (_) { json = undefined; }
     return { status: r.status, json, stderr: r.stderr };
   };
-  assert.strictEqual(script('run.js', ['start', '--flow', 'plan', '--cwd', main]).status, 0);
+  assert.strictEqual(script('run.js', ['start', '--flow', 'plan', '--plan', 'p1', '--cwd', main]).status, 0);
   const wt = path.join(main, '.pignolo', 'worktrees', 'acc');
   git(['worktree', 'add', '-q', '-b', 'task/plan/acc', wt, 'HEAD'], main);
   const base = git(['rev-parse', 'HEAD'], wt);

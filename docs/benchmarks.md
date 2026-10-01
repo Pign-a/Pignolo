@@ -15,6 +15,8 @@ Un plan real de pignolo (el del hito 4a, primera versión) con 14 errores conoci
 | Dos pasos con sondas fijas de riesgos conocidos | Idem, con pruebas deterministas | **45 %**\* | 24 % | 0,92 / 0,31 | 2,4 / 1,2 min |
 | Construir el plan entero en una copia para validarlo (replay) | Lo que hacíamos antes; superpowers pide planes con el código completo, sin exigir el replay | — | — | ~450 mil tokens | 45–80 min |
 
+| Dos pasos en despachos separados (revisor, después un agente que solo experimenta) vs un solo agente que hace las dos cosas | A/B del diseño del `plan-auditor` | 46 % vs 32 % | 18 % vs 4 % | 2,09 vs 1,74 / 0,47 vs 0,35 | ~8 vs ~5 min |
+
 \* Parte de ese 45 % viene de sondas armadas con errores ya conocidos de este mismo caso; sin esas, ~38 %.
 
 **Comparabilidad:** alta entre las filas 1 a 3 (mismo plan, mismo código, mismas reglas de conteo). La fila 4 se midió en planes distintos. Detalle y límites: [`tests/evals/RESULTS-planes.md`](../tests/evals/RESULTS-planes.md).
@@ -36,6 +38,48 @@ Dos hitos de pignolo de tamaño parecido, 8 tareas cada uno, con implementadores
 | Ejecutar un hito cuyo plan ya trae el código verificado (pignolo-ui hito 3, 7 tareas) | — | **~145 mil tokens con un solo ejecutor en serie** (el plan costó ~405 mil) | frente a ~0,78 millones del 4b en paralelo |
 
 **Comparabilidad:** media. Los hitos no son idénticos y el 4b se benefició de lo aprendido en el 4a. Sirve como tendencia, no como A/B.
+
+## 2b. Ejecutar en serie o en paralelo (A/B con un plan real)
+
+Las mismas 4 tareas reales (hito 4a, ola 1), misma base y mismas tarjetas, calificadas con los tests finales que dejó la revisión (180):
+
+| Forma | Tiempo de pared | Tokens | Calidad |
+|---|---|---|---|
+| 4 implementadores sonnet en paralelo | ~28 min | ~531 mil | 148/180 |
+| 1 ejecutor sonnet en serie | ~32 min | ~272 mil | 151/180 |
+| Ejecución original (paralelo, opus en las 2 tareas difíciles) | ~22 min | ~0,58 millones | 150/180 |
+
+**Lectura práctica:** el paralelo es ≈ 15 % más rápido y cuesta ≈ 2 veces más, con la misma calidad. El modelo del implementador tampoco cambió la calidad: los defectos que quedan son huecos del plan que solo encuentra la revisión. Conviene ejecutar en serie con sonnet y poner opus en validar el plan y revisar. Detalle: [`RESULTS-ejecucion.md`](../tests/evals/RESULTS-ejecucion.md).
+
+## 2c. Cuántas veces correr los tests antes de unir
+
+600 merges simulados con tests inestables de probabilidad conocida, node:test real (coincide con 1−(1−p)^k):
+
+| Política | Tiempo | Detecta un test que falla el 5 % / 20 % / 50 % de las veces |
+|---|---|---|
+| 1 corrida | 1,0× | 5 % / 20 % / 53 % |
+| 2 si el cambio toca tests | 1,5× | 7 % / 28 % / 66 % |
+| Siempre 3 | 3,0× | 13 % / 49 % / 88 % |
+| 1 corrida + repetir solo lo que falló + 3 corridas de los tests tocados | ~1,5× | como 3 corridas en lo que cambiaste, sin rojos falsos por tests viejos inestables |
+
+## 2d. Costo por tipo de trabajo con el método liviano (2026-09-30 y 2026-10-01)
+
+Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pignolo. Son mediciones de una sola corrida, no A/B: sirven para presupuestar.
+
+| Trabajo | Modelo | Tokens | Tiempo | Herramientas |
+|---|---|---|---|---|
+| Ejecutar una parte de hito (5b: 5 tareas, cartas, 2 skills, plantillas, casos de eval), un ejecutor en serie | sonnet | ~276 mil | 16 min | 90 |
+| Escribir un plan en tarjetas (hito 8, 14 tareas, 20 rulings) | sonnet | ~251 mil | 12 min | 24 |
+| Escribir un plan de banco (comparación con Claude Code solo, 8 tarjetas) | sonnet | ~108 mil | 3 min | 10 |
+| Corregir un plan con su auditoría (hito 6: 3 tareas; hito 7: 21 hallazgos) | sonnet | ~157 mil / ~176 mil | 5 / 7 min | 30 / 23 |
+| Sumar una función nueva a un plan con su propuesta de spec (hito 7, 4 tareas) | sonnet | ~210 mil | 7,5 min | 31 |
+| Auditoría paso 1, revisor que lista hallazgos y supuestos (plan UI4 / plan hito 8) | opus | ~250 mil / ~181 mil | 10 / 6 min | 36 / 30 |
+| Auditoría paso 2, experimentos sobre 17 supuestos (plan hito 7) | opus | ~117 mil | 3,6 min | 25 |
+| Revisión final de una parte de hito (5a, 14 tareas) | opus | ~188 mil | 6,6 min | 42 |
+| Pasada de arreglos de esa revisión (9 hallazgos, cada uno con rojo) | sonnet | ~152 mil | 8 min | 53 |
+| Investigar una decisión: convención, alternativas y un atacante por alternativa (D-7-7, 9 ataques reales) | opus | ~161 mil | 8,3 min | 34 |
+
+**Lectura práctica:** un hito completo con el método liviano (plan ~250 mil, auditoría en dos pasos ~370 mil, corrección ~170 mil, ejecución ~280 mil por parte, revisión ~190 mil, arreglos ~150 mil) ronda 1,4 a 1,7 millones de tokens, contra los ~2,5 a 3 millones del método anterior con replay y revisión por tarea (sección 2). La revisión final del 5a, con el plan auditado antes, encontró 0 críticos y 3 importantes; la del 4a, sin auditoría con experimentos, 1 crítico y 4 importantes.
 
 ## 3. Agentes que revisan código
 

@@ -11,7 +11,8 @@ const path = require('node:path');
 const { readState, flagPaths, mainRoot } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { projectState, readRun } = require('../../lib/project');
-const { resolveClean, cleanPath, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
+const { resolveClean, cleanPath, isWithin, isProtectedWrite, FLAG_RE } = require('../../lib/paths');
+const { VERIFY_AGENT } = require('../../lib/plan-agents');
 
 const BLOCKED = 'pignolo bloqueó la escritura: los flags del interruptor solo los escribe /pignolo:off y /pignolo:on. Alternativa: pedile al humano que escriba el comando.\n';
 const PROTECTED = 'pignolo bloqueó la escritura: nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins. Alternativa: usá comandos git; lo que haya que cambiar ahí lo hace el humano.\n';
@@ -25,6 +26,20 @@ const alt = (m) => ({ exit: 2, stderr: `pignolo bloqueó la escritura: ${m}
 const ALT_IMPL = 'Alternativa: un test cambia solo con test-authorization: devolvé BLOCKED y nombrá el test.';
 const ALT_TW = 'Alternativa: escribí solo en test-paths o, para el holdout, en .pignolo/tmp/holdout/ del checkout principal; lo demás lo pide el hilo principal.';
 const ALT_HOLDOUT = 'Alternativa: escribilo en <checkout principal>/.pignolo/tmp/holdout/<plan>/ (ruta absoluta), que git ignora y el hilo principal guarda con holdout.js save.';
+
+// D-5-1: el agente que experimenta escribe solo en el scratch/ de la auditoría viva, y solo en
+// modo verify. Cubre Write/Edit/MultiEdit; su Bash no se confina (límite declarado, §8.3).
+function planAuditRule({ input, env, cwd, abs }) {
+  if (input.agent_type !== VERIFY_AGENT) return null;
+  const state = projectState({ env, cwd });
+  if (!state.active) return null;
+  const mode = require('../../lib/plan-audit').readMode({ main: state.main });
+  if (mode.active && mode.mode === 'verify') {
+    const scratch = resolveClean(path.join(mode.dir, 'scratch'), cwd);
+    if (abs !== scratch && isWithin(abs, scratch)) return null;
+  }
+  return alt(`el plan-auditor no escribe ${path.basename(abs)} ahí: solo en el scratch/ de la auditoría en modo verify. Alternativa: escribí el script en el scratch/ del modo verify (.pignolo/tmp/plan-audit/<plan>/scratch/); lo demás lo hace el hilo principal.`);
+}
 
 // Raíz del worktree que contiene `file` (ruta cruda, con sus mayúsculas). Con tarea, solo
 // el worktree de la tarea (spec §8.3): una ruta de otro repo no toma su configuración. Sin
@@ -120,5 +135,5 @@ exports.run = (input, ctx = {}) => {
   if (FLAG_RE.test(abs) || abs === resolveClean(flags.global, cwd) || abs === resolveClean(flags.project, cwd)) {
     return { exit: 2, stderr: BLOCKED };
   }
-  return roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
+  return planAuditRule({ input, env, cwd, abs }) || roleRule({ input, env, cwd, file: rawResolve(target, cwd, home) }) || { exit: 0 };
 };
