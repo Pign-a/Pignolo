@@ -46,7 +46,7 @@ O dentro de Claude Code: `/plugin marketplace add Pign-a/Pignolo` y `/plugin ins
 
 ## Agentes y setup
 
-El plugin trae 19 agentes con herramientas, esfuerzo y modelo fijados por rol (`plugins/pignolo/lib/roles.js`). Los despachan las skills con una tarjeta de tarea; no se usan directo.
+El plugin trae 18 agentes con herramientas, esfuerzo y modelo fijados por rol (`plugins/pignolo/lib/roles.js`). Los despachan las skills con una tarjeta de tarea; no se usan directo.
 
 **Configurar.** Dentro de Claude Code, una vez por máquina: `/pignolo:setup`. Solo lo dispara el humano. Verifica el entorno (node, git ≥ 2.31, `gh`, PowerShell, superpowers, agent teams, y si `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` o `availableModels` anulan el perfil), pide el perfil de modelos (`max`, `balanced` o `economy`; se guarda en `~/.pignolo/config.json`), propone la plantilla de permisos con el detalle de lo que suma y, solo con tu sí, la aplica. Nunca quita ni reordena reglas tuyas y respalda el archivo (`.pignolo-bak-<fecha>`) antes de escribir. Los revisores corren en opus en todos los perfiles, `economy` incluido.
 

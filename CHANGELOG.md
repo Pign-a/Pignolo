@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.1 — 2026-10-01
+
+- Arreglos de la revisión final del hito 6 (cada uno con un test que falla sin el arreglo). Se quitó el agente learning-validator por decisión del autor tras la auditoría del 2026-10-01; los aprendizajes se filtran con scanLearning y el sí del humano.
+- Crítico: `close-session.js decide` ya no acepta `--validation-file` ni `--human`; solo `--answer yes|no` y `--reserved`. Sin `--answer` nunca acepta (devuelve `human` con `flags`); un informe de validador ya no mueve nada a `accepted/`. Se quitan `parseValidation` y `decideByHuman`.
+- Comprobaciones deterministas de R-9 (Task 5 y 7 del plan en `main`): `findDuplicate`, `checkEvidence` y `flags` (`web`, `reserved`, `evidence-unverified`); `scan` devuelve `{ findings, duplicate, evidence }`; un duplicado se rechaza sin preguntar; la skill muestra los flags y pasa `--answer`.
+- Task 10 (G17): `tests/evals/keep-failed-traces.js` (`persistFailedTraces`) copia la traza de cada corrida fallada de `claude plugin eval` a una carpeta persistente; G17 pasa a hecho.
+- Guardia: la regla `pignolo-plan` casa los scripts de estado, `run` y `holdout` con y sin `.js` y niega `node -e|-p|--eval|-r|--import` con un script de estado del plugin; `node --check` y las lecturas (`cat`, `grep`, `head`, `wc`) siguen permitidas. Cargar la lib con `require` queda como límite declarado (spec §8.3).
+- `evidence --since`: una fecha ISO o algo que git resuelve a un commit (`HEAD~2`, rama, sha); lo demás sale con `refused: bad-since` (antes devolvía vacío o todo sin avisar).
+- Menores: `protect-paths` niega `.pignolo/state/`, `INDEX.md` y `accepted/` de un worktree de tarea o enlazado aunque el cwd sea el principal (M2); un git que falla no se toma por "sin merge" ni por "no versionada" (`git-failed`, M3 y M5); `index` y `archive` responden `not-configured` sin `project.md` ni `state/` y no crean `.pignolo/` (M4); `node --check` ya no se niega (M1); CHANGELOG y versión sobre 0.8.2 de `main` (M6).
+
 ## 0.10.0 — 2026-10-01
 
 - Hito 6b (continuidad: skill). Decisión del autor R7 (2026-10-01): sin `learning-validator` (ni carta en opus, ni evals); la aceptación de aprendizajes es el piso mecánico más el sí explícito del humano.

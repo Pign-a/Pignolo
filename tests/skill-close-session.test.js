@@ -51,3 +51,14 @@ test('no agent is dispatched (R7) and Engram is not mentioned (D-6-1)', () => {
   assert.doesNotMatch(s.text, /learning-validator/);
   assert.doesNotMatch(s.text, /engram/i);
 });
+
+// Protects: decisión del autor del 2026-10-01 (se quitó el agente learning-validator) · Breaks if: vuelve
+// su carta, su fila de roles.js, o algo del plugin lo nombra.
+test('the learning-validator agent is gone: no card, no role row, no reference in the plugin', () => {
+  const roles = require(path.join(PLUGIN_ROOT, 'lib', 'roles.js'));
+  assert.ok(!fs.existsSync(path.join(PLUGIN_ROOT, 'agents', 'learning-validator.md')));
+  assert.ok(!Object.keys(roles.ROLES || roles.AGENT_ROLES || roles).includes('learning-validator'));
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+  const hits = walk(PLUGIN_ROOT).filter((f) => /learning-validator/.test(fs.readFileSync(f, 'utf8')));
+  assert.deepStrictEqual(hits, []);
+});
