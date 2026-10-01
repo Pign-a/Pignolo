@@ -69,10 +69,11 @@ function hasProtects(cwd, rel) {
   } catch (_) { return true; } // ilegible: no se acusa
 }
 
-function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs = DEFAULT_TIMEOUT_MS, exec = defaultExec, seed, base } = {}) {
+function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs = DEFAULT_TIMEOUT_MS, exec = defaultExec, seed, base, config: configIn, testAuthorization, afterRun } = {}) {
   if (!LEVELS.includes(level)) throw new Error(`nivel inválido: ${level} (on-edit | on-done | pre-merge)`);
   const ref = task ? (task.testRef || task.base) : undefined;
-  const config = readProjectConfig({ root: cwd, ref, timeoutMs: GIT_MS });
+  // `config` explícita (la cola, R-12): la configuración sale de la punta de int/, nunca del árbol mergeado.
+  const config = configIn || readProjectConfig({ root: cwd, ref, timeoutMs: GIT_MS });
   const command = config.gates[level] || '';
   const gitOpts = { cwd, timeoutMs: GIT_MS };
   const seedOffered = Number.isInteger(seed) ? seed : crypto.randomInt(0, 2 ** 32);
@@ -155,7 +156,7 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
         flags.noTests = !changed.some((f) => matchAny(config.testPaths, f.path));
       }
     }
-    flags.integrity = c.integrity.length > 0 || (c.weakened.length > 0 && !(task && task.testAuthorization === true));
+    flags.integrity = c.integrity.length > 0 || (c.weakened.length > 0 && !(testAuthorization === true || (task && task.testAuthorization === true)));
     flags.noMutationTool = !!c.mutation && c.mutation.exit === null && !config.gates.mutation;
     flags.mutation = !!c.mutation && c.mutation.exit !== null && c.mutation.exit !== 0;
     flags.scope = c.scope.length > 0 || c.emptied.length > 0;
@@ -169,6 +170,14 @@ function runGate({ cwd, level, env = process.env, task, noTestsReason, timeoutMs
     else if (flags.noMutationTool) seal.status = 'NO_MUTATION_TOOL';
     else if (flags.mutation) seal.status = 'MUTATION';
     else if (flags.noTests) { seal.status = 'NO_TESTS'; seal.noTestsReason = reason; } else seal.status = 'PASS';
+  }
+
+  // Gancho de la cola (R-6): corre después del comando y ANTES de escribir el sello. Puede pasar el estado a FLAKY
+  // (sellable, no-PASS) y adjuntar `repeat`; el sello se escribe una sola vez con el estado final.
+  if (typeof afterRun === 'function' && command) {
+    const extra = afterRun({ status: seal.status, exit: seal.exit, seal, log }) || {};
+    if (extra.status) seal.status = extra.status;
+    if (extra.repeat) seal.repeat = extra.repeat;
   }
 
   let logHash;

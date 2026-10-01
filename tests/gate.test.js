@@ -318,3 +318,40 @@ test('alcance con mayúsculas (D-7-9, C-08): con core.ignorecase una ruta declar
   commit(cwd, 'cambio');
   assert.deepEqual(gate(cwd, { task: task(cwd, base, { files: ['.\\src\\a.js'] }) }).checks.scope, []);
 });
+
+test('runGate (hito 7a, R-6): afterRun puede pasar el estado a FLAKY y adjuntar repeat; el sello se escribe UNA vez y es no-PASS', () => {
+  const { cwd } = setup();
+  let seen;
+  const s = real(cwd, { level: 'pre-merge', afterRun: (r) => { seen = r; return { status: 'FLAKY', repeat: { runs: 2, same: false, differing: ['tests/a.test.js'] } }; } });
+  assert.equal(seen.status, 'PASS', 'el gancho ve el estado de la corrida');
+  assert.equal(seen.exit, 0);
+  assert.equal(s.status, 'FLAKY');
+  assert.deepEqual(s.repeat.differing, ['tests/a.test.js']);
+  const repoId = repoIdFor({ cwd });
+  const tree = workingTree({ cwd });
+  const found = findSeal({ env: process.env, repoId, treeHash: tree, level: 'pre-merge' });
+  assert.equal(found.status, 'FLAKY');
+  assert.deepEqual(found.repeat.differing, ['tests/a.test.js']);
+  const mine = fs.readdirSync(sealDir(process.env, repoId)).filter((f) => f.startsWith(`${tree}-pre-merge-`));
+  assert.equal(mine.length, 1, 'exactamente un sello pre-merge para el árbol');
+  // un gancho que no devuelve nada deja el estado como está
+  const t2 = real(cwd, { level: 'pre-merge', afterRun: () => undefined });
+  assert.equal(t2.status, 'PASS');
+  assert.equal(t2.repeat, undefined);
+});
+
+test('runGate (hito 7a, R-12): una config explícita manda y no se lee project.md; testAuthorization sin tarea abre los tests debilitados', () => {
+  const { cwd, base } = setup();
+  write(cwd, 'fail.js', 'process.exit(1);\n');
+  commit(cwd, 'fail');
+  const { readProjectConfig } = require(path.join(PLUGIN, 'lib', 'project-config.js'));
+  const cfg = readProjectConfig({ root: cwd });
+  const s = real(cwd, { level: 'pre-merge', config: { ...cfg, gates: { ...cfg.gates, 'pre-merge': 'node fail.js' } } });
+  assert.equal(s.command, 'node fail.js');
+  assert.equal(s.status, 'FAIL');
+  // sin tarea: un .skip commiteado contra `base`; con testAuthorization no es INTEGRITY
+  write(cwd, 'tests/a.test.js', "// t\nit.skip('x', () => {});\n");
+  commit(cwd, 'skip');
+  assert.equal(gate(cwd, { base }).status, 'INTEGRITY');
+  assert.equal(gate(cwd, { base, testAuthorization: true }).status, 'PASS');
+});
