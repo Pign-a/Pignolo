@@ -2,7 +2,9 @@
 
 > Método liviano (CLAUDE.md): tarjetas, sonnet para implementar, el rojo de cada test al ejecutar, una revisión opus al final. Casillas `- [ ]`. **Este plan construye el arnés y define el protocolo. No corre nada pago**: las corridas pagas las lanza el orquestador por etapas, con el tope que el autor decida (D-B-1).
 
-**Objetivo (unificado con el hito 8, decisión del autor 2026-10-01):** un solo arnés mide dos cosas con las mismas etapas y la misma tabla de costos: (1) el criterio de éxito de la v1 (spec §0 y §18 punto 8: plan real más defectos sembrados; criterios (a) y (c)) y (2) la comparación con otros brazos. Responder con datos, y publicarlo sea cual sea el resultado (decisión del autor, 2026-09-29, `docs/benchmarks.md` §5): con los mismos pedidos sobre las mismas bases, ¿cuántos defectos llegan al final, cuánto cuesta, cuánto tarda y cuánta intervención humana pide pignolo frente a Claude Code solo y frente a Claude Code con superpowers?
+> **RECORTADA el 2026-10-01 por el autor (R10, tras la auditoría de buenas prácticas y un debate pro/contra: `docs/audits/2026-10-01-decisiones-auditoria.md`): ~62 USD en lugar de ~200.** Por defecto: Claude Code solo (`base`) contra `pignolo-balanced`, más `superpowers` **solo en `seeded` con 5 repeticiones**; `replay`, `miniapp`, 4b, `economy` y WSL2 se agregan solo si la diferencia entre `base` y `pignolo-balanced` supera la dispersión entre repeticiones. Sigue sin correrse nada pago sin el OK explícito del autor (D-B-1).
+
+**Objetivo (unificado con el hito 8, decisión del autor 2026-10-01):** un solo arnés mide dos cosas con las mismas etapas y la misma tabla de costos: (1) el criterio de éxito de la v1 (spec §0 y §18 punto 8: plan real más defectos sembrados; criterios (a) y (c)) y (2) la comparación con otros brazos. Responder con datos, y publicarlo sea cual sea el resultado (decisión del autor, 2026-09-29, `docs/benchmarks.md` §5): con los mismos pedidos sobre las mismas bases, ¿cuántos defectos llegan al final, cuánto cuesta, cuánto tarda y cuánta intervención humana pide pignolo frente a Claude Code solo y, solo en la suite `seeded`, frente a Claude Code con superpowers (recorte R10 del 2026-10-01)?
 
 **Unificación con el hito 8 (`docs/plans/2026-10-01-hito-8-init-y-adopcion.md`; su D-8-5 se movió aquí).** La medición del criterio de éxito (primero detectores y semillas sin costo, después el plan real con los cinco sembrados, ≈ 1 a 2 M de tokens por corrida) **es parte de este arnés y no existe aparte**: el brazo `pignolo-balanced` de la suite `seeded` y de la suite `real-plan` *es* la medición del criterio, y los otros brazos corren sobre las mismas tareas sin etapa duplicada. Reparto por nombre:
 - Este plan es dueño de `tests/bench/vs-base/` (runner, brazos, calificador, detectores, semillas, suites, `results/`) y de su CLI `node tests/bench/vs-base/run.js`.
@@ -14,7 +16,7 @@
 
 | Id | Decisión | Propuesta |
 |---|---|---|
-| D-B-1 | Tope de gasto total (**DECIDIDA por el autor el 2026-10-01: la completa, ~200 USD, incluida WSL2; **no se corre ninguna etapa, ni la 0, sin un OK explícito del autor dado después de que revise que la v1 está completa**; con ese OK, por etapas, frenando si una etapa supera su estimado en más de 25 %**) | La propuesta anterior era 150 USD, pero tras unificar y recalcular el total completo da **~200 USD** (no entra). Opciones escalonadas en "Costos": **A ~56** (solo criterio de éxito), **B ~90** (comparación acotada), **C ~145** (casi todo, con 3 reps en `seeded` y 2 en `replay`/`miniapp`), **Completo ~200**. Las etapas son acumulativas: se puede aprobar A y ampliar después con lo medido. Todo con corte automático por etapa. Es una hipótesis de costo, no una medida. |
+| D-B-1 | Tope de gasto total (**REVISADA por el autor el 2026-10-01 tras la auditoría de buenas prácticas y un debate pro/contra (R10): ~62 USD**; antes, el 2026-10-01, la completa de ~200 USD; **sigue sin correrse ninguna etapa, ni la 0, sin un OK explícito del autor dado después de que revise que la v1 está completa**; por etapas, frenando si una etapa supera su estimado en más de 25 %) | **Por defecto, ~62 USD:** Claude Code solo (`base`) contra `pignolo-balanced` en la sonda, `seeded` y `real-plan` (criterio), más `superpowers` **solo en `seeded` con 5 repeticiones** (≈ +8 sobre la opción A de ~54). **`replay`, `miniapp`, 4b, `economy` y WSL2 solo se amplían si la diferencia entre `base` y `pignolo-balanced` supera la dispersión entre repeticiones** (opciones B y C de abajo, con los costos reales de las etapas 0 y 1 y con un nuevo OK del autor). Las etapas son acumulativas. Es una hipótesis de costo, no una medida. |
 | D-B-2 | Modelo por brazo | El mismo modelo base en los 4 brazos (sonnet 5.5 para el hilo principal); los subagentes de pignolo según su perfil, que es parte de lo medido. `economy` es un brazo propio. Opus solo en la calificación manual y la revisión ciega (no es un brazo). |
 | D-B-3 | Qué se publica | `docs/benchmarks.md` §5 con la tabla completa, incluidos los brazos donde pignolo pierde; datos crudos sin rutas ni nombres del proyecto de origen (repo público). |
 | D-B-4 | Plan real del proyecto de origen (absorbe el manejo de datos de la D-8-5) | El caso `real-plan` usa material del proyecto donde se usa pignolo: **solo corre con permiso expreso; informes con datos del proyecto en `local/` (fuera de git) y a `docs/benchmarks.md` solo cifras agregadas anonimizadas**, o se omite y el criterio de éxito queda "medido en sintético, pendiente con el plan real". |
@@ -28,6 +30,8 @@
 | `superpowers` | `base` + plugin superpowers, versión **fijada y registrada** | Con su flujo por defecto; no se le arma un prompt a medida. |
 | `pignolo-balanced` | `base` + `--plugin-dir plugins/pignolo` + `.pignolo/project.md` (perfil balanced) | Se activa como en uso real; sin `project.md` el plugin está inactivo (spec §2). |
 | `pignolo-economy` | Ídem con perfil `economy` | Mide el costo de la metodología con modelos baratos. |
+
+**Recorte (R10, 2026-10-01):** por defecto corren solo `base` y `pignolo-balanced`, y `superpowers` únicamente en `seeded` (5 repeticiones). `pignolo-economy`, y `superpowers` en `replay`, `miniapp` y `real-plan` (4b), se agregan solo si se amplía (D-B-1).
 
 **Mismo pedido, literal.** Cada tarea tiene un `request.md` idéntico para todos los brazos (texto de usuario, sin mencionar plugins ni metodología). El arnés no agrega instrucciones por brazo salvo el aislamiento mecánico y el guion de respuestas a preguntas (más abajo).
 
@@ -97,6 +101,22 @@ Los del spec §0: `decorative-test`, `dead-defense`, `indirect-destructive-comma
 
 Se **recalculó** al unificar: el borrador anterior sumaba ~177 USD, pero (1) su etapa 2 estaba subestimada (7 tareas × 3 reps × 4,6 USD por tarea-rep de los cuatro brazos = ~97, no 85), (2) su piloto estaba sobrestimado y (3) el `real-plan` estaba en 15 USD para 12 corridas, cuando el plan real de pignolo cuesta entre 1 y 2 M de tokens por corrida. Supuestos (órdenes de magnitud ya medidos: un ejecutor en serie ≈ 272 mil tokens por 4 tareas; auditorías de plan 0,6 a 2 USD; **no medidos para estas tareas**): por tarea-rep de `replay`/`miniapp` base ≈ 0,6, superpowers ≈ 1,0, economy ≈ 1,1, balanced ≈ 1,9 (suma 4,6); por corrida de `seeded` (tarea chica) base ≈ 0,08, superpowers ≈ 0,15, economy ≈ 0,15, balanced ≈ 0,35 (suma 0,73); un plan real equivale a ≈ 8 tarjetas (base ≈ 4,8, superpowers ≈ 8, economy ≈ 8,8, balanced ≈ 15).
 
+**Etapas por defecto (D-B-1 revisada, ~62 USD).** Es la opción A (~54) más `superpowers` en `seeded`; `base` y `pignolo-balanced` cuestan ≈ 0,43 por corrida de `seeded` y `superpowers` ≈ 0,15:
+
+| Etapa | Qué | Corridas | Estimado USD | Tope de etapa |
+|---|---|---|---|---|
+| K detectores | Pruebas de `grade.js` y de los detectores contra semillas con y sin defecto (B3); sin agentes | 0 | 0 | 0 |
+| 0 sonda | Aislamiento (H1 a H4, H7) y 1 tarea chica en `base`, `pignolo-balanced` y `superpowers`, 1 rep, Windows | ~8 | 6 | 9 |
+| 1 piloto | `seeded` con 3 sembrados, `base` y `pignolo-balanced`, 1 rep, con 2 o 3 vueltas de afinado (3 × 0,43 × ~3) | 6 a 18 | 4 | 6 |
+| 3 `seeded` | 10 sembrados × 5 reps en `base` y `pignolo-balanced` (10 × 5 × 0,43 = 21,5) más `superpowers` (10 × 5 × 0,15 = 7,5); `pignolo-balanced` es la medición (a) y (c) del hito 8 | 150 | 29 | 36 |
+| 4a `real-plan`, criterio | 1 plan con los 5 sembrados, `pignolo-balanced`, 1 rep (D-B-4) | 1 | 15 | 22 |
+| Calificación manual y opus ciego | muestra del 25 % reducida (incluye la auditoría opus del plan real) | — | 8 | 12 |
+| **Total por defecto** | | | **~62** | **~85** |
+
+**Ampliación condicionada:** si en `seeded` la diferencia entre `base` y `pignolo-balanced` **supera la dispersión** entre repeticiones, se puede ampliar a `replay`/`miniapp`/4b/`economy` (opciones B y C de abajo); si no la supera, se publica "sin diferencia distinguible" y no se gasta más.
+
+La tabla completa que sigue es la de la propuesta anterior (~200 USD) y queda como referencia de lo que cuesta ampliar:
+
 Cada etapa se corre **una vez** y sirve a los dos objetivos (sin etapas duplicadas):
 
 | Etapa | Qué | Corridas | Estimado USD | Tope de etapa | Sirve a |
@@ -120,7 +140,7 @@ Cada etapa se corre **una vez** y sirve a los dos objetivos (sin etapas duplicad
 | **B, comparación acotada** | K, 0 (8), 1 (6), 3 con 4 brazos y 3 reps (22), 4a (15), 4b solo con `base` (5), `replay`/`miniapp` con 3 tareas (R1, R2, M1) × 2 reps (28), manual (6) | **~90** | `seeded` con 3 reps y `replay`/`miniapp` con 3 tareas y 2 reps (dispersión casi inútil: se declara); sin 4b contra superpowers y economy; sin WSL2 (queda "no medido"). |
 | **C, casi todo** | K, 0 (8), 1 (6), 3 con 3 reps (22), 4a (15), 4b (22), `replay`/`miniapp` con 7 tareas × 2 reps (64), manual (8), sin WSL2 | **~145** | Repeticiones: `seeded` 5 a 3 y `replay`/`miniapp` 3 a 2; WSL2 queda "no medido". Entra bajo el tope anterior de 150, con poco margen si los costos reales superan lo supuesto. |
 
-Recomendación: aprobar **A** ya y decidir B o C con los costos reales de las etapas 0 y 1 (regla del runner: si el costo medio observado supera 1,5 veces el estimado, corta y vuelve a preguntar). Reglas del runner: tope global y por etapa, tope por corrida (`--max-budget-usd` acotado por lo que queda), **antes de cada etapa se muestra el estimado y se pide aprobación** (sin `--yes` no corre nada pago).
+**Decidido (D-B-1 revisada): la tabla "Etapas por defecto" de arriba (~62 USD, opción A más `superpowers` en `seeded`); B o C solo con la condición de ampliación y un nuevo OK del autor, con los costos reales de las etapas 0 y 1** (regla del runner: si el costo medio observado supera 1,5 veces el estimado, corta y vuelve a preguntar). Reglas del runner: tope global y por etapa, tope por corrida (`--max-budget-usd` acotado por lo que queda), **antes de cada etapa se muestra el estimado y se pide aprobación** (sin `--yes` no corre nada pago).
 
 ## Tareas
 
@@ -169,13 +189,13 @@ Recomendación: aprobar **A** ya y decidir B o C con los costos reales de las et
 
 **Files:** Create `tests/bench/vs-base/results/.gitignore` (ignora todo salvo un `README` y los resúmenes anonimizados).
 
-- [ ] `node tests/bench/vs-base/run.js --stage 0 --dry-run`: muestra el estimado (≈ 8 USD, tope 12; se corre aunque se apruebe solo la opción A). **Pedir aprobación del autor (D-B-1) antes de quitar `--dry-run`.**
+- [ ] `node tests/bench/vs-base/run.js --stage 0 --dry-run`: muestra el estimado (≈ 6 USD, tope 9, con tres brazos; recortado por R10). **Pedir aprobación del autor (D-B-1) antes de quitar `--dry-run`.**
 - [ ] Verificar H1 a H4 y H7 con `isolation.js`; si H1 falla, probar H2 (`CLAUDE_CONFIG_DIR` temporal con solo credenciales) y registrar cuál queda. Anotar abajo, en "Resultados de la etapa 0": el aislamiento que funciona, el costo real por corrida y por brazo, si el JSON suma subagentes, el tiempo de arranque de pignolo y la tabla de costos corregida.
 - [ ] Si algún brazo no queda aislado: no seguir, informar al autor. Commit `docs(bench): resultados de la etapa 0 de la comparación`.
 
 ### Task B7: campaña, calificación y publicación (orquestador, por etapas con aprobación)
 
-- [ ] Etapas 1, 2, 3, 4a, 4b y 5 de a una (las que la opción de D-B-1 incluya; la 3 y la 4a cierran el criterio de éxito del hito 8, que lee `seeded.json` y `real-plan.json`): estimado corregido con lo medido, aprobación, correr, calificar, **muestra manual (25 %)**, concordancia, y recién entonces la siguiente. Registrar en `docs/gaps.md` cada gap nuevo con dato y costo, y en `docs/benchmarks.md` cada diferencia medida (memoria del autor).
+- [ ] Etapas 1, 2, 3, 4a, 4b y 5 de a una (por defecto 1, 3 y 4a; la 2, la 4b y la 5 solo si la diferencia supera la dispersión y el autor da un nuevo OK, D-B-1 revisada; las que la opción de D-B-1 incluya; la 3 y la 4a cierran el criterio de éxito del hito 8, que lee `seeded.json` y `real-plan.json`): estimado corregido con lo medido, aprobación, correr, calificar, **muestra manual (25 %)**, concordancia, y recién entonces la siguiente. Registrar en `docs/gaps.md` cada gap nuevo con dato y costo, y en `docs/benchmarks.md` cada diferencia medida (memoria del autor).
 - [ ] Publicar `docs/benchmarks.md` §5 con la tabla de 4 brazos, comparabilidad y límites, **incluidos los brazos donde pignolo pierde**. Subir `version` del plugin y CHANGELOG solo si el arnés toca `plugins/` (no debería). Borrar `%TEMP%\claude-eval-*` tras leerlos.
 - [ ] Revisión final opus del arnés y del informe antes de publicar, con una pasada de arreglos.
 
@@ -188,7 +208,7 @@ Recomendación: aprobar **A** ya y decidir B o C con los costos reales de las et
 
 ## Resultados de la etapa 0
 
-_Presupuesto aprobado (D-B-1, 2026-10-01, ~200 USD). La corrida espera el OK explícito del autor tras revisar la v1 completa._
+_Presupuesto aprobado (D-B-1, 2026-10-01, ~62 USD, revisado el 2026-10-01 desde ~200 por R10). La corrida espera el OK explícito del autor tras revisar la v1 completa._
 
 ## Riesgos y límites declarados
 

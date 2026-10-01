@@ -3,6 +3,8 @@
 > **Para quien ejecute:** un solo ejecutor sonnet en serie (CLAUDE.md: "un solo ejecutor en serie por defecto"; el A/B del 2026-09-30 mostró el paralelo ≈ 2 veces más caro con la misma calidad), sin revisión por tarea, una revisión final opus por parte con una pasada de arreglos. Los pasos usan casillas (`- [ ]`). Las tarjetas dan archivos, interfaces con nombres y formas exactos y casos de test literales; **el código lo escribe quien ejecuta**. Este plan no se construyó en una copia: el rojo de cada test nuevo se demuestra al ejecutar, rompiendo lo que protege.
 >
 > **Revisión del 2026-10-01:** este plan pasó por la auditoría en dos pasos (`audit-ui4-step1`, 25 hallazgos; `audit-ui4-step2`, 8 afirmaciones comprobadas con corridas reales). Cada hallazgo confirmado está absorbido en su tarjeta y la sección "Auditoría" del final dice dónde. Las afirmaciones que resultaron falsas (C-01, C-02, C-03, C-06, C-07 y la mitad de C-04 y C-05) cambiaron el texto; lo que dependía de ellas se reescribió.
+>
+> **Recorte del 2026-10-01 (R10):** el lienzo "Design" (Task 5 y Task 5b) y el hito 5 de pignolo-ui (`docs/plans/2026-09-30-pignolo-ui-hito-5-convivencia.md`, en la rama `plan/ui-hito-5`) pasan a **v1.x**; el hito 4 de pignolo-ui conserva la presentación local. Ver las notas en las dos tareas.
 
 **Objetivo:** cerrar el hito 4 de §17. Que `/pignolo-ui:new`, `/pignolo-ui:improve` y `/pignolo-ui:audit` anden de punta a punta sobre lo ya construido (catálogo, `ui-check`, `files`, `approve`, `report-check`, `browser`): carpeta del run y configuración del proyecto, agentes `ui-option` y `ui-auditor`, diversidad medible (`compare`), presentación en el lienzo "Design" o local, diccionario de síntomas, "terminado" honesto y evals de los dos agentes.
 
@@ -177,7 +179,9 @@ Solo lectura: spec, planes 2 y 3 de pignolo-ui, `docs/gaps.md`, `docs/STATE.md`,
 - [ ] **Medición de A-18** (no es un test que falla): el test imprime la tasa de diferencias falsas sobre 6 pares aprobado/implementación sintéticos que **deben** coincidir; el criterio de pasar es 0 de 6 y el número queda anotado en el CHANGELOG (si la app real de D-4-4 da > 30 %, pasa a v1.1: decisión del autor).
 - [ ] Commit: `feat(pignolo-ui): huella y diferencia de opciones (compare)`.
 
-### Task 5: generador del lienzo (`lib/canvas.mjs`, `scripts/to-canvas.mjs`)
+### Task 5: generador del lienzo (`lib/canvas.mjs`, `scripts/to-canvas.mjs`) — MOVIDA A v1.x
+
+> **MOVIDA A v1.x (decisión del autor, 2026-10-01, R10 de la auditoría de buenas prácticas: `docs/audits/2026-10-01-decisiones-auditoria.md`).** El lienzo "Design" y todo lo que lo construye o lo consume no se hace en el hito 4: `lib/canvas.mjs`, `scripts/to-canvas.mjs`, la rama `mode: canvas` de `decidePresentation`, el consentimiento de lienzo en `project.json`, R-7 y la parte de Review Focus 3 que habla del lienzo. La presentación por defecto es **local** (texto y HTML local). Al ejecutar, esas piezas se saltean sin rediseñar el resto; esta tarjeta se conserva como referencia para la v1.x.
 
 **Files:**
 - Create: `plugins/pignolo-ui/lib/canvas.mjs`, `scripts/to-canvas.mjs`, `tests/fixtures/canvas/inicio.html`, `tests/fixtures/canvas/Main.dc.html` (golden)
@@ -347,7 +351,9 @@ effort: medium
 
 - [ ] Pedirle al autor **cuál app y qué URL** (no se asume ninguna; la misma u otra que en T7 paso 5). Correr `/pignolo-ui:improve` de punta a punta con `optionsPerDecision = 3` en una sesión real; anotar en `local/`: primera línea, subagentes lanzados, `regenerate`, `verdict`, la tasa de diferencias falsas de `compare.mjs approved` (A-18: > 30 % → v1.1, decisión del autor), y qué texto de skill falló o se malinterpretó. Lo que se arregla en skills o scripts entra como commit `fix(pignolo-ui): …` antes de T12. Nada de la app va al repo.
 
-### Task 5b: lienzo privado de prueba (D-4-2)
+### Task 5b: lienzo privado de prueba (D-4-2) — MOVIDA A v1.x
+
+> **MOVIDA A v1.x (decisión del autor, 2026-10-01, R10 de la auditoría de buenas prácticas: `docs/audits/2026-10-01-decisiones-auditoria.md`).** El lienzo "Design" y todo lo que lo construye o lo consume no se hace en el hito 4: `lib/canvas.mjs`, `scripts/to-canvas.mjs`, la rama `mode: canvas` de `decidePresentation`, el consentimiento de lienzo en `project.json`, R-7 y la parte de Review Focus 3 que habla del lienzo. La presentación por defecto es **local** (texto y HTML local). Al ejecutar, esas piezas se saltean sin rediseñar el resto; esta tarjeta se conserva como referencia para la v1.x.
 
 **Files:**
 - Modify (si `format.md` lo pide): `plugins/pignolo-ui/lib/canvas.mjs`, `tests/fixtures/canvas/Main.dc.html` (golden regenerado a propósito), `tests/canvas.test.mjs`, spec §13.1 (la forma real: lo marca el autor en el commit), `docs/STATE.md`.
