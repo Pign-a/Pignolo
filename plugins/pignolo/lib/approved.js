@@ -119,7 +119,7 @@ function recordDecision({ projectRoot, path: p, manifestSha256, quote, date }) {
   const flow = p.split('/').pop();
   const id = `${date}-${flow}`;
   const file = path.join(decisionsDir(projectRoot), `${id}.md`);
-  const text = `---\nid: ${id}\nstatus: accepted\nsource: human\nevidence: ${p}/manifest.json sha256 ${manifestSha256}\ncreated: ${date}\n---\n\n${decisionLine({ path: p, manifestSha256, date, quote })}\n`;
+  const text = `---\nid: ${id}\nstatus: decided\nsource: human\nevidence: ${p}/manifest.json sha256 ${manifestSha256}\ncreated: ${date}\n---\n\n${decisionLine({ path: p, manifestSha256, date, quote })}\n`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
   try { fs.writeFileSync(file, text, { flag: 'wx' }); } catch (e) {
     return { error: e.code === 'EEXIST' ? `ya existe la decisión ${id}` : e.message };

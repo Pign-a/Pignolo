@@ -79,3 +79,36 @@ test('Added with consecutive ids is valid and parsed', () => {
   assert.strictEqual(p.examples.length, 3);
   assert.strictEqual(p.examples[0].quote, 'una tarjeta de alcance');
 });
+
+// Segunda fuente de citas (decisiones del autor registradas, spec §4.5).
+const DECISIONS = [{ id: 'D-1', quote: 'sí, un solo lienzo por proyecto y que crezca' }];
+const withExample = (quote) => card({ 'Acceptance examples': [BODY['Acceptance examples'], `- Con "${quote}" hay un solo lienzo`].join('\n') });
+
+test('validateScopeCard: a quote from a recorded author decision is valid; one from neither source fails closed', () => {
+  const t = withExample('un solo lienzo por proyecto');
+  assert.deepStrictEqual(validateScopeCard(t, { request: REQUEST, decisions: DECISIONS }), []);
+  assert.ok(validateScopeCard(t, { request: REQUEST }).some((e) => /no aparece en el pedido/.test(e)), 'sin decisiones sigue fallando');
+  const invented = validateScopeCard(withExample('un lienzo por pantalla'), { request: REQUEST, decisions: DECISIONS });
+  assert.strictEqual(invented.length, 1);
+  assert.match(invented[0], /ni en una decisión registrada/);
+});
+
+test('validateScopeCard: a decision without a quote never backs an example', () => {
+  const t = withExample('un solo lienzo por proyecto');
+  assert.ok(validateScopeCard(t, { request: REQUEST, decisions: [{ id: 'D-1', quote: '' }, { id: 'D-2' }] }).length > 0);
+});
+
+// Protects: la mutación `d.quote || d.text || d.id` · Breaks if: una decisión sin cita respalda un ejemplo
+// con su texto (la decisión sin cita tiene como texto justo la cita buscada).
+test('validateScopeCard: a decision with text but no quote never backs an example', () => {
+  const t = withExample('un solo lienzo por proyecto');
+  const errs2 = validateScopeCard(t, { request: REQUEST, decisions: [{ id: 'D-1', quote: '', text: 'un solo lienzo por proyecto' }, { id: 'un solo lienzo por proyecto' }] });
+  assert.strictEqual(errs2.length, 1);
+});
+
+// Protects: M3 de la revisión · Breaks if: una cita de una o dos letras vuelve a valer por subcadena.
+test('validateScopeCard: a quote shorter than 3 characters proves nothing', () => {
+  const t = withExample('y');
+  assert.ok(validateScopeCard(t, { request: REQUEST }).some((e) => /demasiado corta/.test(e)));
+  assert.ok(validateScopeCard(t, { request: REQUEST, decisions: DECISIONS }).some((e) => /demasiado corta/.test(e)));
+});

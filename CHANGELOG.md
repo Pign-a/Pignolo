@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.1 — 2026-10-01
+
+Arreglos de la revisión final de 0.12.0 (cada uno con un test que falla sin el arreglo).
+
+- **I1:** solo una decisión vigente (`decided`), registrada como del humano y del plan que se valida respalda una cita; una `superseded`, abierta, de otra fuente o de otro plan ya no (`backingDecisions`).
+- **I2:** `listDecisions` lee también `archive/`: el archivado a los 14 días no deja una tarjeta sin su segunda fuente, y un id archivado no se puede volver a registrar.
+- **I3:** el límite queda declarado (spec §4.5/§8.3): ningún script autentica la cita; la prueba es el turno del humano y su aprobación de la tarjeta. "Solo el hilo principal" se precisa: `protect-paths` frena Edit/Write/MultiEdit de un subagente sobre `.pignolo/state/decisions/` y la regla `pignolo-plan` frena `plan.js`; la escritura por Bash (redirección, `cp`, `node -e` con la lib) es el hueco ya conocido de la guardia, anotado como G32 en `docs/gaps.md`. Test: leer las decisiones sigue permitido a un subagente.
+- **I4:** tres mutantes muertos con tests nuevos: decisión de otro plan en la compuerta (`plan-cli`), decisión sin cita con texto igual a la cita buscada (`scope-card`) y control de duplicado con otra fecha (`decisions`).
+- **Menores:** M1 declarado (las `accepted` viejas siguen sin poder cerrarse); M2 `D-01` ya no se acepta; M3 una cita de menos de 3 caracteres no prueba nada; M4 `CREDITS.md` atribuye bien (la pregunta de a una es de superpowers; la respuesta recomendada y leer el código, de Pocock); M5 el `spec-reviewer` nombra las preguntas pendientes (van en `Reserved decisions`); M6 los patrones flojos del test de la skill se ajustan.
+
+## 0.12.0 — 2026-10-01
+
+Versión menor y no un parche: cambia la interfaz (verbo nuevo de `plan.js`, segunda fuente de citas en `validateScopeCard` y en el contrato del `spec-reviewer`, orden de las opciones de `templates/question.md`).
+
+- **Paso 2 de la skill `plan` (decisión del autor, 2026-10-01, tras el A/B de `tests/evals/RESULTS-brainstorm.md`):** no hay skill nueva; el paso de hoy suma las reglas que funcionaron: leer antes de preguntar y reflejar lo entendido (un "Ok" confirma solo la lectura del pedido, nunca supuestos), no preguntar lo que el repo contesta (se afirma con `archivo:línea`), una decisión pasada no es un hecho para un pedido nuevo ("previous decision, still valid?"), clasificar cada punto abierto, reservadas de a una con la recomendada primera, lote de supuestos de bajo riesgo, presupuesto de 3, 6 o 10 preguntas, salida `suficiente` con supuestos declarados (nunca para lo irreversible, de costo o de seguridad, que queda como pregunta pendiente que la tarjeta vuelve a mostrar), debate de dos agentes opus solo ofrecido, y las secciones fijas del spec (Pedido, Hechos del repo, Decisiones del autor, Rulings técnicos, Supuestos declarados, Mediciones propuestas, Fuera de alcance).
+- **`templates/question.md` y spec §4.4:** la opción recomendada va primera y marcada; las demás conservan el orden en que se encontraron (antes: "nunca reordenadas").
+- **`plan.js decision add|list`:** registra las decisiones de diseño del autor (`D-<n>`, texto y cita literal) en `.pignolo/state/decisions/` con `lib/state-store.js` (`lib/decisions.js`); solo el hilo principal (la regla `pignolo-plan` ya cubre `plan.js`); una cita vacía se rechaza.
+- **Arreglo:** `approved.js record` escribía `status: accepted` en las decisiones, un valor que el tipo `decisions` de `state-store` no reconoce (`open`, `decided`, `superseded`): esas entradas no se podían cerrar ni archivar. Ahora escribe `decided`. Las ya escritas con `accepted` siguen leyéndose; para cerrarlas hay que cambiarles el status a mano.
+- **`spec-reviewer` con segunda fuente:** recibe las decisiones registradas junto al pedido; un ítem respaldado por una de ellas no es "agregado sin pedirlo" y un ejemplo de aceptación puede citar la cita de una decisión. `validateScopeCard(text, { request, decisions })` falla cerrado si la cita no aparece en ninguna de las dos fuentes; `scope-card save|approve` leen las decisiones del plan. Caso nuevo en las evals: `spec-reviewer-recorded-decision` (solo los graders deterministas se probaron; las evals pagas del `spec-reviewer` hay que volver a correrlas).
+- `plugins/pignolo/CREDITS.md`: una línea por fuente MIT (la skill `grilling` / `grill-me` de Matt Pocock y la skill `brainstorming` de superpowers, de Jesse Vincent); texto propio, nada copiado.
+
 ## 0.11.1 — 2026-10-01
 
 - Arreglos de la revisión final del hito 8a (cada uno con un test que falla sin el arreglo).
