@@ -18,6 +18,7 @@ Versiones leídas de los `plugin.json`.
 | `core/hito-8b` | Hito 8b: evals del `debugger` y arnés de medición | ejecutando |
 | `core/brainstorm-rules` | Reglas de brainstorming del núcleo (tras el A/B de `docs/benchmarks.md` 2f) | en curso |
 | `plan/ui-hito-4c` | Plan del lienzo "Design" y el Design System de pignolo-ui | partiéndolo en 4 etapas; la etapa 1 es la siguiente |
+| `ui/hito-4c-1` | Etapa 1 del hito 4c (lienzo básico, pignolo-ui 0.7.0) | T0 a T10 hechas y commiteadas; faltan la puerta T6 con el autor (publicación real de prueba) y la revisión final T11; informe en la carpeta de trabajo de la sesión |
 | `evals/ui-4` | Evals pagas de pignolo-ui hito 4 (tope 22 USD) | corriendo |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/`.
