@@ -319,14 +319,14 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
 
   // 4. El parche aplica, toca algo, dentro de la raíz y fuera de los tests.
   try { git(['apply', '--check', patch], root); } catch (e) {
-    throw new SabotageError(`el parche no aplica sobre HEAD: ${(e.stderr || e.message).toString().trim()}`);
+    throw new SabotageError(`el parche no aplica sobre HEAD: ${(e.stderr || e.message).toString().trim()}`, 2, { refused: 'patch' });
   }
   const all = patchPaths(root, patch);
-  if (!all.length) throw new SabotageError('el parche no cambia ningún archivo.');
+  if (!all.length) throw new SabotageError('el parche no cambia ningún archivo.', 2, { refused: 'patch' });
   const outside = all.filter((p) => path.isAbsolute(p) || path.posix.normalize(p).startsWith('..') || /^\.git(\/|$)/.test(p));
-  if (outside.length) throw new SabotageError(`el parche toca rutas fuera de la raíz: ${outside.join(', ')}`);
+  if (outside.length) throw new SabotageError(`el parche toca rutas fuera de la raíz: ${outside.join(', ')}`, 2, { refused: 'patch' });
   const tests = all.filter((p) => matchAny(config.testPaths, p) || matchAny(config.protectedTestConfig, p));
-  if (tests.length) throw new SabotageError(`el parche toca tests o su configuración (${tests.join(', ')}): el sabotaje rompe el código, no los tests.`);
+  if (tests.length) throw new SabotageError(`el parche toca tests o su configuración (${tests.join(', ')}): el sabotaje rompe el código, no los tests.`, 2, { refused: 'patch' });
   const inHead = new Set(gitRaw(['ls-tree', '-r', '-z', '--name-only', head, '--', ...all], root).split('\0').filter(Boolean));
   const files = all.filter((p) => inHead.has(p));
   const added = all.filter((p) => !inHead.has(p));
@@ -383,7 +383,7 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
     try { git(['apply', patch], root); } catch (e) {
       const r = finish();
       applied = false;
-      throw new SabotageError(`git apply falló: ${(e.stderr || e.message).toString().trim()}`, r.notRestored.length ? 3 : 2, r);
+      throw new SabotageError(`git apply falló: ${(e.stderr || e.message).toString().trim()}`, r.notRestored.length ? 3 : 2, { ...r, refused: 'patch' });
     }
 
     // 7. Con el parche.

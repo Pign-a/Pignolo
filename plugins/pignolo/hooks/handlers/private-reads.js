@@ -13,6 +13,10 @@ const { cleanPath, resolveClean, isWithin } = require('../../lib/paths');
 const MESSAGE = 'pignolo bloqueó la lectura: el holdout y los sellos solo los lee el validator por los scripts de pignolo. '
   + 'Alternativa: trabajá con los tests del repo; si necesitás el resultado del holdout, pedíselo al hilo principal.\n';
 
+// Holdout en preparación: <main>/.pignolo/tmp/holdout/, antes de holdout.js save. Lo lee solo
+// el test-writer que lo escribe (y el validator). Se niega adentro, no en sus ancestros: buscar
+// en el repo sigue permitido (Grep respeta el .gitignore de .pignolo; Glob NO: medido).
+const STAGING_RE = /\.pignolo[\\/]+tmp[\\/]+holdout\b/i;
 // PIGNOLO_HOME cuenta solo usado como ruta ($PIGNOLO_HOME, ${PIGNOLO_HOME}, %PIGNOLO_HOME%,
 // $env:PIGNOLO_HOME): `grep -rn PIGNOLO_HOME plugins/` es texto y pasa.
 const MENTION_RE = /\.pignolo[\\/]+(holdout|seals)\b|\$\{?(env:)?PIGNOLO_HOME\b|%PIGNOLO_HOME%/i;
@@ -50,6 +54,15 @@ function expand(tok, home) {
   return t.replace(/^\/mnt\/([a-zA-Z])(?=\/|$)/, '$1:');
 }
 
+// La preparación por la shell: el texto `.pignolo/tmp/holdout` (también en la ruta absoluta y en su
+// forma Git Bash `/c/...`, que lo contienen) o una ruta relativa que resuelve adentro
+// (`cat ../../tmp/holdout/p1/x` desde el worktree de la tarea). Best-effort: `cd ../../tmp && cat
+// holdout/p1/x` no se detecta.
+function stagingDenied(command, { cwd, home, staging }) {
+  if (STAGING_RE.test(command)) return true;
+  return command.split(/[\s;&|()<>"'`]+/).some((tok) => /tmp[\\/]+holdout/i.test(tok) && isWithin(resolveClean(expand(tok, home), cwd, home), staging));
+}
+
 function shellDenied(command, ps, { cwd, home, roots, store }) {
   if (MENTION_RE.test(command)) return true;
   const text = command.replace(/\\/g, '/').toLowerCase();
@@ -82,7 +95,8 @@ exports.run = (input, ctx = {}) => {
   if (!input.agent_id || input.agent_type === 'pignolo:validator') return { exit: 0 };
   const env = ctx.env || process.env;
   const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : process.cwd();
-  if (!projectState({ cwd, env }).active) return { exit: 0 };
+  const state = projectState({ cwd, env });
+  if (!state.active) return { exit: 0 };
 
   const home = userHomes(env)[0];
   const roots = privateRoots(env).map((r) => resolveClean(r, cwd, home));
@@ -90,17 +104,26 @@ exports.run = (input, ctx = {}) => {
   const at = (p, base = cwd) => resolveClean(p, base, home);
   const inside = (p) => roots.some((r) => isWithin(p, r));
   const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
+  const staging = input.agent_type === 'pignolo:test-writer' ? null : resolveClean(path.join(state.main, '.pignolo', 'tmp', 'holdout'), cwd, home);
+  const staged = (p) => staging !== null && isWithin(p, staging);
+  // Glob/Grep desde <main>/.pignolo o una carpeta suya que contiene la preparación (<main>/.pignolo/tmp):
+  // Grep ahí devuelve el contenido (no respeta el .gitignore cuando la base ya está dentro de él).
+  const pignoloDir = staging === null ? null : resolveClean(path.join(state.main, '.pignolo'), cwd, home);
+  const stagedAbove = (p) => staging !== null && isWithin(p, pignoloDir) && isWithin(staging, p);
   const ti = input.tool_input || {};
   const tool = String(input.tool_name || '');
 
   let denied = false;
-  if (tool === 'Read') denied = typeof ti.file_path === 'string' && inside(at(ti.file_path));
+  if (tool === 'Read') denied = typeof ti.file_path === 'string' && (inside(at(ti.file_path)) || staged(at(ti.file_path)));
   else if (tool === 'Glob' || tool === 'Grep') {
     const base = typeof ti.path === 'string' && ti.path ? at(ti.path) : cleanPath(cwd);
     const pat = tool === 'Glob' ? ti.pattern : ti.glob;
-    denied = insideOrAbove(base) || (typeof pat === 'string' && pat !== '' && insideOrAbove(at(staticPrefix(pat), base)));
+    const prefix = typeof pat === 'string' && pat !== '' ? at(staticPrefix(pat), base) : null;
+    denied = insideOrAbove(base) || staged(base) || stagedAbove(base)
+      || (prefix !== null && (insideOrAbove(prefix) || staged(prefix) || stagedAbove(prefix)));
   } else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string') {
-    denied = shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store });
+    denied = shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store })
+      || (staging !== null && stagingDenied(ti.command, { cwd, home, staging }));
   }
   return denied ? { exit: 2, stderr: MESSAGE } : { exit: 0 };
 };

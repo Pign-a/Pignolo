@@ -14,14 +14,15 @@ The brief gives a frozen SHA, the tests and code changed, the requirement they p
 
 ## Method
 1. Map each test to the behavior it claims to protect.
-2. Run it. Then, in a scratch copy outside the repo (never the working tree), break the protected behavior and run it again. It must go red. If it stays green it is decorative.
+2. Run it. Then, in a scratch copy outside the repo (never the working tree), break the protected behavior and run it again. It must go red. If it stays green it is decorative. Write the break you used as a unified diff (paths from the repo root, one line of context above and below) in the finding's `repro`: pignolo confirms the finding on the frozen SHA with `scripts/sabotage.js`, and a decorative test stays green with the patch.
 3. Hunt for doubles and fixtures with the old shape: mocks, stubs and fake data that no longer match the real signature, format or contract, so the test passes against something that does not exist.
 4. Look for tests that assert nothing, assert only the mock, catch and ignore errors, skip silently, or repeat the implementation logic.
 5. Check that the edge cases and error paths the requirement names have a test.
-6. Apply N1 to N4 to the tests: N1 the test exercises the real path; N2 no fail-open (a test that passes when its setup fails); N3 names and comments are true; N4 declare what is not covered.
+6. A new test file without `Protects: <id> · Breaks if: <what>` in its first 20 lines is a WARNING. An expected value that can only come from running the code, in a test not labelled `characterization`, is a WARNING. A skipped, focused (`only`), retried or loosened test is at least CRITICAL unless the task-card records `test-authorization`.
+7. Apply N1 to N4 to the tests: N1 the test exercises the real path; N2 no fail-open (a test that passes when its setup fails); N3 names and comments are true; N4 declare what is not covered.
 
 ## Output
-Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`testability`), `location` (`path:line`, a single line number), `severity`, `evidence` (the command you ran and its output, including the forged red), `repro` (the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). The block is required in every report, before the verdict word: with no findings it is exactly `[]`. A report without the block cannot be read and counts as a failed review, even if the verdict is right. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
+Write the findings as one fenced `json` block: an array with one object per finding, keys in this order: `id` (short, unique in your report), `lens` (`testability`), `location` (`path:line`, a single line number), `severity`, `evidence` (the command you ran and its output, including the forged red), `repro` (for a decorative test, the unified diff of the break you used, starting with `--- a/<path>` and confirmed to pignolo by `scripts/sabotage.js`; otherwise the repro-spec: input, action and the wrong observable result; only for BLOCKER and CRITICAL). The block is required in every report, before the verdict word: with no findings it is exactly `[]`. A report without the block cannot be read and counts as a failed review, even if the verdict is right. Pignolo copies the block into the review ledger as is, so it must be valid JSON.
 
 A decorative test (cannot fail) is a BLOCKER. A test whose old-shape double hides a broken contract is CRITICAL. Missing coverage of a named edge case is WARNING. Naming or structure is SUGGESTION.
 

@@ -29,3 +29,23 @@ test('review-summary.md: dos capas y los refutados siempre listados', () => {
   assert.ok(t.indexOf('In plain words') < t.indexOf('Technical detail'));
   for (const re of [/APPROVED \| ESCALATED/, /Refuted/, /Not reproduced/, /Suspect/, /ledger\.js save/]) assert.match(t, re);
 });
+
+// Hito 4b: la test-card de §9.1 dentro de la tarjeta del test-writer.
+test('task-card.md: sección Test-card con los campos de §9.1 en orden, Protects, characterization, sabotaje y holdout', () => {
+  const t = tpl('task-card.md');
+  const at = t.indexOf('## Test-card');
+  assert.ok(at > 0, 'falta la sección ## Test-card');
+  const card = t.slice(at);
+  let i = 0;
+  for (const field of ['Behavior:', 'Origin of the expected value:', 'Protects:', 'What to break:', 'How red looks:',
+    'What else would make it pass:', 'Level:', 'Doubles:', 'Real path:', 'Data:', 'Where:', 'Red is proved by:']) {
+    const j = card.indexOf(field, i);
+    assert.ok(j >= 0, `falta o está fuera de orden: ${field}`);
+    i = j + field.length;
+  }
+  assert.match(t, /Tests that define done: [^\n]*`Red is proved by` \(`test-first` or `sabotage`\)/);
+  for (const re of [/`Protects: <id> · Breaks if: <what>`/, /first 20 lines/, /`characterization`/,
+    /after the implementer's change is committed/, /scripts\/sabotage\.js" --patch/, /`<main>\/\.pignolo\/tmp\/holdout\/<plan>\/<path>` in the main checkout, never in the task worktree/]) {
+    assert.match(card, re);
+  }
+});
