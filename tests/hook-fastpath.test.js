@@ -34,3 +34,11 @@ test('any other name or a payload of unexpected shape is never skipped', () => {
   assert.equal(skips('plan-audit-gate', null), false);
   assert.equal(skips('scope-gate', 'x'), false);
 });
+
+test('I-2: the prefilter is case-insensitive and sees checkout/switch', () => {
+  const cmd = (command) => ({ tool_name: 'Bash', tool_input: { command } });
+  assert.equal(skips('scope-gate', cmd('Git merge int/p1')), false);
+  assert.equal(skips('scope-gate', cmd('GIT PUSH origin main')), false);
+  assert.equal(skips('scope-gate', cmd('git checkout -B main int/p1')), false);
+  assert.equal(skips('scope-gate', cmd('git switch -C main int/p1')), false);
+});

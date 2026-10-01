@@ -15,7 +15,8 @@ exports.run = (input, ctx = {}) => {
     v = decide({ command, cwd, env, shell, deps: ctx.deps });
   } catch (e) {
     // Un fallo inesperado del propio hook no frena comandos ajenos a un plan ni deja pasar uno de un plan
-    // sin avisar: se niega solo si el comando parece llevar algo a main.
+    // sin avisar: el prefiltro ya dejó pasar lo que no es git, así que un fallo del decide
+    // llegado hasta acá siempre se niega.
     return { exit: 2, stderr: `pignolo bloqueó el comando: scope-gate no pudo decidir (${e.message}). Alternativa: reintentá el comando; si persiste, revisá el registro del plan con plan.js status.\n` };
   }
   if (!v) return { exit: 0 };

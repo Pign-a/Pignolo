@@ -8,8 +8,9 @@
 const { REVIEW_AGENT, VERIFY_AGENT } = require('./plan-agents');
 
 // El prefiltro de scope-gate (regla 3 de la Task 9): una sola constante, la usa también el decide.
-const GIT_RE = /\bgit\b/;
-const VERB_RE = /\b(merge|push|pull|rebase|fetch|branch|update-ref|reset|cherry-pick)\b/i;
+// git en Windows no distingue mayúsculas (`Git merge`), así que el prefiltro tampoco.
+const GIT_RE = /\bgit\b/i;
+const VERB_RE = /\b(merge|push|pull|rebase|fetch|branch|update-ref|reset|cherry-pick|checkout|switch)\b/i;
 
 function skips(name, input) {
   if (!input || typeof input !== 'object') return false;

@@ -103,3 +103,26 @@ test('an expired flow, /pignolo:off and PIGNOLO_DISABLED turn it off', () => {
   fs.writeFileSync(path.join(repo, '.pignolo', '.disabled'), '');
   assert.equal(call(repo, { file_path: f }).exit, 0);
 });
+
+test('M-5: with presentation: text, read/list/open of an artifact are not blocked, publish is', () => {
+  const repo = project(MD('presentation: text\n'));
+  startFlow(repo);
+  for (const action of ['read', 'list', 'open', 'quickstart']) {
+    assert.equal(call(repo, { action, type_url: 'https://claude.ai/type/x' }).exit, 0, action);
+  }
+  assert.equal(call(repo, { action: 'publish', file_path: html(repo, 'hola') }).exit, 2);
+  assert.equal(call(repo, { file_path: html(repo, 'hola') }).exit, 2, 'action ausente = publish');
+});
+
+test('M-5: HTML published through tool_input.files is scanned too', () => {
+  const repo = project(MD(`presentation: ask\npii-patterns:\n  - "cliente-[0-9]+-confidencial"\n`));
+  startFlow(repo);
+  const bad = html(repo, `ver ${SECRET_DATA}`, 'extra.html');
+  const main = html(repo, 'limpio', 'index.html');
+  const r = call(repo, { file_path: main, files: { 'extra.html': bad } });
+  assert.equal(r.exit, 2);
+  assert.ok(!r.stderr.includes(SECRET_DATA));
+  assert.equal(call(repo, { file_path: main, files: [{ path: bad }] }).exit, 2);
+  assert.equal(call(repo, { file_path: main, files: { 'extra.html': { from: bad } } }).exit, 2);
+  assert.equal(call(repo, { file_path: main, files: { 'x.css': html(repo, 'ok', 'ok.html') } }).exit, 0);
+});

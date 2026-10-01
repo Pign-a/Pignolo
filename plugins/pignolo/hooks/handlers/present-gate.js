@@ -21,9 +21,18 @@ exports.run = (input, ctx = {}) => {
   if (!readRun(proj.main).running) return { exit: 0 }; // solo dentro de un flujo vigente (un run.json ilegible cuenta como en curso)
 
   const ti = input.tool_input && typeof input.tool_input === 'object' ? input.tool_input : {};
+  // Solo publicar es publicar: read, list, open, etc. no se tocan (action ausente = publish).
+  if (ti.action !== undefined && ti.action !== 'publish') return { exit: 0 };
   const file = typeof ti.file_path === 'string' && ti.file_path ? ti.file_path : null;
   const typeUrl = typeof ti.type_url === 'string' ? ti.type_url : null;
-  if (!file && !typeUrl) return { exit: 0 };
+  // `files` (mapa o lista) también publica HTML: se mira cada fuente local.
+  const extra = [];
+  if (Array.isArray(ti.files)) {
+    for (const f of ti.files) { const p = typeof f === 'string' ? f : f && f.path; if (typeof p === 'string' && p) extra.push(p); }
+  } else if (ti.files && typeof ti.files === 'object') {
+    for (const v of Object.values(ti.files)) { const p = typeof v === 'string' ? v : v && v.from; if (typeof p === 'string' && p) extra.push(p); }
+  }
+  if (!file && !typeUrl && !extra.length) return { exit: 0 };
 
   let projectConfig = {};
   try { projectConfig = readProjectConfig({ root: proj.main }); } catch (_) { /* project.md ilegible: sin sus claves */ }
@@ -36,9 +45,9 @@ exports.run = (input, ctx = {}) => {
   }
 
   // (b) El HTML no lleva datos del proyecto ni secretos.
-  if (file) {
+  for (const f of [file, ...extra].filter(Boolean)) {
     let text = null;
-    try { text = fs.readFileSync(path.resolve(cwd, file), 'utf8'); } catch (_) { /* no se puede leer: no se puede mirar */ }
+    try { text = fs.readFileSync(path.resolve(cwd, f), 'utf8'); } catch (_) { /* no se puede leer: no se puede mirar */ }
     if (text !== null) {
       const found = pr.scanPublishable(text, { piiPatterns: projectConfig.piiPatterns || [] });
       if (found.length) {

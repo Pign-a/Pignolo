@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.1 — 2026-10-01
+
+- Arreglos de la revisión final del hito 5a (cada uno con un test que falla sin el arreglo).
+- `scope-gate` ya no deja pasar las formas que mueven el plan a `main`: `rebase <upstream> main` (y `--onto`), `pull . x:main`, `branch -m/-M/-c/-C` y `--move`/`--copy` hacia `main`, `checkout -B main` y `switch -C main` (`--force-create`). El prefiltro no distingue mayúsculas (`Git merge`) y suma `checkout` y `switch`.
+- El registro del plan se lee de la rama del plan cuando falta en disco (en `main` no existe): `git show int/<p>:…` o `queue/<p>:…`, con plazo de 1 s y fallo cerrado; `scope-gate` también se activa cuando el comando nombra `int/<p>`, `queue/<p>` o `task/<p>/`; `next` encuentra el plan desde `main`.
+- `plan-audit.js finish`: con menos experimentos corridos que afirmaciones pendientes el veredicto es `ESCALATE`, no `APPROVE`.
+- `present-gate`: solo mira `action: publish` (o ausente) y también escanea los archivos de `tool_input.files`. `runnableBeforeApproval`: una tarea con una `A<n>` que la tarjeta no tiene cuenta como dependiente. Comentario del handler de `scope-gate` corregido.
+- Docs: D-5-3 (una ola por perfil, 3/2/1) registrada como decisión del autor; spec §8.3 declara dos formas de `pignolo-plan` que la regla no ve.
+
 ## 0.7.0 — 2026-09-30
 
 - Hito 5a (modo `plan`, parte determinista): todo lo que no gasta tokens de agentes. Las cartas, skills, plantillas y evals son de 5b (el carril `plan` todavía no se puede recorrer de punta a punta).

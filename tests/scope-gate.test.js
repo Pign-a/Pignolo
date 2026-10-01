@@ -213,3 +213,87 @@ test('handler: a missing command or non-text input is silent', () => {
   assert.equal(handler.run({ tool_name: 'Bash', tool_input: {}, cwd: repo }, { env: {} }).exit, 0);
   assert.equal(handler.run({ tool_name: 'Bash', tool_input: { command: 5 }, cwd: repo }, { env: {} }).exit, 0);
 });
+
+// I-1: formas que mueven el plan a main y el primer borrador dejaba pasar
+test('I-1: rebase, pull refspec, branch move/copy and checkout/switch -B/-C that land the plan on main are denied', () => {
+  const repo = project();
+  mkPlan(repo, 'p1', 'draft');
+  writeRun(repo, { plan: 'p1' });
+  const rows = [
+    'git rebase int/p1 main',
+    'git rebase --onto int/p1 main~0 main',
+    'git pull . int/p1:main',
+    'git branch -M int/p1 main',
+    'git branch -C int/p1 main',
+    'git branch --force --move int/p1 main',
+    'git checkout -B main int/p1',
+    'git switch -C main int/p1',
+    'git switch --force-create main int/p1',
+    'git checkout -Bmain int/p1',
+  ];
+  for (const cmd of rows) {
+    const r = dec(repo, cmd, { branch: 'int/p1' });
+    assert.ok(r, cmd);
+    assert.deepEqual(r.plans, ['p1'], cmd);
+  }
+  // lo que no toca main sigue libre
+  for (const cmd of ['git rebase main int/p1', 'git branch -M int/p1 int/p2', 'git checkout -B feature int/p1', 'git switch -C feature main', 'git checkout int/p1', 'git pull . main:int/p1']) {
+    assert.equal(dec(repo, cmd, { branch: 'int/p1' }), null, cmd);
+  }
+});
+
+// I-2: git en Windows no distingue mayúsculas
+test('I-2: the prefilter is case-insensitive: Git merge int/p1 is parsed and denied', () => {
+  const repo = project();
+  mkPlan(repo, 'p1', 'draft');
+  denied(dec(repo, 'Git merge int/p1'), /draft/);
+});
+
+// I-3: el registro viaja en la rama del plan; en main la carpeta no existe
+function committedInBranch(card, { withRun } = {}) {
+  const repo = project();
+  mkPlan(repo, 'p1', card);
+  git(['checkout', '-q', '-b', 'int/p1'], repo);
+  git(['add', '-f', '.pignolo/state/plans'], repo);
+  git(['commit', '-q', '-m', 'plan'], repo);
+  git(['checkout', '-q', 'main'], repo);
+  assert.ok(!fs.existsSync(path.join(repo, '.pignolo', 'state', 'plans', 'p1')), 'en main el registro no existe en disco');
+  if (withRun) writeRun(repo, { plan: 'p1' });
+  return repo;
+}
+
+test('I-3: registry committed in int/p1, on main with run.json.plan: approved card is allowed, draft is denied', () => {
+  const ok = committedInBranch('approved', { withRun: true });
+  assert.equal(dec(ok, 'git merge int/p1'), null);
+  assert.equal(dec(ok, 'git push origin main'), null);
+  const draft = committedInBranch('draft', { withRun: true });
+  denied(dec(draft, 'git merge int/p1'), /draft/);
+});
+
+test('I-3: without run.json, naming int/<p> activates the rule and the registry is read from the branch', () => {
+  const draft = committedInBranch('draft');
+  denied(dec(draft, 'git merge int/p1'), /draft/);
+  denied(dec(draft, 'git merge queue/p1'), /./) ;
+  const ok = committedInBranch('approved');
+  assert.equal(dec(ok, 'git merge int/p1'), null);
+  // sin rama del plan no hay registro: no es un plan y un daily suelto no se toca
+  const none = project();
+  fs.rmSync(path.join(none, '.pignolo', 'state'), { recursive: true });
+  assert.equal(dec(none, 'git merge int/p9'), null);
+});
+
+test('I-3: a git that cannot answer fails closed inside a plan', () => {
+  const repo = committedInBranch('approved', { withRun: true });
+  const saved = process.env.PATH;
+  try {
+    process.env.PATH = '';
+    process.env.Path = '';
+    const r = dec(repo, 'git merge int/p1');
+    assert.ok(r, 'sin git no se puede leer el registro: se niega');
+  } finally { process.env.PATH = saved; process.env.Path = saved; }
+});
+
+test('M-3: the handler comment no longer claims it denies only when the command looks like it reaches main', () => {
+  const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks', 'handlers', 'scope-gate.js'), 'utf8');
+  assert.ok(!/se niega solo si el comando parece llevar algo a main/.test(src));
+});

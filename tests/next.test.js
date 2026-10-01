@@ -248,3 +248,16 @@ test('--text prints nothing when there is nothing to do', () => {
   assert.strictEqual(r.status, 0);
   assert.strictEqual(r.stdout, '');
 });
+
+test('I-3: on main, with the registry committed only in int/p1, next still finds the plan', () => {
+  const repo = makeRepo();
+  mkPlan(repo, 'p1', 'scope-card');
+  git(['checkout', '-q', '-b', 'int/p1'], repo);
+  git(['add', '-f', '.pignolo/state/plans'], repo);
+  git(['commit', '-q', '-m', 'plan'], repo);
+  git(['checkout', '-q', 'main'], repo);
+  assert.ok(!fs.existsSync(path.join(repo, '.pignolo', 'state', 'plans', 'p1')));
+  const n = next(repo);
+  assert.strictEqual(n.kind, 'plan-scope-card');
+  assert.match(n.text, /El plan p1 está en la etapa scope-card/);
+});

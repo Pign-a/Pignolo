@@ -191,6 +191,9 @@ test('runnableBeforeApproval', () => {
   assert.deepStrictEqual(ps.runnableBeforeApproval(plan, { limit: 5 }).map((t) => t.id), ['T1', 'T3']);
   assert.deepStrictEqual(ps.runnableBeforeApproval(plan, { limit: 0 }), []);
   assert.deepStrictEqual(ps.runnableBeforeApproval(plan, {}), []);
+  // M-6: una A<n> que la tarjeta no tiene cuenta como dependencia (falla cerrado)
+  const ghost = { tasks: [{ id: 'T1', added: ['A3'] }, { id: 'T2', added: [] }], scopeCard: { added: [{ id: 'A1', text: 'x' }] } };
+  assert.deepStrictEqual(ps.runnableBeforeApproval(ghost, { limit: 5 }).map((t) => t.id), ['T2']);
 });
 
 test('a truncated plan.json is not ok and not missing', () => {

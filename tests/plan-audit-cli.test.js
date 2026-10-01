@@ -135,6 +135,7 @@ test('an APPROVE with the current plan opens audited; with the plan changed it d
   assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(review)]).status, 0);
   assert.deepStrictEqual(audit(repo, ['probes', '--plan', 'p1']).out.remaining, ['C1']);
   assert.strictEqual(audit(repo, ['begin-verify', '--plan', 'p1']).status, 0);
+  pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c1.js' });
   assert.strictEqual(audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]).out.verdict, 'APPROVE');
   assert.strictEqual(ps.auditState({ main, plan: 'p1', planFile }), 'ok');
   fs.appendFileSync(planFile, '\nmás\n');
@@ -214,4 +215,27 @@ test('the findings of check reach the verdict: all experiments hold but a path d
   const fin = audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]);
   assert.strictEqual(fin.out.verdict, 'REQUEST_CHANGES');
   assert.ok(fin.out.findings.some((f) => f.kind === 'missing-path'));
+});
+
+test('finish: holds in the report with fewer experiments than claims is ESCALATE, never APPROVE (M-1)', () => {
+  const { repo, main, planFile } = setup();
+  const review = J({ findings: [], claims: [claim('C1', 'the helper returns the list sorted'), claim('C2', 'the registry is written atomically')] });
+  const holds = J([{ id: 'C1', verdict: 'holds', experiment: 'scratch/c1.js', evidence: 'ok' }, { id: 'C2', verdict: 'holds', experiment: 'scratch/c2.js', evidence: 'ok' }]);
+  const go = () => {
+    assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
+    assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(review)]).status, 0);
+    audit(repo, ['probes', '--plan', 'p1']);
+    assert.strictEqual(audit(repo, ['begin-verify', '--plan', 'p1']).status, 0);
+  };
+  go();
+  const none = audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]);
+  assert.strictEqual(none.out.verdict, 'ESCALATE');
+  assert.strictEqual(none.out.incomplete, true);
+  go();
+  pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c1.js' });
+  assert.strictEqual(audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]).out.verdict, 'ESCALATE', 'one experiment for two claims is still short');
+  go();
+  pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c1.js' });
+  pa.recordExperiment({ main, plan: 'p1', command: 'node scratch/c2.js' });
+  assert.strictEqual(audit(repo, ['finish', '--plan', 'p1', '--report-file', file(holds)]).out.verdict, 'APPROVE');
 });

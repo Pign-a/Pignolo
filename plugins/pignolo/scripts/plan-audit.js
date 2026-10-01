@@ -111,7 +111,10 @@ function run(verb, o, main) {
       if (remaining.length && !o['report-file']) throw new Fail(`faltan los experimentos de ${remaining.map((c) => c.id).join(', ')}: pasá --report-file con el informe del paso 2b`);
       const verification = remaining.length ? pa.parseVerification(read(o['report-file'], '--report-file'), remaining) : { entries: [], missing: [] };
       const counters = pa.readCounters({ main, plan: o.plan });
-      const built = pa.buildAudit({ review, probe, verification, planCheck, mode: { incomplete: counters.incomplete } });
+      // Reclamos sin ningún experimento corrido (el hook cuenta las llamadas a Bash del modo):
+      // un informe con `holds` solo de palabra no alcanza para APPROVE.
+      const noExperiments = remaining.length > 0 && counters.experiments < remaining.length;
+      const built = pa.buildAudit({ review, probe, verification, planCheck, mode: { incomplete: counters.incomplete || noExperiments } });
       const audit = { ...built, at: new Date().toISOString(), planSha256: review.planSha256 };
       const rec = ps.recordAudit({ main, plan: o.plan, audit });
       pa.endMode({ main, plan: o.plan });

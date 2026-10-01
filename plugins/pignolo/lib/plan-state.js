@@ -7,6 +7,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { validateScopeCard, parseScopeCard } = require('./scope-card');
+const { execFileSync } = require('node:child_process');
+const { gitRun, isGitFailure } = require('./git');
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const STAGES = ['spec', 'claims', 'spec-review', 'scope-card', 'plan-written', 'audited', 'executing', 'validating', 'final-review', 'closed'];
@@ -20,10 +22,13 @@ function planDir(main, plan) { return path.join(plansRoot(main), plan); }
 const planFileOf = (main, plan) => path.join(planDir(main, plan), 'plan.json');
 const cardFileOf = (main, plan) => path.join(planDir(main, plan), 'scope-card.md');
 
-function listPlans(main) {
+function listPlans(main, { git = false } = {}) {
+  let local = [];
   try {
-    return fs.readdirSync(plansRoot(main), { withFileTypes: true }).filter((d) => d.isDirectory() && SLUG_RE.test(d.name)).map((d) => d.name).sort();
-  } catch (_) { return []; }
+    local = fs.readdirSync(plansRoot(main), { withFileTypes: true }).filter((d) => d.isDirectory() && SLUG_RE.test(d.name)).map((d) => d.name);
+  } catch (_) { /* sin carpeta */ }
+  if (git) local = [...new Set([...local, ...listPlanBranches(main)])];
+  return local.sort();
 }
 
 // Escritura atómica (temp + rename), como writeRun de scripts/run.js.
@@ -48,13 +53,44 @@ function validatePlan(p, plan) {
   return null;
 }
 
-function readPlan({ main, plan }) {
+// El registro viaja en la rama del plan (§10.1): fuera de ella (p. ej. en main) el archivo local
+// no existe. Con `git: true`, lo que falta se lee de int/<plan> o queue/<plan> con `git show`
+// (plazo de 1 s). Un git que corre y no encuentra la rama es "no existe"; un git que no
+// responde es un error (quien consulta falla cerrado). Solo lectura: nunca para escribir.
+const GIT_SHOW_TIMEOUT_MS = 1000;
+function showFromPlanBranch(main, plan, rel) {
+  let err = null;
+  for (const pre of ['int', 'queue']) {
+    try {
+      // sin trim: el hash de la tarjeta se calcula sobre los bytes exactos
+      const buf = execFileSync('git', ['--no-optional-locks', 'show', `${pre}/${plan}:.pignolo/state/plans/${plan}/${rel}`], {
+        cwd: main, timeout: GIT_SHOW_TIMEOUT_MS, maxBuffer: 1024 * 1024, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return { buf, text: buf.toString('utf8') };
+    } catch (e) {
+      if (!isGitFailure(e)) err = e;
+    }
+  }
+  return err ? { error: err.message } : { missing: true };
+}
+function listPlanBranches(main) {
+  try {
+    const out = gitRun(['--no-optional-locks', 'for-each-ref', '--format=%(refname:short)', 'refs/heads/int', 'refs/heads/queue'], main, { timeout: GIT_SHOW_TIMEOUT_MS });
+    return out.split(/\r?\n/).map((b) => b.replace(/^(int|queue)\//, '')).filter((n) => SLUG_RE.test(n));
+  } catch (_) { return []; }
+}
+
+function readPlan({ main, plan, git = false }) {
   if (!SLUG_RE.test(String(plan))) return fail(`slug inválido: ${plan}`, { missing: true });
   const file = planFileOf(main, plan);
   let text;
   try { text = fs.readFileSync(file, 'utf8'); } catch (e) {
-    if (e.code === 'ENOENT') return fail(`no existe el plan ${plan}`, { missing: true });
-    return fail(`no se pudo leer ${file}: ${e.message}`);
+    if (e.code !== 'ENOENT') return fail(`no se pudo leer ${file}: ${e.message}`);
+    if (!git) return fail(`no existe el plan ${plan}`, { missing: true });
+    const g = showFromPlanBranch(main, plan, 'plan.json');
+    if (g.missing) return fail(`no existe el plan ${plan}`, { missing: true });
+    if (g.error) return fail(`no se pudo leer el plan ${plan} de su rama: ${g.error}`);
+    text = g.text;
   }
   let obj;
   try { obj = JSON.parse(text); } catch (e) { return fail(`${file} está ilegible: ${e.message}`); }
@@ -139,13 +175,18 @@ function saveScopeCard({ main, plan, text }) {
   });
 }
 
-function scopeCardState({ main, plan }) {
-  const r = readPlan({ main, plan });
+function scopeCardState({ main, plan, git = false }) {
+  const r = readPlan({ main, plan, git });
   if (!r.ok) return 'none';
   const sc = r.plan.scopeCard || {};
   if (!sc.sha256) return 'none';
   let cur;
-  try { cur = sha256(fs.readFileSync(cardFileOf(main, plan))); } catch (_) { return 'changed'; }
+  try { cur = sha256(fs.readFileSync(cardFileOf(main, plan))); } catch (_) {
+    if (!git) return 'changed';
+    const g = showFromPlanBranch(main, plan, 'scope-card.md');
+    if (!g.buf) return 'changed';
+    cur = sha256(g.buf);
+  }
   if (!sc.approved) return 'draft';
   return sc.approved.sha256 === cur && sc.sha256 === cur ? 'approved' : 'changed';
 }
@@ -235,12 +276,11 @@ function setTasks({ main, plan, tasks }) {
 
 // Tareas que no dependen de ninguna A<n> de la tarjeta, en orden, hasta `limit`.
 function runnableBeforeApproval(planObj, { limit = 0 } = {}) {
-  const card = planObj.scopeCard && planObj.scopeCard.added;
-  const ids = new Set((card || []).map((a) => a.id));
   const out = [];
   for (const t of planObj.tasks || []) {
     if (out.length >= limit) break;
-    const deps = (t.added || []).some((a) => !card || ids.has(a));
+    // Cualquier A<n> cuenta como dependencia, esté o no en la tarjeta (falla cerrado).
+    const deps = (t.added || []).length > 0;
     if (!deps) out.push(t);
   }
   return out;

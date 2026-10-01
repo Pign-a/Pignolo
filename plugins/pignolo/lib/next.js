@@ -39,8 +39,9 @@ function stageAction(stage, card) {
 function planFacts(main) {
   const readable = [];
   const unreadable = [];
-  for (const name of ps.listPlans(main)) {
-    const r = ps.readPlan({ main, plan: name });
+  // En main el registro no existe en disco (viaja en la rama del plan): se lee con git show.
+  for (const name of ps.listPlans(main, { git: true })) {
+    const r = ps.readPlan({ main, plan: name, git: true });
     if (r.ok) readable.push(r.plan);
     else unreadable.push(name);
   }
@@ -97,7 +98,7 @@ function deriveNext({ cwd = process.cwd(), env = process.env, now = Date.now() }
   for (const name of unreadable) facts.push(`El registro del plan ${name} está ilegible; la próxima acción registrada es revisar \`plan.js status --plan ${name}\` o restaurarlo desde git.`);
   if (open.length) {
     const p = open[0];
-    const card = ps.scopeCardState({ main, plan: p.plan });
+    const card = ps.scopeCardState({ main, plan: p.plan, git: true });
     const extra = [];
     if (p.scopeCard && p.scopeCard.sha256) extra.push(`La tarjeta de alcance del plan ${p.plan} está en estado ${card}.`);
     return done(`plan-${p.stage}`, `El plan ${p.plan} está en la etapa ${p.stage}; la próxima acción registrada es ${stageAction(p.stage, card)}.`, extra);

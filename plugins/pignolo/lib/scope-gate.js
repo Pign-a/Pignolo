@@ -47,10 +47,13 @@ function decide({ command, cwd = process.cwd(), env = process.env, shell = 'bash
   const hasPlansDir = fs.existsSync(path.join(main, '.pignolo', 'state', 'plans'));
   const runPlan = run && run.plan ? run.plan : null;
   const flowPlan = Boolean(run && run.flow === 'plan');
-  if (!hasPlansDir && !runPlan && !flowPlan) return null;
 
   // 3. Prefiltro de texto (el mismo que usa el launcher).
   if (typeof command !== 'string' || !GIT_RE.test(command) || !VERB_RE.test(command)) return null;
+  // El registro viaja en la rama del plan: en main la carpeta no existe. Nombrar int/<p>,
+  // queue/<p> o task/<p>/ en el comando también activa la regla 2 (el registro se lee de la rama).
+  const named = planBranchesIn(command);
+  if (!hasPlansDir && !runPlan && !flowPlan && !named.size) return null;
 
   // 4. El parser de la guardia.
   const { gitCommands } = require('./git-guard');
@@ -78,10 +81,42 @@ function decide({ command, cwd = process.cwd(), env = process.env, shell = 'bash
   for (const c of cmds) {
     if (!c.sub) continue;
     switch (c.sub) {
-      case 'merge': case 'pull': case 'rebase': case 'cherry-pick':
+      case 'rebase':
+        if (NO_MOVE.some((n) => longIs(c, n))) break;
+        // `rebase <upstream> <branch>` deja la rama nombrada como la actual y la mueve.
+        if (c.positionals.length >= 2) {
+          if (unknownText(c.positionals[1]) || isMainRef(c.positionals[1])) hits.push(c);
+          break;
+        }
+        if (currentIsMain(c)) hits.push(c);
+        break;
+      case 'pull': {
+        if (NO_MOVE.some((n) => longIs(c, n))) break;
+        // `pull . x:main` es un fetch hacia main (misma regla que fetch).
+        const intoMain = c.positionals.slice(1).some((r) => {
+          if (unknownText(r)) return true;
+          const colon = r.lastIndexOf(':');
+          return colon >= 0 && isMainRef(r.slice(colon + 1));
+        });
+        if (intoMain || currentIsMain(c)) hits.push(c);
+        break;
+      }
+      case 'merge': case 'cherry-pick':
         if (NO_MOVE.some((n) => longIs(c, n))) break;
         if (currentIsMain(c)) hits.push(c);
         break;
+      case 'checkout': case 'switch': {
+        // -B / -C / --force-create <rama> reapunta la rama nombrada (main) al destino.
+        const a = c.args || [];
+        const forced = a.some((x, i) => {
+          if (/^-[BC]./.test(x)) return isMainRef(x.slice(2));
+          if (/^--force-create=/.test(x)) return isMainRef(x.slice(x.indexOf('=') + 1));
+          const flag = x === '-B' || x === '-C' || (x.startsWith('--') && x.length > 2 && '--force-create'.startsWith(x));
+          return flag && a[i + 1] !== undefined && (isMainRef(a[i + 1]) || unknownText(a[i + 1]));
+        });
+        if (forced) hits.push(c);
+        break;
+      }
       case 'reset':
         if (branchNames(c).length && currentIsMain(c)) hits.push(c);
         break;
@@ -110,9 +145,17 @@ function decide({ command, cwd = process.cwd(), env = process.env, shell = 'bash
         if (lands) hits.push(c);
         break;
       }
-      case 'branch':
-        if ((c.shorts.includes('f') || c.shorts.includes('M') || longIs(c, 'force')) && c.positionals[0] && isMainRef(c.positionals[0])) hits.push(c);
+      case 'branch': {
+        // -m/-M/-c/-C (--move/--copy): el último posicional es el nombre nuevo.
+        const moves = ['m', 'M', 'c', 'C'].some((k) => c.shorts.includes(k)) || longIs(c, 'move') || longIs(c, 'copy');
+        if (moves) {
+          const dst = c.positionals[c.positionals.length - 1];
+          if (dst && (isMainRef(dst) || unknownText(dst))) hits.push(c);
+          break;
+        }
+        if ((c.shorts.includes('f') || longIs(c, 'force')) && c.positionals[0] && isMainRef(c.positionals[0])) hits.push(c);
         break;
+      }
       case 'update-ref':
         if (c.positionals[0] && /^refs\/heads\/(main|master)$/.test(c.positionals[0])) hits.push(c);
         break;
@@ -129,7 +172,7 @@ function decide({ command, cwd = process.cwd(), env = process.env, shell = 'bash
   }
 
   // 6. Planes relevantes.
-  const relevant = new Set(planBranchesIn(command));
+  const relevant = new Set(named);
   if (runPlan) relevant.add(runPlan);
   const cur = planOfBranch(branch());
   if (cur) relevant.add(cur);
@@ -143,7 +186,7 @@ function decide({ command, cwd = process.cwd(), env = process.env, shell = 'bash
   const ps = require('./plan-state');
   const strict = flowPlan || Boolean(runPlan);
   for (const name of [...relevant].sort()) {
-    const r = ps.readPlan({ main, plan: name });
+    const r = ps.readPlan({ main, plan: name, git: true });
     if (!r.ok) {
       if (r.missing) {
         if (strict) return deny(`el plan ${name} no está registrado (unregistered)`, [name], `registralo con \`plan.js new --plan ${name}\` o cerrá el flujo con \`run.js end\``);
@@ -151,7 +194,7 @@ function decide({ command, cwd = process.cwd(), env = process.env, shell = 'bash
       }
       return deny(`el registro del plan ${name} está ilegible (unreadable): ${r.error || ''}`.trim(), [name], 'restauralo desde git o revisá `plan.js status`; no se mergea a main con el registro roto');
     }
-    const card = ps.scopeCardState({ main, plan: name });
+    const card = ps.scopeCardState({ main, plan: name, git: true });
     if (card !== 'approved') {
       const alt = card === 'changed' ? 'la tarjeta cambió después de aprobarla: presentala de nuevo al humano y registrá la nueva aprobación con `plan.js scope-card approve`' : APPROVE_ALT;
       return deny(`el plan ${name} no tiene la tarjeta de alcance aprobada (estado ${card}); nada llega a main sin ella`, [name], alt);
