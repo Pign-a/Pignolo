@@ -15,7 +15,7 @@ English. Every path is absolute or relative to the worktree root, always with fo
 - test-paths: <globs from project.md> · protected-test-config: <globs>
 - Gate: `node "<plugin root>/scripts/gate.js" --level on-done --task` (it runs `<gates.on-done from project.md>` and seals the result; the handback-gate accepts DONE only with that seal for the current tree)
 - Risk: <low | medium | high> · reserved decisions authorized by the human: <none, or category + what was authorized>
-- Approved visual (optional): <design/approved/<flow>/ with manifest.json, or "none">
+- Approved visual (optional): <design/approved/<flow>/ with manifest.json, or "none">. If set, the implementer first runs `node "<plugin root>/scripts/approved-verify.js" --path <design/approved/<flow>>` and ends BLOCKED on exit 1
 - Out of scope: <what not to touch or add>
 - Close with exactly one word on the last line: DONE, BLOCKED or NEEDS_CONTEXT.
 
