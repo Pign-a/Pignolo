@@ -11,13 +11,15 @@
 //   tasks set --file <tasks.json>
 //   runnable [--profile <p>]           (tareas ejecutables antes de la aprobación, D-5-3)
 //   advance --to <etapa> [--reopen] [--plan-file <ruta>]
-//   status
+///   status
+//   list [--text] [--cwd <dir>]        (todos los planes con su etapa; solo lectura; no pide --plan)
 const fs = require('node:fs');
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
 const ps = require('../lib/plan-state');
 const { PROFILE_PARAMS } = require('../lib/roles');
 const { readConfig } = require('../lib/profiles');
+const { planList } = require('../lib/next');
 
 class Usage extends Error {}
 class Fail extends Error {}
@@ -34,6 +36,7 @@ const VERBS = {
   runnable: { value: ['plan', 'profile', 'cwd'], need: ['plan'] },
   advance: { value: ['plan', 'to', 'plan-file', 'cwd'], bool: ['reopen'], need: ['plan', 'to'] },
   status: { value: ['plan', 'cwd'], need: ['plan'] },
+  list: { value: ['cwd'], bool: ['text'], need: [] }, // el único verbo sin --plan (A7M-19)
 };
 const GROUPED = new Set(['claims', 'scope-card', 'tasks']);
 
@@ -45,7 +48,7 @@ function parse(argv) {
     rest = rest.slice(1);
   }
   const spec = VERBS[verb];
-  if (!spec) throw new Usage('uso: plan.js new|claims set|claims resolve|claims check|scope-card save|approve|status|tasks set|runnable|advance|status --plan <slug> [opciones]');
+  if (!spec) throw new Usage('uso: plan.js new|claims set|claims resolve|claims check|scope-card save|approve|status|tasks set|runnable|advance|status|list --plan <slug> [opciones] (list no pide --plan)');
   const o = {};
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -60,7 +63,7 @@ function parse(argv) {
   }
   const missing = spec.need.filter((k) => !o[k]);
   if (missing.length) throw new Usage(`faltan ${missing.map((k) => `--${k}`).join(', ')}`);
-  if (!ps.SLUG_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${ps.SLUG_RE}`);
+  if (o.plan !== undefined && !ps.SLUG_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${ps.SLUG_RE}`);
   return { verb, o };
 }
 
@@ -72,6 +75,14 @@ const must = (r) => { if (!r.ok) throw new Fail(r.error); return r; };
 function run(verb, o, main) {
   const base = { main, plan: o.plan };
   switch (verb) {
+    case 'list': {
+      const plans = planList(main);
+      if (o.text) {
+        for (const p of plans) process.stdout.write(`${p.unreadable ? `${p.plan} · ilegible` : `${p.plan} · ${p.stage} · tarjeta ${p.card}`}\n`);
+        return undefined;
+      }
+      return out({ plans });
+    }
     case 'new': {
       const r = must(ps.newPlan({ ...base, request: readText(o['request-file'], '--request-file').trim(), spec: o.spec || '' }));
       return out({ ok: true, plan: r.plan.plan, stage: r.plan.stage });

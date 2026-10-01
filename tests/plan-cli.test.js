@@ -145,3 +145,15 @@ test('claims set --none-reason registers the reason and lets the plan advance', 
   assert.strictEqual(plan(repo, ['claims', 'set', '--plan', 'p1', '--none-reason', 'sin supuestos externos']).status, 0);
   assert.strictEqual(plan(repo, ['advance', '--plan', 'p1', '--to', 'spec-review']).status, 0);
 });
+
+test('list (hito 7a, R-16): no pide --plan, lista cada plan con su etapa y no falla por un registro ilegible', () => {
+  const repo = makeRepo();
+  assert.deepStrictEqual(plan(repo, ['list']).out, { plans: [] });
+  assert.strictEqual(plan(repo, ['new', '--plan', 'p1', '--request-file', file(REQUEST)]).status, 0);
+  assert.strictEqual(plan(repo, ['new', '--plan', 'p2', '--request-file', file(REQUEST)]).status, 0);
+  fs.writeFileSync(path.join(repo, '.pignolo', 'state', 'plans', 'p2', 'plan.json'), '{"v":1,');
+  const r = plan(repo, ['list']);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(r.out.plans.map((p) => [p.plan, p.stage || null, Boolean(p.unreadable)]), [['p1', 'spec', false], ['p2', null, true]]);
+  assert.strictEqual(plan(repo, ['status']).status, 2, 'los demás verbos siguen pidiendo --plan');
+});
