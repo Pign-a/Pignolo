@@ -21,6 +21,34 @@
 - Sombra al cerrar la sesión: `gc` con heurística (más de 2.000 sueltos o 24 h) y poda corta bajo un solo lock con la poda, con la sesión resuelta (`--session` o `CLAUDE_CODE_SESSION_ID`, no documentada) y sin otra sesión activa; sesiones vivas conservan su última ref. Rehacer el índice de sesión: medido y descartado.
 - Pruebas: `tests/e2e-hito-6a.test.js` y checklist manual `tests/manual/hito-6.md`. Límite declarado: `INDEX.md` y `accepted/` siguen escribibles por Bash/PowerShell.
 
+## 0.8.2 — 2026-10-01
+
+- `scope-gate`: cierra las formas que llevaban un plan a `main` sin que el texto dijera `int/<p>` (G19, auditoría del hito 7; cada una con un test que falla sin el arreglo). Un `merge`, `cherry-pick`, `pull`, `reset`... a `main` con una etiqueta `cp/<p>/<n>`, cualquier otra etiqueta o rama, un sha (completo, corto, `~n`, un commit del medio), `FETCH_HEAD` (línea por línea, también en `git fetch . int/b && git merge FETCH_HEAD`), `ORIG_HEAD` o una ref remota se resuelve con git: si lleva commits de una rama o etiqueta de plan que no están en `main` (ni en un `main` remoto), ese plan debe tener la tarjeta aprobada. Una llamada a `cat-file --batch-check` y dos `for-each-ref` por commit distinto, 1 s por llamada y 2,5 s en total; un git que no responde falla cerrado.
+- Las mayúsculas no esquivan la regla (`INT/P1`, `Int/p1`, `Task/P1/01-x`: git en Windows las resuelve): el slug se baja a minúsculas.
+- La regla mira los planes que llevan los comandos del compuesto que mueven algo a `main` (cada `git` de la línea, con `&&`, `;`, `||`, salto de línea u octopus), no los que el texto nombra en cualquier parte ni `run.json.plan`: `git merge int/b` con el plan del flujo `a` en borrador ya no se niega por `a`, y un `git log int/b` suelto en la línea no suma `b`. El plan del flujo y el de la rama actual valen solo si el comando no lleva ningún plan (p. ej. `git push origin HEAD:main`).
+- Sin ramas de plan ni contexto de plan en un proyecto con pignolo, un `merge` de un sha o `FETCH_HEAD` sigue callado (una llamada a git para saberlo).
+- `reset` a algo que no es `HEAD~n` (un sha, `ORIG_HEAD`) estando en `main` entra entre los verbos que se resuelven.
+- Sin cambio: `run.js end` borra `run.json` y hoy ese archivo guarda un solo plan y una sola tarea, así que no hay otros planes que perder (el `run.json` compartido es del hito 7).
+
+## 0.8.1 — 2026-10-01
+
+- Arreglos de la revisión final de la parte 5b (cada uno con un test que falla sin el arreglo).
+- Skill `plan`: `advance --to audited` lleva `--plan-file` (sin él nunca avanzaba: la auditoría se compara con el sha256 del archivo); el aprobado visual y su decisión se commitean por ruta en `int/<plan>` antes del worktree de la tarea (el `implementer` verifica desde su worktree y antes salía `BLOCKED` siempre); una afirmación `refuted` se cierra con `--superseded`; la tarjeta se guarda de `## Goal` a `## Cost estimate`; `plan-audit.js check` con `--root "<main>"`; el presupuesto previo a la aprobación queda declarado como límite (solo `runnable` y `scope-gate` lo hacen cumplir); todo placeholder de ruta entre comillas y toda forma corta con `node "<P>/scripts/…" --cwd "<main>"` (también en `implementer.md` y `task-card.md`).
+- `plan-audit.js finish` ya no suma los hallazgos de `plan-check`: son evidencia para el revisor del paso 1, que repite en sus `findings` lo que confirma; una falsa alarma del heurístico ya no deja el plan en un bucle. `buildAudit` pierde `planCheck`; `check` deja de escribir `check.json`.
+- Plantilla `decision.html`: `data-option` envuelve solo el título de cada camino (la descripción y la marca de recomendado van fuera), así `present.js check` pasa con rótulos naturales; la skill `present` lo dice.
+- Evals 5b: cada caso trae `rejects` (una muestra de rechazo por grader regex) y un test genérico que la recorre: cinco graders que podían quedar triviales sin que nada lo viera ahora se ven. `examples-quote-the-request` exige citas que sean tramos literales del pedido (alternancia generada del pedido, lo que valida `validateScopeCard`). `validator-drift` acepta `REQUEST_CHANGES` o `ESCALATE` (la carta admite los dos). Graders por señal, no por redacción (G10): `CSV` o `Export`, el test por nombre, archivo o `trim`, `Task N` o una línea de `plan.md` de esa tarea, `id` y `verdict` en el mismo objeto.
+- Checklist manual: el punto 8 se corre desde el worktree de la tarea.
+
+## 0.8.0 — 2026-10-01
+
+- Hito 5b (modo `plan`, parte de agentes y skills): el carril `plan` ya se puede recorrer de punta a punta.
+- Skill `plan` (`skills/plan/SKILL.md`): afirmaciones clave, `spec-reviewer`, `researcher` y `refuter`, tarjeta de alcance aprobada solo por el humano en su turno, plan, auditoría de tres pasos, ejecución serial, `validator` por tanda y aprobados visuales. `entry` entrega el carril a `pignolo:plan` y `daily` ofrece pasar a `plan` cuando el diff real lo pide.
+- Cartas: `spec-reviewer` (los 8 encabezados de la tarjeta, una cita literal por ejemplo, `- none` o `- A1: …`), `plan-auditor` (modos `review` y `verify`, sin replay) e `implementer` (verifica el aprobado visual con `approved-verify.js`; `BLOCKED` con exit 1). `templates/task-card.md` lleva el comando.
+- Skill `present` y cuatro plantillas visuales (`simple`, `ui`, `infra`, `decision`) con datos de ejemplo; `APPROVALS.md` sin aprobaciones, así que los formatos caen a texto hasta que el autor los apruebe (D-5-4).
+- Evals `agents` de `spec-reviewer`, `plan-auditor` y `validator` (7 casos en `tests/evals/plan-cases.js`, calificadores probados sin costo en `tests/eval-plan-cases.test.js`). Las corridas con el modelo (D-5-2, tope 17 USD por etapas) están pendientes.
+- Checklist manual: `tests/manual/hito-5.md` suma los puntos 7 a 9.
+- Límite declarado: `plan.js` no tiene un verbo para registrar la ruta de la spec después de `new`; la skill la pasa en `new --spec`.
+
 ## 0.7.1 — 2026-10-01
 
 - Arreglos de la revisión final del hito 5a (cada uno con un test que falla sin el arreglo).

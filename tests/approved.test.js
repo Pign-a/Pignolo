@@ -183,3 +183,37 @@ test('approved.js save and record by CLI', () => {
   assert.strictEqual(run(SAVE_CLI, ['save', '--project', root]).status, 2);
   assert.strictEqual(run(SAVE_CLI, ['nada']).status, 2);
 });
+
+// Receta del paso 9 de la skill plan (I2 de la revisión final de 5b): el implementer verifica
+// desde su worktree, sin --project, así que la carpeta y la decisión tienen que estar
+// commiteadas en int/<plan> antes de crear el worktree de la tarea.
+test('step 9: committed by path in int/<plan>, the approved folder verifies from a task worktree; uncommitted, it is BLOCKED there', () => {
+  const { makeRepo } = require('./helpers');
+  const { execFileSync } = require('node:child_process');
+  const repo = makeRepo();
+  const git = (...a) => execFileSync('git', ['-C', repo, ...a], { encoding: 'utf8' });
+  const q = path.join(makeTempDir('approved-q-'), 'q.txt');
+  fs.writeFileSync(q, 'me gusta la primera\n');
+  assert.strictEqual(run(SAVE_CLI, ['save', '--project', repo, '--flow', 'tasks', '--from', screens()]).status, 0);
+  assert.strictEqual(run(SAVE_CLI, ['record', '--project', repo, '--path', 'design/approved/tasks', '--quote-file', q]).status, 0);
+  const verifyFrom = (cwd) => spawnSync(process.execPath, [VERIFY_CLI, '--path', 'design/approved/tasks'], { cwd, encoding: 'utf8' });
+  // sin commit: el worktree de la tarea no tiene ni la carpeta ni la decisión
+  git('branch', 'int/demo');
+  const wt0 = path.join(repo, '.claude', 'worktrees', 't0');
+  git('worktree', 'add', '-q', '-b', 'task/demo/00-x', wt0, 'int/demo');
+  const r0 = verifyFrom(wt0);
+  assert.strictEqual(r0.status, 1);
+  assert.match(r0.stdout, /BLOCKED/);
+  git('worktree', 'remove', '--force', wt0);
+  // con el commit por ruta en la rama del plan, verifica desde el worktree
+  git('checkout', '-q', 'int/demo');
+  git('add', 'design/approved/tasks/', '.pignolo/state/decisions/');
+  const msg = path.join(makeTempDir('approved-msg-'), 'm.txt');
+  fs.writeFileSync(msg, 'chore(plan): aprobado visual tasks\n');
+  git('commit', '-q', '-F', msg);
+  const wt = path.join(repo, '.claude', 'worktrees', 't1');
+  git('worktree', 'add', '-q', '-b', 'task/demo/01-x', wt, 'int/demo');
+  const r1 = verifyFrom(wt);
+  assert.strictEqual(r1.status, 0, r1.stdout + r1.stderr);
+  git('worktree', 'remove', '--force', wt);
+});

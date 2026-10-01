@@ -174,12 +174,14 @@ test('buildAudit', () => {
   const mixed = pa.buildAudit({ ...base, mode: { incomplete: true }, review: { findings: [{ task: 'T1', kind: 'k', evidence: 'e' }], claims: review.claims }, verification: ver([holds('C1')]) });
   assert.strictEqual(mixed.verdict, 'REQUEST_CHANGES');
 
+  // los hallazgos de plan-check no entran por su cuenta (I3 de la revisión final de 5b): son
+  // evidencia para el revisor, que repite en sus findings lo que confirma
   const pc = pa.buildAudit({
     ...base, verification: ver([holds('C1'), holds('C2')]),
     planCheck: { refs: [{ task: 'T1', kind: 'path', value: 'lib/zz.js', ok: false, why: 'no existe' }], blocks: [], tests: null },
   });
-  assert.strictEqual(pc.verdict, 'REQUEST_CHANGES');
-  assert.strictEqual(pc.findings[0].kind, 'missing-path');
+  assert.strictEqual(pc.verdict, 'APPROVE');
+  assert.deepStrictEqual(pc.findings, []);
 
   // una afirmación cerrada por una sonda no necesita experimento
   const probed = pa.buildAudit({

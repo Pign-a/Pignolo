@@ -62,6 +62,25 @@ Las mismas 4 tareas reales (hito 4a, ola 1), misma base y mismas tarjetas, calif
 | Siempre 3 | 3,0× | 13 % / 49 % / 88 % |
 | 1 corrida + repetir solo lo que falló + 3 corridas de los tests tocados | ~1,5× | como 3 corridas en lo que cambiaste, sin rojos falsos por tests viejos inestables |
 
+## 2d. Costo por tipo de trabajo con el método liviano (2026-09-30 y 2026-10-01)
+
+Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pignolo. Son mediciones de una sola corrida, no A/B: sirven para presupuestar.
+
+| Trabajo | Modelo | Tokens | Tiempo | Herramientas |
+|---|---|---|---|---|
+| Ejecutar una parte de hito (5b: 5 tareas, cartas, 2 skills, plantillas, casos de eval), un ejecutor en serie | sonnet | ~276 mil | 16 min | 90 |
+| Escribir un plan en tarjetas (hito 8, 14 tareas, 20 rulings) | sonnet | ~251 mil | 12 min | 24 |
+| Escribir un plan de banco (comparación con Claude Code solo, 8 tarjetas) | sonnet | ~108 mil | 3 min | 10 |
+| Corregir un plan con su auditoría (hito 6: 3 tareas; hito 7: 21 hallazgos) | sonnet | ~157 mil / ~176 mil | 5 / 7 min | 30 / 23 |
+| Sumar una función nueva a un plan con su propuesta de spec (hito 7, 4 tareas) | sonnet | ~210 mil | 7,5 min | 31 |
+| Auditoría paso 1, revisor que lista hallazgos y supuestos (plan UI4 / plan hito 8) | opus | ~250 mil / ~181 mil | 10 / 6 min | 36 / 30 |
+| Auditoría paso 2, experimentos sobre 17 supuestos (plan hito 7) | opus | ~117 mil | 3,6 min | 25 |
+| Revisión final de una parte de hito (5a, 14 tareas) | opus | ~188 mil | 6,6 min | 42 |
+| Pasada de arreglos de esa revisión (9 hallazgos, cada uno con rojo) | sonnet | ~152 mil | 8 min | 53 |
+| Investigar una decisión: convención, alternativas y un atacante por alternativa (D-7-7, 9 ataques reales) | opus | ~161 mil | 8,3 min | 34 |
+
+**Lectura práctica:** un hito completo con el método liviano (plan ~250 mil, auditoría en dos pasos ~370 mil, corrección ~170 mil, ejecución ~280 mil por parte, revisión ~190 mil, arreglos ~150 mil) ronda 1,4 a 1,7 millones de tokens, contra los ~2,5 a 3 millones del método anterior con replay y revisión por tarea (sección 2). La revisión final del 5a, con el plan auditado antes, encontró 0 críticos y 3 importantes; la del 4a, sin auditoría con experimentos, 1 crítico y 4 importantes.
+
 ## 3. Agentes que revisan código
 
 Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.

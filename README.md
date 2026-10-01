@@ -103,9 +103,24 @@ Scripts que usan las skills de los carriles (ver "Carriles" más abajo). Todo ac
 
 Antes de la medición, la primera calibración dio 9/12 y llevó a ajustar los agentes (0.4.2); la recalibración dio 12/12. Gasto total de las evals del hito 3: 11,49 USD de un tope de 54. Comandos, frenos, calibraciones y lo que dijo el agente en cada corrida fallada, en [`tests/evals/RESULTS-hito-3.md`](tests/evals/RESULTS-hito-3.md).
 
+## Métricas de las evals del modo plan
+
+**En pocas palabras.** Los tres agentes del modo `plan` que faltaban medir son el `spec-reviewer` (¿detecta lo que se agregó sin pedirlo y arma bien la tarjeta?), el `plan-auditor` (¿encuentra los defectos de un plan y hace un experimento por afirmación?) y el `validator` (¿frena una tanda con un archivo de más o con un informe falso?). **Medición del 2026-10-01 (35 de 35 corridas aprobadas, 6,07 USD de un tope de 17):** `spec-reviewer` (Windows, 5 corridas por caso) aprobó 10 de 10 tras relajar por decisión del autor el calificador del caso limpio (aceptar REQUEST_CHANGES si no hay alcance agregado); `plan-auditor` y `validator` (WSL2, 5 corridas por caso) aprobaron 25 de 25.
+
+**Detalle técnico.** Casos en `tests/evals/plan-cases.js`, calificadores probados en `tests/eval-plan-cases.test.js`. Todo en opus, Claude Code 2.1.285.
+
+| Agente | Caso | Aciertos / corridas | USD por corrida | Estado |
+| --- | --- | --- | --- | --- |
+| spec-reviewer | alcance agregado | 5/5 | 0,086 | pasa |
+| spec-reviewer | limpio | 5/5 | 0,081 | pasa (grader relajado por el autor) |
+| plan-auditor | defecto / limpio / verificar afirmación | 5/5 en cada uno (WSL2) | 0,157 / 0,123 / 0,177 | pasa |
+| validator | deriva / sin holdout | 5/5 en cada uno (WSL2) | 0,143 / 0,130 | pasa |
+
+Comandos, frenos y la corrida abortada por el límite de sesión en [`tests/evals/RESULTS-hito-5.md`](tests/evals/RESULTS-hito-5.md).
+
 ## Validación de planes
 
-**En pocas palabras.** Medimos cuánto encuentra y cuánto cuesta cada forma de revisar un plan antes de construirlo (2026-09-30, 28,50 USD). En un plan real con 14 errores conocidos, un revisor que solo lee encuentra un tercio con opus y una quinta parte con sonnet. Lo que más ayudó fue separar el trabajo en dos pasos: el revisor anota qué cosas solo se pueden comprobar ejecutándolas, y después otro paso las comprueba de verdad, con pruebas fijas o con experimentos que un hook obliga a hacer. Así opus llegó a 38–45 %, por 1 a 1,5 USD y 2 a 5 minutos por plan, sin construir el plan dos veces. Sonnet, más barato, se queda corto para esto.
+**En pocas palabras.** Medimos cuánto encuentra y cuánto cuesta cada forma de revisar un plan antes de construirlo (2026-09-30, 28,50 USD). En un plan real con 14 errores conocidos, un revisor que solo lee encuentra un tercio con opus y una quinta parte con sonnet. Lo que más ayudó fue separar el trabajo en dos pasos: el revisor anota qué cosas solo se pueden comprobar ejecutándolas, y después otro paso las comprueba de verdad, con pruebas fijas o con experimentos que un hook obliga a hacer. Así opus llegó a 38–45 %, por 1 a 1,5 USD y 2 a 5 minutos por plan, sin construir el plan dos veces. Sonnet, más barato, se queda corto para esto. Esa receta ya la implementa el agente real: el `plan-auditor` (modos `review` y `verify`, con hooks que lo fuerzan a un experimento por afirmación) y la skill `plan`; la medición de la combinación completa sobre un plan nuevo está pendiente.
 
 **Detalle técnico.** Caso real (plan 4a v1), recall contado a mano: revisor opus 33 % (1,10 USD, 2,4 min); dos pasos + experimentos forzados por un hook `Stop`, opus 38 % (1,45 USD, 4,6 min) y sonnet 29 % (0,62 USD); dos pasos + sondas fijas, opus 45 % (0,92 USD, 2,4 min; parte viene de sondas armadas con errores ya conocidos) y sonnet 24 % (0,31 USD). El calificador automático inflaba el recall y se reemplazó por conteo a mano. Tablas, método y límites en [`tests/evals/RESULTS-planes.md`](tests/evals/RESULTS-planes.md).
 

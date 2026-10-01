@@ -61,3 +61,62 @@ test('review-resilience: CRITICAL solo si rompe la promesa de la tarea o pierde 
   // El defecto plantado (un catch que devuelve true) sigue siendo bloqueante: rompe la promesa.
   assert.match(s, /reports success after a failed write[^\n]*BLOCKER/);
 });
+
+// Hito 5b, Task 15: cartas de spec-reviewer, plan-auditor e implementer.
+const { SECTIONS } = require('../plugins/pignolo/lib/scope-card');
+const { parseReview, parseVerification } = require('../plugins/pignolo/lib/plan-audit');
+const jsonBlocks = (s) => [...s.matchAll(/```json\s*\n([\s\S]*?)```/g)].map((m) => m[1]);
+
+test('spec-reviewer: nombra los 8 encabezados de SECTIONS, en orden', () => {
+  const s = agent('spec-reviewer');
+  let at = -1;
+  for (const h of SECTIONS) {
+    const i = s.indexOf(`## ${h}\n`, at + 1);
+    assert.ok(i > at, `falta o desordenado: ## ${h}`);
+    at = i;
+  }
+  assert.match(s, /Added without being asked: exactly the bullet `- none`, or one bullet per item as `- A1: \.\.\.`/);
+  assert.match(s, /Exactly one quoted string per bullet/);
+  assert.match(s, /ends with the quote from the request it comes from/);
+});
+
+test('spec-reviewer: el ejemplo de salida termina en una palabra de veredicto sola', () => {
+  const s = agent('spec-reviewer');
+  const ex = /# Output\s+Plain text in this order:\s+```text\n([\s\S]*?)```/.exec(s);
+  assert.ok(ex, 'sin ejemplo de salida');
+  const last = ex[1].trimEnd().split('\n').pop();
+  assert.match(last, /^(APPROVE|REQUEST_CHANGES|ESCALATE)$/);
+  assert.match(s, /last line of the report is the verdict word alone/);
+});
+
+test('plan-auditor: dos modos y el ejemplo de cada bloque json parsea', () => {
+  const s = agent('plan-auditor');
+  assert.match(s, /# Mode review/);
+  assert.match(s, /# Mode verify/);
+  assert.match(s, /No Bash: a hook denies it in this mode/);
+  assert.match(s, /at most 8/);
+  const [review, verify] = jsonBlocks(s);
+  const r = parseReview(`x\n\`\`\`json\n${review}\`\`\`\n`);
+  assert.strictEqual(r.error, undefined, r.error);
+  assert.ok(r.claims.length >= 1 && r.findings.length >= 1);
+  const claims = r.claims;
+  const v = parseVerification(`\`\`\`json\n${verify}\`\`\``, claims);
+  assert.strictEqual(v.error, undefined, v.error);
+  assert.deepStrictEqual(v.missing, []);
+  assert.match(s, /scratch\//);
+  assert.match(s, /cannot finish with fewer experiments than claims/);
+});
+
+test('plan-auditor: ya no manda copiar el plan a una copia del repo (sin replay)', () => {
+  const s = agent('plan-auditor');
+  assert.doesNotMatch(s, /scratch copy/);
+  assert.doesNotMatch(s, /copy each code block/i);
+  assert.match(s, /Never copy the plan or its code blocks into a copy of the repository/);
+});
+
+test('implementer: con aprobado visual corre approved-verify.js y con exit 1 queda BLOCKED', () => {
+  const s = agent('implementer');
+  assert.match(s, /approved-verify\.js/);
+  assert.match(s, /Exit 1[^\n]*`BLOCKED`/);
+  assert.match(s, /never edit it/);
+});
