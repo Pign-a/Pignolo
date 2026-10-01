@@ -14,7 +14,7 @@ const CLOSED = new Set(['closed', 'decided', 'superseded']);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const OPERATIONS = [['MERGE_HEAD', 'merge'], ['CHERRY_PICK_HEAD', 'cherry-pick'], ['rebase-merge', 'rebase'], ['rebase-apply', 'rebase']];
 
-// 'merge' | 'cherry-pick' | 'rebase' | null. Con `git rev-parse --git-path` desde el checkout
+// 'merge' | 'cherry-pick' | 'rebase' | 'git-failed' | null. Con `git rev-parse --git-path` desde el checkout
 // principal (en un worktree enlazado esos archivos viven en .git/worktrees/<n>/, C8). Límite
 // declarado: un merge que corre en OTRO worktree enlazado (la cola del hito 7) no se ve acá.
 function gitOperationInProgress(main) {
@@ -22,6 +22,8 @@ function gitOperationInProgress(main) {
   try {
     out = gitRun(['rev-parse', ...OPERATIONS.flatMap(([f]) => ['--git-path', f])], main, { timeout: 5000 });
   } catch (e) {
+    // Un checkout con .git donde git falla (safe.directory, repo roto) no es "sin operación": 'git-failed' (M3).
+    if (fs.existsSync(path.join(main, '.git'))) return 'git-failed';
     if (isGitFailure(e) || e.code === 'ENOENT') return null; // sin git o fuera de un repo
     throw e;
   }

@@ -158,6 +158,10 @@ function main() {
   const root = mainRoot(opts.cwd ? path.resolve(opts.cwd) : process.cwd());
   const { gitOperationInProgress } = require('../lib/archive');
   const op = gitOperationInProgress(root);
+  if (op === 'git-failed') return refuse('git-failed', `git no responde en ${root}: no se puede saber si hay un merge en curso; arreglá git (safe.directory, repo) y repetí`);
+  if (!fs.existsSync(path.join(root, '.pignolo', 'project.md')) && !fs.existsSync(path.join(root, '.pignolo', 'state')) && ['archive', 'index'].includes(opts.verb)) {
+    return refuse('not-configured', `${root} no tiene .pignolo/project.md ni .pignolo/state/: pignolo no está configurado acá (/pignolo:init)`);
+  }
   if (op) return refuse('merge-in-progress', `hay un ${op} en curso en el checkout principal (${root}); terminalo o abortalo antes de cerrar la sesión`, { operation: op });
   let r;
   switch (opts.verb) {

@@ -180,12 +180,14 @@ function moveEntry({ main, fromKind, toKind, id }) {
   const to = path.join(stateDir(main, toKind), `${id}.md`);
   if (!fs.existsSync(from)) return refuse('missing', `no existe ${from}`);
   if (fs.existsSync(to)) return refuse('exists', `ya existe ${to}`);
-  fs.mkdirSync(path.dirname(to), { recursive: true });
+  // `ls-files --error-unmatch` sale 1 si no está versionada. Cualquier otro fallo de git (plazo vencido,
+  // safe.directory, repo roto) en un checkout con .git no se toma por "no versionada": se rechaza (M5).
   let tracked = false;
-  const { gitRun, isGitFailure } = require('./git');
+  const { gitRun } = require('./git');
   try { gitRun(['ls-files', '--error-unmatch', '--', from], main, { timeout: 5000 }); tracked = true; } catch (e) {
-    if (!isGitFailure(e) && e.code !== 'ENOENT') throw e; // git corrió y dijo que no (o no hay git): rename
+    if (e.status !== 1 && fs.existsSync(path.join(main, '.git'))) return refuse('git-failed', `git no pudo decir si ${from} está versionada: ${String(e.stderr || e.message).trim().split(/\r?\n/)[0]}`);
   }
+  fs.mkdirSync(path.dirname(to), { recursive: true });
   if (tracked) gitRun(['mv', '--', from, to], main, { timeout: 5000 });
   else fs.renameSync(from, to);
   return { ok: true, file: to, from, how: tracked ? 'git-mv' : 'rename' };

@@ -120,17 +120,27 @@ function roleRule({ input, env, cwd, file }) {
 // Bash y PowerShell no están cubiertos (límite declarado): los cubre la revisión del diff.
 const STATE_RE = /(^|\/)\.pignolo\/state(\/|$)/;
 const WORKTREES_RE = /(^|\/)\.pignolo\/worktrees(\/|$)/;
+// INDEX.md y learnings/accepted/ de cualquier copia (también la de un worktree de tarea: viaja a
+// main con la rama), y .pignolo/state/ de un worktree que no es el principal.
+const INDEX_COPY_RE = /(^|\/)\.pignolo\/state\/index\.md$/;
+const ACCEPTED_COPY_RE = /(^|\/)\.pignolo\/state\/learnings\/accepted(\/|$)/;
+function inOtherCopy(abs, main) {
+  const m = STATE_RE.exec(abs);
+  const owner = abs.slice(0, m.index);
+  if (!owner || cleanPath(owner) === cleanPath(main)) return false;
+  if (WORKTREES_RE.test(owner)) return true;
+  try { return cleanPath(mainRoot(owner)) === cleanPath(main); } catch (_) { return false; }
+}
 function stateRule({ input, env, cwd, abs }) {
   if (!STATE_RE.test(abs)) return null;
   const main = mainRoot(cwd);
-  const mainState = resolveClean(path.join(main, '.pignolo', 'state'), cwd);
-  if (abs === `${mainState}/index.md`) return alt('INDEX.md lo genera pignolo y no se edita a mano. Alternativa: node <plugin>/scripts/state-index.js --cwd <checkout principal>.');
-  if (isWithin(abs, `${mainState}/learnings/accepted`)) return alt('learnings/accepted/ lo escribe solo close-session.js al aceptar un aprendizaje. Alternativa: escribí la propuesta en .pignolo/state/learnings/proposed/ y aceptala con node <plugin>/scripts/close-session.js decide --id <id>.');
+  if (INDEX_COPY_RE.test(abs)) return alt('INDEX.md lo genera pignolo y no se edita a mano. Alternativa: node <plugin>/scripts/state-index.js --cwd <checkout principal>.');
+  if (ACCEPTED_COPY_RE.test(abs)) return alt('learnings/accepted/ lo escribe solo close-session.js al aceptar un aprendizaje. Alternativa: escribí la propuesta en .pignolo/state/learnings/proposed/ y aceptala con node <plugin>/scripts/close-session.js decide --id <id> --answer yes (con el sí del humano).');
   if (readState({ env, cwd }).hooksOff) return null;
   if (input.agent_id) return alt('un subagente no escribe .pignolo/state/. Alternativa: devolvé lo que haya que registrar en tu informe y el hilo principal lo escribe.');
   const cleanCwd = resolveClean(cwd, cwd);
-  if (WORKTREES_RE.test(cleanCwd) || cleanPath(projectRoot(cwd)) !== cleanPath(main)) {
-    return alt(`.pignolo/state/ se escribe solo desde el checkout principal, no desde un worktree de tarea. Alternativa: escribí la entrada desde ${main} (cd al checkout principal o ruta absoluta con el cwd ahí).`);
+  if (WORKTREES_RE.test(cleanCwd) || cleanPath(projectRoot(cwd)) !== cleanPath(main) || inOtherCopy(abs, main)) {
+    return alt(`.pignolo/state/ se escribe solo desde el checkout principal, no desde un worktree de tarea ni sobre su copia. Alternativa: escribí la entrada en ${main} (cd al checkout principal o ruta absoluta con el cwd ahí).`);
   }
   return null;
 }

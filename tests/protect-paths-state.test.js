@@ -84,3 +84,26 @@ test('regression guard: src/a.js and .pignolo/project.md by the main thread keep
   assert.strictEqual(protect.run(payload(repo, path.join(repo, '.pignolo', 'project.md')), { env: env() }).exit, 0);
   assert.strictEqual(protect.run(payload(repo, path.join(repo, '.pignolo', 'state-notes.md')), { env: env() }).exit, 0, 'un nombre parecido no es state/');
 });
+
+// Protects: M2 de la revisión final (la copia de estado de un worktree de tarea viaja a main con la
+// rama) · Breaks if: el hilo principal con cwd en el principal escribe .pignolo/state/, INDEX.md o
+// accepted/ de un worktree de tarea o enlazado.
+test('the main thread cannot write the state, INDEX.md or accepted/ of a task worktree or a linked worktree from the main checkout', () => {
+  const repo = setup();
+  const inner = path.join(repo, '.pignolo', 'worktrees', 't1');
+  fs.mkdirSync(inner, { recursive: true });
+  for (const rest of [['work', 'x.md'], ['INDEX.md'], ['learnings', 'accepted', 'a.md'], ['learnings', 'proposed', 'p.md']]) {
+    assert.strictEqual(protect.run(payload(repo, state(inner, ...rest)), { env: env() }).exit, 2, `worktree de tarea ${rest.join('/')}`);
+  }
+  const wt = path.join(makeTempDir('pignolo-wt-'), 'wt');
+  git(['worktree', 'add', '-q', '-b', 'tw2', wt], repo);
+  for (const rest of [['work', 'x.md'], ['INDEX.md'], ['learnings', 'accepted', 'a.md']]) {
+    assert.strictEqual(protect.run(payload(repo, state(wt, ...rest)), { env: env() }).exit, 2, `worktree enlazado ${rest.join('/')}`);
+  }
+  assert.strictEqual(protect.run(payload(repo, state(repo, 'work', 'x.md')), { env: env() }).exit, 0, 'el principal sigue pasando');
+  assert.strictEqual(protect.run(payload(repo, state(makeTempDir('pignolo-other-'), 'work', 'x.md')), { env: env() }).exit, 0, 'el estado de otro repo no es asunto de esta regla');
+  const off = makeTempDir();
+  fs.writeFileSync(path.join(repo, '.pignolo', '.disabled'), '');
+  assert.strictEqual(protect.run(payload(repo, state(inner, 'work', 'x.md')), { env: { PIGNOLO_HOME: off } }).exit, 0, 'con /pignolo:off (b) y (c) no rigen');
+  assert.strictEqual(protect.run(payload(repo, state(inner, 'INDEX.md')), { env: { PIGNOLO_HOME: off } }).exit, 2, 'INDEX.md de una copia sigue negado aun con /pignolo:off');
+});

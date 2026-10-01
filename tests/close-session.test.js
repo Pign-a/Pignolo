@@ -29,6 +29,7 @@ const put = (main, kind, id, status, created) => assert.ok(store.writeEntry({ ma
 
 test('usage: no verb, unknown verb or missing option exit 2', () => {
   const repo = makeRepo();
+  project(repo);
   assert.strictEqual(cli([], { cwd: repo }).status, 2);
   assert.strictEqual(cli(['bogus'], { cwd: repo }).status, 2);
   assert.strictEqual(cli(['decide'], { cwd: repo }).status, 2);
@@ -118,6 +119,7 @@ test('every verb refuses with merge-in-progress during a real merge, cherry-pick
 
 test('declared limit: a merge in a linked worktree does not refuse the script in the main checkout', () => {
   const repo = makeRepo();
+  project(repo);
   const wt = path.join(makeTempDir('pignolo-wt-'), 'wt');
   git(['worktree', 'add', '-q', '-b', 'side', wt], repo);
   git(['checkout', '-q', '-b', 'other'], repo);
@@ -270,4 +272,21 @@ test('evidence --since: a ref resolves to <sha>..HEAD; anything git cannot resol
     const r = cli(['evidence', '--since', since], { cwd: repo });
     assert.deepStrictEqual([r.status, r.json && r.json.refused], [1, 'bad-since'], since);
   }
+});
+
+// Protects: M3 (git roto no es "sin merge") y M4 (sin pignolo no se crea .pignolo/state/) · Breaks if:
+// con un .git ilegible el verbo sigue, o index/archive crean estado en un repo sin pignolo.
+test('a broken .git refuses every verb with git-failed; index and archive refuse not-configured in a repo without pignolo and create nothing', () => {
+  const broken = makeTempDir('pignolo-broken-');
+  fs.mkdirSync(path.join(broken, '.git'));
+  const r = cli(['index'], { cwd: broken });
+  assert.deepStrictEqual([r.status, r.json.refused], [1, 'git-failed']);
+  const repo = makeRepo();
+  for (const verb of ['index', 'archive']) {
+    const n = cli([verb], { cwd: repo });
+    assert.deepStrictEqual([n.status, n.json.refused], [1, 'not-configured'], verb);
+  }
+  assert.ok(!fs.existsSync(path.join(repo, '.pignolo')), 'no se creó .pignolo/');
+  project(repo);
+  assert.strictEqual(cli(['index'], { cwd: repo }).status, 0, 'con project.md sí');
 });

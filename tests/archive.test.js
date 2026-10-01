@@ -114,3 +114,17 @@ test('declared limit: a merge in another linked worktree is not seen from the ma
   assert.strictEqual(A.gitOperationInProgress(wt), 'merge');
   assert.strictEqual(A.gitOperationInProgress(repo), null);
 });
+
+// Protects: M3 y M5 de la revisión final (un git que falla no es "sin merge" ni "no versionada") ·
+// Breaks if: gitOperationInProgress devuelve null o moveEntry hace rename con un .git que git no lee.
+test('a checkout whose git fails is git-failed, not "no operation" and not "untracked"', () => {
+  const broken = makeTempDir('pignolo-broken-');
+  fs.mkdirSync(path.join(broken, '.git'));
+  assert.strictEqual(A.gitOperationInProgress(broken), 'git-failed');
+  put(broken, 'work', 20, 'x', 'closed');
+  const r = A.archiveEntries({ main: broken, days: 14, now: NOW });
+  assert.deepStrictEqual(r.moved, []);
+  assert.deepStrictEqual(r.refused.map((x) => x.reason), ['git-failed']);
+  assert.ok(fs.existsSync(path.join(broken, '.pignolo', 'state', 'work', `${id(20, 'x')}.md`)), 'la entrada no se movió');
+  assert.ok(!fs.existsSync(path.join(broken, '.pignolo', 'state', 'archive')), 'ni se creó el destino');
+});
