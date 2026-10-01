@@ -1,0 +1,1 @@
+Quiero que las pantallas de UI que arma pignolo-ui se vean como artifacts tipo Figma (el lienzo "Design" de claude.ai). Los colores y las fuentes, en HTML.

@@ -1,0 +1,110 @@
+{
+  "note": "Validación a mano de cada spec contra truth.json (G11). match: el spec dice lo que el autor decidió (como decisión citada o ruling). declared: queda a la vista como supuesto, propuesta sin aprobar o pregunta pendiente. contrary: el spec afirma otra cosa sin marcarla. Lo que no figura: ausente.",
+  "runs": {
+    "A1": {
+      "match": [
+        "T2",
+        "T5",
+        "T6",
+        "T8"
+      ],
+      "declared": [],
+      "contrary": []
+    },
+    "A2": {
+      "match": [
+        "T2",
+        "T4",
+        "T5",
+        "T6",
+        "T8",
+        "T10"
+      ],
+      "declared": [],
+      "contrary": [
+        "T7"
+      ]
+    },
+    "A3": {
+      "match": [
+        "T2",
+        "T4",
+        "T5",
+        "T8"
+      ],
+      "declared": [
+        "T6"
+      ],
+      "contrary": []
+    },
+    "B1": {
+      "match": [
+        "T4"
+      ],
+      "declared": [],
+      "contrary": [
+        "T2",
+        "T5",
+        "T8"
+      ]
+    },
+    "B2": {
+      "match": [
+        "T2",
+        "T7",
+        "T8"
+      ],
+      "declared": [],
+      "contrary": [
+        "T5"
+      ]
+    },
+    "B3": {
+      "match": [
+        "T2",
+        "T4",
+        "T5",
+        "T6",
+        "T8",
+        "T9"
+      ],
+      "declared": [],
+      "contrary": [
+        "T10"
+      ]
+    }
+  },
+  "questions": {
+    "note": "Preguntas reales al autor (sin contar el mensaje de lo entendido), cuántas tenían la respuesta en el repo y cuántas devolvió el autor (no sé / es técnico).",
+    "A1": {
+      "asked": 4,
+      "inRepo": 0,
+      "returned": 1
+    },
+    "A2": {
+      "asked": 6,
+      "inRepo": 0,
+      "returned": 1
+    },
+    "A3": {
+      "asked": 3,
+      "inRepo": 0,
+      "returned": 0
+    },
+    "B1": {
+      "asked": 1,
+      "inRepo": 0,
+      "returned": 0
+    },
+    "B2": {
+      "asked": 4,
+      "inRepo": 0,
+      "returned": 1
+    },
+    "B3": {
+      "asked": 3,
+      "inRepo": 0,
+      "returned": 0
+    }
+  }
+}
