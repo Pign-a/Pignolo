@@ -518,9 +518,59 @@ function assignedValue(w, from) {
   return { ...w, value: w.value.slice(from), dynAt: w.dyn ? Math.max(0, w.dynAt - from) : -1 };
 }
 
+// Expansión de llaves de bash en literal: `{-f,origin}` son DOS palabras (`-f`, `origin`) y la regla de cada opción tiene
+// que verlas. Solo palabras donde la llave es lo único dinámico y sin comillas dentro. Lo que no se puede expandir (rango
+// raro, más de BRACE_CAP palabras) queda dinámico desde la llave, y los destinos que miran `dyn` lo niegan.
+const BRACE_CAP = 64;
+function braceExpand(s) {
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] !== '{') continue;
+    let depth = 0;
+    let last = i + 1;
+    let end = -1;
+    const parts = [];
+    for (let j = i; j < s.length; j++) {
+      if (s[j] === '{') depth++;
+      else if (s[j] === '}') { depth--; if (depth === 0) { end = j; break; } } else if (s[j] === ',' && depth === 1) { parts.push(s.slice(last, j)); last = j + 1; }
+    }
+    if (end < 0) continue;
+    parts.push(s.slice(last, end));
+    let items = parts;
+    if (parts.length === 1) {
+      const m = /^(-?\d+)\.\.(-?\d+)$/.exec(parts[0]) || /^([A-Za-z])\.\.([A-Za-z])$/.exec(parts[0]);
+      if (!m) continue;
+      const num = /\d/.test(m[1]);
+      const a = num ? Number(m[1]) : m[1].charCodeAt(0);
+      const b = num ? Number(m[2]) : m[2].charCodeAt(0);
+      if (Math.abs(b - a) >= BRACE_CAP) throw new RangeError('llaves');
+      items = [];
+      for (let k = a; a <= b ? k <= b : k >= b; k += a <= b ? 1 : -1) items.push(num ? String(k) : String.fromCharCode(k));
+    }
+    const pre = s.slice(0, i);
+    const post = s.slice(end + 1);
+    const res = [];
+    for (const it of items) for (const x of braceExpand(it + post)) res.push(pre + x);
+    if (res.length > BRACE_CAP) throw new RangeError('llaves');
+    return res;
+  }
+  return [s];
+}
+
+function spliceBraces(words) {
+  if (!words.some((w) => w.braceOnly && w.value === w.unq)) return words;
+  const res = [];
+  for (const w of words) {
+    if (!(w.braceOnly && w.value === w.unq)) { res.push(w); continue; }
+    let parts;
+    try { parts = braceExpand(w.value); } catch (e) { res.push(w); continue; }
+    for (const x of parts) res.push({ ...w, value: x, unq: x, dyn: false, dynAt: -1, brace: false, braceOnly: false, glob: w.glob || /[*?[]/.test(x) });
+  }
+  return res;
+}
+
 function runWords(input, cmd, shell, ctx, out, depth, st) {
   const ps = shell === 'powershell';
-  let words = input;
+  let words = ps ? input : spliceBraces(input);
   // Un cd cambia el directorio de esta shell solo si no corre en un subshell propio.
   let inShell = !cmd.noCd && (ps || (!cmd.pipedIn && !cmd.pipeOut && !cmd.async));
   const onExec = (v) => code(v, 'bash', ctx, out, depth, st);
