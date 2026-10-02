@@ -7,6 +7,9 @@
 //   optOut: null | 'project-opt-out' (publish: never) | 'legacy-consent-declined' (canvasConsent: false of 0.6.x without publish)
 // dataProblem(data) -> null | 'data-unresolved'     readOptOut({ data, project, env }) -> { optOut, dataProblem }
 // writeConfig({ data, project, key, value }) -> { repoId, file, config }
+// canvasOf(config) -> { canvas, problem }   the registered canvas of the project (T4b, R-16): null when there is none,
+//   problem 'canvas-state-invalid' when what is stored is not valid (the caller fails closed)
+// firstByState(canvas) -> boolean            true without a canvas, with state 'created' or with no page yet (R-7)
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -37,7 +40,29 @@ export function repoIdFor(project, { run = defaultRun } = {}) {
 const relInside = (v) => typeof v === 'string' && v.trim() !== '' && !path.isAbsolute(v) && !/^[a-zA-Z]:/.test(v)
   && !v.split(/[\\/]/).includes('..');
 
+// R-16: the canvas of the project. The address is stored without query or fragment.
+const CANVAS_URL = /^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+$/;
+const CANVAS_KEYS = ['url', 'state', 'pages', 'files', 'bytes', 'notes', 'dsInstalledSha256', 'launchPage'];
+const isCount = (n) => Number.isInteger(n) && n >= 0;
+
+function canvasProblem(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return 'canvas debe ser un objeto';
+  for (const k of Object.keys(v)) if (!CANVAS_KEYS.includes(k)) return `canvas no admite la clave ${k}`;
+  if (typeof v.url !== 'string' || !CANVAS_URL.test(v.url)) return 'canvas.url debe ser la dirección de un artifact de claude.ai';
+  if (v.state !== 'created' && v.state !== 'published') return 'canvas.state debe ser created o published';
+  for (const k of ['pages', 'files', 'bytes', 'notes']) if (!isCount(v[k])) return `canvas.${k} debe ser un entero mayor o igual a 0`;
+  if (v.dsInstalledSha256 !== undefined && !(typeof v.dsInstalledSha256 === 'string' && /^[0-9a-f]{64}$/.test(v.dsInstalledSha256))) return 'canvas.dsInstalledSha256 debe ser un sha256';
+  if (v.launchPage !== undefined && !(typeof v.launchPage === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(v.launchPage))) return 'canvas.launchPage debe ser un id de página';
+  return null;
+}
+
+// what is stored never carries a query or a fragment
+const NORMALIZERS = {
+  canvas: (v) => (v && typeof v === 'object' && !Array.isArray(v) && typeof v.url === 'string' ? { ...v, url: v.url.replace(/[?#].*$/s, '') } : v),
+};
+
 const VALIDATORS = {
+  canvas: canvasProblem,
   devUrl: (v) => (typeof v === 'string' && isLoopbackUrl(v) ? null : 'devUrl debe ser una URL local (localhost o 127.x)'),
   routes: (v) => (Array.isArray(v) && v.every(relInside) ? null : 'routes debe ser una lista de rutas relativas dentro del proyecto'),
   referencePath: (v) => (relInside(v) ? null : 'referencePath debe ser una ruta relativa dentro del proyecto'),
@@ -93,6 +118,7 @@ export function readOptOut({ data, project, env = process.env, ...opts }) {
 
 export function writeConfig({ data, project, key, value, ...opts }) {
   if (!Object.prototype.hasOwnProperty.call(VALIDATORS, key)) throw new ConfigError(`clave desconocida: ${key}`);
+  if (NORMALIZERS[key]) value = NORMALIZERS[key](value);
   const problem = VALIDATORS[key](value);
   if (problem) throw new ConfigError(problem);
   const { repoId, file, config } = readConfig({ data, project, ...opts });
@@ -108,3 +134,11 @@ export function writeConfig({ data, project, key, value, ...opts }) {
   fs.renameSync(tmp, file);
   return { repoId, file, config: next, optOut: optOutOf(next) };
 }
+
+export function canvasOf(config) {
+  if (!config || !Object.prototype.hasOwnProperty.call(config, 'canvas')) return { canvas: null, problem: null };
+  // what is on disk was not normalized by us: it is read with the same rule that writes it
+  return canvasProblem(config.canvas) ? { canvas: null, problem: 'canvas-state-invalid' } : { canvas: config.canvas, problem: null };
+}
+
+export const firstByState = (canvas) => !canvas || canvas.state === 'created' || canvas.pages === 0;

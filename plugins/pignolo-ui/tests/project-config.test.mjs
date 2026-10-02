@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { repoIdFor, readConfig, writeConfig, ConfigError } from '../lib/project-config.mjs';
+import { repoIdFor, readConfig, writeConfig, canvasOf, firstByState, ConfigError } from '../lib/project-config.mjs';
 import { makeTempDir } from './helpers.mjs';
 
 function makeRepo() {
@@ -119,4 +119,44 @@ test('a legacy canvasConsent: false counts as a no and survives as publish: neve
   const file2 = seed(repo, data, { canvasConsent: false, publish: 'auto' });
   writeConfig({ data, project: repo, key: 'routes', value: ['a'] });
   assert.equal(JSON.parse(fs.readFileSync(file2, 'utf8')).publish, 'auto');
+});
+
+const CANVAS = { url: 'https://claude.ai/artifact/abc123-DEF_456', state: 'published', pages: 2, files: 14, bytes: 40000, notes: 6, dsInstalledSha256: 'a'.repeat(64), launchPage: 'r-202610011800-a1b2c3' };
+
+test('T4b: canvas is a closed key: it reads back, the address loses query and fragment, and anything else is a ConfigError', () => {
+  const repo = makeRepo();
+  const data = makeTempDir();
+  writeConfig({ data, project: repo, key: 'canvas', value: CANVAS });
+  assert.deepEqual(readConfig({ data, project: repo }).config.canvas, CANVAS);
+  writeConfig({ data, project: repo, key: 'canvas', value: { ...CANVAS, url: 'https://claude.ai/code/artifact/abcd-1234?x=1#frag' } });
+  assert.equal(readConfig({ data, project: repo }).config.canvas.url, 'https://claude.ai/code/artifact/abcd-1234');
+  const { dsInstalledSha256, launchPage, ...minimal } = CANVAS;
+  writeConfig({ data, project: repo, key: 'canvas', value: minimal });
+  const bad = (value) => assert.throws(() => writeConfig({ data, project: repo, key: 'canvas', value }), ConfigError);
+  bad({ ...CANVAS, url: 'https://example.com/artifact/abc' });
+  bad({ ...CANVAS, url: 'http://claude.ai/artifact/abc' });
+  bad({ ...CANVAS, url: 'https://claude.ai/artifact/' });
+  bad({ ...CANVAS, state: 'draft' });
+  bad({ ...CANVAS, pages: -1 });
+  bad({ ...CANVAS, files: 1.5 });
+  bad({ ...CANVAS, bytes: '10' });
+  bad({ ...CANVAS, notes: null });
+  bad({ ...CANVAS, dsInstalledSha256: 'xyz' });
+  bad({ ...CANVAS, launchPage: 'a b' });
+  bad({ ...CANVAS, extra: 1 });
+  bad('https://claude.ai/artifact/abc');
+  bad(null);
+  bad([]);
+});
+
+test('T4b: canvasOf and firstByState: no canvas, created and zero pages open the canvas; a stored value that is not valid fails closed', () => {
+  assert.deepEqual(canvasOf({}), { canvas: null, problem: null });
+  assert.deepEqual(canvasOf({ canvas: CANVAS }), { canvas: CANVAS, problem: null });
+  assert.deepEqual(canvasOf({ canvas: { ...CANVAS, pages: -1 } }), { canvas: null, problem: 'canvas-state-invalid' });
+  assert.deepEqual(canvasOf({ canvas: 'x' }), { canvas: null, problem: 'canvas-state-invalid' });
+  assert.deepEqual(canvasOf({ canvas: { ...CANVAS, url: 'https://claude.ai/artifact/abc?x=1' } }).problem, 'canvas-state-invalid', 'a hand-edited address with a query is not trusted');
+  assert.equal(firstByState(null), true);
+  assert.equal(firstByState({ ...CANVAS, state: 'created' }), true);
+  assert.equal(firstByState({ ...CANVAS, pages: 0 }), true);
+  assert.equal(firstByState(CANVAS), false);
 });

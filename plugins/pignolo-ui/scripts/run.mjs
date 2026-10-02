@@ -6,6 +6,7 @@
 //   run.mjs init --project <repo> --command new|improve|audit --slug <slug> [--now <ISO>] [--url <local URL> | --file <path>] [--files <a,b>]
 //   run.mjs config get|set --data <dir> --project <repo> [--key <k> --value <v>]
 //   run.mjs present --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> --kind option|direction --artifact yes|no --design-type yes|no [--run <run>]
+//     prints also canvasPublished (the canvas registered in project.json or null) and first (by state only; build adds ownsMain)
 //   run.mjs publish-gate --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> [--run <run>]
 //   run.mjs no-publish --run <run>
 //   run.mjs norms --run <run> [--norms <norms.md>]
@@ -31,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { envReport } from '../lib/env-check.mjs';
 import { initRun } from '../lib/run-init.mjs';
-import { readConfig, readOptOut, writeConfig, ConfigError } from '../lib/project-config.mjs';
+import { readConfig, readOptOut, writeConfig, canvasOf, firstByState, ConfigError } from '../lib/project-config.mjs';
 import { decidePresentation, gateDecision, NOTICE } from '../lib/presentation.mjs';
 import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
@@ -232,9 +233,11 @@ const COMMANDS = {
         designType: yesNo(opts['design-type'], 'design-type'),
         optOut,
       });
-      const reasons = runOptOut ? [...decision.reasons.filter((r) => r !== 'run-opt-out'), 'run-opt-out'] : decision.reasons;
-      const mode = runOptOut ? 'local' : decision.mode;
-      const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local' };
+      // R-16: the canvas of the project, if there is one. A stored state that is not valid fails closed: local, never a canvas adopted or replaced blindly.
+      const { canvas, problem: canvasProblem } = canvasOf(readConfig({ data: path.resolve(cwd, opts.data), project }).config);
+      const reasons = [...decision.reasons.filter((r) => r !== 'run-opt-out'), ...(runOptOut ? ['run-opt-out'] : []), ...(canvasProblem ? [canvasProblem] : [])];
+      const mode = runOptOut || canvasProblem ? 'local' : decision.mode;
+      const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local', canvasPublished: canvas, first: firstByState(canvas) };
       if (mode === 'canvas') out.notice = NOTICE;
       if (unresolved) out.presentationUnresolved = true;
       return { out, code: 0 };

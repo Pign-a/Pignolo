@@ -494,3 +494,32 @@ test('verdict (the word "terminado") is the same with and without verdicts.json 
   const withVerdicts = run(['verdict', '--project', project, '--run', after]);
   assert.deepEqual([withVerdicts.status, withVerdicts.json], [before.status, before.json]);
 });
+
+test('T4b present: first and canvasPublished come from the canvas of project.json (R-7, A4C-10)', () => {
+  const project = makeRepo();
+  const data = makeTempDir();
+  const URL = 'https://claude.ai/artifact/abc123-DEF_456';
+  const present = () => run(PRESENT(project, data, ['--presentation', 'auto']));
+  const none = present();
+  assert.deepEqual([none.json.first, none.json.canvasPublished, none.json.mode], [true, null, 'canvas']);
+  const seed = (canvas) => {
+    const file = configPath(data, project);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ canvas }));
+  };
+  const published = { url: URL, state: 'published', pages: 1, files: 6, bytes: 100, notes: 3 };
+  seed(published);
+  const r = present();
+  assert.deepEqual([r.json.first, r.json.canvasPublished.url, r.json.mode], [false, URL, 'canvas']);
+  seed({ ...published, state: 'created' });
+  assert.equal(present().json.first, true);
+  seed({ ...published, pages: 0 });
+  assert.equal(present().json.first, true);
+  // a stored state that is not valid fails closed: local, no notice, no canvas adopted
+  seed({ ...published, pages: -1 });
+  const bad = present();
+  assert.equal(bad.status, 0, bad.stderr);
+  assert.deepEqual([bad.json.mode, bad.json.reasons, 'notice' in bad.json, bad.json.canvasPublished], ['local', ['canvas-state-invalid'], false, null]);
+  // the canvas cannot be set from the command line
+  assert.equal(run(['config', 'set', '--data', data, '--project', project, '--key', 'canvas', '--value', URL]).status, 2);
+});
