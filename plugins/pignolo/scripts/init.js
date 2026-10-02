@@ -21,7 +21,7 @@ const { locateAutoMemory } = require('../lib/auto-memory');
 const { applyAutoMemoryOff, gitIgnoredStatus } = require('../lib/claude-settings');
 const A = require('../lib/init-actions');
 const { detectPlaces } = require('../lib/places-detect');
-const { PLACE_KINDS, RECOMMENDED_REFERENCE, resolvePlaces } = require('../lib/places');
+const { PLACE_KINDS, PLACE_DEFAULTS, RECOMMENDED_REFERENCE, resolvePlaces, samePath } = require('../lib/places');
 const { proposeAdaptation, planAdaptation, applyAdaptation } = require('../lib/init-adapt');
 const { applySkeleton } = require('../lib/init-skeleton');
 const SM = require('../lib/safe-move');
@@ -182,18 +182,33 @@ function skeletonStep({ main, run, plan, adapt, dry }) {
   const merged = { ...cfg, places: { ...cfg.places, ...((adapt && adapt.places) || {}) } };
   if (plan.answers.public === false && !merged.places.reference) merged.places.reference = RECOMMENDED_REFERENCE;
   const resolved = resolvePlaces(merged);
+  // M-1: sin adapt (no aprobado o sin nada que adaptar) igual se respeta la carpeta existente: no se crea el default al lado.
+  const left = adapt && Array.isArray(adapt.leftKinds) ? adapt.leftKinds : unansweredKinds({ main, run, declared: cfg.places || {} });
   const step = applySkeleton({
     root: main, places: resolved.places, answers: plan.answers, run, dry,
-    leftKinds: adapt ? adapt.leftKinds : [], willExist: adapt && dry ? adapt.willExist : [],
+    leftKinds: left, willExist: adapt && dry ? adapt.willExist : [],
   });
-  return { step, resolved };
+  return { step, resolved, left };
+}
+
+// Tipos con una carpeta existente que no está en su lugar recomendado y que el mapa no declara.
+function unansweredKinds({ main, run, declared }) {
+  const det = detectPlaces({ root: main, run });
+  const out = [];
+  for (const kind of PLACE_KINDS) {
+    if (declared[kind] !== undefined) continue;
+    const cands = det.candidates.filter((c) => c.kind === kind);
+    const rec = kind === 'reference' ? RECOMMENDED_REFERENCE : PLACE_DEFAULTS[kind];
+    if (cands.length && !(cands.length === 1 && samePath(cands[0].path, rec))) out.push(kind);
+  }
+  return out;
 }
 
 // El mapa que escribe project-md: lo que adapt adoptó o movió y, si el esqueleto corrió, los lugares que tienen carpeta (sin los dejados ni los que se negaron).
 function finalPlaces({ plan, adapt, skeleton }) {
   const out = { ...((adapt && adapt.places) || {}) };
   if (skeleton && skeleton.resolved) {
-    const left = (adapt && adapt.leftKinds) || [];
+    const left = skeleton.left || [];
     const refused = skeleton.step.refused.map((r) => r.kind);
     for (const k of PLACE_KINDS) {
       const p = skeleton.resolved.places[k];

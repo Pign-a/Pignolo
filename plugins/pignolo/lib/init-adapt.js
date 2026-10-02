@@ -169,7 +169,7 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
     const first = SM.planMoves({ main, items: movers.map(toItem), config, run: git, fs });
     movers.forEach((d, i) => {
       const it = first.items[i];
-      if (it.status !== 'ok') { d.effective = 'adopt'; d.refused = { reason: it.reason, detail: it.detail }; }
+      if (it.status !== 'ok') { d.effective = 'adopt'; d.refused = { reason: it.reason, detail: it.detail }; d.moveRefused = true; }
     });
     movers = candidatesMoves();
     if (movers.length) {
@@ -198,11 +198,13 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
   for (const d of decisions) {
     if (d.conflict || d.decision === 'leave' || (d.refused && d.refused.reason === 'public-repo')) continue;
     const proposed = d.effective === 'move' ? d.to : d.from;
-    if (d.effective === 'adopt' && !d.refused) {
+    // Una guarda de planMoves impide mover, no adoptar (I-4): la carpeta se adopta si pasa validatePlacePath y el motivo queda en refused.
+    let blocked = Boolean(d.refused && !d.moveRefused);
+    if (d.effective === 'adopt' && !blocked) {
       const v = validatePlacePath(proposed, { config });
-      if (!v.ok) d.refused = { reason: v.reason, detail: v.detail };
+      if (!v.ok) { blocked = true; if (!d.refused) d.refused = { reason: v.reason, detail: v.detail }; }
     }
-    if (d.refused) { leftKinds.push(d.kind); continue; }
+    if (blocked) { leftKinds.push(d.kind); continue; }
     places[d.kind] = proposed;
     if (declared[d.kind] === undefined) mapEdits.push({ kind: d.kind, before: null, after: proposed });
   }
@@ -243,7 +245,9 @@ function applyAdaptation({ main, plan, config, env = process.env, now = new Date
   }
   const subPlan = pending.length === movers.length ? plan.moves : { ...plan.moves, items: pending };
   const rw = plan.rewrites.files;
-  const m = SM.applyMoves({ main, plan: subPlan, config, rewrites: rw, mapEdits: plan.mapEdits, env, now, run: git, fs });
+  // M-2: el deshacer solo quita del mapa lo que este movimiento escribió (los tipos movidos), no lo que se adoptó.
+  const movedKinds = new Set(plan.decisions.filter((d) => d.effective === 'move').map((d) => d.kind));
+  const m = SM.applyMoves({ main, plan: subPlan, config, rewrites: rw, mapEdits: plan.mapEdits.filter((e) => movedKinds.has(e.kind)), env, now, run: git, fs });
   if (!m.ok) {
     const out = { ...base, status: 'refused', reason: m.refused || m.kind, items: summaryOf(plan, 'refused'), rewrites: [], refs: refsOut };
     if (m.kind) Object.assign(out, { kind: m.kind, failed: m.failed, done: m.done, pending: m.pending, record: m.record });

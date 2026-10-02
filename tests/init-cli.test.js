@@ -618,3 +618,38 @@ test('8d: verify nombra una ruta del mapa inexistente y la referencia manual que
   assert.equal(v2.status, 0, v2.stderr + v2.stdout);
   assert.ok(v2.json.notes.some((n) => /referencia a una ruta vieja/.test(n) && /build\.js/.test(n)), JSON.stringify(v2.json.notes));
 });
+
+test('M-2: el undo de un move no le quita al mapa lo que init solo adoptó (private)', () => {
+  const env = env0();
+  const repo = docRepo();
+  write(repo, '.gitignore', 'private/\n');
+  commitAll(repo, 'ig');
+  write(repo, 'private/s.md', 'secreto\n');
+  const plan = adaptPlan({ places: { spec: { decision: 'move', from: 'doc/specs/' }, private: { decision: 'adopt', from: 'private/' } } });
+  const stamp = cli(['preview', '--plan', plan, '--cwd', repo], { env }).json.stamp;
+  const ap = cli(withExpect(['apply', '--plan', plan, '--cwd', repo], stamp), { env });
+  assert.equal(ap.status, 0, ap.stderr + ap.stdout);
+  const pmFile = path.join(repo, '.pignolo', 'project.md');
+  assert.match(fs.readFileSync(pmFile, 'utf8'), /private: private\//);
+  const un = undoCli(stepOf(ap, 'adapt').record, repo, env);
+  assert.equal(un.status, 0, un.stderr + un.stdout);
+  const pm = fs.readFileSync(pmFile, 'utf8');
+  assert.doesNotMatch(pm, /spec: docs\/specs\//);
+  assert.match(pm, /private: private\//, 'lo adoptado se queda en el mapa');
+});
+
+test('M-1: skeleton sin adapt aprobado no crea docs/specs al lado de doc/specs ni lo declara en el mapa', () => {
+  const env = env0();
+  const repo = docRepo();
+  const plan = planFile({ v: 1, approved: ['skeleton', 'project-md'], answers: { piiPatterns: [] }, proposal: { type: 'docs' } });
+  const pv = cli(['preview', '--plan', plan, '--cwd', repo], { env });
+  const wouldCreate = (stepOf(pv, 'skeleton').created || []).map((c) => (typeof c === 'string' ? c : c.path));
+  assert.ok(!wouldCreate.some((p) => /docs\/specs/.test(p)), `preview anuncia crear docs/specs: ${wouldCreate}`);
+  const ap = cli(['apply', '--plan', plan, '--cwd', repo], { env });
+  assert.equal(ap.status, 0, ap.stderr + ap.stdout);
+  assert.ok(!fs.existsSync(path.join(repo, 'docs', 'specs')), 'no se crea docs/specs al lado');
+  assert.ok(fs.existsSync(path.join(repo, 'doc', 'specs', '2026-01-01-a-design.md')));
+  const pm = fs.readFileSync(path.join(repo, '.pignolo', 'project.md'), 'utf8');
+  assert.doesNotMatch(pm, /spec: docs\/specs\//);
+  assert.ok((stepOf(ap, 'skeleton').notes || []).some((n) => /^spec: hay una carpeta existente/.test(n)));
+});

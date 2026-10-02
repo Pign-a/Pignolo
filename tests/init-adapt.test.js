@@ -353,3 +353,28 @@ test('dry: la salida no tiene marcas de tiempo ni rutas de registro, es estable 
   assert.ok(!('record' in a));
   assert.equal(hashTree(repo), h);
 });
+
+// I-4: una mudanza frenada por una guarda de planMoves adopta la carpeta (el tipo queda en el mapa) y guarda el motivo
+test('I-4: una guarda de planMoves frena el move: la carpeta se adopta (places y mapEdits) y refused guarda el motivo', () => {
+  const repo = base();
+  put(repo, '.gitignore', 'doc/specs/*.pdf\n');
+  commitAll(repo, 'ig');
+  put(repo, 'doc/specs/x.pdf', 'pdf\n');
+  const p = plan(repo, { places: MOVE_SPEC });
+  const d = p.decisions[0];
+  assert.equal(d.effective, 'adopt');
+  assert.equal(d.refused.reason, 'ignored-by-outside-rule');
+  assert.equal(p.places.spec, 'doc/specs/');
+  assert.deepEqual(p.mapEdits, [{ kind: 'spec', before: null, after: 'doc/specs/' }]);
+  assert.ok(!p.leftKinds.includes('spec'));
+  assert.deepEqual(p.moves.items, []);
+});
+
+test('I-4: si la carpeta frenada tampoco se puede adoptar (validatePlacePath), el tipo queda fuera del mapa', () => {
+  const repo = base();
+  put(repo, '.pignolo/project.md', '---\ntype: docs\ntest-paths:\n  - "*spec*"\n---\n');
+  const p = plan(repo, { places: MOVE_SPEC });
+  assert.equal(p.decisions[0].refused.reason, 'matches-declared-paths');
+  assert.equal(p.places.spec, undefined);
+  assert.ok(p.leftKinds.includes('spec'));
+});

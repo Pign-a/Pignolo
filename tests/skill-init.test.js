@@ -107,3 +107,17 @@ test('8d: el README explica los seis lugares, where, report, el undo y sus lími
   assert.match(readme, /## Dónde va cada archivo/);
   for (const re of [/`reference`[^\n]*solo/, /places\.js where/, /`report`/, /places\.js undo/, /Límites/]) assert.match(readme, re, String(re));
 });
+
+test('M-7 (R-25): the gate runs apart from apply with its exact command, and the skill covers undo refusal, no gate and the 10-minute limit', () => {
+  const t = SKILL.text;
+  assert.match(t, /gate\.js" --level on-done --cwd/);
+  assert.match(t, /never inside `apply`/);
+  assert.match(t, /--level pre-merge/);
+  assert.match(t, /declares no gate/);
+  assert.match(t, /10-minute limit/);
+  assert.match(t, /undo may be refused/);
+});
+
+test('I-4: a folder stopped by a hard guard is adopted where it is and the reason stays in refused', () => {
+  assert.match(SKILL.text, /adopted where it is \(it goes into the map as that place and the reason stays in `refused`\)/);
+});
