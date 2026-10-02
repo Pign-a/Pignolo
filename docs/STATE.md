@@ -101,3 +101,7 @@ Mediciones aprobadas: tope de 14 USD para los hitos 4f y 4g (≈ 6,3 USD estimad
 - Informes por tarea: `docs/reports/`. Checklists manuales: `tests/manual/`.
 - Historia: `docs/history/`. `local/` está fuera de git.
 - Versiones y cambios: `CHANGELOG.md` y `plugins/pignolo-ui/CHANGELOG.md`.
+
+## Decisión del 2026-10-01 (noche): todo pignolo-ui se implementa sin pruebas del autor
+
+El autor no prueba nada hasta que la v1 esté terminada; después la prueba y da feedback. La **puerta manual del lienzo** (publicación real de prueba) deja de frenar: 4f, las etapas 2 a 4 del lienzo, 4g y 4e se ejecutan de corrido y la prueba real pasa a la revisión de la v1. Riesgo aceptado: si en el lienzo real fallan las clases CSS, el `@media` o las fuentes, el conversor y lo construido encima se corrigen después. En curso: rama `ui/hito-4e-chequeos` (olas 2 a 4 de 4e, en paralelo con el resto).
