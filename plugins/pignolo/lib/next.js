@@ -53,6 +53,22 @@ function queuePlans(main) {
 
 // queue-conflict (un merge cortado en la worktree de la cola, o last.json en `conflict`) gana a queue-busy-dead (lock de
 // un pid que ya no existe; un pid vivo con deadline futuro no cuenta aunque el archivo sea viejo, R-8).
+// Un `last.json` en conflict ya no vale si el plan se cerró o si la rama de la tarea se movió desde el conflicto (se rebaseó) o
+// ya no existe (M10). Sin `taskSha` (registros viejos) solo cuenta el plan cerrado.
+function conflictStale(main, plan, last) {
+  try {
+    const r = ps.readPlan({ main, plan, git: true });
+    if (r.ok && r.plan.stage === 'closed') return true;
+  } catch (_) { /* sin plan legible: no se descarta */ }
+  if (typeof last.taskSha === 'string' && typeof last.task === 'string') {
+    try {
+      const sha = String(gitRun(['--no-optional-locks', 'rev-parse', '--verify', '--quiet', `refs/heads/${last.task}^{commit}`], main, { timeout: 3000 })).trim();
+      return sha !== last.taskSha;
+    } catch (_) { return true; } // la rama ya no existe
+  }
+  return false;
+}
+
 function queueState(main) {
   const plans = queuePlans(main);
   for (const plan of plans) {
@@ -67,7 +83,7 @@ function queueState(main) {
         files = gitRun(['--no-optional-locks', 'diff', '--name-only', '--diff-filter=U'], wt, { timeout: 3000 }).split(/\r?\n/).filter(Boolean);
       } catch (_) { /* sin merge en curso (rev-parse sale 1) o sin git */ }
     }
-    if (cut || (last && last.status === 'conflict')) {
+    if (cut || (last && last.status === 'conflict' && !conflictStale(main, plan, last))) {
       return { kind: 'queue-conflict', plan, task: (last && last.task) || 'la tarea en curso', files: files.length ? files : ((last && last.conflicts) || []) };
     }
   }

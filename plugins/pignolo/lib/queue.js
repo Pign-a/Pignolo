@@ -624,7 +624,8 @@ function integrate({ main, plan, task: taskArg, resolveTrivial = false, env = pr
     let mergeTree = 'unavailable';
     try { mergeTree = previewMerge({ main, plan, task, opts }).mergeTree; } catch (e) { if (!(e instanceof QueueError)) throw e; } // la previsión es opcional: el merge real corre igual
     const merge = mergeIntoQueue({ main, plan, task, resolveTrivial, opts });
-    writeLast(main, plan, { status: merge.status === 'merged' ? 'merged' : merge.status, task, conflicts: [...merge.logic, ...merge.trivial].map((x) => x.path) });
+    // taskSha: la punta de la tarea al momento del conflicto; `next` descarta el conflicto si la rama se movió después (M10).
+    writeLast(main, plan, { status: merge.status === 'merged' ? 'merged' : merge.status, task, conflicts: [...merge.logic, ...merge.trivial].map((x) => x.path), taskSha: branchSha(runnerOf(main, opts), task) || undefined });
     if (merge.status === 'conflict') throw new QueueError('conflict', `conflicto en ${[...merge.logic, ...merge.trivial].map((x) => x.path).join(', ')}: la tarea vuelve a su rama (rebase en su worktree) y se registra como falla del plan`, { trivial: merge.trivial, logic: merge.logic });
     if (merge.status === 'already-merged') throw new QueueError('already-merged', `${task} ya está unida a ${B.queueBranch(plan)}. Alternativa: si se revirtió en int/, reintegrala revirtiendo el revert`);
     return pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind: 'merge', trivial: merge.trivial, mergeTree });

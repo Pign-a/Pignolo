@@ -132,3 +132,21 @@ test('solo lectura (lock muerto): next lo describe y no lo borra', () => {
   assert.deepStrictEqual(snapshot(repo), before);
   assert.ok(fs.existsSync(path.join(repo, '.pignolo', 'tmp', 'queue', 'p.lock')));
 });
+
+test('M10: un last.json en conflict no queda pegado: se ignora con el plan cerrado o si la rama de la tarea cambió desde el conflicto', () => {
+  const repo = makeRepo();
+  git(['branch', 'task/p/02-b'], repo);
+  const tip = git(['rev-parse', 'task/p/02-b'], repo);
+  const last = (over) => write(repo, '.pignolo/tmp/queue/p.last.json', JSON.stringify({ status: 'conflict', task: 'task/p/02-b', conflicts: ['cfg.js'], ...over }));
+  last({ taskSha: tip });
+  assert.strictEqual(next(repo).kind, 'queue-conflict', 'la rama sigue donde estaba: el conflicto vale');
+  // la tarea se rebaseó (la rama se movió): el conflicto viejo ya no vale
+  git(['commit', '--allow-empty', '-q', '-m', 'x'], repo);
+  git(['branch', '-f', 'task/p/02-b', 'HEAD'], repo);
+  assert.notStrictEqual(next(repo).kind, 'queue-conflict', 'rebaseada');
+  // y con el plan cerrado tampoco
+  last({ taskSha: git(['rev-parse', 'task/p/02-b'], repo) });
+  assert.strictEqual(next(repo).kind, 'queue-conflict');
+  write(repo, '.pignolo/state/plans/p/plan.json', `${JSON.stringify({ v: 1, plan: 'p', created: '2026-09-30T10:00:00.000Z', stage: 'closed', request: 'x', claims: [] })}\n`);
+  assert.notStrictEqual(next(repo).kind, 'queue-conflict', 'plan cerrado');
+});
