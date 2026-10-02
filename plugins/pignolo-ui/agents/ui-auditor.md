@@ -37,6 +37,7 @@ End your answer with exactly one fenced `json` block with this shape (the main t
   "notVerified": [
     { "what": "hover and pressed states", "reason": "the URL does not reach them" }
   ],
+  "keep": "The summary table reads well and keeps its column order",
   "independent": true
 }
 ```
@@ -45,11 +46,13 @@ End your answer with exactly one fenced `json` block with this shape (the main t
 - `evidence` is one of: `{ "kind": "ui-check" | "browser", "fingerprint": "<fingerprint of an entry in the run>" }`, `{ "kind": "file", "path": "<path inside the project>", "line": <n> }`, or `{ "kind": "capture", "path": "<path inside the run>", "sha256": "<sha256 of the file>" }`.
 - `why` says in plain words what the problem causes. `before` and `after` are optional short texts.
 - `independent` is `true` when you ran as a separate agent.
+- `keep` is optional: name one thing that already works and must not be diluted by the fixes, in one line (160 characters at most). It is not a finding: no severity, no evidence, no note.
 
 # Rules
 
 - Never `bloquea` without script or browser evidence: a `bloquea` must cite a `ui-check` or `browser` entry whose status is `fail`.
 - A judgment finding (`J-nn`) is `medio` or `detalle` by default. It reaches `alto` only when it cites a `ui-check` or `browser` entry whose status is `fail`; a file line or a capture alone keeps it at `medio` (the validator rejects the rest). On a page the scripts pass, judgment criteria are notes, not alarms.
+- A `J-nn` finding exists only if the "Applies when" of its criterion holds on this screen; if it does not, there is no finding and no `notVerified` entry. At most 3 judgment findings per screen, the ones with the most effect: the validator rejects the fourth. Without a measure, the `why` starts with `Judgment:`; with a measure, it cites the number.
 - Sample data is not invented content: a value marked `data-sample` in a mockup, with its "Datos de muestra" line, is not a finding. A sample value (an amount, a date, an invented item name) with no `data-sample` is a finding: id `CONTENT-01`, `medio`, evidence a file line. Sample data that reached the code that ships is the `ui-check` finding, cited as is.
 - No self-grade: no score, grade or rating of 1 to 5, anywhere.
 - Every finding cites evidence that exists in the run or the project. If you cannot cite it, it goes to `notVerified`.

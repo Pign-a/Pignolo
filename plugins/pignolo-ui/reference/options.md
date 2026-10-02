@@ -16,7 +16,7 @@ Each option gets its own brief, written in the prompt (never a path inside the p
 - the axis assigned to this option: mockups: A density, B structure, C emphasis. Style tiles: A restraint, B warmth or editorial, C high contrast; in a `product` register, B and C stay at "restraint with one accent" and vary typography and density;
 - the write folder `<run>/<kind>-<X>/`, which must be empty;
 - `destination: canvas` or `destination: local`, the one `run.mjs present` printed (Google Fonts only with `canvas`; `options-check` takes the same `--destination`), and the form rules of the agent: well formed HTML, no `{{`, no controls inside an `<a>`;
-- in `improve`: the findings the user chose and a text summary of the "before" capture, never the image.
+- in `improve`: the findings the user chose, a text summary of the "before" capture (never the image) and the auditor's `keep` line, the one thing that already works and must not be diluted.
 
 ## Dispatch
 

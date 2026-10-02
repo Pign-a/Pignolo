@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.4 — sin publicar
+
+Auditor más calmado (decisión del autor, 2026-10-01, ola 1 del hito 4e).
+
+- **Criterios con "cuándo aplica".** Cada `J-nn` de `norms/base.md` termina con `Applies when: <condición>` y se afila con palabras propias. Un criterio cuya condición no se cumple en la pantalla no genera hallazgo ni entrada en `notVerified`.
+- **Tope de 3 hallazgos de juicio por pantalla.** `validateFindings` (`lib/auditor-output.mjs`) rechaza, no recorta, el cuarto `J-nn` y los siguientes con el problema `judgment-cap` (`MAX_JUDGMENT_FINDINGS = 3`). Los hallazgos de regla (`COLOR-03`…) no cuentan, y una medida en `fail` no exime del tope. La carta pide ordenar por efecto, que el `why` sin medida empiece con `Judgment:` y que con medida cite el número (eso sigue siendo prosa).
+- **Línea `keep`.** Campo opcional del `json` del auditor: una línea de hasta 160 caracteres con una cosa que funciona y no hay que diluir. `validateFindings` suma `bad-keep` si no es texto, pasa de 160 o trae saltos de línea; `run.mjs auditor-check` imprime `keep`; el paso 4 de `improve` y `reference/options.md` se la pasan al brief de cada versión. No es hallazgo: sin severidad, evidencia ni nota, y ningún script decide con ella.
+- **Datos de muestra.** La carta ya decía que un valor con `data-sample` no es contenido inventado (0.7.3); un test de texto lo fija.
+- Tests nuevos en `auditor-output`, `norms`, `agents`, `run-cli` y `skill-improve`, con el rojo demostrado contra la versión anterior. Los tests de versión (`hito-4b`, `hito-4c`) siguen a 0.7.4. Falta la eval E2 del controlador antes de unir.
+
 ## 0.7.3 — sin publicar
 
 Dos decisiones del autor (2026-10-01, tras la tercera medición de `tests/evals/RESULTS-lienzo.md`, que juzgó a ojo).

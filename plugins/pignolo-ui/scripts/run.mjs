@@ -365,7 +365,9 @@ const COMMANDS = {
       const output = readJson(file, 'auditor.json');
       const judgment = judgmentIds(loadNorms({}).base);
       const res = validateFindings({ output, run, project, catalog: loadCatalog(), judgmentIds: judgment });
-      return { out: res, code: res.ok ? 0 : 1 };
+      // R-4e-20: the optional one-line `keep` is printed when it is valid; the improve brief pastes it, no script decides with it.
+      const keep = res.problems.some((p) => p.problem === 'bad-keep') || typeof output.keep !== 'string' ? null : output.keep;
+      return { out: { ...res, keep }, code: res.ok ? 0 : 1 };
     },
   },
 

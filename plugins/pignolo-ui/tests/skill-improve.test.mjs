@@ -75,3 +75,13 @@ test('apply.md: batch limits, what restore deletes is shown before it, the verdi
   assert.ok(!/git commit/.test(text.replace('does not commit', '')));
   assertScriptsExist(scriptCalls(text));
 });
+
+test('improve step 4 and options.md hand the auditor keep line to the versions, and neither offers it as a note', () => {
+  const { text } = readSkill('improve');
+  const opts = readReference('options.md');
+  for (const t of [text, opts]) {
+    assert.ok(t.includes('`keep`'), 'mentions the keep line');
+    assert.ok(/already works/.test(t), 'says what keep is');
+    assert.ok(!/keep[^.\n]{0,40}\bnote\b/i.test(t.replace(/no note/g, '')), 'keep is not a note');
+  }
+});

@@ -76,3 +76,33 @@ test('extractJsonBlock takes the last block and returns null without a valid one
   assert.equal(extractJsonBlock('sin bloque'), null);
   assert.equal(extractJsonBlock('```json\n{roto\n```'), null);
 });
+
+// ---- cap of 3 judgment findings per screen (R-4e-2) and the `keep` line (R-4e-20) ----
+const jFinding = () => finding({ id: 'J-01', severity: 'medio', evidence: { kind: 'file', path: 'src/app.css', line: 1 } });
+const caps = (r) => r.problems.filter((p) => p.problem === 'judgment-cap').map((p) => p.index);
+
+test('judgment cap: three J findings are fine, the fourth and fifth are rejected by index', () => {
+  assert.deepEqual(validate([jFinding(), jFinding(), jFinding()]), { ok: true, problems: [] });
+  assert.deepEqual(caps(validate([jFinding(), jFinding(), jFinding(), jFinding()])), [3]);
+  assert.deepEqual(caps(validate([jFinding(), jFinding(), jFinding(), jFinding(), jFinding()])), [3, 4]);
+});
+
+test('judgment cap: rule findings do not count, and a failing measure does not exempt the fourth', () => {
+  const rules = [1, 2, 3, 4].map(() => finding({ severity: 'alto' }));
+  assert.deepEqual(caps(validate([...rules, jFinding(), jFinding(), jFinding()])), []);
+  const withMeasure = finding({ id: 'J-02', severity: 'alto', evidence: { kind: 'ui-check', fingerprint: 'fp-fail' } });
+  assert.deepEqual(caps(validate([jFinding(), jFinding(), jFinding(), withMeasure])), [3]);
+});
+
+test('keep: optional, one line of at most 160 characters', () => {
+  assert.deepEqual(validate([finding()], { keep: 'x'.repeat(40) }), { ok: true, problems: [] });
+  assert.deepEqual(validate([finding()]), { ok: true, problems: [] });
+  assert.deepEqual(validate([finding()], { keep: 'x'.repeat(160) }), { ok: true, problems: [] });
+  for (const bad of [42, 'x'.repeat(161), 'uno\ndos', '', '   ']) {
+    assert.deepEqual(validate([finding()], { keep: bad }).problems, [{ index: -1, problem: 'bad-keep' }], JSON.stringify(bad).slice(0, 20));
+  }
+});
+
+test('keep does not count toward the judgment cap', () => {
+  assert.deepEqual(validate([jFinding(), jFinding(), jFinding()], { keep: 'la tabla de datos se lee bien' }), { ok: true, problems: [] });
+});

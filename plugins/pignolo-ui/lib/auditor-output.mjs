@@ -14,6 +14,10 @@ import crypto from 'node:crypto';
 const SEVERITIES = ['bloquea', 'alto', 'medio', 'detalle'];
 const SCOPES = ['new', 'debt'];
 const SELF_GRADE = ['score', 'grade', 'rating'];
+// Author decision 2026-10-01 (R-4e-2): at most 3 judgment findings per screen; the 4th and later are rejected, not trimmed.
+export const MAX_JUDGMENT_FINDINGS = 3;
+// R-4e-20: the optional `keep` line, one thing that already works.
+export const KEEP_MAX_CHARS = 160;
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 export function extractJsonBlock(text) {
@@ -73,6 +77,11 @@ export function validateFindings({ output, run, project, catalog, judgmentIds = 
   const problems = [];
   if (!isMap(output) || !Array.isArray(output.findings)) return { ok: false, problems: [{ index: -1, problem: 'bad-shape' }] };
   if (SELF_GRADE.some((k) => k in output)) problems.push({ index: -1, problem: 'self-grade' });
+  if ('keep' in output) {
+    const k = output.keep;
+    if (typeof k !== 'string' || k.trim() === '' || /[\r\n]/.test(k) || k.length > KEEP_MAX_CHARS) problems.push({ index: -1, problem: 'bad-keep' });
+  }
+  let judgmentCount = 0;
   const known = new Set([...catalog.rules.map((r) => r.id), ...judgmentIds]);
   const entries = [...readEntries(run, 'ui-check.json'), ...readEntries(run, 'browser.json')];
   output.findings.forEach((f, index) => {
@@ -82,6 +91,7 @@ export function validateFindings({ output, run, project, catalog, judgmentIds = 
     if (typeof f.id !== 'string' || !known.has(f.id)) add('bad-id');
     if (!SEVERITIES.includes(f.severity)) add('bad-severity');
     if (!SCOPES.includes(f.scope)) add('bad-scope');
+    if (/^J-\d+$/.test(String(f.id)) && ++judgmentCount > MAX_JUDGMENT_FINDINGS) add('judgment-cap');
     const ev = checkEvidence(f.evidence, { run, project, entries });
     if (ev.problem) add(ev.problem);
     if (f.severity === 'bloquea') {

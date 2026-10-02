@@ -115,3 +115,20 @@ test('the JSON example of ui-auditor passes validateFindings against a synthetic
 test('the plugin linter stays green with the cards', () => {
   assert.deepEqual(lintPlugin(PLUGIN_ROOT), []);
 });
+
+test('ui-auditor: criteria apply only when their condition holds, cap of 3, Judgment: label, data-sample is not invented content', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['Applies when', 'at most 3', 'Judgment:', 'No self-grade', 'never `bloquea` without script or browser evidence', 'data-sample']) {
+    assert.ok(body.includes(needle) || body.toLowerCase().includes(needle.toLowerCase()), `missing: ${needle}`);
+  }
+  assert.match(body, /data-sample[^.]*is not a finding/);
+});
+
+test('ui-auditor: the optional keep line is one line about what already works, with no note or severity', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['keep', 'one line', 'already works']) assert.ok(body.includes(needle), `missing: ${needle}`);
+  const rule = body.split('\n').find((l) => l.startsWith('- `keep`'));
+  assert.ok(rule, 'a rule line for keep');
+  assert.match(rule, /no severity, no evidence, no note/);
+  assert.ok(!/"keep":\s*\{/.test(body), 'keep is plain text, not an object with severity or note');
+});
