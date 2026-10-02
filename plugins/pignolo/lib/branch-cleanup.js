@@ -68,13 +68,13 @@ function defaultBranchOf(git) {
 
 // El destino de cada rama (R-14): task/<p>/… y queue/<p> -> int/<p>; int/<p> -> `origin` de plan.json o la rama por defecto;
 // task/daily/* -> la rama por defecto. Sin destino conocido, la rama no es candidata.
-function makeTargetOf({ main, git }) {
+function makeTargetOf({ main, git, light = false }) {
   const dflt = defaultBranchOf(git);
   const plans = new Map();
   const planOf = (p) => {
     if (!plans.has(p)) {
       let r;
-      try { r = readPlan({ main, plan: p, git: true }); } catch (e) { r = { ok: false, error: e.message }; }
+      try { r = readPlan({ main, plan: p, git: !light }); } catch (e) { r = { ok: false, error: e.message }; }
       plans.set(p, r);
     }
     return plans.get(p);
@@ -105,8 +105,11 @@ function statusOf(git, wt) {
   return { ok: true, dirty, ignored };
 }
 
+// `opts.light` (el aviso de SessionStart, I8): sin git propio fuera del ejecutor con presupuesto (los planes se leen del disco)
+// y sin el estado de las worktrees de ramas ya unidas (se cuentan como candidatas; el reporte completo las revisa).
 function findCandidates({ main, now = Date.now(), days = 7, opts } = {}) {
   const git = runnerOf(main, opts);
+  const light = Boolean(opts && opts.light);
   const wtRoot = path.join(main, '.pignolo', 'worktrees');
   const res = { merged: [], informed: [], unmerged: [], dirtyWorktrees: [] };
 
@@ -121,9 +124,9 @@ function findCandidates({ main, now = Date.now(), days = 7, opts } = {}) {
   const byLower = new Map();
   for (const r of rows) byLower.set(r.name.toLowerCase(), (byLower.get(r.name.toLowerCase()) || 0) + 1);
 
-  const { targetOf: tgt, planOf } = makeTargetOf({ main, git });
+  const { targetOf: tgt, planOf } = makeTargetOf({ main, git, light });
   const origins = new Set();
-  for (const p of listPlans(main, { git: true })) { const r = planOf(p); if (r.ok && r.plan.origin) origins.add(r.plan.origin); }
+  for (const p of listPlans(main, { git: !light })) { const r = planOf(p); if (r.ok && r.plan.origin) origins.add(r.plan.origin); }
 
   const wts = listWorktrees(git);
   const wtByBranch = new Map();
@@ -141,6 +144,15 @@ function findCandidates({ main, now = Date.now(), days = 7, opts } = {}) {
       mergedCache.set(target, new Set((out || '').split(/\r?\n/).filter(Boolean).map((r) => r.replace(/^refs\/heads\//, ''))));
     }
     return mergedCache.get(target);
+  };
+  // Las ramas contenidas en HEAD, con UN for-each-ref (no un merge-base --is-ancestor por rama, I8).
+  let headMerged = null;
+  const inHead = (name) => {
+    if (headMerged === null) {
+      const out = tryRun(git, ['for-each-ref', '--merged', 'HEAD', '--format=%(refname)', 'refs/heads']);
+      headMerged = new Set((out || '').split(String.fromCharCode(10)).map((r) => r.trim().replace('refs/heads/', '')).filter(Boolean));
+    }
+    return headMerged.has(name);
   };
   const secondCache = new Map();
   const secondParents = (target) => {
@@ -168,6 +180,11 @@ function findCandidates({ main, now = Date.now(), days = 7, opts } = {}) {
     if (w.prunable !== undefined || w.locked !== undefined) {
       res.informed.push({ name: w.branch ? String(w.branch).replace(/^refs\/heads\//, '') : null, kind: 'worktree', why: w.prunable !== undefined ? 'prunable' : 'locked', path: path.resolve(w.worktree) });
       continue;
+    }
+    if (light && w.branch) {
+      const bn = String(w.branch).replace('refs/heads/', '');
+      const tg = B.parseBranch(bn).kind !== 'other' ? tgt(bn) : null;
+      if (tg && mergedInto(tg).has(bn)) continue; // candidata ya unida: no se mira su estado aquí
     }
     const s = wtStatus(w);
     if (s.ok && s.dirty.length) res.dirtyWorktrees.push({ path: path.resolve(w.worktree), dirty: true, ignored: s.ignored });
@@ -206,11 +223,11 @@ function findCandidates({ main, now = Date.now(), days = 7, opts } = {}) {
         if (w.prunable !== undefined) { res.informed.push({ name: r.name, kind: parsed.kind, why: 'prunable', path: path.resolve(w.worktree) }); continue; }
         const real = realOrNull(w.worktree);
         if (!real || !rootReal || !inside(real, rootReal)) { res.informed.push({ name: r.name, kind: parsed.kind, why: 'worktree-outside', path: path.resolve(w.worktree) }); continue; }
-        const s = wtStatus(w);
+        const s = light ? { ok: true, dirty: [], ignored: [] } : wtStatus(w);
         if (!s.ok || s.dirty.length) continue; // ya figura en dirtyWorktrees
         if (s.ignored.length) { res.informed.push({ name: r.name, kind: parsed.kind, why: 'ignored-files', ignored: s.ignored, path: path.resolve(w.worktree) }); continue; }
       }
-      if (tryRun(git, ['merge-base', '--is-ancestor', `refs/heads/${r.name}`, 'HEAD']) === null) {
+      if (!inHead(r.name)) {
         res.informed.push({ name: r.name, kind: parsed.kind, why: 'not-in-head', target });
         continue;
       }
@@ -325,7 +342,7 @@ function noticeLine({ main, now, budgetMs = 1500, opts = {} } = {}) {
     return inner(args, { ...o, timeout: Math.min(o.timeout || GIT_MS, left) });
   };
   try {
-    const c = findCandidates({ main, now, opts: { ...opts, run: guarded } });
+    const c = findCandidates({ main, now, opts: { ...opts, run: guarded, light: true } });
     if (Date.now() - started > budgetMs) return '';
     const n = c.merged.length;
     const m = c.unmerged.length;
