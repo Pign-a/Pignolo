@@ -175,3 +175,54 @@ test('places.js: reading it or running a foreign places.js is not executing the 
 test('init.js apply sigue negado a un subagente (regresión de 8a)', () => {
   denied(call(`node "${P}/scripts/init.js" apply --plan p.json --expect abc`), 'init apply');
 });
+
+// --- Hito 8d, I-3: el cd que cambia al directorio de scripts del plugin, separado por `;` o salto de línea ---
+test('I-3: a subagent cannot run init.js/places.js after a cd/Set-Location/Push-Location separated by ; or newline', () => {
+  const ps = (c, who = SUB) => call(c, who, 'PowerShell');
+  ps('Get-Date'); // precalienta el analizador
+  for (const script of ['places.js', 'init.js']) {
+    for (const c of [
+      `cd ${P}/scripts && node ${script} undo`,
+      `cd ${P}/scripts; node ${script} undo`,
+      `cd ${P}/scripts\nnode ${script} undo`,
+      `cd ${P}; cd scripts; node ${script} x`,
+      `cd ${P}; node scripts/${script} x`,
+      `cd "${P}/scripts"; node ./${script} x`,
+    ]) {
+      denied(call(c), c);
+      passes(call(c, {}), `main: ${c}`);
+    }
+    for (const c of [
+      `Set-Location ${P}/scripts; node ${script} undo`,
+      `Push-Location ${P}; node scripts/${script} x`,
+      `Set-Location ${P}/scripts\nnode ${script} undo`,
+    ]) {
+      denied(ps(c), c);
+      passes(ps(c, {}), `main: ${c}`);
+    }
+  }
+});
+
+test('I-3: reading the scripts after a cd (cat, grep, wc, node --check, Get-Content) still passes', () => {
+  const ps = (c, who = SUB) => call(c, who, 'PowerShell');
+  for (const c of [
+    `cd ${P}/scripts; cat places.js`,
+    `cd ${P}/scripts; grep -n undo places.js`,
+    `cd ${P}/scripts\nwc -l init.js`,
+    `cd ${P}/scripts; node --check places.js`,
+    `cd ${P}; head -n 5 scripts/init.js`,
+  ]) passes(call(c), c);
+  for (const c of [`Set-Location ${P}/scripts; Get-Content places.js`, `Push-Location ${P}; Get-Content scripts/init.js`]) passes(ps(c), c);
+});
+
+test('I-3: a cd to a foreign directory followed by node places.js is still not the plugin one', () => {
+  const other = makeTempDir('pignolo-foreign-').split(path.sep).join('/');
+  passes(call(`cd ${other}; node places.js where`), 'foreign cd ;');
+  passes(call(`cd ${other}\nnode init.js detect`), 'foreign cd newline');
+});
+
+test('I-3: with an unknowable cd (dynamic target) the bare node places.js / init.js is denied to a subagent', () => {
+  denied(call('cd "$SOMEWHERE"; node places.js undo'), 'cd dinámico places');
+  denied(call('cd $(pwd)/x\nnode ./init.js apply'), 'cd dinámico init');
+  passes(call('cd "$SOMEWHERE"; node places.js undo', {}), 'main thread');
+});

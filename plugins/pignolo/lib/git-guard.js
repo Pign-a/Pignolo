@@ -912,9 +912,13 @@ const EVAL_INIT_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\
 const namesInitScript = (value) => EVAL_INIT_SCRIPT.test(value.replace(/\\+/g, '/').replace(/\/+/g, '/'));
 function isInitScript(w, st, ctx) {
   if (w.dyn) return INIT_JS_DYN.test(w.value);
+  const hits = (c) => INIT_JS_LITERAL.test(c) || INIT_JS_OWN.test(c);
   const p = resolveAt(w.value, st, ctx);
-  const c = p === null ? cleanPath(w.value) : p;
-  return INIT_JS_LITERAL.test(c) || INIT_JS_OWN.test(c);
+  if (p !== null) return hits(p);
+  // Directorio desconocido (un cd tras ';' o un salto de línea pudo correr o no): vale cualquier candidato conocido (I-3).
+  if (resolveAll(w.value, st, ctx).some(hits)) return true;
+  // Sin candidatos (cd dinámico): la forma pelada que ejecuta el script de un cd a scripts/ se niega.
+  return !st.alts && /^(?:\.[\/])?(?:init|places)(?:\.js)?$/.test(w.value);
 }
 
 // El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el
