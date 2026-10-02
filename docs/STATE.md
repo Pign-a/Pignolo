@@ -20,6 +20,7 @@ Versiones leídas de los `plugin.json`.
 | `plan/ui-hito-4c` | Plan del lienzo "Design" y el Design System de pignolo-ui | partiéndolo en 4 etapas; la etapa 1 es la siguiente |
 | `ui/hito-4c-1` | Etapa 1 del hito 4c (lienzo básico, pignolo-ui 0.7.1) | T0 a T10 hechas, revisión final T11 hecha y su pasada de arreglos aplicada (0.7.1); falta la puerta T6 con el autor (publicación real de prueba); informe en la carpeta de trabajo de la sesión |
 | `evals/ui-4` | Evals pagas de pignolo-ui hito 4 (tope 22 USD) | corriendo |
+| `plan/ui-impeccable` | Planes de pignolo-ui de la segunda pasada a impeccable: hito 4e ampliado, 4f (contexto de producto) y 4g (opciones de un elemento) | planes escritos, sin ejecutar |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/`.
 
@@ -30,6 +31,19 @@ Antes de retomar una rama, mirar su último commit y el informe por tarea en `do
 3. Hito 8c; evals pendientes (`ui-option` tope 3, `debugger` tope 8).
 4. Revisión de la v1 por el autor.
 5. Banco final (ver reglas).
+
+## Orden de ejecución de pignolo-ui (decidido 2026-10-01)
+
+Planes: `docs/plans/2026-10-01-pignolo-ui-hito-4e-oficio-y-chequeos.md`, `...-4f-contexto-de-producto.md`, `...-4g-opciones-de-un-elemento.md` y el del lienzo (`...-4c-lienzo.md`). Un ejecutor en serie por hito; las versiones salen de este orden (si cambia el orden, solo cambian los números).
+
+1. **Etapa 1 del lienzo** (hecha) y la **0.7.3** (carta candidata de `ui-option` y datos de muestra, la une el controlador).
+2. **Puerta manual con el autor** (T6 de la etapa 1). Mientras dura, el ejecutor hace la **ola 1 de 4e** (auditor: tope de 3, "cuándo aplica", `keep`; 0.7.4 y eval E2): solo toca el auditor, así que no choca con lo que la puerta pueda cambiar.
+3. **Hito 4f** (0.7.5): *por qué acá:* cambia `approve.mjs` y los textos de las tres skills una sola vez, antes de que las etapas 2 a 4 los sigan tocando (y sus tests de `save` pasan a llevar `--brief-file`).
+4. **Etapa 2 del lienzo** (0.8.0), 5. **etapa 3** (0.9.0) y 6. **etapa 4** (0.10.0), en ese orden (la 4 solo necesita la 1, pero va última del lienzo).
+7. **Hito 4g** (0.11.0): *por qué después de la etapa 4:* reusa sus ids, su prefijo de carpetas y su comparación.
+8. **Resto de 4e** (olas 2 a 6, 0.12.0): *por qué al final:* no depende del lienzo, el síntoma "sosa" necesita el modo explorar de la etapa 4 y sus reglas se miden mejor sobre la app real que el autor todavía no nombró (D-4-4). Es el único trabajo que puede abrirse en paralelo con las etapas 1 y 2 si hace falta ir más rápido (toca `lib/browser-*.mjs`, `lib/rules/` y `catalog/`); sus textos de skills esperan.
+
+Mediciones aprobadas: tope de 14 USD para los hitos 4f y 4g (≈ 6,3 USD estimados) y ≈ 8,8 USD para el auditor de 4e. Datos de muestra rotulados y carta candidata: adoptados. Hooks fuera de la v1; la lista v1.x está en el plan 4e.
 
 ## Reglas vigentes del autor
 
