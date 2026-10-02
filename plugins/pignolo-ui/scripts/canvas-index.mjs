@@ -86,6 +86,19 @@ export function canvasTitleFrom(designFile) {
   }
 }
 
+// ownsMain of <run>/publish.json. A file that is there and cannot be read is not "false": it would
+// rename the first screen of a run that already published it, so it stops the build (exit 2).
+function readOwnsMain(run) {
+  const file = path.join(run, 'publish.json');
+  let st = null;
+  try { st = fs.lstatSync(file); } catch { /* none yet */ }
+  if (!st) return false;
+  if (st.isSymbolicLink() || !st.isFile()) throw new UsageError('publish.json es un enlace o no es un archivo: se rechaza');
+  const data = readJsonFile(file, 'publish.json');
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new UsageError('publish.json no tiene la forma esperada');
+  return data.ownsMain === true;
+}
+
 function cmdBuild(opts, { cwd }) {
   need(opts, 'project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first');
   const { run, project } = resolveRun(cwd, opts);
@@ -107,6 +120,8 @@ function cmdBuild(opts, { cwd }) {
     if (Number.isNaN(new Date(opts.now).getTime())) throw new UsageError('--now debe ser una fecha ISO');
     now = new Date(opts.now).toISOString();
   }
+  // first is of THIS run's page (A4C2-02): --first yes, or the run already published its own Main.dc.html (ownsMain)
+  const first = opts.first === 'yes' || readOwnsMain(run);
   const heights = opts.heights !== undefined ? readJsonFile(path.resolve(cwd, opts.heights), '--heights') : null;
   const designFile = opts.design === 'none' ? null : path.resolve(cwd, opts.design);
   const options = letters.map((id) => {
@@ -142,7 +157,7 @@ function cmdBuild(opts, { cwd }) {
   let built = null;
   if (!problems.length) {
     try {
-      built = buildCanvas({ options, platform: opts.platform, pageId, pageName, canvasTitle: canvasTitleFrom(designFile), first: opts.first === 'yes', now, heights });
+      built = buildCanvas({ options, platform: opts.platform, pageId, pageName, canvasTitle: canvasTitleFrom(designFile), first, now, heights });
     } catch (e) {
       if (!(e instanceof CanvasError)) throw e;
       for (const p of e.problems ?? [{ code: e.code }]) problems.push({ file: e.file ?? '', code: p.code ?? e.code, ...(e.detail ? { detail: e.detail } : {}) });
@@ -166,9 +181,9 @@ function cmdBuild(opts, { cwd }) {
   }
   const layout = layoutSha256(built.fragment);
   fs.writeFileSync(path.join(tmp, 'page.json'), `${JSON.stringify(built.fragment, null, 2)}\n`);
-  fs.writeFileSync(path.join(tmp, 'manifest.json'), `${JSON.stringify({ files: manifestFiles, layoutSha256: layout, pageId, bytes, first: opts.first === 'yes', warnings }, null, 2)}\n`);
+  fs.writeFileSync(path.join(tmp, 'manifest.json'), `${JSON.stringify({ files: manifestFiles, layoutSha256: layout, pageId, bytes, first, warnings }, null, 2)}\n`);
   fs.renameSync(tmp, canvasDir);
-  return { out: { out: canvasDir, files: manifestFiles.map((f) => f.path), count: manifestFiles.length, layoutSha256: layout, pageId, warnings }, code: 0 };
+  return { out: { out: canvasDir, files: manifestFiles.map((f) => f.path), count: manifestFiles.length, layoutSha256: layout, pageId, first, warnings }, code: 0 };
 }
 
 function cmdVerify(opts, { cwd }) {
