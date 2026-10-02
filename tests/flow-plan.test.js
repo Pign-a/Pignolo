@@ -49,7 +49,7 @@ test('plan: la auditoría usa un Agent por modo, los dos modos y las sondas que 
 
 test('plan: cada verbo de plan.js y plan-audit.js que nombra existe en el script', () => {
   const src = (n) => fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', n), 'utf8');
-  for (const [script, re] of [['plan.js', /(?<!-)plan\.js"? ((?:claims|scope-card|tasks) [a-z]+|[a-z]+)/g], ['plan-audit.js', /plan-audit\.js"? ([a-z-]+)/g]]) {
+  for (const [script, re] of [['plan.js', /(?<!-)plan\.js"? ((?:claims|scope-card|tasks|decision) [a-z]+|[a-z]+)/g], ['plan-audit.js', /plan-audit\.js"? ([a-z-]+)/g]]) {
     const body = src(script);
     const verbs = new Set([...text.matchAll(re)].map((m) => m[1]));
     assert.ok(verbs.size >= 3, `${script}: pocos verbos`);

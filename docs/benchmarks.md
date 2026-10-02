@@ -125,9 +125,22 @@ Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
 |---|---|---|---|---|
 | Revisores (4 lentes y 2 jueces) | 60/60 corridas, 30/30 defectos, 0 falsas alarmas | 58/60, 30/30, 0 | 0,08–0,12 / 0,05–0,07 USD | sonnet ≈ 37 % más rápido |
 | Agente que escribe tests | 10/10 | 10/10 | 0,08 / 0,06 USD | 23–26 s / 16–22 s |
+| Agente que busca la causa de un fallo (`debugger`), en el sandbox de Linux, 3 casos con defecto plantado | 9/15 por los graders (3/5 por caso); las 6 reprobadas leídas a mano eran informes correctos que el grader rechazó por la redacción (sin medición válida hasta recalibrar) | no medido | 0,14–0,16 USD | 31–50 s |
 | Agentes que corren comandos (implementer, review-testability, refuter, fixer), en el sandbox de Linux | 25/25 | 10/10 | 0,09–0,17 / 0,09 USD | 26–52 s / 20 s |
 
-**Comparabilidad:** mide si los agentes cumplen su contrato, no si pignolo mejora a Claude Code. Evidencia: [`RESULTS-hito-3.md`](../tests/evals/RESULTS-hito-3.md), [`RESULTS-hito-4.md`](../tests/evals/RESULTS-hito-4.md).
+**Comparabilidad:** mide si los agentes cumplen su contrato, no si pignolo mejora a Claude Code. Evidencia: [`RESULTS-hito-3.md`](../tests/evals/RESULTS-hito-3.md), [`RESULTS-hito-4.md`](../tests/evals/RESULTS-hito-4.md), [`RESULTS-hito-8.md`](../tests/evals/RESULTS-hito-8.md) (debugger).
+
+## 3b. Agentes de pignolo-ui (`ui-auditor`, `ui-option`) (2026-10-01)
+
+Fixtures sintéticos, 5 corridas por caso; `ui-auditor` en opus y `ui-option` en sonnet. Corrida parcial: el límite de sesión cortó 14 corridas.
+
+| Agente | Corridas | Costo por corrida | Velocidad |
+|---|---|---|---|
+| `ui-option` (mockup, style tile, mejora) | 15/15 | 0,06–0,09 USD | 19–44 s |
+| `ui-auditor`, defectos sembrados (color, foco, ancho a 320 px, acción primaria, campo sin etiqueta) | color y campo 5/5; los otros tres sin medir | 0,27–0,31 USD | 80–87 s |
+| `ui-auditor`, páginas limpias | 9/15 (5/5, 1/5, 3/5): marca como `alto` un criterio de juicio que el fixture no sembró | 0,28–0,30 USD | 82–95 s |
+
+**Comparabilidad:** mide si cumplen su contrato, no si mejoran a Claude Code. Falta cerrar tres casos de defecto y decidir qué hacer con la severidad de los criterios de juicio. Gasto: 14,34 USD. Evidencia: [`RESULTS-ui-hito-4.md`](../plugins/pignolo-ui/tests/evals/RESULTS-ui-hito-4.md).
 
 ## 4. Guardia de comandos destructivos
 

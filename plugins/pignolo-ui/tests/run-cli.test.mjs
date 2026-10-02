@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { makeTempDir, writeTree, runScript, PLUGIN_ROOT } from './helpers.mjs';
+import { repoIdFor } from '../lib/project-config.mjs';
 
 const RUN_REL = '.pignolo-ui/runs/r1';
 const run = (args, opts) => runScript('run.mjs', args, opts);
@@ -44,31 +45,101 @@ test('init creates the run under .pignolo-ui/runs, writes run.json and leaves th
   assert.equal(remote.status, 2);
 });
 
-test('config: rejects a remote devUrl, stores canvasConsent as a boolean', () => {
+test('config: rejects a remote devUrl; publish is auto or never; presentation and canvasConsent are not project keys', () => {
   const project = makeRepo();
   const data = makeTempDir();
   const bad = run(['config', 'set', '--data', data, '--project', project, '--key', 'devUrl', '--value', 'https://example.com']);
   assert.equal(bad.status, 2);
   assert.match(bad.stderr, /URL local/);
   assert.doesNotMatch(bad.stderr, /\n\s+at /);
-  const set = run(['config', 'set', '--data', data, '--project', project, '--key', 'canvasConsent', '--value', 'true']);
+  const set = run(['config', 'set', '--data', data, '--project', project, '--key', 'publish', '--value', 'never']);
   assert.equal(set.status, 0, set.stderr);
   const get = run(['config', 'get', '--data', data, '--project', project]);
-  assert.equal(get.json.config.canvasConsent, true);
+  assert.equal(get.json.config.publish, 'never');
+  assert.equal(run(['config', 'set', '--data', data, '--project', project, '--key', 'publish', '--value', 'maybe']).status, 2);
+  // presentation is the plugin setting, not a project key (the audit measured it: exit 2)
+  const pres = run(['config', 'set', '--data', data, '--project', project, '--key', 'presentation', '--value', 'local']);
+  assert.equal(pres.status, 2);
+  assert.match(pres.stderr, /clave desconocida: presentation/);
+  assert.equal(run(['config', 'set', '--data', data, '--project', project, '--key', 'canvasConsent', '--value', 'true']).status, 2);
   assert.equal(run(['config', 'frob', '--data', data, '--project', project]).status, 2);
 });
 
-test('present: the canvas is not in v1 (R10): always local, whatever the consent', () => {
+const PRESENT = (project, data, extra = []) => ['present', '--data', data, '--project', project, '--kind', 'option', '--artifact', 'yes', '--design-type', 'yes', ...extra];
+
+test('present: canvas by default with the one-line notice and no question; local without a notice', () => {
   const project = makeRepo();
   const data = makeTempDir();
-  const args = ['present', '--data', data, '--project', project, '--artifact', 'yes', '--design-type', 'yes'];
-  assert.equal(run([...args, '--presentation', 'auto']).json.mode, 'local');
-  run(['config', 'set', '--data', data, '--project', project, '--key', 'canvasConsent', '--value', 'true']);
-  const r = run([...args, '--presentation', 'auto']);
-  assert.equal(r.json.mode, 'local');
-  assert.deepEqual(r.json.reasons, ['canvas-not-in-v1']);
-  assert.equal(run([...args, '--presentation', 'local']).json.mode, 'local');
+  assert.equal(run(['present', '--data', data, '--project', project, '--presentation', 'auto', '--artifact', 'yes', '--design-type', 'yes']).status, 2, '--kind is required');
+  const r = run(PRESENT(project, data, ['--presentation', 'auto']));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual([r.json.mode, r.json.destination, r.json.reasons], ['canvas', 'canvas', []]);
+  for (const w of ['privados de tu cuenta de claude.ai', 'nunca capturas ni código', 'Google Fonts', 'config set --key publish --value never']) assert.ok(r.json.notice.includes(w), w);
+  assert.equal('consentNeeded' in r.json, false);
+  const local = run(PRESENT(project, data, ['--presentation', 'local']));
+  assert.deepEqual([local.json.mode, local.json.destination, 'notice' in local.json], ['local', 'local', false]);
+  const tile = run(['present', '--data', data, '--project', project, '--kind', 'direction', '--artifact', 'yes', '--design-type', 'yes', '--presentation', 'auto']);
+  assert.deepEqual([tile.json.mode, tile.json.reasons], ['local', ['style-tile-local']]);
 });
+
+test('present with publish: never in project.json: local, project-opt-out, no notice (A4C-01)', () => {
+  const project = makeRepo();
+  const data = makeTempDir();
+  run(['config', 'set', '--data', data, '--project', project, '--key', 'publish', '--value', 'never']);
+  const r = run(PRESENT(project, data, ['--presentation', 'auto']));
+  assert.deepEqual([r.json.mode, r.json.reasons, 'notice' in r.json], ['local', ['project-opt-out'], false]);
+  const gate = run(['publish-gate', '--data', data, '--project', project, '--presentation', 'auto']);
+  assert.equal(gate.status, 1);
+  assert.deepEqual(gate.json, { allowed: false, reasons: ['project-opt-out'] });
+});
+
+test('present with an unreadable presentation (the literal ${user_config.presentation}): local, presentationUnresolved, no notice (D-4c-15)', () => {
+  const project = makeRepo();
+  const data = makeTempDir();
+  const r = run(PRESENT(project, data, ['--presentation', '${user_config.presentation}']));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual([r.json.mode, r.json.presentationUnresolved, r.json.reasons, 'notice' in r.json], ['local', true, ['presentation-local'], false]);
+});
+
+test('publish-gate: allowed, presentation-local, run-opt-out, project-opt-out and legacy consent, in order', () => {
+  const project = makeRepo({ [`${RUN_REL}/x`]: '' });
+  const data = makeTempDir();
+  const gate = (extra = []) => run(['publish-gate', '--data', data, '--project', project, ...extra]);
+  const ok = gate(['--presentation', 'auto']);
+  assert.deepEqual([ok.status, ok.json], [0, { allowed: true, reasons: [] }]);
+  assert.deepEqual([gate(['--presentation', 'local']).status, gate(['--presentation', 'local']).json.reasons], [1, ['presentation-local']]);
+  const unresolved = gate(['--presentation', '${user_config.presentation}']);
+  assert.deepEqual([unresolved.status, unresolved.json.reasons], [1, ['presentation-local']]);
+  const nop = run(['no-publish', '--run', runDir(project)]);
+  assert.equal(nop.status, 0, nop.stderr);
+  assert.ok(fs.existsSync(path.join(runDir(project), 'no-publish')));
+  assert.deepEqual(gate(['--presentation', 'auto', '--run', runDir(project)]).json.reasons, ['run-opt-out']);
+  run(['config', 'set', '--data', data, '--project', project, '--key', 'publish', '--value', 'never']);
+  assert.deepEqual(gate(['--presentation', 'local', '--run', runDir(project)]).json.reasons, ['presentation-local', 'project-opt-out', 'run-opt-out']);
+  const outside = run(['no-publish', '--run', path.join(project, 'otra')]);
+  assert.equal(outside.status, 2);
+  const proj2 = makeRepo();
+  const data2 = makeTempDir();
+  fs.mkdirSync(path.dirname(configPath(data2, proj2)), { recursive: true });
+  fs.writeFileSync(configPath(data2, proj2), JSON.stringify({ canvasConsent: false }));
+  const legacy = run(['publish-gate', '--data', data2, '--project', proj2, '--presentation', 'auto']);
+  assert.deepEqual([legacy.status, legacy.json.reasons], [1, ['legacy-consent-declined']]);
+  fs.writeFileSync(configPath(data2, proj2), JSON.stringify({ canvasConsent: true }));
+  assert.equal(run(['publish-gate', '--data', data2, '--project', proj2, '--presentation', 'auto']).status, 0);
+});
+
+test('present honours <run>/no-publish: local with run-opt-out and no notice', () => {
+  const project = makeRepo({ [`${RUN_REL}/x`]: '' });
+  const data = makeTempDir();
+  run(['no-publish', '--run', runDir(project)]);
+  const r = run(PRESENT(project, data, ['--presentation', 'auto', '--run', runDir(project)]));
+  assert.deepEqual([r.json.mode, r.json.reasons, 'notice' in r.json], ['local', ['run-opt-out'], false]);
+});
+
+function configPath(data, project) {
+  return path.join(data, repoIdFor(project), 'project.json');
+}
+
 
 test('norms writes norms.md with the J criteria; an invalid author file is ignored with a warning', () => {
   const project = makeRepo({ 'mine/norms.md': '---\npignolo: { colour: red }\n---\nx\n', [`${RUN_REL}/x`]: '' });

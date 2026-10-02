@@ -18,13 +18,20 @@ test('desktop: one iframe per screen and option, in the order of screens, no scr
 
 test('direction kind points to direction-<id>/; both puts the two widths', () => {
   const dir = buildCompareHtml({ options: [{ id: 'a', screens: ['inicio.html'] }], kind: 'direction', platform: 'desktop', title: 't' });
-  assert.ok(dir.includes('src="direction-a/inicio.html"'));
+  assert.ok(dir.includes('src="local/direction-a/inicio.html"'));
   assert.ok(dir.includes('Dirección A'));
   const both = buildCompareHtml({ options, kind: 'option', platform: 'both', title: 't' });
   assert.equal(count(both, /<iframe/g), 8);
   assert.equal(count(both, /width="1440"/g), 4);
   assert.equal(count(both, /width="375"/g), 4);
   assert.throws(() => buildCompareHtml({ options, platform: 'tablet' }));
+});
+
+test('every frame points to the copies under local/ (A4C2-03), never to the original folder', () => {
+  const html = buildCompareHtml({ options, kind: 'option', platform: 'both', title: 't' });
+  const srcs = [...html.matchAll(/<iframe src="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(srcs.length, 8);
+  for (const src of srcs) assert.ok(src.startsWith('local/option-'), src);
 });
 
 test('the title is escaped', () => {

@@ -47,7 +47,7 @@ function parseScopeCard(text) {
 }
 
 // Errores de la tarjeta frente al pedido original (vacío = válida).
-function validateScopeCard(text, { request = '' } = {}) {
+function validateScopeCard(text, { request = '', decisions = [] } = {}) {
   const p = parseScopeCard(text);
   const errs = [...p.errors];
   const s = p.sections;
@@ -59,11 +59,14 @@ function validateScopeCard(text, { request = '' } = {}) {
     const list = items(s['Acceptance examples']);
     if (list.length < 3 || list.length > 7) errs.push(`Acceptance examples necesita de 3 a 7 ítems (hay ${list.length})`);
     const req = norm(request);
+    // Segunda fuente: las decisiones del autor registradas; solo su cita literal respalda un ejemplo.
+    const sources = (Array.isArray(decisions) ? decisions : []).map((d) => norm((d && d.quote) || '')).filter(Boolean);
     list.forEach((t, i) => {
       const qs = quotesOf(t);
       if (qs.length !== 1) { errs.push(`ejemplo ${i + 1}: debe tener exactamente una cita entre comillas ("${t.slice(0, 40)}")`); return; }
       const q = norm(qs[0]);
-      if (!q || !req.includes(q)) errs.push(`ejemplo ${i + 1}: la cita "${qs[0]}" no aparece en el pedido`);
+      if (q.length < 3) { errs.push(`ejemplo ${i + 1}: la cita "${qs[0]}" es demasiado corta para probar nada (mínimo 3 caracteres)`); return; }
+      if (!(req.includes(q) || sources.some((s) => s.includes(q)))) errs.push(`ejemplo ${i + 1}: la cita "${qs[0]}" no aparece en el pedido ni en una decisión registrada`);
     });
   }
   if ('Added without being asked' in s) {

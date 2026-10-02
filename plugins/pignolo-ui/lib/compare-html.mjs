@@ -1,5 +1,6 @@
 // compare.html (spec §13): a self-contained local page, one row per option and one iframe per
-// screen, so the user can compare and click through the flow. No scripts, no remote resources.
+// screen, so the user can compare and click through the flow. No scripts, no remote resources: the
+// frames point to the copies in <run>/local/ (lib/local-copy.mjs), which carry no Google Fonts <link>.
 //
 // buildCompareHtml({ options: [{ id, screens }], kind, platform, title }) -> string
 // openFile(file, { platform, spawn }) -> void     explorer.exe | open | xdg-open, never through a shell
@@ -20,7 +21,7 @@ export function buildCompareHtml({ options, kind = 'option', platform = 'desktop
   const rows = options.map((opt) => {
     const figures = opt.screens.map((screen) => sizes.map((s) => `<figure>
 <figcaption>${esc(screen)} · ${s.w}</figcaption>
-<iframe src="${esc(`${kind}-${opt.id}/${screen}`)}" width="${s.w}" height="${s.h}" sandbox="allow-same-origin" title="${esc(`${label} ${String(opt.id).toUpperCase()} ${screen}`)}"></iframe>
+<iframe src="${esc(`local/${kind}-${opt.id}/${screen}`)}" width="${s.w}" height="${s.h}" sandbox="allow-same-origin" title="${esc(`${label} ${String(opt.id).toUpperCase()} ${screen}`)}"></iframe>
 </figure>`).join('\n')).join('\n');
     return `<section>
 <h2>${label} ${esc(String(opt.id).toUpperCase())}</h2>

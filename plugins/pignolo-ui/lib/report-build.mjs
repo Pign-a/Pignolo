@@ -1,6 +1,6 @@
 // Final report pieces (spec §12): the first line, the report.json skeleton and the verdict.
 //
-// firstLine(facts) -> string
+// firstLine(facts) -> string      facts.canvas: published | local-fallback (+ facts.reasons) adds " · lienzo: ..." to the line
 // reportSkeleton({ project, run, implementsPath }) -> { version, implemented, implements?, evidence, claims, candidates }
 // verdict({ uiCheck, reportCheck, build }) -> { status: 'terminado' | 'BLOCKED' | 'sin verificar', reasons }
 //   uiCheck.stale  (string) ui-check.json no longer matches the files it checked: sin verificar
@@ -19,7 +19,13 @@ export function firstLine(facts) {
   const { pluginVersion, subagents = {}, sequential = false, notIndependentAudit = false } = facts;
   const degraded = [...(facts.degraded || [])];
   if (notIndependentAudit) degraded.push('auditoría no independiente');
-  const version = `pignolo-ui ${pluginVersion} · ${degraded.length ? degraded.join('; ') : 'sin degradaciones'} · subagentes: ${subagents.launched} de ${subagents.requested} (modelo pedido: ${subagents.model})`;
+  let canvas = '';
+  if (facts.canvas === 'published') canvas = ' · lienzo: publicado';
+  else if (facts.canvas === 'local-fallback') {
+    const why = Array.isArray(facts.reasons) && facts.reasons.length ? facts.reasons.join(', ') : 'sin motivo';
+    canvas = ` · lienzo: local (${why})`;
+  } else if (facts.canvas !== undefined) throw new Error('facts: canvas debe ser published o local-fallback');
+  const version = `pignolo-ui ${pluginVersion} · ${degraded.length ? degraded.join('; ') : 'sin degradaciones'} · subagentes: ${subagents.launched} de ${subagents.requested} (modelo pedido: ${subagents.model})${canvas}`;
   if (!sequential) return version;
   return `opciones generadas en secuencia en el hilo principal: no son independientes; se lanzaron ${subagents.launched} de ${subagents.requested} subagentes\n${version}`;
 }

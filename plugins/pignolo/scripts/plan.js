@@ -8,6 +8,8 @@
 //   claims resolve --id <K> --status <estado> [--source <s>] [--by <quién>] [--note <t>] [--superseded]
 //   claims check                       (exit 1 si queda alguna sin cerrar)
 //   scope-card save --file <md> | approve --quote-file <f> | status
+//   decision add --id D-<n> --text-file <f> --quote-file <f> [--date AAAA-MM-DD]   (decisión de diseño del autor, con su cita)
+//   decision list                      (las decisiones registradas del plan)
 //   tasks set --file <tasks.json>
 //   runnable [--profile <p>]           (tareas ejecutables antes de la aprobación, D-5-3)
 //   advance --to <etapa> [--reopen] [--plan-file <ruta>]
@@ -17,6 +19,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
 const ps = require('../lib/plan-state');
+const decisions = require('../lib/decisions');
 const { PROFILE_PARAMS } = require('../lib/roles');
 const { readConfig } = require('../lib/profiles');
 const { planList } = require('../lib/next');
@@ -32,13 +35,15 @@ const VERBS = {
   'scope-card save': { value: ['plan', 'file', 'cwd'], need: ['plan', 'file'] },
   'scope-card approve': { value: ['plan', 'quote-file', 'cwd'], need: ['plan', 'quote-file'] },
   'scope-card status': { value: ['plan', 'cwd'], need: ['plan'] },
+  'decision add': { value: ['plan', 'id', 'text-file', 'quote-file', 'date', 'cwd'], need: ['plan', 'id', 'text-file', 'quote-file'] },
+  'decision list': { value: ['plan', 'cwd'], need: ['plan'] },
   'tasks set': { value: ['plan', 'file', 'cwd'], need: ['plan', 'file'] },
   runnable: { value: ['plan', 'profile', 'cwd'], need: ['plan'] },
   advance: { value: ['plan', 'to', 'plan-file', 'cwd'], bool: ['reopen'], need: ['plan', 'to'] },
   status: { value: ['plan', 'cwd'], need: ['plan'] },
   list: { value: ['cwd'], bool: ['text'], need: [] }, // el único verbo sin --plan (A7M-19)
 };
-const GROUPED = new Set(['claims', 'scope-card', 'tasks']);
+const GROUPED = new Set(['claims', 'scope-card', 'tasks', 'decision']);
 
 function parse(argv) {
   let verb = argv[0];
@@ -48,7 +53,7 @@ function parse(argv) {
     rest = rest.slice(1);
   }
   const spec = VERBS[verb];
-  if (!spec) throw new Usage('uso: plan.js new|claims set|claims resolve|claims check|scope-card save|approve|status|tasks set|runnable|advance|status|list --plan <slug> [opciones] (list no pide --plan)');
+  if (!spec) throw new Usage('uso: plan.js new|claims set|claims resolve|claims check|scope-card save|approve|status|decision add|decision list|tasks set|runnable|advance|status|list --plan <slug> [opciones] (list no pide --plan)');
   const o = {};
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -65,6 +70,13 @@ function parse(argv) {
   if (missing.length) throw new Usage(`faltan ${missing.map((k) => `--${k}`).join(', ')}`);
   if (o.plan !== undefined && !ps.SLUG_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${ps.SLUG_RE}`);
   return { verb, o };
+}
+
+function dateOf(o) {
+  if (o.date === undefined) { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+  const d = new Date(`${o.date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(o.date) || Number.isNaN(d.getTime()) || !d.toISOString().startsWith(o.date)) throw new Usage('--date debe ser una fecha real AAAA-MM-DD');
+  return o.date;
 }
 
 const out = (v) => process.stdout.write(`${JSON.stringify(v)}\n`);
@@ -114,6 +126,16 @@ function run(verb, o, main) {
     case 'scope-card status':
       must(ps.readPlan(base));
       return out({ state: ps.scopeCardState(base) });
+    case 'decision add': {
+      must(ps.readPlan(base));
+      const r = must(decisions.addDecision({ main, plan: o.plan, id: o.id, text: readText(o['text-file'], '--text-file'), quote: readText(o['quote-file'], '--quote-file'), date: dateOf(o) }));
+      return out({ ok: true, id: r.id, file: r.file });
+    }
+    case 'decision list': {
+      must(ps.readPlan(base));
+      const r = decisions.listDecisions({ main, plan: o.plan });
+      return out({ decisions: r.decisions.map(({ file, ...d }) => d), errors: r.errors });
+    }
     case 'tasks set': {
       const tasks = readJson(o.file, '--file');
       must(ps.setTasks({ ...base, tasks }));
