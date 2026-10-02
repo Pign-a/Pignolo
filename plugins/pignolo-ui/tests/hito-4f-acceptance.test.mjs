@@ -63,11 +63,11 @@ function verdictPass({ project, runDir }) {
   assert.equal(req.status, 0, req.stdout + req.stderr);
   assert.deepEqual(req.json.ids, ['J-05']);
   const after = path.join(runDir, 'after');
-  const before = run(['verdict', '--project', project, '--run', runDir]);
+  const before = run(['verdict', '--project', project, '--run', after]);
   fs.writeFileSync(path.join(after, 'verdicts.json'), JSON.stringify({ verdicts: [{ id: 'J-05', status: 'partial', why: 'Falta agrupar el segundo bloque', evidence: { kind: 'file', path: 'src/a.css', line: 2 } }], independent: true }));
   const check = run(['auditor-check', '--project', project, '--run', after, '--mode', 'verdict']);
   assert.equal(check.status, 0, check.stdout + check.stderr);
-  const withVerdicts = run(['verdict', '--project', project, '--run', runDir]);
+  const withVerdicts = run(['verdict', '--project', project, '--run', after]);
   assert.deepEqual([withVerdicts.status, withVerdicts.json], [before.status, before.json], 'the verdict word does not depend on verdicts.json');
 }
 

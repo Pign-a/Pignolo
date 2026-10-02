@@ -475,10 +475,10 @@ test('auditor-check --mode verdict validates verdicts.json against the request; 
 
 test('verdict (the word "terminado") is the same with and without verdicts.json in after/', () => {
   const project = judgmentRun([finding(), judgment('J-05')]);
-  const before = run(['verdict', '--project', project, '--run', runDir(project)]);
   assert.equal(run(['verdict-request', '--run', runDir(project), '--chosen', 'J-05']).status, 0);
   const after = path.join(runDir(project), 'after');
+  const before = run(['verdict', '--project', project, '--run', after]);
   fs.writeFileSync(path.join(after, 'verdicts.json'), JSON.stringify({ verdicts: [{ id: 'J-05', status: 'unresolved', why: 'x', evidence: { kind: 'file', path: 'src/a.css', line: 1 } }], independent: true }));
-  const withVerdicts = run(['verdict', '--project', project, '--run', runDir(project)]);
+  const withVerdicts = run(['verdict', '--project', project, '--run', after]);
   assert.deepEqual([withVerdicts.status, withVerdicts.json], [before.status, before.json]);
 });
