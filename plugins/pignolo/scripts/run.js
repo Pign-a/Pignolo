@@ -172,11 +172,12 @@ function start(o, main, env) {
     clearCounter(env, main, MALFORMED);
     clearCounter(env, main, NOTASK);
     const now = Date.now();
-    const run = { v: 1, flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
+    const run = { flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
     if (o.plan) run.plan = o.plan;
     ensureIgnored(main, IGNORED);
-    writeRun(st.file, run);
-    out({ ok: true, run });
+    const file = toFile({ ...run, tasks: {} }); // siempre v2 (D-7-2)
+    writeRun(st.file, file);
+    out({ ok: true, run: file });
   });
 }
 

@@ -53,6 +53,8 @@ test('start writes a valid run.json and the gitignore, which hides it from git',
   const obj = readRunFile(repo);
   assert.deepStrictEqual(validateRun(obj), []);
   assert.strictEqual(obj.flow, 'daily');
+  assert.strictEqual(obj.v, 2, 'start escribe siempre v2 (D-7-2, R-2)');
+  assert.deepStrictEqual(obj.tasks, {});
   assert.ok(Date.parse(obj.expires) > Date.now());
   assert.strictEqual(fs.readFileSync(path.join(repo, '.pignolo', '.gitignore'), 'utf8'), '.gitignore\nrun.json\n.disabled\ntmp/\nworktrees/\n');
   assert.strictEqual(git(['status', '--porcelain'], repo).split('\n').filter((l) => l.includes('run.json')).length, 0);
