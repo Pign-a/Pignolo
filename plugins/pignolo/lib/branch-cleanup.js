@@ -133,6 +133,12 @@ function findCandidates({ main, now = Date.now(), days = 7, opts } = {}) {
   for (const w of wts) if (typeof w.branch === 'string') wtByBranch.set(w.branch.replace(/^refs\/heads\//, ''), w);
 
   const run = readRun(main);
+  // Un run.json ilegible cuenta como un flujo en curso (como en el resto de pignolo): no se sabe qué tareas están vivas, así que no se
+  // propone nada (M5).
+  if (run.malformed) {
+    res.informed.push({ name: null, kind: 'run', why: 'run-malformed', path: run.file });
+    return res;
+  }
   const live = { branches: new Set(), paths: new Set() };
   if (run.run) for (const t of taskList(run.run)) { if (t.branch) live.branches.add(t.branch); live.paths.add(norm(t.worktree)); }
   const lockOf = (plan) => fs.existsSync(path.join(main, '.pignolo', 'tmp', 'queue', `${plan}.lock`));

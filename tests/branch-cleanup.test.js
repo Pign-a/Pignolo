@@ -291,14 +291,14 @@ test('apply: una worktree que se ensució o a la que se le agregó un ignorado d
   }
 });
 
-test('ataque T5b: nombres que difieren solo en mayúsculas (refs empaquetadas) nunca se proponen y el commit sin unir sigue alcanzable (D-7-7)', () => {
+test('ataque T5b: nombres que difieren solo en mayúsculas (refs empaquetadas) nunca se proponen y el commit sin unir sigue alcanzable (D-7-7)', (t) => {
   const main = fixture();
   task(main, 'task/p/01-a', { date: daysAgo(3), file: 'x_sin_unir' });
   const x = sha(main, 'task/p/01-a');
   git(['pack-refs', '--all'], main);
   try {
     git(['branch', 'task/p/01-A', 'int/p'], main);
-  } catch (_) { assert.ok(true, 'con las dos sueltas git se niega (T5f, guarda de regresión)'); return; }
+  } catch (_) { t.skip('git se niega a crear la gemela (T5f): el ataque no se puede armar en este git, no es un verde'); return; }
   git(['checkout', '-q', 'task/p/01-A'], main);
   write(main, 'y_unida.txt', 'y\n');
   git(['add', '-A'], main);
@@ -311,12 +311,16 @@ test('ataque T5b: nombres que difieren solo en mayúsculas (refs empaquetadas) n
   const cc = c.informed.filter((i) => i.why === 'case-collision').map((i) => i.name);
   assert.deepStrictEqual(cc.sort(), ['task/p/01-A', 'task/p/01-a'].sort());
   // un id forjado que las incluye: refused y X sigue alcanzable
+  const twinSha = sha(main, 'refs/heads/task/p/01-A');
   const forged = [{ name: 'task/p/01-a', kind: 'task', target: 'int/p', sha: x }, { name: 'task/p/01-A', kind: 'task', target: 'int/p', sha: sha(main, 'refs/heads/task/p/01-A') }];
   const r = C.applyItems({ main, items: forged, now: NOW });
   assert.strictEqual(r.removed.length, 0);
   assert.strictEqual(r.refused.length, 2);
-  git(['cat-file', '-e', x], main);
-  assert.ok(git(['for-each-ref', '--format=%(refname)', 'refs/heads'], main).toLowerCase().includes('task/p/01-a'));
+  // Con refs empaquetadas rev-parse del nombre en minúsculas puede resolver la gemela (el archivo suelto la tapa): se compara por la
+  // lista exacta de nombres, que distingue las dos.
+  const heads = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/heads/task'], main).split('\n');
+  assert.ok(heads.includes(`refs/heads/task/p/01-a ${x}`), `la rama sin unir sigue apuntando a X: ${heads.join(' | ')}`);
+  assert.ok(heads.includes(`refs/heads/task/p/01-A ${twinSha}`), 'y la gemela a lo suyo');
 });
 
 test('ataques T1b y T2b: la rama avanza o retrocede entre el reporte y el apply: refused y nada se pierde', () => {
@@ -559,4 +563,40 @@ test('I4 (A7-14): un ignorado (.env) que aparece en la worktree de la segunda ra
   assert.ok(refused && /ignored-files/.test(refused.why), JSON.stringify(r));
   assert.ok(fs.existsSync(path.join(wb, '.env')), 'el ignorado sigue en disco');
   assert.ok(exists(main, 'refs/heads/task/p/02-b'), 'y la rama también');
+});
+
+test('M15: la rama de HEAD y una int/* que es el `origin` de otro plan nunca son candidatas', () => {
+  // (a) HEAD en una tarea ya unida: no se propone (git -d la rechazaría, pero la regla tiene que valer sola)
+  const a = fixture();
+  task(a, 'task/p/01-a', { date: daysAgo(3) });
+  mergeInto(a, 'task/p/01-a');
+  toMain(a);
+  assert.ok(C.findCandidates({ main: a, now: NOW }).merged.some((m) => m.name === 'task/p/01-a'), 'sin HEAD ahí, sí se propone');
+  git(['checkout', '-q', 'task/p/01-a'], a);
+  const withHead = C.findCandidates({ main: a, now: NOW });
+  assert.ok(!withHead.merged.some((m) => m.name === 'task/p/01-a'), 'con HEAD en la rama, no');
+  // y ni siquiera se la mira: sin la regla, la rama de HEAD (sacada en el checkout principal) saldría informada como worktree-outside
+  assert.ok(!withHead.informed.some((i) => i.name === 'task/p/01-a'), JSON.stringify(withHead.informed));
+  // (b) int/other es el origin del plan p: aunque su plan esté cerrado y esté unida, no se propone
+  const b = fixture({ origin: 'int/other' });
+  write(b, '.pignolo/state/plans/other/plan.json', planJson('closed').replace('"plan": "p"', '"plan": "other"'));
+  git(['add', '-f', '-A'], b);
+  git(['commit', '-q', '-m', 'plan other'], b);
+  git(['branch', 'int/other'], b);
+  const c = C.findCandidates({ main: b, now: NOW });
+  assert.ok(c.merged.some((m) => m.name === 'int/p'), 'int/p sí (unida a su origin)');
+  assert.ok(!c.merged.some((m) => m.name === 'int/other'), 'int/other es el origin de p: no');
+});
+
+test('M5: un run.json ilegible no deja proponer nada (falla cerrado) y se informa como run-malformed', () => {
+  const main = fixture();
+  task(main, 'task/p/01-a', { date: daysAgo(3) });
+  mergeInto(main, 'task/p/01-a');
+  toMain(main);
+  assert.ok(C.findCandidates({ main, now: NOW }).merged.length > 0, 'con run.json sano se propone');
+  write(main, '.pignolo/run.json', '{ roto');
+  const c = C.findCandidates({ main, now: NOW });
+  assert.deepStrictEqual(c.merged, []);
+  assert.ok(c.informed.some((i) => i.why === 'run-malformed'), JSON.stringify(c.informed));
+  assert.match(C.report({ main, now: NOW }).text, /run-malformed/);
 });
