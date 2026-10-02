@@ -9,6 +9,7 @@ const { spawnSync } = require('node:child_process');
 const { withDeadline } = require('./git');
 const { readProjectConfig } = require('./project-config');
 const B = require('./branches');
+const { realNorm } = require('./real-path');
 
 // PUNTO DE ELECCIÓN (D-7-1): 'B' = `git worktree add` a mano (el respaldo en cualquier caso). Si la Task 13
 // mide que A (isolation: worktree + hook WorktreeCreate) gana, el hook llama a createTaskWorktree y este valor cambia.
@@ -66,10 +67,7 @@ function installDeps({ cwd, command, env, timeoutMs = DEFAULT_TIMEOUT_MS, logFil
 
 const gitOf = (main, timeoutMs, opts) => (opts && opts.run) || withDeadline(main, timeoutMs, { perCallMs: 120000 });
 const tryGit = (git, args, o) => { try { return git(args, o); } catch (_) { return null; } };
-const norm = (p) => {
-  const r = path.resolve(p);
-  return process.platform === 'win32' ? r.toLowerCase() : r;
-};
+const norm = realNorm; // real y sin mayúsculas en Windows: git informa rutas reales (I7)
 
 function verifyRef(git, ref) {
   const sha = tryGit(git, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);

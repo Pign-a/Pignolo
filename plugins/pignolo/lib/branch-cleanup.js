@@ -8,6 +8,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const B = require('./branches');
+const { realNorm } = require('./real-path');
 const { readRun, taskList } = require('./project');
 const { listPlans, readPlan } = require('./plan-state');
 
@@ -34,10 +35,7 @@ function defaultRun(cwd) {
 const runnerOf = (main, opts) => (opts && opts.run) || defaultRun(main);
 const tryRun = (git, args, o) => { try { return git(args, o); } catch (_) { return null; } };
 const errText = (e) => `${e.stderr || ''}${e.stdout || ''}`.trim() || e.message;
-const norm = (p) => {
-  const r = path.resolve(p);
-  return process.platform === 'win32' ? r.toLowerCase() : r;
-};
+const norm = realNorm; // real y sin mayúsculas en Windows: git informa rutas reales (I7)
 const realOrNull = (p) => { try { return fs.realpathSync(p); } catch (_) { return null; } };
 const inside = (p, root) => {
   const rel = path.relative(root, p);

@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const B = require('./branches');
+const { realNorm } = require('./real-path');
 const { matchAny } = require('./globs');
 const { readProjectConfig } = require('./project-config');
 const { runGate } = require('./gate');
@@ -43,10 +44,7 @@ const runnerOf = (main, opts) => (opts && opts.run) || defaultRun(main);
 const tryRun = (git, args, o) => { try { return git(args, o); } catch (_) { return null; } };
 const errText = (e) => `${e.stderr || ''}${e.stdout || ''}`.trim() || e.message;
 
-const norm = (p) => {
-  const r = path.resolve(p);
-  return process.platform === 'win32' ? r.toLowerCase() : r;
-};
+const norm = realNorm; // real y sin mayúsculas en Windows: git informa rutas reales (I7)
 
 // Una rama (task/<plan>/<NN>-<slug>) o el número NN de una de ellas.
 function resolveTask({ main, plan, task, opts }) {
