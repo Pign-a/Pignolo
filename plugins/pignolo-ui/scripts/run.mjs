@@ -518,7 +518,7 @@ const COMMANDS = {
       if (aud && Array.isArray(aud.findings)) {
         const { project } = projectOfRun(cwd, opts);
         const check = validateFindings({ output: aud, run, project, catalog: loadCatalog(), judgmentIds: judgmentIds(loadNorms({}).base) });
-        const dropped = new Set(check.problems.map((p) => p.index));
+        const dropped = new Set(check.problems.filter((p) => p.problem !== 'bad-keep').map((p) => p.index));
         if (!dropped.has(-1)) aud.findings.forEach((f, i) => { if (!dropped.has(i) && f && typeof f.id === 'string') failed.add(f.id); });
       }
       const out = { menu: buildMenu({ symptoms: dict.symptoms, failedIds: [...failed] }) };
