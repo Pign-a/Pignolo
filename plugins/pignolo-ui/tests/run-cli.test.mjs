@@ -426,6 +426,18 @@ test('context: a leak in PRODUCT.md is ignored by line and kind, and a later cal
   assert.equal(run(['context', '--project', project, '--run', runPath, '--brief', path.join(runPath, 'brief.md')]).status, 0);
 });
 
+test('review B-2: context passes the values of --values-file to the brief; a leak stops it without printing the value or writing brief.md', () => {
+  const { project, runPath } = contextRepo();
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, JSON.stringify(['Tomas Rivera']));
+  const brief = writeBrief(makeTempDir(), 'brief.md', '## First look\nThe cart of Tomas Rivera.\n\n## Do not touch\nThe footer.\n');
+  const r = run(['context', '--project', project, '--run', runPath, '--brief', brief, '--values-file', values]);
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.ok(r.json.brief.problems.some((p) => p.problem === 'leak' && p.kind === 'value'));
+  assert.ok(!r.stdout.includes('Tomas Rivera'));
+  assert.equal(fs.existsSync(path.join(runPath, 'brief.md')), false);
+});
+
 function judgmentRun(findings) {
   const project = auditorRun(null);
   writeTree(project, { [`${RUN_REL}/auditor.json`]: JSON.stringify({ findings, notVerified: [], independent: true }) });
