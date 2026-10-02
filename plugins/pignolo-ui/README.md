@@ -1,6 +1,6 @@
 # Pignolo UI
 
-Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.7 en construcción (hito 4c, etapa 1: el lienzo "Design" básico sobre el hito 4; falta la convivencia con el núcleo, hito 5).
+Plugin opcional de Claude Code, hermano de pignolo y en el mismo marketplace, para crear y mejorar interfaces web con **decisiones de diseño explícitas y verificadas**. Anda sin el núcleo. Estado: v0.8 en construcción (hito 4c, etapa 2: un lienzo "Design" por proyecto que crece, sobre el hito 4; faltan el Design System, el modo explorar y la convivencia con el núcleo, hito 5).
 
 Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 

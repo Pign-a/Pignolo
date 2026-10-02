@@ -1,6 +1,6 @@
 # Estado de pignolo
 
-_Última actualización: 2026-10-01, tarde._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
+_Última actualización: 2026-10-02._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
 
 ## Qué hay en `main`
 
@@ -19,6 +19,7 @@ Versiones leídas de los `plugin.json`.
 | Rama | Qué es | Estado |
 |---|---|---|
 | `core/hito-7a` | Hito 7a: ramas, worktrees por tarea, cola de integración, limpieza, `next` y `plan.js list` (0.13.0) | construido (dos ejecutores; el primero se cortó por límite); **revisión final opus en curso** |
+| `exp/lienzo2-y` (a renombrar al unir) | pignolo-ui 0.8.0: **etapa 2 del lienzo** (un lienzo por proyecto con una página por corrida, combinación con el índice vivo sin pisar al usuario, límites, comentarios a pedido, alto real de las pantallas). Tareas T2b, T4b, T7d, T7b, T8, T9b y T10b hechas, sin puerta manual (decisión del autor); **falta T11b** (revisión final opus, checklist del autor, spec y unión) | construida, sin unir ni push; supuestos sin probar en `plugins/pignolo-ui/CHANGELOG.md` (0.8.0) |
 | `ui/option-candidata` | pignolo-ui 0.7.3: carta candidata de `ui-option` adoptada y datos de muestra rotulados en vez de marcadores | en construcción (sonnet) |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/` (los del 7a y de la etapa 1 del lienzo pueden seguir solo en el scratch de la sesión).
