@@ -131,12 +131,24 @@ test('compatible with pignolo-ui in both directions', async () => {
   assert.strictEqual(ui.verifyApproved({ projectRoot: root, approvedPath: r.path }).status, 'ok');
   // pignolo-ui guarda, el núcleo verifica
   const root2 = project();
-  const u = ui.saveApproved({ projectRoot: root2, flow: 'checkout', from: screens(), date: '2026-09-30' });
+  // el flujo direction no lleva brief: es el formato de la aprobación de antes del 0.7.5 (ver el test todo de abajo)
+  const u = ui.saveApproved({ projectRoot: root2, flow: 'direction', from: screens(), date: '2026-09-30' });
   assert.strictEqual(u.ok, true, JSON.stringify(u.problems));
   assert.deepStrictEqual(ap.verifyApproved({ projectRoot: root2, approvedPath: u.path, expectedManifestSha: u.manifestSha256 }), { ok: true, problems: [] });
   // y el manifest tiene el mismo formato: mismas claves, en el mismo orden
   const keys = (p) => Object.keys(JSON.parse(fs.readFileSync(path.join(p, 'manifest.json'), 'utf8')));
   assert.deepStrictEqual(keys(path.join(root, r.path)), keys(path.join(root2, u.path)));
+});
+
+// Pregunta abierta para el autor (hito 4f): el núcleo todavía no conoce la clave `brief` del manifest ni el
+// archivo `brief.md` que pignolo-ui 0.7.5 sella en lo aprobado, y los cuenta como `extra-file`. Cambiar el núcleo
+// es un contrato fuera del plan 4f: queda como todo visible hasta que el autor decida.
+test('el núcleo verifica una aprobación de pignolo-ui con brief.md', { todo: 'pregunta al autor: el núcleo no conoce la clave brief (hito 4f)' }, async () => {
+  const ui = await import(UI_LIB);
+  const root = project();
+  const u = ui.saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-30', brief: '## First look\nLo principal.\n\n## Do not touch\nnothing\n' });
+  assert.strictEqual(u.ok, true, JSON.stringify(u.problems));
+  assert.deepStrictEqual(ap.verifyApproved({ projectRoot: root, approvedPath: u.path, expectedManifestSha: u.manifestSha256 }), { ok: true, problems: [] });
 });
 
 test('recordDecision writes the decision file; approved-verify finds the sha there', () => {

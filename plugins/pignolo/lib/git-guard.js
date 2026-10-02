@@ -59,7 +59,7 @@ const RULES = {
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
   'pignolo-run': ['deny', 'un subagente no opera el flujo de pignolo (scripts/run.js): solo el hilo principal lo registra, lo renueva o lo cierra', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el flujo'],
   'pignolo-plan': ['deny', 'un subagente no opera el plan ni el estado de pignolo (plan.js, plan-audit.js, approved.js, close-session.js, state-index.js): solo el hilo principal', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el plan'],
-  'pignolo-init': ['deny', 'un subagente no opera init.js: solo el hilo principal y con el sí del humano', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en project.md'],
+  'pignolo-init': ['deny', 'un subagente no opera init.js ni places.js: solo el hilo principal y con el sí del humano', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en project.md'],
   'pignolo-holdout': ['deny', 'solo el hilo principal y el validator ejecutan el holdout de pignolo (scripts/holdout.js)', 'el holdout lo corre el validator; pedile el resultado al hilo principal'],
   'pignolo-queue': ['deny', 'la cola de integración (scripts/queue.js) la opera solo el hilo principal o el integrator; el resto de los subagentes solo puede correr queue.js status', 'la cola la opera el integrator; pedile la integración al hilo principal'],
   'pignolo-worktree-tools': ['deny', 'solo el hilo principal crea worktrees de tarea, etiqueta contratos y aplica la limpieza (worktree.js create|tag-contract, cleanup.js apply)', 'pedile al hilo principal que lo haga; podés leer con worktree.js list o cleanup.js report'],
@@ -909,21 +909,25 @@ function isPlanScript(w, st, ctx) {
   return PLAN_JS_LITERAL.test(c) || PLAN_JS_OWN.test(c);
 }
 
-// init.js (/pignolo:init) escribe project.md, .git/config y .claude/settings.local.json: solo el hilo
+// init.js y places.js (/pignolo:init) escriben project.md, .git/config y .claude/settings.local.json: solo el hilo
 // principal y con el sí del humano. Misma detección anclada al plugin que isPlanScript (el
 // scripts/init.js de un proyecto cualquiera pasa) y solo cuando se EJECUTA: checkRunScript mira
 // el argv del intérprete, así que `cat`, `grep` o `Get-Content` sobre el script no lo casan.
-const INIT_JS_LITERAL = /(?:^|\/)(?:plugins\/pignolo|\.claude\/plugins\/cache\/[^/]+\/pignolo\/[^/]+)\/scripts\/init(?:\.js)?$/;
-const INIT_JS_DYN = /^\$(?:\{(?:env:)?CLAUDE_PLUGIN_ROOT\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\/]scripts[\\/]init(?:\.js)?$/i;
-const INIT_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/init(?:\\.js)?$`);
+const INIT_JS_LITERAL = /(?:^|\/)(?:plugins\/pignolo|\.claude\/plugins\/cache\/[^/]+\/pignolo\/[^/]+)\/scripts\/(?:init|places)(?:\.js)?$/;
+const INIT_JS_DYN = /^\$(?:\{(?:env:)?CLAUDE_PLUGIN_ROOT\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\/]scripts[\\/](?:init|places)(?:\.js)?$/i;
+const INIT_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/(?:init|places)(?:\\.js)?$`);
 // init.js cargado con `node -e|-p|-r` también corre su main (la lib init-actions es un límite declarado, §8.3).
-const EVAL_INIT_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${OWN_PLUGIN_ROOT}/)scripts/init(?![\\w-])`, 'i');
+const EVAL_INIT_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${OWN_PLUGIN_ROOT}/)scripts/(?:init|places)(?![\\w-])`, 'i');
 const namesInitScript = (value) => EVAL_INIT_SCRIPT.test(value.replace(/\\+/g, '/').replace(/\/+/g, '/'));
 function isInitScript(w, st, ctx) {
   if (w.dyn) return INIT_JS_DYN.test(w.value);
+  const hits = (c) => INIT_JS_LITERAL.test(c) || INIT_JS_OWN.test(c);
   const p = resolveAt(w.value, st, ctx);
-  const c = p === null ? cleanPath(w.value) : p;
-  return INIT_JS_LITERAL.test(c) || INIT_JS_OWN.test(c);
+  if (p !== null) return hits(p);
+  // Directorio desconocido (un cd tras ';' o un salto de línea pudo correr o no): vale cualquier candidato conocido (I-3).
+  if (resolveAll(w.value, st, ctx).some(hits)) return true;
+  // Sin candidatos (cd dinámico): la forma pelada que ejecuta el script de un cd a scripts/ se niega.
+  return !st.alts && /^(?:\.[\/])?(?:init|places)(?:\.js)?$/.test(w.value);
 }
 
 // El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el

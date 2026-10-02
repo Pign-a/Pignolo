@@ -10,4 +10,5 @@ Report pignolo's status to the user in their language:
    - PowerShell: `'{"source":"status","cwd":"<current directory>"}' | node "${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js" session-start`
    Relay its `systemMessage` verbatim.
 2. Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` and report the `version`.
+3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/places.js" report --cwd "<current directory>"`. If its `lines` is greater than 0, repeat its `summary`; otherwise say nothing about it.
 Do not change any state.

@@ -2,10 +2,13 @@
 // the files it wrote. An option with a problem FAILS: it is not a result.
 //
 // gitState(project) -> string        sorted `git status --porcelain --untracked-files=all` lines
-// checkOption({ dir, expected, project, gitBefore, ignoreUnder, kind, destination }) -> { ok, problems: [{ file, problem }], warnings }
+// checkOption({ dir, expected, project, gitBefore, ignoreUnder, kind, destination, provided }) -> { ok, problems: [{ file, problem }], warnings }
 //   problems: the ones of checkScreens (subfolder, not-html, bad-name, empty, no-charset, script,
 //   remote-resource, broken-link) plus missing, empty-file, unexpected-file, repo-changed and, only for
 //   mockups (kind 'option', R-5): malformed, braces, control-in-link, reserved-tag; for the fonts (R-19):
+//   sample data (lib/sample-data.mjs, only mockups): no-sample-strip, empty-sample, bare-placeholder, unmarked-sample (only
+//   with `provided`, the literal values of the brief), real-looking-contact; without `provided` the amounts and dates
+//   outside a data-sample are the warning maybe-unmarked-sample.
 //   remote-font-local (a Google Fonts <link> with destination local, or in a style tile) and bad-font-link
 //   (any other form). destination 'canvas' + kind 'option' is the only place the allowed <link> is fine.
 import fs from 'node:fs';
@@ -14,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { checkScreens } from './approved.mjs';
 import { scanMarkup } from './canvas-html.mjs';
 import { parseFontLinks } from './remote-fonts.mjs';
+import { checkSampleData } from './sample-data.mjs';
 
 export function gitState(project) {
   const out = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {
@@ -29,7 +33,7 @@ function withoutIgnored(state, ignoreUnder) {
   return String(state).split('\n').filter(Boolean).filter((l) => !prefixes.some((p) => pathOf(l).startsWith(p)));
 }
 
-export function checkOption({ dir, expected = [], project, gitBefore, ignoreUnder = ['.pignolo-ui/'], kind = 'option', destination = 'local' }) {
+export function checkOption({ dir, expected = [], project, gitBefore, ignoreUnder = ['.pignolo-ui/'], kind = 'option', destination = 'local', provided = null }) {
   const problems = [];
   const warnings = [];
   const fontsOk = kind === 'option' && destination === 'canvas';
@@ -62,6 +66,9 @@ export function checkOption({ dir, expected = [], project, gitBefore, ignoreUnde
           if (name && !seen.has(name)) { seen.add(name); problems.push({ file: f, problem: name }); }
         }
         for (const w of scan.warnings) warnings.push({ file: f, warning: w.code });
+        const sample = checkSampleData(html, { provided });
+        for (const p of sample.problems) problems.push({ file: f, problem: p });
+        for (const w of sample.warnings) warnings.push({ file: f, warning: w });
       }
     }
   }

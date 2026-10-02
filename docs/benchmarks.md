@@ -64,6 +64,8 @@ Las mismas 4 tareas reales (hito 4a, ola 1), misma base y mismas tarjetas, calif
 
 ## 2d. Costo por tipo de trabajo con el método liviano (2026-09-30 y 2026-10-01)
 
+Lo que costó cada hito, fase por fase, y con qué método se ejecutó está en [`ejecuciones.md`](ejecuciones.md) (datos en [`ejecuciones.csv`](ejecuciones.csv)).
+
 Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pignolo. Son mediciones de una sola corrida, no A/B: sirven para presupuestar.
 
 | Trabajo | Modelo | Tokens | Tiempo | Herramientas |
@@ -87,6 +89,15 @@ Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pi
 | Auditoría independiente de buenas prácticas de todo el proyecto, con fuentes | fable | ~399 mil | 10 min | 70 |
 | Debate a favor y en contra sobre esa auditoría (dos agentes) | opus | ~194 mil + ~206 mil | 5 min cada uno | 23 + 23 |
 | Evals pagas de tres agentes (hito 5: 35 corridas, 7 casos) | opus | 6,07 USD | — | — |
+| Ejecutar la etapa 1 del lienzo de pignolo-ui (8 tareas, ~183 tests, conversor, índice y publicación con filtro) | sonnet | ~567 mil | 68 min | 204 |
+| Revisión final de esa etapa (1 crítico, 6 importantes, 15 menores) y su pasada de arreglos | opus / sonnet | ~359 mil / ~295 mil | 29 / 36 min | 70 / 112 |
+| Ejecutar el hito 8b (casos de eval del `debugger`, contrato con el banco, cierre) con sus evals pagas | sonnet | ~264 mil | 58 min | 101 |
+| Retomar un hito cortado por límite desde trabajo sin commitear (hito 8d: 5 tareas que faltaban; hito 7a: 4 tareas y la unión con `main`) | sonnet | ~250 mil / ~119 mil | 41 / 58 min | 111 / 39 |
+| Cambio chico con contrato (reglas del brainstorming en `plan`, verbo de decisiones, segunda fuente del `spec-reviewer`): implementar, revisar y arreglar | sonnet / opus / sonnet | ~201 mil / ~166 mil / ~138 mil | 13 / 20 / 25 min | 73 / 30 / 42 |
+| **Un plan que cambió de alcance cuatro veces mientras se escribía** (lienzo 4c: escribir, corregir, auditar en dos pasos, corregir, segunda auditoría, corregir, partir en etapas) | sonnet y opus | **~2,0 millones** en total (escritura 225 mil; correcciones 182 + 281 + 281 + 347 mil; auditorías 207 + 159 + 325 mil) | ≈ 2 h de agentes | — |
+| Plan de riesgo completo (hito 8d: escribir, auditar en dos pasos con experimentos reales, corregir y recortar de ~172 a ~120 tests) | sonnet y opus | ~822 mil (176 + 217 + 194 + 235 mil) | ≈ 39 min | — |
+| Investigación con fuentes y propuesta (estructura de carpetas / tres skills de diseño / impeccable a fondo / diseño del brainstorming) | opus | ~128 mil / ~230 mil / ~302 mil / ~158 mil | 6 / 6 / 11 / 5 min | 14 / 39 / 38 / 23 |
+| Evals pagas del día: agentes de pignolo-ui (25 casos-corrida útiles, dos rondas), `debugger`, A/B del brainstorming (8 corridas) | opus y sonnet | 21,85 + 2,77 + 9,28 USD | — | — |
 
 **Lectura práctica:** un hito completo con el método liviano (plan ~250 mil, auditoría en dos pasos ~370 mil, corrección ~170 mil, ejecución ~280 mil por parte, revisión ~190 mil, arreglos ~150 mil) ronda 1,4 a 1,7 millones de tokens, contra los ~2,5 a 3 millones del método anterior con replay y revisión por tarea (sección 2). La revisión final del 5a, con el plan auditado antes, encontró 0 críticos y 3 importantes; la del 4a, sin auditoría con experimentos, 1 crítico y 4 importantes.
 
@@ -117,6 +128,20 @@ Un pedido real con verdad conocida (el lienzo "Design" de pignolo-ui y 10 decisi
 
 **Comparabilidad:** un solo pedido, un autor simulado y 3 corridas por brazo, con una dispersión mayor que la diferencia: orden de magnitud. El paso de hoy no se volvió a correr para la segunda medición. Conteo validado a mano. Gasto: 9,28 USD. Evidencia: [`RESULTS-brainstorm.md`](../tests/evals/RESULTS-brainstorm.md).
 
+## 2g. Dónde se va el tiempo del ciclo ejecutar → revisar → arreglar (2026-10-01)
+
+Validación de seis cambios de método con tres agentes opus (datos del repo, atacante, fuentes externas). No es un A/B. Detalle: `tests/evals/RESULTS-metodo.md`.
+
+| Qué | Medido |
+|---|---|
+| Parte del ciclo que es ejecutar (hitos grandes) | 51 a 65 % |
+| Parte del ciclo que es arreglar | 18 a 43 % |
+| Corridas de la suite completa por ciclo | 3 a 5, de 3,3 a 11,8 min bajo carga (1,7 a 1,8 min con la máquina tranquila): 10 a 20 % del ciclo |
+| Piso de una revisión opus | ≈ 150 a 160 mil tokens y 8 a 20 min, aunque el diff sea de ~400 líneas |
+| Tests en lo que agrega una pasada de arreglos | 60 a 89 % de las líneas |
+| Hallazgos graves que caen en clases repetidas | 12 de 48 (25 %) |
+
+Adoptado con resguardos: suite completa una vez por rama, hallazgos como tests que fallan, revisión por grupo de hitos chicos, lista de autochequeo. No adoptado: retomar al ejecutor para los arreglos (gasta más tokens) y un formato telegráfico (0,5 a 1,5 %). Ahorro estimado, sin medir: 15 a 25 % de pared en un hito grande y 25 a 40 % en un grupo de chicos. Costo de la validación: ≈ 415 mil tokens, 14 min de agentes.
 ## 3. Agentes que revisan código
 
 Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
@@ -132,15 +157,15 @@ Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
 
 ## 3b. Agentes de pignolo-ui (`ui-auditor`, `ui-option`) (2026-10-01)
 
-Fixtures sintéticos, 5 corridas por caso; `ui-auditor` en opus y `ui-option` en sonnet. Corrida parcial: el límite de sesión cortó 14 corridas.
+Fixtures sintéticos, 5 corridas por caso; `ui-auditor` en opus y `ui-option` en sonnet. Dos corridas: la primera quedó parcial (el límite de sesión cortó 14 corridas); la segunda, con la gravedad de juicio acotada (pignolo-ui 0.6.3), cerró las páginas limpias y dos de los tres casos cortados.
 
 | Agente | Corridas | Costo por corrida | Velocidad |
 |---|---|---|---|
 | `ui-option` (mockup, style tile, mejora) | 15/15 | 0,06–0,09 USD | 19–44 s |
-| `ui-auditor`, defectos sembrados (color, foco, ancho a 320 px, acción primaria, campo sin etiqueta) | color y campo 5/5; los otros tres sin medir | 0,27–0,31 USD | 80–87 s |
-| `ui-auditor`, páginas limpias | 9/15 (5/5, 1/5, 3/5): marca como `alto` un criterio de juicio que el fixture no sembró | 0,28–0,30 USD | 82–95 s |
+| `ui-auditor`, defectos sembrados (color, foco, ancho a 320 px, acción primaria, campo sin etiqueta) | color y campo 5/5 (primera corrida); acción primaria 5/5 y ancho a 320 px 3/3 (segunda); foco sin corrida completa (1/1) | 0,27–0,31 USD | 69–98 s |
+| `ui-auditor`, páginas limpias | primera corrida 9/15 (5/5, 1/5, 3/5): marcaba `alto` un criterio de juicio que el fixture no sembró; con la regla "`J-nn` sin medida vale a lo sumo `medio`" (carta y validador) 10/10 en las dos páginas que fallaban | 0,28–0,30 USD | 82–117 s |
 
-**Comparabilidad:** mide si cumplen su contrato, no si mejoran a Claude Code. Falta cerrar tres casos de defecto y decidir qué hacer con la severidad de los criterios de juicio. Gasto: 14,34 USD. Evidencia: [`RESULTS-ui-hito-4.md`](../plugins/pignolo-ui/tests/evals/RESULTS-ui-hito-4.md).
+**Comparabilidad:** mide si cumplen su contrato, no si mejoran a Claude Code. Falta la corrida completa de un caso de defecto (`state-04`). Gasto: 21,85 USD de 22. Evidencia: [`RESULTS-ui-hito-4.md`](../plugins/pignolo-ui/tests/evals/RESULTS-ui-hito-4.md).
 
 ## 4. Guardia de comandos destructivos
 

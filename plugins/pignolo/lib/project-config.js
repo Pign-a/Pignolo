@@ -3,9 +3,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { withDeadline, isGitFailure } = require('./git');
 const { parseFrontmatter, YamlLiteError } = require('./yaml-lite');
+const { PLACE_KINDS } = require('./places');
 
 const PROJECT_MD = '.pignolo/project.md';
-const DEFAULT_TEST_PATHS = Object.freeze(['*test*', '*spec*', '__snapshots__/', '__mocks__/', 'fixtures/', 'test/', 'tests/']);
+// Anclados (A8D-01): `*test*` y `*spec*` sin ancla casaban cualquier segmento (docs/specs/, docs/research/latest.md).
+// Un proyecto con otra convención declara sus `test-paths` en project.md: lo declarado se respeta tal cual.
+const DEFAULT_TEST_PATHS = Object.freeze(['**/*.test.*', '**/*.spec.*', '**/*_test.*', '**/test_*.py', '**/*_spec.*', '**/*-test.*', '**/tests.py', '**/conftest.py', '__tests__/', '__snapshots__/', '__mocks__/', 'fixtures/', 'test/', 'tests/', 'spec/']);
 const TYPES = Object.freeze(['code-tested', 'code-untested', 'docs', 'script']);
 // pre-merge-files (hito 7a, D-7-3, aditiva): el comando de la cola para repetir archivos de test; lleva el marcador {files}.
 const GATE_KEYS = ['on-edit', 'on-done', 'pre-merge', 'pre-merge-files', 'live-check', 'mutation'];
@@ -22,7 +25,7 @@ const LIST_KEYS = {
 };
 const PRESENTATIONS = ['ask', 'artifact', 'text'];
 const SCALAR_KEYS = { 'deps-install': 'depsInstall', language: 'language', profile: 'profile' };
-const KNOWN = new Set(['type', 'gates', 'mutation', 'presentation', 'canvas-consent', ...Object.keys(LIST_KEYS), ...Object.keys(SCALAR_KEYS)]);
+const KNOWN = new Set(['type', 'gates', 'mutation', 'presentation', 'canvas-consent', 'places', ...Object.keys(LIST_KEYS), ...Object.keys(SCALAR_KEYS)]);
 
 const invalid = (msg) => new Error(`project.md inválido: ${msg}`);
 
@@ -32,7 +35,7 @@ function emptyConfig() {
     testPaths: [...DEFAULT_TEST_PATHS], testPathsDeclared: false,
     protectedTestConfig: [PROJECT_MD], highRiskPaths: [], contracts: [], serialPaths: [],
     costPaths: [], visiblePaths: [], piiPatterns: [], depsInstall: null, domainRules: [],
-    mutation: false, language: null, profile: null, presentation: null, canvasConsent: false, warnings: [],
+    places: {}, mutation: false, language: null, profile: null, presentation: null, canvasConsent: false, warnings: [],
   };
 }
 
@@ -80,6 +83,17 @@ function buildConfig(text) {
   if (data['canvas-consent'] !== undefined && data['canvas-consent'] !== null) {
     if (typeof data['canvas-consent'] === 'boolean') c.canvasConsent = data['canvas-consent'];
     else c.warnings.push('canvas-consent: se esperaba true o false (se ignora)');
+  }
+  // El mapa de lugares (hito 8d, R-2): tipo -> carpeta. Un tipo desconocido o un valor que no es texto es un aviso.
+  if (data.places !== undefined && data.places !== null) {
+    if (typeof data.places !== 'object' || Array.isArray(data.places)) c.warnings.push('places: se esperaba un mapa tipo -> carpeta (se ignora)');
+    else {
+      for (const [k, v] of Object.entries(data.places)) {
+        if (!PLACE_KINDS.includes(k)) c.warnings.push(`places: tipo desconocido "${k}" (se ignora)`);
+        else if (typeof v !== 'string' || v.trim() === '') c.warnings.push(`places.${k}: se esperaba una carpeta (se ignora)`);
+        else c.places[k] = v;
+      }
+    }
   }
   for (const [key, prop] of Object.entries(LIST_KEYS)) c[prop] = asList(key, data[key]);
   for (const [key, prop] of Object.entries(SCALAR_KEYS)) {

@@ -17,6 +17,12 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 - `/pignolo-ui:improve <URL o ruta>`: inspecciona la pantalla (script y navegador), te muestra un menú de síntomas, genera versiones mejoradas, aplica la elegida y confirma con antes y después.
 - `/pignolo-ui:audit <URL o ruta>`: una pasada de auditoría con evidencia; no cambia ningún archivo y no bloquea.
 
+## Contexto de producto y brief
+
+- `PRODUCT.md` (opcional, en la raíz del proyecto, 60 líneas como máximo) dice para quién es la pantalla: `## Audience`, `## First look`, `## Tone`, `## Not wanted` y `## Do not touch`. Lo que no reconoce lo ignora; una sección con la sola palabra `undecided` es una laguna declarada. Si falta, el flujo sigue y lo dice en una línea. Solo `/pignolo-ui:new` ofrece crearlo, una vez y con tu confirmación; nunca lo sobrescribe. El contexto ayuda a decidir si un criterio de juicio aplica; nunca crea hallazgos, no sube severidades y `DESIGN.md` sigue ganando.
+- `brief.md` viaja dentro de la versión aprobada (`design/approved/<flujo>/`) y queda sellado en el manifest: la primera vista de la pantalla, qué no se toca y, si hace falta, su registro (`Register: product` o `brand`).
+- En `/pignolo-ui:improve`, si elegís criterios de juicio (`J-nn`), una segunda lectura del auditor (≈ 0,3 USD) puntúa solo esos arreglos como resuelto, parcial o sin resolver. Es un juicio: no cambia la palabra "terminado" ni cuenta como una segunda confirmación.
+
 ## Configuración (`userConfig`)
 
 - `optionsPerDecision` (`1` o `3`, por defecto `3`): cuántas opciones se generan por decisión, cada una con su subagente. Con `1` las opciones salen en secuencia del hilo principal y el informe lo dice.
@@ -27,7 +33,7 @@ Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega litera
 
 ## Qué se publica y qué nunca
 
-Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai** (un lienzo por corrida, una fila por opción y pantalla, a 390 y 1440 px). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con marcadores, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
+Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai** (un lienzo por corrida, una fila por opción y pantalla, a 390 y 1440 px). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con datos de muestra rotulados, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
 
 Para no publicar: `node scripts/run.mjs config set --data <datos> --project <repo> --key publish --value never` (clave de proyecto, también se respeta un "no" heredado de la 0.6), `presentation = local` o decir "no publiques" en el chat (vale para esa corrida). En los tres casos ni siquiera se llama a la herramienta `Artifact`. Regenerar una opción abre un lienzo nuevo (el anterior queda en tu cuenta y lo borrás vos; el agente nunca borra ni comparte nada).
 
@@ -129,7 +135,7 @@ La tabla sale de `catalog/rules.json` (`lib/catalog.mjs`, `renderCatalogMarkdown
 | COLOR-11 | Factory accent: primary with OKLCH hue 265-310 and chroma >= 0.12, or a blue to violet gradient | style | no | medio | sí | Prompting Claude Opus 5.5, Frontend design defaults (consulted 2026-09-28); pignolo-ui spec 2026-09-28 §7.4 | ui-check |
 | COLOR-12 | Text with background-clip: text over a gradient (presence; contrast is reported as COLOR-03) | style | no | medio | sí | WCAG 2.2 SC 1.4.3 (AA), contrast part only | ui-check |
 | ICON-01 | Emoji at the start of button, navigation link, h1-h6 or li text | element | no | medio | sí | pignolo-ui spec 2026-09-28 §5.4 (heuristic) | ui-check |
-| CONTENT-01 | Markers (data-sample or ‹…›) block when taken to real code; filler heuristics are medio | element | sí | bloquea | no | pignolo-ui spec 2026-09-28 §7.1 | ui-check |
+| CONTENT-01 | Sample data (data-sample) and bare markers (‹…›) block when taken to real code; filler heuristics are medio | element | sí | bloquea | no | pignolo-ui spec 2026-09-28 §7.1 | ui-check |
 | COPY-01 | Marketing filler phrases (es/en); other lang is unverified | element | no | detalle | sí | pignolo-ui spec 2026-09-28 §5.4 (heuristic) | ui-check |
 | META-01 | Template title, default favicon, generator attribution | document | no | medio | sí | pignolo-ui spec 2026-09-28 §5.4 (heuristic) | ui-check |
 | NAV-01 | Keyboard: Tab reaches every focusable element (navigation menu button included) and focusing it changes its computed styles; disabled controls are exempt (browser check B2) | document | sí | bloquea | no | WCAG 2.2 SC 2.1.1 (A), keyboard part; floor | browser |

@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { execFileSync, spawn, spawnSync } = require('node:child_process');
 
 const PLUGIN_ROOT = path.join(__dirname, '..', 'plugins', 'pignolo');
@@ -90,4 +91,21 @@ function runGuard(payload, env = {}) {
   return { status: r.exit, stdout: String(r.stdout || ''), stderr: String(r.stderr || '') };
 }
 
-module.exports = { PLUGIN_ROOT, LAUNCHER, makeTempDir, makeRepo, runLauncher, runGuard, git };
+// Hash recursivo MANUAL de un árbol (lstat, sin seguir enlaces): incluye las carpetas vacías y los enlaces como enlaces
+// y no entra en ellos. Por defecto no mira .git (el índice cambia con un git mv; los tests comparan `git status` aparte).
+function hashTree(dir, { skip = ['.git'] } = {}) {
+  const h = crypto.createHash('sha256');
+  (function walk(d, rel) {
+    for (const n of fs.readdirSync(d).sort()) {
+      if (rel === '' && skip.includes(n)) continue;
+      const p = path.join(d, n);
+      const r = rel ? `${rel}/${n}` : n;
+      const st = fs.lstatSync(p);
+      if (st.isSymbolicLink()) h.update(`L ${r} -> ${fs.readlinkSync(p)}\0`);
+      else if (st.isDirectory()) { h.update(`D ${r}\0`); walk(p, r); } else h.update(`F ${r} ${crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex')}\0`);
+    }
+  }(dir, ''));
+  return h.digest('hex');
+}
+
+module.exports = { PLUGIN_ROOT, LAUNCHER, makeTempDir, makeRepo, runLauncher, runGuard, git, hashTree };

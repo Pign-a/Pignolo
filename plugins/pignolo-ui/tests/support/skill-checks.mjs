@@ -38,6 +38,7 @@ export const SUBCOMMANDS = {
   'design-md.mjs': ['validate', 'extract', 'patch'],
   'files.mjs': ['save', 'verify', 'restore'],
   'approve.mjs': ['save', 'record', 'verify'],
+  'product-md.mjs': ['validate', 'template', 'create'],
   'compare.mjs': ['fingerprint', 'distance', 'options', 'approved'],
   'browser.mjs': ['capture', 'measure', 'dom'],
 };

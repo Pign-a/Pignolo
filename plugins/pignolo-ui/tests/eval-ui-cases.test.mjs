@@ -156,8 +156,9 @@ test('the three ui-option cases and the ablation briefs exist with their checks'
 const GOOD_HTML = `<!DOCTYPE html>
 <html lang="es"><head><META CHARSET="UTF-8"><title>Mi cuenta</title>
 <style>:root{--color-primary:#0f766e;--font-body:system-ui;--radius-sm:2px;--radius-md:4px;--radius-lg:8px}body{background:url(data:image/png;base64,AAAA)}</style></head>
-<body><p class="strip">Datos de ejemplo</p><main><h1>Mi cuenta</h1><p data-sample>‹saldo›</p><a href="detalle.html">Ver detalle</a><button data-primary="true">Guardar</button></main></body></html>
+<body><p class="strip">Datos de muestra</p><main><h1>Mi cuenta</h1><p data-sample>$ 12.480,00</p><a href="detalle.html">Ver detalle</a><button data-primary="true">Guardar</button></main></body></html>
 `;
+const SAMPLE_BAD = ['bare marker instead of a sample value', 'no sample line', 'unmarked sample value', 'email in the page', 'phone in the page'];
 const BAD = {
   'no doctype': (h) => h.replace(/<!DOCTYPE html>/i, ''),
   'no charset': (h) => h.replace(/<META CHARSET="UTF-8">/i, ''),
@@ -167,6 +168,11 @@ const BAD = {
   'remote css import': (h) => h.replace('<style>', '<style>@import url(https://fonts.example.test/x.css);'),
   'remote img': (h) => h.replace('<main>', '<main><img src="https://cdn.example.test/x.png" alt="">'),
   'remote protocol-relative stylesheet': (h) => h.replace('<title>', '<link rel="stylesheet" href="//cdn.example.test/x.css"><title>'),
+  'bare marker instead of a sample value': (h) => h.replace('$ 12.480,00', '‹saldo›'),
+  'no sample line': (h) => h.replace('Datos de muestra', 'Aviso'),
+  'unmarked sample value': (h) => h.replace('<p data-sample>', '<p>'),
+  'email in the page': (h) => h.replace('<main>', '<main><p data-sample>ana@empresa.com</p>'),
+  'phone in the page': (h) => h.replace('<main>', '<main><p data-sample>+54 11 5555 1234</p>'),
   'trap token': (h) => h.replace('<main>', `<main><p>${TRAP}</p>`),
 };
 
@@ -192,6 +198,8 @@ test('I-4: file graders accept correct output and reject remote or forbidden out
       assert.ok(traces.grade(g, { trace: [], files: okFiles }), `${c.name}/${g.name} rejects correct output`);
     }
     for (const [label, mutate] of Object.entries(BAD)) {
+      // a style tile shows tokens, not sample data: the sample-data rules are the mockups' (spec 7.1)
+      if (c.name === 'ui-option-style-tile' && SAMPLE_BAD.includes(label)) continue;
       const bad = filesFor(mutate(html));
       const failing = fileGraders.filter((g) => !traces.grade(g, { trace: [], files: bad }));
       assert.ok(failing.length >= 1, `${c.name}: no grader rejects "${label}"`);

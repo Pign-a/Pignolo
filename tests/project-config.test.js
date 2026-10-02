@@ -4,6 +4,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { makeRepo, git } = require('./helpers');
+const { matchAny } = require('../plugins/pignolo/lib/globs');
 const { readProjectConfig, DEFAULT_TEST_PATHS, TYPES } = require('../plugins/pignolo/lib/project-config');
 
 function write(root, text) {
@@ -14,7 +15,7 @@ const fm = (yaml) => `---\n${yaml}\n---\nnotas\n`;
 
 test('constantes', () => {
   assert.deepStrictEqual(TYPES, ['code-tested', 'code-untested', 'docs', 'script']);
-  assert.strictEqual(DEFAULT_TEST_PATHS.length, 7);
+  assert.strictEqual(DEFAULT_TEST_PATHS.length, 15);
   assert.throws(() => { DEFAULT_TEST_PATHS.push('x'); }, TypeError);
 });
 
@@ -198,4 +199,29 @@ test('gates.pre-merge-files (hito 7a, D-7-3): con {files} es válida, sin el mar
   const rep = readProjectConfig({ root });
   assert.strictEqual(rep.gates.repeat, undefined);
   assert.ok(rep.warnings.some((w) => /gates: clave desconocida "repeat"/.test(w)), 'gates.repeat ya no existe: clave desconocida');
+});
+
+// A8D-01: los defaults anclados no tratan los documentos como tests.
+test('defaults de test-paths: los documentos no son tests y los tests siguen siéndolo', () => {
+  const docs = ['docs/specs/a.md', 'docs/specs/2026-10-01-x-design.md', 'docs/research/latest.md', 'docs/plans/p.md', 'doc/specs/a.md', 'docs/contest/x.md', 'README.md', 'src/app.js'];
+  for (const d of docs) assert.strictEqual(matchAny(DEFAULT_TEST_PATHS, d), false, d + ' no debe contarse como test');
+  const tests = ['src/a.test.js', 'x/b.spec.ts', 'pkg/foo_test.go', 'tests/x.js', 'test/y.js', 'src/__tests__/z.js', 'pkg/test_algo.py', 'a/__snapshots__/s.snap', 'a/fixtures/f.json'];
+  for (const t of tests) assert.strictEqual(matchAny(DEFAULT_TEST_PATHS, t), true, t + ' debe contarse como test');
+});
+
+test('un test-paths declarado se respeta tal cual, aunque case documentos', () => {
+  const root = makeRepo();
+  write(root, fm('type: docs\ntest-paths:\n  - "*spec*"'));
+  const c = readProjectConfig({ root });
+  assert.strictEqual(c.testPathsDeclared, true);
+  assert.deepStrictEqual(c.testPaths, ['*spec*']);
+  assert.strictEqual(matchAny(c.testPaths, 'docs/specs/a.md'), true);
+});
+
+// I-5 (revisión final del hito 8d): los anclados dejaban sin proteger convenciones comunes de tests
+test('I-5: los defaults cubren de nuevo spec/, *_spec.*, *-test.*, tests.py y conftest.py sin volver a casar documentos', () => {
+  const tests = ['spec/models/user_spec.rb', 'spec/spec_helper.rb', 'app/spec/x.rb', 'lib/user_spec.rb', 'app/tests.py', 'conftest.py', 'pkg/conftest.py', 'lib/foo-test.js', 'src/a-test.ts'];
+  for (const t of tests) assert.strictEqual(matchAny(DEFAULT_TEST_PATHS, t), true, t + ' debe contarse como test');
+  const noTests = ['docs/specs/a.md', 'docs/research/latest.md', 'src/latest.js', 'src/contest.js', 'src/inspector.js', 'docs/specs/2026-10-01-x-design.md', 'src/attests.js'];
+  for (const d of noTests) assert.strictEqual(matchAny(DEFAULT_TEST_PATHS, d), false, d + ' no debe contarse como test');
 });

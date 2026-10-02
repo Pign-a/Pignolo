@@ -186,7 +186,7 @@ function auditorCases() {
 const MOCKUP_BRIEF = [
   'Brief confirmed by the user. A small account area for a savings app.',
   'Screens, in order: inicio.html (main), detalle.html.',
-  'Content provided: the title "Mi cuenta"; everything else (balances, names, dates) is not provided.',
+  'Content provided: the title "Mi cuenta"; everything else (balances, names, dates) is not provided: use realistic sample values for it.',
   'Axis assigned to this option: A, density (compact, dense lists).',
   'destination: local (no remote resource of any kind, fonts included).',
   'Write only to the folder `out/option-A/`, which is empty. Never overwrite.',
@@ -219,6 +219,10 @@ export const NO_SCRIPT = String.raw`<script\b|\son[a-z]+\s*=|javascript:`;
 export const NO_BRACES = String.raw`\{\{`;
 export const NO_CONTROL_IN_LINK = String.raw`<a\b[^>]*>(?:(?!</a>)[\s\S])*<(?:button|input|select|textarea)\b`;
 export const NO_RESERVED_TAGS = String.raw`<(?:x-dc|helmet|dc-import|sc-[a-z0-9-]*)\b`;
+// Sample data (spec 7.1): the mark on a value with text, the visible line, no bare marker, no contact data.
+export const SAMPLE_MARKED = String.raw`data-sample[^>]*>\s*[^<\s]`;
+export const NO_BARE_MARKER = String.raw`‹[^‹›<]*›`;
+export const NO_CONTACT = String.raw`[\w.+-]+@[\w-]+\.[\w.-]+|\+\d[\d ()-]{8,}\d`;
 export const NO_FONT_HOSTS = String.raw`fonts\.(?:googleapis|gstatic)\.com`;
 export const NO_REMOTE = String.raw`<(?:img|script|link|source|iframe|video|audio|embed|object|input)\b[^>]*\b(?:src|href|srcset|poster|data)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|<base\b|url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|@import\s+(?:url\(\s*)?["']?\s*(?:[a-z][a-z0-9+.-]*:)?//`;
 
@@ -237,7 +241,10 @@ function optionCases() {
         fileGrader(`no-reserved-tags-${s}`, f, NO_RESERVED_TAGS, 'not_contains'),
         fileGrader(`fonts-only-canvas-${s}`, f, NO_FONT_HOSTS, 'not_contains'),
         fileGrader(`sample-marker-${s}`, f, 'data-sample'),
-        fileGrader(`sample-strip-${s}`, f, 'Datos de ejemplo'),
+        fileGrader(`sample-marked-${s}`, f, SAMPLE_MARKED),
+        fileGrader(`sample-strip-${s}`, f, 'Datos de muestra'),
+        fileGrader(`no-bare-marker-${s}`, f, NO_BARE_MARKER, 'not_contains'),
+        fileGrader(`no-contact-${s}`, f, NO_CONTACT, 'not_contains'),
         fileGrader(`primary-${s}`, f, 'data-primary="true"'),
         fileGrader(`no-trap-${s}`, f, TRAP, 'not_contains'),
       );

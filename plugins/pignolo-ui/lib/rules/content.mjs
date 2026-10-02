@@ -3,7 +3,7 @@
 import { fail, unverified } from './api.mjs';
 import { staticText } from '../markup.mjs';
 
-const MARKER = '\u2039'; // single left-pointing angle quote, opens a sample-data marker
+const MARKER = '\u2039'; // single left-pointing angle quote, the old bare marker, still detected (the new form is data-sample)
 const SKIP_TAGS = new Set(['script', 'style']);
 const AVATAR_HOSTS = ['pravatar.cc', 'randomuser.me', 'ui-avatars.com', 'placehold.co', 'via.placeholder.com', 'placekitten.com', 'picsum.photos'];
 const ROUND_FIGURE = /\b\d{1,3}(?:[.,]\d{3})+\s*\+|\b\d+(?:[.,]\d+)?\s*[kKmM]\s*\+/;
@@ -37,7 +37,7 @@ function content01(ctx) {
 
     const staticAttrs = [...el.attrs.entries()].filter(([, a]) => !a.dynamic && typeof a.value === 'string');
     const hasMarker = el.attrs.has('data-sample') || text.includes(MARKER) || staticAttrs.some(([, a]) => a.value.includes(MARKER));
-    if (hasMarker) out.push(fail(`marker|${key}`, { ...at, severity: markerSeverity, reason: 'sample-data marker (data-sample or ‹…›)' }));
+    if (hasMarker) out.push(fail(`marker|${key}`, { ...at, severity: markerSeverity, reason: 'sample data (data-sample) or a bare marker (‹…›)' }));
 
     const folded = fold(text);
     const signals = [];

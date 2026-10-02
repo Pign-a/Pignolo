@@ -62,3 +62,10 @@ test('prepare-run.md: no variables, steps in order, budget, session and exit 2 r
 test('the plugin linter stays green with the skill and reference/', () => {
   assert.deepEqual(lintPlugin(PLUGIN_ROOT), []);
 });
+
+test('audit: calls run.mjs context, says the line when PRODUCT.md is missing and never creates it (hito 4f)', () => {
+  const { text } = readSkill('audit');
+  for (const lit of ['reference/context.md', 'run.mjs" context', 'sin PRODUCT.md']) assert.ok(text.includes(lit), lit);
+  assert.ok(!text.includes('product-md.mjs'));
+  assert.ok(text.indexOf('prepare-run.md') < text.indexOf('run.mjs" context') && text.indexOf('run.mjs" context') < text.indexOf('pignolo-ui:ui-auditor'));
+});

@@ -75,3 +75,21 @@ test('apply.md: batch limits, what restore deletes is shown before it, the verdi
   assert.ok(!/git commit/.test(text.replace('does not commit', '')));
   assertScriptsExist(scriptCalls(text));
 });
+
+test('improve step 4 and options.md hand the auditor keep line to the versions, and neither offers it as a note', () => {
+  const { text } = readSkill('improve');
+  const opts = readReference('options.md');
+  for (const t of [text, opts]) {
+    assert.ok(t.includes('`keep`'), 'mentions the keep line');
+    assert.ok(/already works/.test(t), 'says what keep is');
+    assert.ok(!/keep[^.\n]{0,40}\bnote\b/i.test(t.replace(/no note/g, '')), 'keep is not a note');
+  }
+});
+
+test('improve: context, the question of what must not be touched, --brief-file and the verdict pass that only runs with a chosen J-nn (hito 4f)', () => {
+  const { text } = readSkill('improve');
+  for (const lit of ['reference/context.md', 'run.mjs" context', 'what must not be touched', '--brief-file', 'verdict-request', '0.3', '<run>/brief.md']) assert.ok(text.includes(lit), lit);
+  assert.ok(/only runs with a chosen `J-nn`/.test(text));
+  assert.ok(/never changes what `run\.mjs verdict` says/.test(text) && /not a second confirmation/.test(text));
+  assert.ok(!text.includes('product-md.mjs'), 'improve never creates PRODUCT.md');
+});
