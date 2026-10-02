@@ -15,7 +15,7 @@ const fm = (yaml) => `---\n${yaml}\n---\nnotas\n`;
 
 test('constantes', () => {
   assert.deepStrictEqual(TYPES, ['code-tested', 'code-untested', 'docs', 'script']);
-  assert.strictEqual(DEFAULT_TEST_PATHS.length, 10);
+  assert.strictEqual(DEFAULT_TEST_PATHS.length, 15);
   assert.throws(() => { DEFAULT_TEST_PATHS.push('x'); }, TypeError);
 });
 
@@ -198,4 +198,12 @@ test('un test-paths declarado se respeta tal cual, aunque case documentos', () =
   assert.strictEqual(c.testPathsDeclared, true);
   assert.deepStrictEqual(c.testPaths, ['*spec*']);
   assert.strictEqual(matchAny(c.testPaths, 'docs/specs/a.md'), true);
+});
+
+// I-5 (revisión final del hito 8d): los anclados dejaban sin proteger convenciones comunes de tests
+test('I-5: los defaults cubren de nuevo spec/, *_spec.*, *-test.*, tests.py y conftest.py sin volver a casar documentos', () => {
+  const tests = ['spec/models/user_spec.rb', 'spec/spec_helper.rb', 'app/spec/x.rb', 'lib/user_spec.rb', 'app/tests.py', 'conftest.py', 'pkg/conftest.py', 'lib/foo-test.js', 'src/a-test.ts'];
+  for (const t of tests) assert.strictEqual(matchAny(DEFAULT_TEST_PATHS, t), true, t + ' debe contarse como test');
+  const noTests = ['docs/specs/a.md', 'docs/research/latest.md', 'src/latest.js', 'src/contest.js', 'src/inspector.js', 'docs/specs/2026-10-01-x-design.md', 'src/attests.js'];
+  for (const d of noTests) assert.strictEqual(matchAny(DEFAULT_TEST_PATHS, d), false, d + ' no debe contarse como test');
 });
