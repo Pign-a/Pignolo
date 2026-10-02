@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PLUGIN_ROOT, makeTempDir, writeTree } from './helpers.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
-import { extractJsonBlock, validateFindings } from '../lib/auditor-output.mjs';
+import { extractJsonBlock, validateFindings, validateVerdicts } from '../lib/auditor-output.mjs';
 import { judgmentIds, loadNorms } from '../lib/norms.mjs';
 import { lintPlugin } from './support/lint-plugin.mjs';
 
@@ -131,4 +131,30 @@ test('ui-auditor: the optional keep line is one line about what already works, w
   assert.ok(rule, 'a rule line for keep');
   assert.match(rule, /no severity, no evidence, no note/);
   assert.ok(!/"keep":\s*\{/.test(body), 'keep is plain text, not an object with severity or note');
+});
+
+test('ui-auditor: product context only decides whether a criterion applies; verdict mode answers only the ids asked (hito 4f)', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['product.md', 'brief.md', 'verdict-request.json', 'Verdict mode', 'never raises a severity', 'do not search for anything new', 'No self-grade', 'Applies when']) {
+    assert.ok(body.includes(needle), `missing: ${needle}`);
+  }
+  assert.ok(body.length <= 7000, `${body.length} characters`);
+});
+
+test('the one-line example of verdict mode passes validateVerdicts against a synthetic run (card and validator agree)', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  const m = /one-line example: `(\{ "verdicts".*?\})`\n/.exec(body);
+  assert.ok(m, 'the card has the one-line example');
+  const output = JSON.parse(m[1]);
+  const project = makeTempDir();
+  writeTree(project, { 'src/page.html': `${'<p>x</p>\n'.repeat(20)}` });
+  const run = path.join(project, '.pignolo-ui', 'runs', 'r1', 'after');
+  fs.mkdirSync(run, { recursive: true });
+  const request = { v: 1, ids: [output.verdicts[0].id], findings: [] };
+  assert.deepEqual(validateVerdicts({ output, request, run, project }), { ok: true, problems: [] });
+});
+
+test('ui-option: a product context block guides content and tone, DESIGN.md still wins (hito 4f)', () => {
+  const body = read('ui-option');
+  for (const needle of ['product context', 'DESIGN.md still wins']) assert.ok(body.includes(needle), `missing: ${needle}`);
 });

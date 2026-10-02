@@ -12,6 +12,7 @@ Each option gets its own brief, written in the prompt (never a path inside the p
 
 - the confirmed brief (what it is, who uses it, the main action, the real content inventory, the reading order and the list of screens in order: the first is the main one). The data the user gave goes in literally; the agent fills the rest with realistic sample values marked `data-sample`, plus one visible line "Datos de muestra" per screen (never real people, emails, companies or brands);
 - the text of `<run>/norms.md`, pasted;
+- the product context: paste the `text` that `node "<root>/scripts/run.mjs" context --project <repo> --run <run> [--brief <run>/brief.md]` printed (audience, first look, tone, what is not wanted, what is not touched, and the first look and "do not touch" of this screen); omit it when there is no `PRODUCT.md` and no brief;
 - the tokens of `DESIGN.md` if there is one, and the project's rejections;
 - the axis assigned to this option: mockups: A density, B structure, C emphasis. Style tiles: A restraint, B warmth or editorial, C high contrast; in a `product` register, B and C stay at "restraint with one accent" and vary typography and density;
 - the write folder `<run>/<kind>-<X>/`, which must be empty;

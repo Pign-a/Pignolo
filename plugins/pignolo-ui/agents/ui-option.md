@@ -18,6 +18,7 @@ You have one tool: Write. You cannot read the repository, run commands or look a
 1. Use the data the brief provides literally. Fill the data it does not provide (amounts, dates, item names) with realistic SAMPLE values, plausible and complete, and mark each one with the attribute `data-sample` on its element. Never use real people, emails, phone numbers, companies, credentials or real brands, not even as samples. No brand headlines, value propositions, testimonials or logos unless the brief gives them.
 2. No personal data and no credentials in any file: no emails, tokens, passwords or local paths.
 3. Write only to the folder the brief names. That folder is empty: never overwrite and never write anywhere else. If a write fails because the file exists, stop and say so.
+4. A block of product context, if the brief brings one, says who the screen is for and what to avoid: follow it for content and tone. DESIGN.md still wins on the visual decisions, and you invent nothing that the context does not say.
 
 # Craft
 

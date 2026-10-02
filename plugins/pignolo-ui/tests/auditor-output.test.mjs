@@ -106,3 +106,41 @@ test('keep: optional, one line of at most 160 characters', () => {
 test('keep does not count toward the judgment cap', () => {
   assert.deepEqual(validate([jFinding(), jFinding(), jFinding()], { keep: 'la tabla de datos se lee bien' }), { ok: true, problems: [] });
 });
+
+// ---- verdict mode (hito 4f) ----
+import { validateVerdicts, VERDICT_STATUSES } from '../lib/auditor-output.mjs';
+
+const verdict = (id, over = {}) => ({ id, status: 'resolved', why: 'ahora está agrupado', evidence: { kind: 'file', path: 'src/app.css', line: 2 }, ...over });
+const request = { v: 1, ids: ['J-05', 'J-07'], findings: [] };
+const check = (output, req = request) => {
+  const { project, run } = setup();
+  return validateVerdicts({ output, request: req, run, project });
+};
+
+test('validateVerdicts: the two requested ids with valid states and existing evidence are ok', () => {
+  assert.deepEqual(VERDICT_STATUSES, ['resolved', 'partial', 'unresolved']);
+  const out = { verdicts: [verdict('J-05'), verdict('J-07', { status: 'partial' })], independent: true };
+  assert.deepEqual(check(out), { ok: true, problems: [] });
+});
+
+test('validateVerdicts: each problem is detected', () => {
+  const both = [verdict('J-05'), verdict('J-07')];
+  assert.ok(names(check({ verdicts: [...both, verdict('J-09')] })).includes('unknown-id'));
+  assert.ok(names(check({ verdicts: [verdict('J-05')] })).includes('missing-id'));
+  assert.ok(names(check({ verdicts: [...both, verdict('J-05')] })).includes('duplicate-id'));
+  assert.ok(names(check({ verdicts: [verdict('J-05', { status: 'ok' }), verdict('J-07')] })).includes('bad-status'));
+  assert.ok(names(check({ verdicts: both, findings: [] })).includes('new-finding'));
+  assert.ok(names(check({ verdicts: both, notes: 'x' })).includes('new-finding'));
+  assert.ok(names(check({ verdicts: [verdict('J-05', { severity: 'alto' }), verdict('J-07')] })).includes('new-finding'));
+  assert.ok(names(check({ verdicts: [verdict('J-05', { evidence: { kind: 'file', path: 'src/none.css', line: 1 } }), verdict('J-07')] })).includes('evidence-missing'));
+  assert.ok(names(check({ verdicts: [verdict('J-05', { evidence: { kind: 'capture', path: 'captures/a.png', sha256: '0'.repeat(64) } }), verdict('J-07')] })).includes('evidence-invalid-capture'));
+  assert.ok(names(check({ verdicts: [verdict('J-05', { evidence: undefined }), verdict('J-07')] })).includes('evidence-missing'));
+  assert.ok(names(check({ verdicts: both, score: 4 })).includes('self-grade'));
+  assert.ok(names(check({ verdicts: [verdict('J-05', { rating: 3 }), verdict('J-07')] })).includes('self-grade'));
+  assert.ok(names(check({ findings: [] })).includes('bad-shape'));
+});
+
+test('validateVerdicts: a capture with the right sha256 is valid evidence', () => {
+  const out = { verdicts: [verdict('J-05', { evidence: { kind: 'capture', path: 'captures/a.png', sha256: pngSha } }), verdict('J-07')] };
+  assert.deepEqual(check(out), { ok: true, problems: [] });
+});

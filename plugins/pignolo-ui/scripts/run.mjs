@@ -14,7 +14,9 @@
 //   run.mjs git-state --project <repo> --out <file>
 //   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local] [--provided-file <json list>]
 //   run.mjs discard --run <run> --option <A|B|C> [--kind option|direction]
-//   run.mjs auditor-check --project <repo> --run <run>
+//   run.mjs auditor-check --project <repo> --run <run> [--mode findings|verdict]
+//   run.mjs context --project <repo> --run <run> [--brief <brief.md>] [--values-file <json>]
+//   run.mjs verdict-request --run <run> --chosen <J-05,J-07>
 //   run.mjs register --project <repo> [--brief <brief.md>]
 //   run.mjs menu --run <run> [--norms <file>] [--extra-symptoms-file <json>] [--words-file <txt>]
 //   run.mjs report-skeleton --project <repo> --run <run> [--implements <design/approved/flow>]
@@ -41,7 +43,8 @@ import { gitState, checkOption } from '../lib/option-check.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
 import { findDesignFile } from '../lib/approved.mjs';
 import { validateBrief, designRegister } from '../lib/brief-md.mjs';
-import { validateFindings } from '../lib/auditor-output.mjs';
+import { validateFindings, validateVerdicts } from '../lib/auditor-output.mjs';
+import { validateProduct, extractContext, SECTION_MAX } from '../lib/product-md.mjs';
 import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
 import crypto from 'node:crypto';
@@ -355,11 +358,105 @@ const COMMANDS = {
     },
   },
 
-  'auditor-check': {
-    spec: { value: ['project', 'run'] },
+  // Product context of the run (hito 4f): PRODUCT.md and the brief of the screen, copied byte by byte into the run.
+  // A missing or invalid PRODUCT.md never stops the flow; an invalid brief does (the user just confirmed it).
+  context: {
+    spec: { value: ['project', 'run', 'brief', 'values-file'] },
     run(opts, { cwd }) {
       const project = projectDir(cwd, opts);
       const run = runDirOf(cwd, project, opts);
+      let values = [];
+      if (opts['values-file'] !== undefined) {
+        try { values = readValuesFile(path.resolve(cwd, opts['values-file'])); } catch { throw new UsageError('--values-file debe ser un archivo JSON con una lista de textos'); }
+      }
+      const runFile = path.join(run, 'run.json');
+      const info = readJson(runFile, 'run.json');
+
+      const productFile = fs.readdirSync(project).find((n) => n.toLowerCase() === 'product.md');
+      let product = { status: 'missing' };
+      let productText = '';
+      let line = null;
+      if (!productFile) line = 'sin PRODUCT.md: se sigue sin contexto de producto';
+      else {
+        const v = validateProduct(readText(path.join(project, productFile), 'PRODUCT.md'), { leakValues: values });
+        if (v.status === 'ok') { product = { status: 'ok', undecided: v.undecided, missing: v.missing }; productText = extractContext(v); }
+        else {
+          product = { status: 'invalid', problems: v.problems };
+          const why = [...new Set(v.problems.map((p) => (p.line ? `${p.problem} en la línea ${p.line}` : p.problem)))].join(', ');
+          line = `PRODUCT.md se ignora (${why}): se sigue sin contexto de producto`;
+        }
+      }
+
+      // the brief: the one passed now, else the one an earlier call left in the run
+      let briefSource = null;
+      if (opts.brief !== undefined) briefSource = path.resolve(cwd, opts.brief);
+      else if (info.brief) briefSource = path.join(run, info.brief);
+      let brief = { status: 'none', register: null };
+      let briefText = '';
+      if (briefSource) {
+        const raw = readText(briefSource, 'el brief');
+        const b = validateBrief(raw, { leakValues: values });
+        if (b.status !== 'ok') return { out: { product, brief: { status: 'invalid', register: b.register, problems: b.problems }, text: '', line }, code: 1 };
+        brief = { status: 'ok', register: b.register };
+        const cut = (s) => (s.length > SECTION_MAX ? `${s.slice(0, SECTION_MAX - 1)}…` : s);
+        briefText = `## This screen\nFirst look: ${cut(b.firstLook)}\nDo not touch: ${cut(b.doNotTouch)}`;
+      }
+
+      if (product.status === 'ok') fs.copyFileSync(path.join(project, productFile), path.join(run, 'product.md'));
+      if (opts.brief !== undefined && briefSource !== path.join(run, 'brief.md')) fs.copyFileSync(briefSource, path.join(run, 'brief.md'));
+      info.product = product.status === 'ok' ? 'product.md' : null;
+      if (opts.brief !== undefined) info.brief = 'brief.md';
+      else if (!('brief' in info)) info.brief = null;
+      fs.writeFileSync(runFile, `${JSON.stringify(info, null, 2)}\n`);
+      return { out: { product, brief, text: [productText, briefText].filter(Boolean).join('\n\n'), line }, code: 0 };
+    },
+  },
+
+  // The judgment findings the user chose to fix, for the verdict reading (hito 4f, R-4f-7). Nothing is written
+  // when there is none: the second reading does not run.
+  'verdict-request': {
+    spec: { value: ['run', 'chosen'] },
+    run(opts, { cwd }) {
+      const { project, run } = projectOfRun(cwd, opts);
+      need(opts, 'chosen');
+      if (!isDir(run)) throw new UsageError(`--run no existe: ${opts.run}`);
+      const chosen = list(opts.chosen);
+      if (!chosen.length) throw new UsageError('--chosen necesita al menos un id');
+      const aud = readJsonIf(path.join(run, 'auditor.json'));
+      if (!aud || !Array.isArray(aud.findings)) throw new UsageError('falta auditor.json en el run');
+      const findings = [];
+      for (const f of aud.findings) {
+        if (!f || typeof f.id !== 'string' || !/^J-\d+$/.test(f.id) || !chosen.includes(f.id) || findings.some((x) => x.id === f.id)) continue;
+        findings.push({ id: f.id, plain: f.plain, evidence: f.evidence });
+      }
+      if (!findings.length) return { out: { ok: false, error: 'no-judgment-chosen' }, code: 1 };
+      const after = path.join(run, 'after');
+      if (!isInsideRunRoot(project, after)) throw new UsageError('--run debe estar dentro de .pignolo-ui/runs/');
+      fs.mkdirSync(after, { recursive: true });
+      const ids = findings.map((f) => f.id);
+      fs.writeFileSync(path.join(after, 'verdict-request.json'), `${JSON.stringify({ v: 1, ids, findings }, null, 2)}\n`);
+      return { out: { ids, costLine: '≈ 0.3 USD (opus)' }, code: 0 };
+    },
+  },
+
+  'auditor-check': {
+    spec: { value: ['project', 'run', 'mode'] },
+    run(opts, { cwd }) {
+      const project = projectDir(cwd, opts);
+      const run = runDirOf(cwd, project, opts);
+      const mode = opts.mode ?? 'findings';
+      if (!['findings', 'verdict'].includes(mode)) throw new UsageError('--mode debe ser findings o verdict');
+      if (mode === 'verdict') {
+        // verdict mode (hito 4f): --run is the "after" folder with verdict-request.json and verdicts.json
+        const requestFile = path.join(run, 'verdict-request.json');
+        const verdictsFile = path.join(run, 'verdicts.json');
+        if (!fs.existsSync(requestFile)) throw new UsageError('falta verdict-request.json en el run');
+        if (!fs.existsSync(verdictsFile)) throw new UsageError('falta verdicts.json en el run');
+        const output = readJson(verdictsFile, 'verdicts.json');
+        const res = validateVerdicts({ output, request: readJson(requestFile, 'verdict-request.json'), run, project });
+        const verdicts = res.ok ? output.verdicts : null;
+        return { out: { ...res, verdicts }, code: res.ok ? 0 : 1 };
+      }
       const file = path.join(run, 'auditor.json');
       if (!fs.existsSync(file)) throw new UsageError('falta auditor.json en el run');
       const output = readJson(file, 'auditor.json');

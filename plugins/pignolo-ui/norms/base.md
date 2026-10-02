@@ -41,7 +41,7 @@ Short written criteria for the agents. Rules that a script checks live in the ca
 - J-09: the same thing looks and is called the same everywhere (Nielsen 4); one color means one thing. Applies when: color marks a state or there are repeated elements.
 - J-10: errors say what happened and how to fix it (Nielsen 9). Applies when: an error state can be reached (validation, a request that can fail).
 - J-11: choices that matter are explicit decisions, not leftovers of a default. Applies when: the run shows framework defaults (THEME-01, THEME-02) or `DESIGN.md` marks tokens as `extracted`.
-- J-12: density and spacing fit the register (product or brand). Applies when: `DESIGN.md` declares a `register`.
+- J-12: density and spacing fit the register (product or brand). Applies when: `DESIGN.md` or the brief of the flow declares a `register`.
 
 A `J-nn` finding exists only if its "Applies when" holds on this screen; otherwise there is no finding and no `notVerified` entry. At most 3 per screen, the ones with the most effect.
 

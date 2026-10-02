@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { makeTempDir, writeTree, runScript, PLUGIN_ROOT } from './helpers.mjs';
+import { makeTempDir, writeTree, runScript, writeBrief, FIXTURES, PLUGIN_ROOT } from './helpers.mjs';
 import { repoIdFor } from '../lib/project-config.mjs';
 
 const RUN_REL = '.pignolo-ui/runs/r1';
@@ -351,4 +351,134 @@ test('auditor-check prints the keep line: its text when valid, null when absent,
   assert.equal(r3.status, 1);
   assert.ok(r3.json.problems.some((p) => p.problem === 'bad-keep'));
   assert.equal(r3.json.keep, null);
+});
+
+// ---- product context, brief and verdict pass (hito 4f) ----
+const PRODUCT_FIXTURE = (name) => fs.readFileSync(path.join(FIXTURES, 'product', `${name}.md`), 'utf8');
+
+function contextRepo(tree = {}) {
+  const project = makeRepo(tree);
+  const r = run(['init', '--project', project, '--command', 'new', '--slug', 'cuenta']);
+  assert.equal(r.status, 0, r.stderr);
+  return { project, runPath: r.json.run };
+}
+const runInfo = (runPath) => JSON.parse(fs.readFileSync(path.join(runPath, 'run.json'), 'utf8'));
+
+test('context copies PRODUCT.md and the brief byte by byte, names them in run.json and prints the bounded text', () => {
+  const product = PRODUCT_FIXTURE('pass-complete').replace(/\n/g, '\r\n'); // CRLF: a rewrite would change the bytes
+  const { project, runPath } = contextRepo({ 'PRODUCT.md': product });
+  const brief = writeBrief();
+  const r = run(['context', '--project', project, '--run', runPath, '--brief', brief]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(fs.readFileSync(path.join(runPath, 'product.md')), fs.readFileSync(path.join(project, 'PRODUCT.md')));
+  assert.deepEqual(fs.readFileSync(path.join(runPath, 'brief.md')), fs.readFileSync(brief));
+  const info = runInfo(runPath);
+  assert.equal(info.product, 'product.md');
+  assert.equal(info.brief, 'brief.md');
+  for (const title of ['## Audience', '## First look', '## Tone', '## Not wanted', '## Do not touch']) assert.ok(r.json.text.includes(title), title);
+  assert.ok(r.json.text.includes('The order summary and the pay button, without scrolling.'), 'the first look of the brief');
+  assert.equal(r.json.line, null);
+  assert.equal(r.json.product.status, 'ok');
+  assert.deepEqual([r.json.brief.status, r.json.brief.register], ['ok', null]);
+});
+
+test('context without PRODUCT.md says so and goes on; an invalid one is ignored and not copied; an invalid brief stops', () => {
+  const { project, runPath } = contextRepo();
+  const none = run(['context', '--project', project, '--run', runPath]);
+  assert.equal(none.status, 0);
+  assert.equal(none.json.product.status, 'missing');
+  assert.equal(none.json.line, 'sin PRODUCT.md: se sigue sin contexto de producto');
+  assert.equal(runInfo(runPath).product, null);
+  assert.equal(none.json.text, '');
+
+  const bad = contextRepo({ 'PRODUCT.md': PRODUCT_FIXTURE('fail-too-long') });
+  const ignored = run(['context', '--project', bad.project, '--run', bad.runPath]);
+  assert.equal(ignored.status, 0);
+  assert.equal(ignored.json.product.status, 'invalid');
+  assert.match(ignored.json.line, /se ignora/);
+  assert.match(ignored.json.line, /too-long/);
+  assert.equal(fs.existsSync(path.join(bad.runPath, 'product.md')), false);
+
+  const badBrief = writeBrief(makeTempDir(), 'brief.md', '## Screen\nonly this\n');
+  const stop = run(['context', '--project', project, '--run', runPath, '--brief', badBrief]);
+  assert.equal(stop.status, 1);
+  assert.ok(stop.json.brief.problems.some((p) => p.problem === 'missing-first-look'));
+  assert.equal(fs.existsSync(path.join(runPath, 'brief.md')), false);
+});
+
+test('context: a leak in PRODUCT.md is ignored by line and kind, and a later call keeps the brief of the first', () => {
+  const { project, runPath } = contextRepo({ 'PRODUCT.md': '## Audience\nSold by Tomas Rivera to gardeners.\n' });
+  const values = path.join(makeTempDir(), 'values.json');
+  fs.writeFileSync(values, JSON.stringify(['Tomas Rivera']));
+  const r = run(['context', '--project', project, '--run', runPath, '--values-file', values]);
+  assert.equal(r.status, 0);
+  assert.equal(r.json.product.status, 'invalid');
+  assert.ok(!r.stdout.includes('Tomas Rivera'));
+  assert.equal(fs.existsSync(path.join(runPath, 'product.md')), false);
+
+  const first = run(['context', '--project', project, '--run', runPath, '--brief', writeBrief()]);
+  assert.equal(first.status, 0, first.stderr);
+  const second = run(['context', '--project', project, '--run', runPath]);
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(runInfo(runPath).brief, 'brief.md');
+  assert.ok(second.json.text.includes('The order summary and the pay button'), 'the brief of the first call is kept');
+  // the brief of the run itself can be passed again
+  assert.equal(run(['context', '--project', project, '--run', runPath, '--brief', path.join(runPath, 'brief.md')]).status, 0);
+});
+
+function judgmentRun(findings) {
+  const project = auditorRun(null);
+  writeTree(project, { [`${RUN_REL}/auditor.json`]: JSON.stringify({ findings, notVerified: [], independent: true }) });
+  return project;
+}
+const judgment = (id) => finding({ id, severity: 'medio', plain: `plain ${id}`, evidence: { kind: 'file', path: 'src/a.css', line: 1 } });
+
+test('verdict-request keeps only the chosen J-nn findings; with none it exits 1 and writes nothing', () => {
+  const project = judgmentRun([finding(), judgment('J-05'), judgment('J-07')]);
+  const ok = run(['verdict-request', '--run', runDir(project), '--chosen', 'J-05,COLOR-03']);
+  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
+  assert.deepEqual(ok.json.ids, ['J-05']);
+  assert.ok(ok.json.costLine.includes('0.3'));
+  const req = JSON.parse(fs.readFileSync(path.join(runDir(project), 'after', 'verdict-request.json'), 'utf8'));
+  assert.deepEqual(req, { v: 1, ids: ['J-05'], findings: [{ id: 'J-05', plain: 'plain J-05', evidence: { kind: 'file', path: 'src/a.css', line: 1 } }] });
+
+  const scriptOnly = judgmentRun([finding(), judgment('J-05')]);
+  const r1 = run(['verdict-request', '--run', runDir(scriptOnly), '--chosen', 'COLOR-03']);
+  assert.equal(r1.status, 1);
+  assert.equal(r1.json.error, 'no-judgment-chosen');
+  assert.equal(fs.existsSync(path.join(runDir(scriptOnly), 'after', 'verdict-request.json')), false);
+
+  const unreported = judgmentRun([finding()]);
+  const r2 = run(['verdict-request', '--run', runDir(unreported), '--chosen', 'J-05']);
+  assert.equal(r2.status, 1);
+  assert.equal(fs.existsSync(path.join(runDir(unreported), 'after')), false);
+});
+
+test('auditor-check --mode verdict validates verdicts.json against the request; the default mode does not change', () => {
+  const project = judgmentRun([finding(), judgment('J-05')]);
+  assert.equal(run(['verdict-request', '--run', runDir(project), '--chosen', 'J-05']).status, 0);
+  const after = path.join(runDir(project), 'after');
+  const good = { verdicts: [{ id: 'J-05', status: 'resolved', why: 'ok', evidence: { kind: 'file', path: 'src/a.css', line: 1 } }], independent: true };
+  fs.writeFileSync(path.join(after, 'verdicts.json'), JSON.stringify(good));
+  const r = run(['auditor-check', '--project', project, '--run', after, '--mode', 'verdict']);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(r.json.verdicts, good.verdicts);
+
+  fs.writeFileSync(path.join(after, 'verdicts.json'), JSON.stringify({ ...good, findings: [] }));
+  const bad = run(['auditor-check', '--project', project, '--run', after, '--mode', 'verdict']);
+  assert.equal(bad.status, 1);
+  assert.ok(bad.json.problems.some((p) => p.problem === 'new-finding'));
+  assert.equal(run(['auditor-check', '--project', project, '--run', after, '--mode', 'other']).status, 2);
+  // guard: without --mode it still reads auditor.json of the run
+  assert.equal(run(['auditor-check', '--project', project, '--run', runDir(project)]).status, 0);
+});
+
+test('verdict (the word "terminado") is the same with and without verdicts.json in after/', () => {
+  const project = judgmentRun([finding(), judgment('J-05')]);
+  const before = run(['verdict', '--project', project, '--run', runDir(project)]);
+  assert.equal(run(['verdict-request', '--run', runDir(project), '--chosen', 'J-05']).status, 0);
+  const after = path.join(runDir(project), 'after');
+  fs.writeFileSync(path.join(after, 'verdicts.json'), JSON.stringify({ verdicts: [{ id: 'J-05', status: 'unresolved', why: 'x', evidence: { kind: 'file', path: 'src/a.css', line: 1 } }], independent: true }));
+  const withVerdicts = run(['verdict', '--project', project, '--run', runDir(project)]);
+  assert.deepEqual([withVerdicts.status, withVerdicts.json], [before.status, before.json]);
 });
