@@ -24,14 +24,13 @@ const { detectPlaces } = require('../lib/places-detect');
 const { PLACE_KINDS, PLACE_DEFAULTS, RECOMMENDED_REFERENCE, resolvePlaces, samePath } = require('../lib/places');
 const { proposeAdaptation, planAdaptation, applyAdaptation } = require('../lib/init-adapt');
 const { applySkeleton } = require('../lib/init-skeleton');
-const { blankProject } = require('../lib/init-blank');
+const { blankProject, BLANK_STEPS } = require('../lib/init-blank');
+const { buildSummary } = require('../lib/init-summary');
 const SM = require('../lib/safe-move');
 const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
 
 const STEP_IDS = ['ignores', 'gitattributes', 'reflog', 'adapt', 'skeleton', 'project-md', 'security-md', 'auto-memory-off'];
-// Pasos que valen en un proyecto en blanco (D-1): el esqueleto y lo que no depende de la detección. Nada más.
-const BLANK_STEPS = ['ignores', 'gitattributes', 'reflog', 'skeleton'];
 const BLANK_MARKER = ['.pignolo', 'tmp', 'init-blank.json'];
 const NEEDS = { 'project-md': ['piiPatterns'], 'security-md': ['channel'] };
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'SECURITY.md');
@@ -116,6 +115,15 @@ function detect({ cwd, env, run }) {
   try { git(['ls-files', '--error-unmatch', '.pignolo/.gitignore'], main); tracked = true; } catch (_) { tracked = false; }
   const exists = (rel) => fs.existsSync(path.join(main, rel));
   const blank = blankOf(main);
+  const places = detectPlaces({ root: main, run });
+  const existing = {
+    projectMd: exists('.pignolo/project.md'),
+    claudeSettingsLocal: exists('.claude/settings.local.json'),
+    securityMd: ['SECURITY.md', '.github/SECURITY.md', 'docs/SECURITY.md'].some(exists),
+    gitattributes: exists('.gitattributes'),
+    pignoloGitignoreTracked: tracked,
+  };
+  const memory = { found: mem.dir !== null, dir: mem.dir, files: mem.files, tried: mem.tried, notes: mem.notes };
   return {
     ok: true,
     root: main,
@@ -123,17 +131,12 @@ function detect({ cwd, env, run }) {
     blankReason: blank.reason,
     blankFirstFile: blank.firstFile,
     detection,
-    memory: { found: mem.dir !== null, dir: mem.dir, files: mem.files, tried: mem.tried, notes: mem.notes },
-    existing: {
-      projectMd: exists('.pignolo/project.md'),
-      claudeSettingsLocal: exists('.claude/settings.local.json'),
-      securityMd: ['SECURITY.md', '.github/SECURITY.md', 'docs/SECURITY.md'].some(exists),
-      gitattributes: exists('.gitattributes'),
-      pignoloGitignoreTracked: tracked,
-    },
+    memory,
+    existing,
     claudeSettingsIgnored: gitIgnoredStatus({ main, run: git }).ignored,
-    places: detectPlaces({ root: main, run }),
-    steps: STEP_IDS.map((id) => ({ id, needsAnswer: NEEDS[id] || [] })),
+    places,
+    summary: buildSummary({ blank: blank.blank, detection, existing, memory, places }),
+    steps: STEP_IDS.filter((id) => !blank.blank || BLANK_STEPS.includes(id)).map((id) => ({ id, needsAnswer: NEEDS[id] || [] })),
   };
 }
 

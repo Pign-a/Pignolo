@@ -12,6 +12,9 @@ const SKELETON_FOLDERS = [...Object.values(PLACE_DEFAULTS), RECOMMENDED_REFERENC
 const SKELETON_READMES = new Set(SKELETON_FOLDERS.map((p) => `${p}/README.md`.toLowerCase()));
 const SKELETON_TOPS = new Set(SKELETON_FOLDERS.map((p) => p.split('/')[0].toLowerCase()));
 
+// Pasos que valen en un proyecto en blanco: el esqueleto y lo que no depende de la detección. Nada más.
+const BLANK_STEPS = Object.freeze(['ignores', 'gitattributes', 'reflog', 'skeleton']);
+
 const hidden = (name) => name.startsWith('.');
 
 // Primera ruta bajo `rel` que no es del esqueleto, o null. Una carpeta que no se puede leer cuenta como contenido desconocido.
@@ -45,4 +48,4 @@ function blankProject({ root, fs = nodeFs } = {}) {
   return { blank: true, reason: seen ? 'only-plain-docs' : 'empty', firstFile: null };
 }
 
-module.exports = { blankProject };
+module.exports = { blankProject, BLANK_STEPS };
