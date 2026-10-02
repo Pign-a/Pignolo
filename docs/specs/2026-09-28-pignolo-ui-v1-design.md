@@ -646,6 +646,7 @@ effort: medium
   5. **Juicio con criterio escrito:** jerarquía de texto, orden de lectura, una acción primaria, heurísticas de Nielsen, decisiones explícitas y la guía de texto de las reglas sin checker.
 - **Cada hallazgo lleva:** id, severidad (§5.3), alcance, evidencia (`archivo:línea`, captura + sha256 + medida, o una entrada de un JSON del run), antes/después/por qué, y una frase llana al frente.
 - **Lo que el auditor dice sobre el "look" nunca aprueba solo:** se apoya en el script o en una captura — porque un evaluador tiende a quitarle gravedad a lo que encuentra.
+- **Gravedad de juicio acotada (decisión del autor, 2026-10-01):** un hallazgo de criterio de juicio (`J-nn`) sin evidencia de script o de medida del navegador (entrada `fail`) vale a lo sumo `medio`; `alto` y `bloquea` quedan para lo respaldado por medida. `auditor-output` lo rechaza (`judgment-without-measure`), igual que los demás incumplimientos — porque en la primera corrida de evals el auditor subió a `alto` criterios J-04, J-08 y J-11 en páginas limpias.
 - **No hay autocalificación 1–5 del implementador** — porque un autopuntaje usado como compuerta es "creer" e infla (R-22).
 - Si no se puede lanzar como subagente (§7.5), corre en el hilo principal y el informe dice "auditoría no independiente".
 - **`/pignolo-ui:audit`:** el hilo principal prepara el run (sin cambiar nada) y lanza el auditor. No bloquea: informa severidades y rotula la deuda.

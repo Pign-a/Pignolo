@@ -20,6 +20,7 @@ import { createOpener, watchSignals } from './browser.mjs';
 import { preflight } from '../lib/browser-run.mjs';
 import { fingerprintPage, FINGERPRINT_WIDTH, FINGERPRINT_HEIGHT } from '../lib/fingerprint-page.mjs';
 import { mockupDistance, tileDistance, tileFingerprint, pairwise, samePrimary } from '../lib/fingerprint.mjs';
+import { writeLocalCopies, pagesToOpen, LocalCopyError } from '../lib/local-copy.mjs';
 
 class UsageError extends Error {}
 
@@ -150,6 +151,20 @@ function optionDirs(run, kind) {
   return dirs;
 }
 
+// The fingerprints open COPIES without the Google Fonts <link> (A4C2-03): the browser never asks for a
+// remote font. Returns { <letter>: <path under <run>/local/> }.
+export function localOptionFiles({ run, dirs, letters, main }) {
+  const folders = letters.map((l) => path.basename(dirs[l]));
+  for (const l of letters) if (!fs.existsSync(path.join(dirs[l], main))) throw new UsageError(`falta ${main} en la opción ${l}`);
+  try { writeLocalCopies({ run, folders }); } catch (e) {
+    if (e instanceof LocalCopyError) throw new UsageError(e.message);
+    throw e;
+  }
+  const files = {};
+  letters.forEach((l, i) => { files[l] = pagesToOpen({ run, folders: [folders[i]], screens: [main] })[0]; });
+  return files;
+}
+
 async function cmdOptions(opts, ctx) {
   need(opts, 'run', 'kind', 'main');
   if (!['mockup', 'tile'].includes(opts.kind)) throw new UsageError('--kind debe ser mockup o tile');
@@ -158,11 +173,7 @@ async function cmdOptions(opts, ctx) {
   const dirs = optionDirs(run, opts.kind);
   const letters = Object.keys(dirs).sort();
   if (letters.length < 2) throw new UsageError('hacen falta al menos dos opciones para comparar');
-  const files = {};
-  for (const l of letters) {
-    files[l] = path.join(dirs[l], opts.main);
-    if (!fs.existsSync(files[l])) throw new UsageError(`falta ${opts.main} en la opción ${l}`);
-  }
+  const files = localOptionFiles({ run, dirs, letters, main: opts.main });
   let fps = {};
   let cleanup = null;
   let unverified = null;

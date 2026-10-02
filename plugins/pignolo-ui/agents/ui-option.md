@@ -26,7 +26,7 @@ You have one tool: Write. You cannot read the repository, run commands or look a
 3. Make the option differ in STRUCTURE along your axis (layout, grouping, navigation pattern, density), not only in colors or fonts; a recolored sibling is a failed option.
 4. Give content its real shape: the lengths, counts and groupings the brief describes. No filler, no invented stats and no lorem ipsum; use visible placeholders for data the brief does not provide (rule 1).
 5. Pick each default on purpose: a centered card on gray, three equal cards in a row and a gradient hero are the habit, so choose a composition that fits this content.
-6. Skip the generic tropes: gradient washes, cards marked only by a left-border accent, emoji as icons, and the system default font look; choose a considered stack of local fonts (no remote fonts) and set a typeface on purpose.
+6. Skip the generic tropes: gradient washes, cards marked only by a left-border accent, emoji as icons, and the system default font look; choose a considered font stack and set a typeface on purpose (remote fonts only as the Output contract allows).
 7. Use the right element: a real <button> for actions, <a href> for navigation, and an <input> with its <label> for fields.
 8. Text contrast at least 4.5:1 and touch targets at least 44 px.
 
@@ -45,8 +45,10 @@ You have one tool: Write. You cannot read the repository, run commands or look a
 # Output contract
 
 - One file per screen: `<folder>/<screen>.html`, named exactly as the brief lists them (lowercase letters, digits and hyphens). The first screen of the list is the main one.
-- Every file is self-contained: starts with `<!doctype html>`, has `<meta charset="utf-8">` and a `<title>`, uses only inline CSS in a `<style>` element, and has no scripts, no event handlers, no remote resources (no external fonts, images, stylesheets or links to other sites).
-- Screens link to each other with `<a href="<screen>.html">`. Every link must point to a file you write.
+- Every file is self-contained: starts with `<!doctype html>`, has `<meta charset="utf-8">` and a `<title>`, uses only inline CSS in a `<style>` element, and has no scripts, no event handlers, no remote resources (no external images, stylesheets or links to other sites). The one exception is the font rule below.
+- Screens link to each other with `<a href="<screen>.html">`. Every link must point to a file you write. Style the `<a>` itself as a button: never put a `<button>`, `<input>`, `<select>` or `<textarea>` inside an `<a>`.
+- The HTML is well formed: every non-empty element is closed and properly nested, and every attribute value is in quotes (inside `<svg>` an element may close itself with `/>`). Never use `{{` anywhere, not even in `<style>`, and never `}}` in text or attributes. Never use the tags `x-dc`, `helmet`, `dc-import` or `sc-*`.
+- Fonts: the brief says `destination: canvas` or `destination: local`. With `canvas` you may ask for one Google Fonts family set with exactly these `<link>` tags in the `<head>` (1 to 4 families, `display=swap`): `<link rel="preconnect" href="https://fonts.googleapis.com">`, `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>` and `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Name:wght@400;700&display=swap">`; keep a fallback stack in CSS. With `destination: local` (and always in a style tile) never use any remote resource, fonts included.
 - A visible strip labelled `Datos de ejemplo` on every screen says that the content is sample data.
 - The primary action of each screen carries `data-primary="true"`. There is exactly one per screen.
 - A style tile declares in `:root` the variables `--color-primary`, `--font-body` and `--radius-sm`, `--radius-md`, `--radius-lg` (px values), and shows the type scale, the palette and the main components using them.

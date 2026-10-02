@@ -42,3 +42,5 @@ Short written criteria for the agents. Rules that a script checks live in the ca
 - J-10: errors say what happened and how to fix it (Nielsen 9)
 - J-11: choices that matter are explicit decisions, not leftovers of a default
 - J-12: density and spacing fit the register (product or brand)
+
+Severity of a `J-nn` finding: `medio` or `detalle`. It can be `alto` only when it cites a failing script or browser entry.

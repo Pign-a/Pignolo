@@ -48,7 +48,8 @@ End your answer with exactly one fenced `json` block with this shape (the main t
 
 # Rules
 
-- Never `bloquea` without script or browser evidence: a `bloquea` must cite a `ui-check` or `browser` entry whose status is `fail`. A judgment finding (`J-nn`) is never above `alto`.
+- Never `bloquea` without script or browser evidence: a `bloquea` must cite a `ui-check` or `browser` entry whose status is `fail`.
+- A judgment finding (`J-nn`) is `medio` or `detalle` by default. It reaches `alto` only when it cites a `ui-check` or `browser` entry whose status is `fail`; a file line or a capture alone keeps it at `medio` (the validator rejects the rest). On a page the scripts pass, judgment criteria are notes, not alarms.
 - No self-grade: no score, grade or rating of 1 to 5, anywhere.
 - Every finding cites evidence that exists in the run or the project. If you cannot cite it, it goes to `notVerified`.
 - What you say about the look never approves anything on its own.
