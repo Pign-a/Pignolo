@@ -71,8 +71,9 @@ export function saveApproved({ projectRoot, flow, from, date, leakValues = [], b
   if (typeof brief !== 'string' && flow !== 'direction') return { ok: false, problems: [{ file: 'brief.md', problem: 'missing-brief' }] };
   // the origin may carry the allowed Google Fonts <link> (R-19); the copy never does
   const { files, problems } = checkScreens(from, { allowFonts: true });
-  // the sample values keep their marks: a screen with `data-sample` and no "Datos de muestra" line is not saved (spec §7.1)
-  for (const f of files) {
+  // the sample values keep their marks: a screen with `data-sample` and no "Datos de muestra" line is not saved (spec §7.1).
+  // Style tiles (flow direction) are not held to the line, as options-check does not (0.7.5, I2).
+  for (const f of flow === 'direction' ? [] : files) {
     if (checkSampleData(fs.readFileSync(path.join(from, f), 'utf8')).problems.includes('no-sample-strip')) problems.push({ file: f, problem: 'no-sample-strip' });
   }
   // leak check before saving as approved (spec §7.4); values are never echoed back

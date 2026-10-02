@@ -323,7 +323,9 @@ const COMMANDS = {
       try { gitBefore = fs.readFileSync(path.resolve(cwd, opts['git-before']), 'utf8'); } catch (e) { throw new UsageError(`no se pudo leer --git-before (${e.code || e.message})`); }
       let provided = null;
       if (opts['provided-file']) {
-        try { provided = readValuesFile(path.resolve(cwd, opts['provided-file'])); } catch (e) { throw new UsageError(`--provided-file: ${e.message}`); }
+        const pf = path.resolve(cwd, opts['provided-file']);
+        if (!fs.existsSync(pf)) throw new UsageError('--provided-file: the values file does not exist (pass it only when the brief step wrote it)');
+        try { provided = readValuesFile(pf); } catch (e) { throw new UsageError(`--provided-file: ${e.message}`); }
       }
       const dir = path.join(run, `${kind}-${letter}`);
       const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`], kind, destination, provided });
