@@ -84,6 +84,11 @@ function createTaskWorktree({ main, plan, nn, slug, from, depsInstall = true, en
   if (tryGit(git, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`]) || fs.existsSync(worktree)) {
     throw new WorktreeError('exists', `la tarea ya existe (${fs.existsSync(worktree) ? worktree : branch}); no se toca. Alternativa: usá otro nn/slug o seguí con la worktree que hay`, { worktree, branch });
   }
+  // D-7-7: un nombre que difiere solo en mayúsculas ni se crea (en Windows, con refs empaquetadas, borrar uno borra los commits del otro).
+  const twin = (tryGit(git, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']) || '').split('\n').find((n) => n && n !== branch && n.toLowerCase() === branch.toLowerCase());
+  if (twin) {
+    throw new WorktreeError('case-collision', `ya existe ${twin}, que difiere de ${branch} solo en mayúsculas; no se crea. Alternativa: usá otro nn/slug`, { branch, twin });
+  }
   let ref = from;
   if (!ref) {
     const tags = (tryGit(git, ['for-each-ref', '--format=%(refname)', `refs/tags/contract/${plan}/`]) || '').split('\n').filter(Boolean);

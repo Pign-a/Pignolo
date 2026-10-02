@@ -178,3 +178,15 @@ test('shellRun: el código de salida, la salida al log y el cwd/env pasan tal cu
   assert.strictEqual(W.shellRun('node -e "0"', { cwd: dir, timeoutMs: 20000, logFile: log }), 0);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('M6 (D-7-7): una rama que difiere solo en mayúsculas (empaquetada) impide crear la tarea: case-collision, sin crear nada', () => {
+  const { main } = fixture();
+  git(['branch', 'task/p/03-C', 'int/p'], main);
+  git(['pack-refs', '--all'], main);
+  let err = null;
+  try { W.createTaskWorktree({ main, plan: 'p', nn: '03', slug: 'c', depsInstall: false }); } catch (e) { err = e; }
+  assert.ok(err && err.kind === 'case-collision', err ? `${err.kind}: ${err.message}` : 'creó la rama');
+  assert.match(err.message, /Alternativa:/);
+  assert.strictEqual(git(['for-each-ref', '--format=%(refname)', 'refs/heads/task'], main).split('\n').length, 1, 'no se creó otra rama');
+  assert.ok(!fs.existsSync(path.join(main, '.pignolo', 'worktrees', 'p-03-c')), 'ni la worktree');
+});
