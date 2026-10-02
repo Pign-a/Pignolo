@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { FIXTURES, makeTempDir, writeTree, runScript, BRIEF_TEXT, writeBrief } from './helpers.mjs';
 import { saveApproved, verifyApproved, screenProblems, checkScreens } from '../lib/approved.mjs';
 
 const DESIGN = fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8');
@@ -20,7 +20,7 @@ function setup(files) {
 
 test('approve save of an option with the three font links: exit 0, fontsRemoved 3, nothing remote stored, verify ok (A4C2-04)', () => {
   const { from, project, values } = setup({ 'fuentes.html': FONTS });
-  const res = runScript('approve.mjs', ['save', '--project', project, '--flow', 'fuentes', '--from', from, '--values-file', values, '--date', '2026-10-01']);
+  const res = runScript('approve.mjs', ['save', '--project', project, '--flow', 'fuentes', '--from', from, '--values-file', values, '--brief-file', writeBrief(), '--date', '2026-10-01']);
   assert.equal(res.status, 0, res.stdout + res.stderr);
   assert.equal(res.json.fontsRemoved, 3);
   const dir = path.join(project, res.json.path);
@@ -39,7 +39,7 @@ test('approve save of an option with the three font links: exit 0, fontsRemoved 
 test('a font link of another host or any other remote stylesheet still refuses the save', () => {
   for (const link of ['<link rel="stylesheet" href="https://fonts.example.com/css2?family=A&display=swap">', '<link rel="stylesheet" href="https://cdn.x.test/a.css">']) {
     const { from, project, values } = setup({ 'a.html': FONTS.replace('</head>', `${link}\n</head>`) });
-    const res = runScript('approve.mjs', ['save', '--project', project, '--flow', 'x', '--from', from, '--values-file', values]);
+    const res = runScript('approve.mjs', ['save', '--project', project, '--flow', 'x', '--from', from, '--values-file', values, '--brief-file', writeBrief()]);
     assert.equal(res.status, 1, link);
     assert.ok(res.json.problems.some((p) => p.problem === 'remote-resource'), link);
   }
@@ -55,7 +55,7 @@ test('screenProblems and checkScreens: without allowFonts the allowed links are 
 
 test('saving a screen without fonts keeps its bytes and reports fontsRemoved 0', () => {
   const { from, project } = setup({ 'a.html': FONTS.replace(/<link [^>]*>\n/g, '') });
-  const r = saveApproved({ projectRoot: project, flow: 'plain', from, date: '2026-10-01' });
+  const r = saveApproved({ projectRoot: project, flow: 'plain', from, date: '2026-10-01', brief: BRIEF_TEXT });
   assert.equal(r.ok, true);
   assert.equal(r.fontsRemoved, 0);
   assert.equal(fs.readFileSync(path.join(project, r.path, 'a.html'), 'utf8'), fs.readFileSync(path.join(from, 'a.html'), 'utf8'));

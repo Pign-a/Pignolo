@@ -11,7 +11,7 @@ import { saveApproved } from '../lib/approved.mjs';
 import { toArtboard } from '../lib/canvas.mjs';
 import { checkLeaks } from '../lib/leak-check.mjs';
 import { makeRun, screenHtml } from './support/canvas-run.mjs';
-import { FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { FIXTURES, makeTempDir, writeTree, runScript, BRIEF_TEXT } from './helpers.mjs';
 
 const doc = (body) => `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>t</title></head><body>${body}</body></html>`;
 const GOOD = doc('<main><h1>Mi cuenta</h1><p data-sample>$ 12.480,00</p><ul><li data-sample>Alquiler</li></ul></main><p>Datos de muestra</p>');
@@ -135,7 +135,7 @@ const project = () => writeTree(makeTempDir(), { 'DESIGN.md': fs.readFileSync(pa
 test('approve: the saved screens keep every data-sample and the line, byte for byte; a screen that lost the line is not saved', () => {
   const from = writeTree(makeTempDir(), { 'home.html': GOOD.replace('</body>', '<a href="detail.html">Ver</a></body>'), 'detail.html': GOOD.replace('</body>', '<a href="home.html">Volver</a></body>') });
   const root = project();
-  const r = saveApproved({ projectRoot: root, flow: 'cuenta', from, date: '2026-10-01' });
+  const r = saveApproved({ projectRoot: root, flow: 'cuenta', from, date: '2026-10-01', brief: BRIEF_TEXT });
   assert.equal(r.ok, true, JSON.stringify(r.problems));
   for (const f of ['home.html', 'detail.html']) {
     const saved = fs.readFileSync(path.join(root, r.path, f), 'utf8');
@@ -144,7 +144,7 @@ test('approve: the saved screens keep every data-sample and the line, byte for b
   }
   const lost = writeTree(makeTempDir(), { 'home.html': GOOD.replace('<p>Datos de muestra</p>', '') });
   const root2 = project();
-  const refused = saveApproved({ projectRoot: root2, flow: 'cuenta', from: lost, date: '2026-10-01' });
+  const refused = saveApproved({ projectRoot: root2, flow: 'cuenta', from: lost, date: '2026-10-01', brief: BRIEF_TEXT });
   assert.equal(refused.ok, false);
   assert.deepEqual(refused.problems, [{ file: 'home.html', problem: 'no-sample-strip' }]);
   assert.ok(!fs.existsSync(path.join(root2, 'design', 'approved', 'cuenta')), 'nothing is written');

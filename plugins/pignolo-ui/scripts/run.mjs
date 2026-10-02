@@ -15,6 +15,7 @@
 //   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local] [--provided-file <json list>]
 //   run.mjs discard --run <run> --option <A|B|C> [--kind option|direction]
 //   run.mjs auditor-check --project <repo> --run <run>
+//   run.mjs register --project <repo> [--brief <brief.md>]
 //   run.mjs menu --run <run> [--norms <file>] [--extra-symptoms-file <json>] [--words-file <txt>]
 //   run.mjs report-skeleton --project <repo> --run <run> [--implements <design/approved/flow>]
 //   run.mjs option-model --profile <max|balanced|economy>
@@ -39,6 +40,7 @@ import { readValuesFile } from '../lib/leak-check.mjs';
 import { gitState, checkOption } from '../lib/option-check.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
 import { findDesignFile } from '../lib/approved.mjs';
+import { validateBrief, designRegister } from '../lib/brief-md.mjs';
 import { validateFindings } from '../lib/auditor-output.mjs';
 import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
@@ -83,6 +85,9 @@ function readJson(file, what) {
   }
 }
 const readJsonIf = (file) => { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } };
+function readText(file, what) {
+  try { return fs.readFileSync(file, 'utf8'); } catch (e) { throw new UsageError(`no se pudo leer ${what}: ${file} (${e.code || e.message})`); }
+}
 
 function projectDir(cwd, opts) {
   need(opts, 'project');
@@ -361,6 +366,23 @@ const COMMANDS = {
       const judgment = judgmentIds(loadNorms({}).base);
       const res = validateFindings({ output, run, project, catalog: loadCatalog(), judgmentIds: judgment });
       return { out: res, code: res.ok ? 0 : 1 };
+    },
+  },
+
+  // The register of this screen: the brief's `Register:` line, else DESIGN.md's pignolo.register, else unset (hito 4f).
+  register: {
+    spec: { value: ['project', 'brief'] },
+    run(opts, { cwd }) {
+      const project = projectDir(cwd, opts);
+      if (opts.brief !== undefined) {
+        const text = readText(path.resolve(cwd, opts.brief), '--brief');
+        const v = validateBrief(text);
+        if (v.status !== 'ok') return { out: { ok: false, problems: v.problems }, code: 1 };
+        if (v.register) return { out: { register: v.register, source: 'brief' }, code: 0 };
+      }
+      const designFile = findDesignFile(project);
+      const fromDesign = designFile ? designRegister(fs.readFileSync(designFile, 'utf8')) : null;
+      return { out: fromDesign ? { register: fromDesign, source: 'design' } : { register: 'unset', source: 'none' }, code: 0 };
     },
   },
 

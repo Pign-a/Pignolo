@@ -1,6 +1,7 @@
 // approve.mjs: save | record | verify of approved visual decisions (spec §3.3).
 //   save   --project <repo> --flow <slug> --from <folder with the chosen HTML> [--date YYYY-MM-DD]
 //          --values-file <JSON list of user and machine values for the leak check; required, `[]` when there are none>
+//          --brief-file <brief.md of the screen: sealed in the approved folder; required except for the `direction` flow>
 //          0 saved, 1 refused (screens not self-contained or leaking data), 2 own error
 //   record --project <repo> --path design/approved/<flow> --quote-file <file> [--date] [--write]
 //          prints the diff of the "## Decisions" entry; writes DESIGN.md only with --write
@@ -20,7 +21,7 @@ class UsageError extends Error {}
 // Options each subcommand accepts: anything else is a usage error, so a typo such as
 // --value-file can never silently skip a check (spec §7.4).
 const ALLOWED = {
-  save: ['project', 'flow', 'from', 'date', 'values-file'],
+  save: ['project', 'flow', 'from', 'date', 'values-file', 'brief-file'],
   record: ['project', 'path', 'quote-file', 'date', 'write'],
   verify: ['project', 'path'],
 };
@@ -70,6 +71,8 @@ function isDir(p) {
 
 function cmdSave(opts) {
   need(opts, 'project', 'flow', 'from', 'values-file');
+  // style tiles (`direction`) have no first look; every other flow seals the brief of its screen
+  if (opts.flow !== 'direction' && opts['brief-file'] === undefined) throw new UsageError('falta --brief-file');
   checkDate(opts);
   if (!isDir(opts.project)) throw new UsageError(`no existe el proyecto ${opts.project}`);
   if (!isDir(opts.from)) throw new UsageError(`no existe la carpeta de pantallas ${opts.from}`);
@@ -80,7 +83,16 @@ function cmdSave(opts) {
     // never echo the file's content: it holds the user's own values
     throw new UsageError('--values-file debe ser un archivo JSON con una lista de textos (usar [] si no hay valores)');
   }
-  const r = saveApproved({ projectRoot: opts.project, flow: opts.flow, from: opts.from, date: opts.date || today(), leakValues });
+  let brief = null;
+  if (opts['brief-file'] !== undefined) {
+    if (opts['brief-file'] === true) throw new UsageError('--brief-file necesita un archivo');
+    try {
+      brief = fs.readFileSync(opts['brief-file'], 'utf8');
+    } catch (e) {
+      throw new UsageError(`no se pudo leer --brief-file ${opts['brief-file']} (${e.code || e.message})`);
+    }
+  }
+  const r = saveApproved({ projectRoot: opts.project, flow: opts.flow, from: opts.from, date: opts.date || today(), leakValues, brief });
   return { out: r, code: r.ok ? 0 : 1 };
 }
 

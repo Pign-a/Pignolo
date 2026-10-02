@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
-import { makeTempDir, writeTree, runScript, serveRoutes, BROWSER_SKIP, FIXTURES, PLUGIN_ROOT, makePng } from './helpers.mjs';
+import { makeTempDir, writeTree, runScript, serveRoutes, BROWSER_SKIP, FIXTURES, PLUGIN_ROOT, makePng, writeBrief } from './helpers.mjs';
 
 const DESIGN = fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8');
 const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
@@ -56,7 +56,7 @@ test('4a: run, option check, leak check, approved decision, batch, report and a 
   const values = path.join(scratch, 'values.json');
   assert.equal(run(['leak-values', '--project', project, '--out', values]).status, 0);
   assert.equal(runScript('leak-check.mjs', ['--dir', path.join(runDir, 'option-A'), '--values-file', values]).status, 0);
-  const save = runScript('approve.mjs', ['save', '--project', project, '--flow', 'cuenta', '--from', path.join(runDir, 'option-A'), '--values-file', values, '--date', '2026-10-01']);
+  const save = runScript('approve.mjs', ['save', '--project', project, '--flow', 'cuenta', '--from', path.join(runDir, 'option-A'), '--values-file', values, '--brief-file', writeBrief(), '--date', '2026-10-01']);
   assert.equal(save.status, 0, save.stderr + save.stdout);
   const approved = save.json.path;
   const quote = path.join(scratch, 'quote.txt');

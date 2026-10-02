@@ -6,7 +6,7 @@ import path from 'node:path';
 import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport } from '../lib/report-check.mjs';
 import { saveApproved, decisionEntry } from '../lib/approved.mjs';
-import { makeTempDir, writeTree } from './helpers.mjs';
+import { makeTempDir, writeTree, BRIEF_TEXT } from './helpers.mjs';
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const entry = (over) => ({ id: 'COLOR-03', status: 'fail', severity: 'bloquea', scope: 'new', fingerprint: 'fp-1', measure: { ratio: 2.1 }, ...over });
@@ -67,7 +67,7 @@ test('reportSkeleton with implementsPath cites the approved manifest sha', () =>
   const { project, run } = makeRun({ '.pignolo-ui/runs/r1/ui-check.json': JSON.stringify({ entries: [] }) });
   const from = path.join(project, 'mock');
   writeTree(from, { 'inicio.html': '<!doctype html><meta charset="utf-8"><title>t</title><p>x</p>' });
-  const saved = saveApproved({ projectRoot: project, flow: 'flujo', from, date: '2026-10-01' });
+  const saved = saveApproved({ projectRoot: project, flow: 'flujo', from, date: '2026-10-01', brief: BRIEF_TEXT });
   assert.equal(saved.ok, true);
   const sk = reportSkeleton({ project, run, implementsPath: saved.path });
   assert.equal(sk.implemented, true);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { FIXTURES, makeTempDir, writeTree, runScript, BRIEF_TEXT, writeBrief } from './helpers.mjs';
 import { saveApproved, verifyApproved, checkScreens, decisionEntry } from '../lib/approved.mjs';
 
 const DESIGN = fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8');
@@ -24,12 +24,12 @@ function project() {
 
 test('save writes the folder and a manifest with the sha256 of every screen', () => {
   const root = project();
-  const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-28' });
+  const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-28', brief: BRIEF_TEXT });
   assert.equal(r.ok, true, JSON.stringify(r.problems));
   assert.equal(r.path, 'design/approved/checkout');
   assert.equal(r.version, 1);
   const dir = path.join(root, 'design', 'approved', 'checkout');
-  assert.deepEqual(fs.readdirSync(dir).sort(), ['detail.html', 'home.html', 'manifest.json']);
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['brief.md', 'detail.html', 'home.html', 'manifest.json']);
   const manifestBytes = fs.readFileSync(path.join(dir, 'manifest.json'));
   assert.equal(r.manifestSha256, sha(manifestBytes));
   const manifest = JSON.parse(manifestBytes);
@@ -38,15 +38,16 @@ test('save writes the folder and a manifest with the sha256 of every screen', ()
     version: 1,
     date: '2026-09-28',
     files: ['detail.html', 'home.html'].map((f) => ({ path: f, sha256: sha(fs.readFileSync(path.join(dir, f))) })),
+    brief: { path: 'brief.md', sha256: sha(Buffer.from(BRIEF_TEXT)) },
   });
 });
 
 test('an approved folder is never overwritten: a new approval creates -v2, then -v3', () => {
   const root = project();
-  const first = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-28' });
+  const first = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-28', brief: BRIEF_TEXT });
   const before = fs.readFileSync(path.join(root, first.path, 'home.html'));
-  const second = saveApproved({ projectRoot: root, flow: 'checkout', from: screens({ 'home.html': page('Inicio 2', '<a href="detail.html">x</a>') }), date: '2026-09-29' });
-  const third = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-30' });
+  const second = saveApproved({ projectRoot: root, flow: 'checkout', from: screens({ 'home.html': page('Inicio 2', '<a href="detail.html">x</a>') }), date: '2026-09-29', brief: BRIEF_TEXT });
+  const third = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-30', brief: BRIEF_TEXT });
   assert.deepEqual([second.path, second.version, third.path, third.version], ['design/approved/checkout-v2', 2, 'design/approved/checkout-v3', 3]);
   assert.deepEqual(fs.readFileSync(path.join(root, first.path, 'home.html')), before);
 });
@@ -64,7 +65,7 @@ test('screens that are not self-contained static HTML are refused and nothing is
   };
   for (const [problem, tree] of Object.entries(cases)) {
     const root = project();
-    const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(tree), date: '2026-09-28' });
+    const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(tree), date: '2026-09-28', brief: BRIEF_TEXT });
     assert.equal(r.ok, false, problem);
     assert.ok(r.problems.some((p) => p.problem === problem.trim()), `${problem}: ${JSON.stringify(r.problems)}`);
     assert.equal(fs.existsSync(path.join(root, 'design', 'approved', 'checkout')), false, problem);
@@ -73,7 +74,7 @@ test('screens that are not self-contained static HTML are refused and nothing is
   fs.mkdirSync(path.join(sub, 'assets'));
   assert.ok(checkScreens(sub).problems.some((p) => p.problem === 'subfolder'));
   assert.deepEqual(checkScreens(makeTempDir()).problems, [{ file: '', problem: 'empty' }]);
-  assert.equal(saveApproved({ projectRoot: project(), flow: 'Check Out', from: screens(), date: '2026-09-28' }).ok, false);
+  assert.equal(saveApproved({ projectRoot: project(), flow: 'Check Out', from: screens(), date: '2026-09-28', brief: BRIEF_TEXT }).ok, false);
 });
 
 test('save refuses screens that leak user or machine data (spec 7.4); nothing is written', () => {
@@ -83,7 +84,7 @@ test('save refuses screens that leak user or machine data (spec 7.4); nothing is
   ];
   for (const [tree, leakValues] of cases) {
     const root = project();
-    const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(tree), date: '2026-09-28', leakValues });
+    const r = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(tree), date: '2026-09-28', brief: BRIEF_TEXT, leakValues });
     assert.equal(r.ok, false);
     assert.ok(r.problems.some((p) => p.problem === 'leak'), JSON.stringify(r.problems));
     assert.ok(!JSON.stringify(r.problems).includes('Ana'));
@@ -91,7 +92,7 @@ test('save refuses screens that leak user or machine data (spec 7.4); nothing is
   }
   const values = path.join(makeTempDir(), 'values.json');
   fs.writeFileSync(values, JSON.stringify(['Ana Pérez']));
-  const out = runScript('approve.mjs', ['save', '--project', project(), '--flow', 'checkout', '--from', screens(cases[1][0]), '--values-file', values]);
+  const out = runScript('approve.mjs', ['save', '--project', project(), '--flow', 'checkout', '--from', screens(cases[1][0]), '--values-file', values, '--brief-file', writeBrief()]);
   assert.equal(out.status, 1);
   assert.equal(out.json.problems[0].problem, 'leak');
 });
@@ -105,7 +106,7 @@ test('decisionEntry cites the path, the manifest sha256, the date and the litera
 
 function approvedProject() {
   const root = project();
-  const saved = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-28' });
+  const saved = saveApproved({ projectRoot: root, flow: 'checkout', from: screens(), date: '2026-09-28', brief: BRIEF_TEXT });
   const entry = decisionEntry({ ...saved, date: '2026-09-28', quote: 'B' });
   fs.writeFileSync(path.join(root, 'DESIGN.md'), `${DESIGN}\n${entry}\n`);
   return { root, saved, dir: path.join(root, saved.path) };
@@ -160,7 +161,7 @@ test('CLI: save, record (diff first, then --write) and verify', () => {
   const from = screens();
   const quote = path.join(makeTempDir(), 'quote.txt');
   fs.writeFileSync(quote, 'Me quedo con la B');
-  let out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', from, '--date', '2026-09-28', '--values-file', emptyValues()]);
+  let out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', from, '--date', '2026-09-28', '--values-file', emptyValues(), '--brief-file', writeBrief()]);
   assert.equal(out.status, 0, out.stderr);
   assert.equal(out.json.path, 'design/approved/checkout');
   out = runScript('approve.mjs', ['verify', '--project', root, '--path', 'design/approved/checkout']);
@@ -175,9 +176,9 @@ test('CLI: save, record (diff first, then --write) and verify', () => {
   assert.equal(out.json.written, true);
   out = runScript('approve.mjs', ['verify', '--project', root, '--path', 'design/approved/checkout']);
   assert.equal(out.status, 0, out.stdout);
-  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', path.join(root, 'nope'), '--values-file', emptyValues()]);
+  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', path.join(root, 'nope'), '--values-file', emptyValues(), '--brief-file', writeBrief()]);
   assert.equal(out.status, 2);
-  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens({ 'home.html': page('x', '<script></script>') }), '--values-file', emptyValues()]);
+  out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens({ 'home.html': page('x', '<script></script>') }), '--values-file', emptyValues(), '--brief-file', writeBrief()]);
   assert.equal(out.status, 1);
   assert.equal(out.json.ok, false);
 });
@@ -223,7 +224,7 @@ test('CLI save requires --values-file: the leak check cannot be skipped by omiss
 test('CLI rejects unknown options per subcommand with exit 2 and a Spanish usage message', () => {
   const root = project();
   const cases = [
-    ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', emptyValues(), '--write'],
+    ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', emptyValues(), '--brief-file', writeBrief(), '--write'],
     ['record', '--project', root, '--path', 'design/approved/checkout', '--quote-file', emptyValues(), '--flow', 'x'],
     ['verify', '--project', root, '--path', 'design/approved/checkout', '--date', '2026-09-28'],
   ];
@@ -247,11 +248,11 @@ test('CLI approve: an invalid values file, a missing quote file and a bad --date
   const bad = path.join(dir, 'bad.json');
   for (const content of ['not json', '{"a":1}', '[1,2]']) {
     fs.writeFileSync(bad, content);
-    const out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', bad]);
+    const out = runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', bad, '--brief-file', writeBrief()]);
     assertCleanUsageError(out, /--values-file/);
   }
   assertCleanUsageError(
-    runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', path.join(dir, 'missing.json')]),
+    runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', path.join(dir, 'missing.json'), '--brief-file', writeBrief()]),
     /--values-file/,
   );
   assertCleanUsageError(
@@ -260,7 +261,7 @@ test('CLI approve: an invalid values file, a missing quote file and a bad --date
   );
   assertCleanUsageError(runScript('approve.mjs', ['record', '--project', root, '--path', 'design/approved/checkout']), /--quote-file/);
   for (const date of ['2026-9-28', '28/09/2026', '2026-02-30', 'hoy']) {
-    assertCleanUsageError(runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', emptyValues(), '--date', date]), /YYYY-MM-DD/);
+    assertCleanUsageError(runScript('approve.mjs', ['save', '--project', root, '--flow', 'checkout', '--from', screens(), '--values-file', emptyValues(), '--brief-file', writeBrief(), '--date', date]), /YYYY-MM-DD/);
     assertCleanUsageError(runScript('approve.mjs', ['record', '--project', root, '--path', 'design/approved/checkout', '--quote-file', emptyValues(), '--date', date]), /YYYY-MM-DD/);
   }
   assert.equal(fs.existsSync(path.join(root, 'design')), false);

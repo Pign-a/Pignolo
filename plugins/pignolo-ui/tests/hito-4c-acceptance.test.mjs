@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { FIXTURES, PLUGIN_ROOT, makeTempDir, runScript } from './helpers.mjs';
+import { FIXTURES, PLUGIN_ROOT, makeTempDir, runScript, writeBrief } from './helpers.mjs';
 import { makeRun, screenHtml, BUILD_ARGS, canvasIndex } from './support/canvas-run.mjs';
 import { fakeUrl, TYPE_URL } from './support/canvas-plan.mjs';
 import { readReference } from './support/skill-checks.mjs';
@@ -155,7 +155,7 @@ test('approving an option that asked for fonts: saved without the links, verify 
   const k = flow({ options: ['A'] });
   fs.writeFileSync(path.join(k.r.project, 'DESIGN.md'), fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8'));
   k.leakValues();
-  const save = runScript('approve.mjs', ['save', '--project', k.r.project, '--flow', 'cuenta', '--from', k.r.optionDir('A'), '--values-file', k.values, '--date', '2026-10-01']);
+  const save = runScript('approve.mjs', ['save', '--project', k.r.project, '--flow', 'cuenta', '--from', k.r.optionDir('A'), '--values-file', k.values, '--brief-file', writeBrief(), '--date', '2026-10-01']);
   assert.equal(save.status, 0, save.stdout + save.stderr);
   assert.equal(save.json.fontsRemoved, 3);
   const dir = path.join(k.r.project, save.json.path);
