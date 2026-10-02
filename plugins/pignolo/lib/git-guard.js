@@ -1818,9 +1818,10 @@ function writeOperand(w, st, ctx, out) {
 }
 
 function analyzeCmd(args, ctx, out, depth, st) {
-  const k = args.findIndex((w) => /^\/[ck]/i.test(w.value));
+  // En Git Bash la forma que funciona es `cmd //c` (MSYS convierte `/c` en una ruta): una o dos barras (R3).
+  const k = args.findIndex((w) => /^\/{1,2}[ck]/i.test(w.value));
   if (k < 0) return;
-  const first = args[k].value.slice(2);
+  const first = args[k].value.replace(/^\/{1,2}[ck]/i, '');
   // ^ escapa el carácter siguiente en cmd: g^it es git (G8).
   const rest = [first, ...args.slice(k + 1).map((w) => w.value)].filter((x) => x !== '' && x !== '--%').join(' ').replace(/\^([A-Za-z0-9])/g, '$1');
   if (args.slice(k).some((w) => w.dyn) || /%[^%\s]+%/.test(rest)) { out.push(hit('hidden-code')); return; }
