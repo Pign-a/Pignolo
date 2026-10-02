@@ -15,7 +15,7 @@ Versiones leídas de los `plugin.json`.
 | Rama | Qué es | Estado |
 |---|---|---|
 | `core/hito-7a` | Hito 7a: ramas, worktrees por tarea, cola de integración, limpieza, `next` y `plan.js list` (0.13.0) | construido (dos ejecutores; el primero se cortó por límite); **revisión final opus en curso** |
-| `core/hito-8d` | Hito 8d: estructura de carpetas (mapa `places`, esqueleto con README, adaptar un proyecto existente, mover seguro con deshacer) (0.13.0) | construido; **revisión final opus en curso**; al unir el segundo de los dos se renumera a 0.14.0 |
+| `core/hito-8d` | Hito 8d: estructura de carpetas (0.13.1) | construido, revisado y arreglado; se une tras la suite completa |
 | `ui/option-candidata` | pignolo-ui 0.7.3: carta candidata de `ui-option` adoptada y datos de muestra rotulados en vez de marcadores | en construcción (sonnet) |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/` (los del 7a y de la etapa 1 del lienzo pueden seguir solo en el scratch de la sesión).
