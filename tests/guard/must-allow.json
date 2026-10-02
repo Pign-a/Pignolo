@@ -294,5 +294,29 @@
  {
   "shell": "powershell",
   "command": "git status 2>$null; if ($LASTEXITCODE -ne 0) { exit 1 }"
+ },
+ {
+  "shell": "bash",
+  "command": "cat plugins/pignolo/scripts/places.js"
+ },
+ {
+  "shell": "bash",
+  "command": "grep -n undo plugins/pignolo/scripts/places.js"
+ },
+ {
+  "shell": "bash",
+  "command": "head -n 20 plugins/pignolo/scripts/places.js"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,40p plugins/pignolo/scripts/places.js"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-Content plugins/pignolo/scripts/places.js"
+ },
+ {
+  "shell": "powershell",
+  "command": "Select-String -Path plugins/pignolo/scripts/places.js -Pattern undo"
  }
 ]

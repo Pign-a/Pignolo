@@ -59,12 +59,12 @@ Candidatas comparadas (búsquedas en GitHub: "apple hig skill", "human interface
 - **Elegida: `dickwu/apple-design-skill`** (https://github.com/dickwu/apple-design-skill, commit `6237cc1`, 2026-09-29) por ser la de más estrellas, que era el criterio pedido. Aviso: `ehmo/platform-design-skills` tiene menos estrellas pero licencia MIT y sección Web; para reusar algo es mejor fuente. Además, la propia colección de Emil trae `apple-design` (MIT), pensada para la web.
 - **Estructura.** Un `SKILL.md` de 23 KB más 123 páginas de HIG bajadas de developer.apple.com con un script (`scripts/pull-hig.mjs`), una tabla de ruteo (`hig-lookup.md`) y una tabla de equivalencias entre frameworks. Revisa con cinco lentes en orden y con severidad por defecto: accesibilidad (crítico), convenciones de plataforma (alto), visual y oficio (alto o medio), interacción (medio), texto (medio). Cada hallazgo: Qué / Por qué (archivo › título) / Arreglo.
 - **Lo que hace bien.**
-  - "Numbers, not adjectives." con ejemplo medido ("12 px #AAAAAA on white, 2.3:1").
-  - "Cite it or label it as judgment. Never invent a guideline."
-  - Freno a la sobre-crítica: "Don't over-critique. A strong design gets a short review". Y "Not every review needs twenty findings."
+  - Pide números y no adjetivos: cada observación lleva la medida (un contraste con su razón, por ejemplo).
+  - Cada hallazgo cita la guía de la que sale o se rotula como juicio; no inventa guías.
+  - Frena la sobre-crítica: un diseño fuerte recibe una reseña corta y no una lista larga de hallazgos.
   - Carga solo las referencias de lo que hay en pantalla.
 - **Lo que hace mal.**
-  - 1,5 MB de texto de Apple copiado, sin archivo de licencia. Su README lo admite: "The guideline text belongs to Apple Inc. and is reproduced from the public Human Interface Guidelines".
+  - 1,5 MB de texto de Apple copiado, sin archivo de licencia. Su propio README reconoce que ese texto es de Apple y que lo reproduce.
   - Casi todo es nativo (barras de pestañas, hojas, barra de menú, iPhone Duo, Liquid Glass).
   - Pone calificación global (Excellent / Good / Needs work), o sea nota.
   - Sin scripts de verificación.
@@ -93,9 +93,9 @@ Costo: bajo = una entrada de catálogo o unas líneas de carta; medio = checker 
 | Más espacio arriba que abajo de un título (impeccable `heading-rhythm`) | J-05 de juicio | Evidencia medida | Bajo | Medio | Sí (navegador) |
 | Estados y superficies del navegador: selección, cursor, barras, foco (impeccable `craft-floor.md`) | Foco sí (STATE-04); el resto no | Regla de oficio | Medio | Bajo | En parte |
 | Criterio "no aplica" por heurística (impeccable `critique.md`, modos) | No: los J-nn se aplican siempre | Causa de la sobre-severidad | Alto | Bajo | No |
-| "Reseña corta para un diseño fuerte" (dickwu) | No | Freno a hallazgos de relleno | Alto | Bajo | En parte (tope contado) |
+| Reseña corta para un diseño fuerte (idea de la skill Apple) | No | Freno a hallazgos de relleno | Alto | Bajo | En parte (tope contado) |
 | Prueba de entrecerrar los ojos; cuatro preguntas de orientación (impeccable `layout.md`; Emil `apple-design`) | J-01, J-02, J-04 genéricos | Redacción más filosa | Medio | Bajo | No |
-| El botón dice qué pasa: "Save changes", no "Submit" (dickwu, lente 5) | J-07 genérico | Regla de texto | Medio | Bajo | En parte (lista de palabras) |
+| El botón nombra lo que pasa y no usa un rótulo genérico (idea de la skill Apple, lente de texto) | J-07 genérico | Regla de texto | Medio | Bajo | En parte (lista de palabras) |
 | Vocabulario de direcciones `bolder`, `quieter`, `distill`, `clarify` (impeccable) | 11 síntomas en `symptoms.json` | Faltan síntomas de carga, sosería, texto y movimiento | Medio | Bajo | Sí (mapa palabra → regla) |
 | Nota 0–4 y total (impeccable, dickwu) | Prohibido: `ui-auditor.md` "No self-grade" | — | Negativo | — | — |
 | Personas (impeccable `critique.md`) | No | — | Bajo, caro | Alto | No |
@@ -111,7 +111,7 @@ Cinco líneas, todas subordinadas a `DESIGN.md` y al brief:
 1. Estados: cada control interactivo muestra reposo, foco y presionado; si la pantalla tiene lista o formulario, mostrar también el estado vacío o de error que el brief describa. (impeccable `craft-floor.md`, "States".)
 2. Ritmo de espacios: grupos apretados, separación generosa entre grupos, y más espacio arriba de un título que abajo. (impeccable `layout.md`.)
 3. Escala de letra: pasos visibles (cada nivel al menos 1,25 veces el anterior), renglones de texto corrido de 45 a 75 caracteres, y jerarquía con peso además de tamaño. (impeccable `typeset.md`; Emil `apple-design` §15.)
-4. Énfasis en un solo lugar: el color de acento queda para la acción principal y el estado; lo demás, neutro. (dickwu lente 3, basado en HIG "branding".)
+4. Énfasis en un solo lugar: el color de acento queda para la acción principal y el estado; lo demás, neutro. (dickwu lente 3, basado en la HIG de Apple.)
 5. Movimiento: solo transiciones de estado (hover, foco, presionado), con propiedad nombrada, 100 a 200 ms, y dentro de `prefers-reduced-motion`. Sin animaciones de entrada.
 
 No sumar más: la carta mejorada no cambió la preferencia del autor (RESULTS-lienzo.md), así que cada línea tiene que ganarse el lugar en la medición de la sección E.
@@ -139,8 +139,8 @@ El problema medido (RESULTS-ui-hito-4.md): en páginas limpias el auditor marcó
 
 1. **Condición de aplicación por criterio.** Cada J-nn dice cuándo aplica; si no aplica, no hay hallazgo. Ejemplo: J-08 (deshacer o salir sin perder trabajo) aplica solo si la pantalla tiene un formulario, una edición o una acción destructiva. J-06 aplica solo si hay una acción que tarda o guarda. J-10, solo si hay un estado de error alcanzable. Idea tomada de las heurísticas "n/a" de impeccable. Ataca directo el caso `clean-2`.
 2. **Ancla de severidad.** Un J-nn es `medio` por defecto. Sube a `alto` solo si se cumple todo: la tarea principal de la pantalla queda bloqueada o engañosa, y la evidencia es un elemento concreto del DOM o del archivo. Prueba de una línea, de impeccable: "Would a user contact support about this?".
-3. **Tope y orden.** Como mucho 3 hallazgos de juicio por pantalla, los de más efecto; el resto no se informa. Un script lo cuenta en `auditor.json`. Idea de dickwu ("Not every review needs twenty findings").
-4. **Número o etiqueta.** Si un juicio se puede medir (jerarquía, espacios, contraste), cita el número de `browser.json`; si no, el `why` empieza diciendo que es juicio. Idea de dickwu ("Numbers, not adjectives").
+3. **Tope y orden.** Como mucho 3 hallazgos de juicio por pantalla, los de más efecto; el resto no se informa. Un script lo cuenta en `auditor.json`. Idea de la skill Apple (frenar la lista larga de hallazgos), en palabras propias.
+4. **Número o etiqueta.** Si un juicio se puede medir (jerarquía, espacios, contraste), cita el número de `browser.json`; si no, el `why` empieza diciendo que es juicio. Idea de la skill Apple (medidas y no adjetivos), en palabras propias.
 5. **Redacción más filosa:**
    - J-01/J-02: "con el detalle borroso, ¿se distingue primero la acción principal y después los grupos?" (prueba de entrecerrar los ojos, impeccable `layout.md`).
    - J-04: la primera vista responde ¿dónde estoy?, ¿a dónde puedo ir?, ¿qué hay acá?, ¿cómo salgo? (Emil `apple-design` §16).

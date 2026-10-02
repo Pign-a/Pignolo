@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { makeTempDir } = require('./helpers');
 
-const { renderProjectMd, mergeProjectMd, validatePiiPattern } = require('../plugins/pignolo/lib/project-md');
+const { renderProjectMd, mergeProjectMd, validatePiiPattern, revertPlaces } = require('../plugins/pignolo/lib/project-md');
 const { readProjectConfig } = require('../plugins/pignolo/lib/project-config');
 
 function readBack(text) {
@@ -147,4 +147,52 @@ test('a declared-but-empty scalar key gets its value written on the same line', 
 test('validatePiiPattern rejects patterns that match ordinary lines (a space, "..")', () => {
   for (const p of [' ', '..', '\\s', '[a-z ]']) assert.equal(validatePiiPattern(p).ok, false, `"${p}"`);
   for (const p of ['\\b\\d{8}\\b', '@example\\.com', 'cliente-\\d+']) assert.equal(validatePiiPattern(p).ok, true, p);
+});
+
+// Hito 8d: la clave `places`.
+test('places: renders in KEYS order, reads back, and an unknown kind is a warning', () => {
+  const text = renderProjectMd({ type: 'docs', places: { spec: 'doc/specs/' } });
+  assert.match(text, /places:\n {2}spec: doc\/specs\/\n/);
+  const c = readBack(text);
+  assert.deepEqual(c.places, { spec: 'doc/specs/' });
+  assert.deepEqual(c.warnings.filter((w) => w.includes('places')), []);
+  assert.deepEqual(readBack(renderProjectMd({ type: 'docs' })).places, {});
+  const odd = readBack('---\nplaces:\n  espec: x\n---\n');
+  assert.ok(odd.warnings.includes('places: tipo desconocido "espec" (se ignora)'));
+  assert.deepEqual(odd.places, {});
+});
+
+test('places: merge adds the missing kind and never overwrites a declared one', () => {
+  const src = '---\ntype: docs\nplaces:\n  spec: docs/specs/\n---\nnotas\n';
+  const r = mergeProjectMd(src, { places: { spec: 'doc/specs/', plan: 'docs/plans/' } });
+  assert.deepEqual(r.conflicts.map((c) => c.key), ['places.spec']);
+  assert.deepEqual(r.added, ['places.plan']);
+  assert.equal(r.text, '---\ntype: docs\nplaces:\n  spec: docs/specs/\n  plan: docs/plans/\n---\nnotas\n');
+});
+
+test('revertPlaces: table', () => {
+  const base = '---\ntype: docs\nplaces:\n  spec: docs/specs/\n  plan: docs/plans/\n---\nnotas\n';
+  let r = revertPlaces({ text: base, edits: [{ kind: 'spec', before: 'doc/specs/', after: 'docs/specs/' }] });
+  assert.deepEqual(r.reverted, ['spec']);
+  assert.equal(r.text, base.replace('spec: docs/specs/', 'spec: doc/specs/'));
+
+  r = revertPlaces({ text: base, edits: [{ kind: 'spec', before: null, after: 'docs/specs/' }] });
+  assert.equal(r.text, base.replace('  spec: docs/specs/\n', ''));
+
+  const only = '---\ntype: docs\nplaces:\n  spec: docs/specs/\ngates:\n  on-done: x\n---\nnotas\n';
+  r = revertPlaces({ text: only, edits: [{ kind: 'spec', before: null, after: 'docs/specs/' }] });
+  assert.equal(r.text, '---\ntype: docs\ngates:\n  on-done: x\n---\nnotas\n');
+
+  r = revertPlaces({ text: base, edits: [{ kind: 'spec', before: 'doc/specs/', after: 'otra/' }] });
+  assert.equal(r.text, base);
+  assert.deepEqual(r.left, [{ kind: 'spec', current: 'docs/specs/' }]);
+  assert.deepEqual(r.reverted, []);
+
+  const none = '---\ntype: docs\n---\nnotas\n';
+  r = revertPlaces({ text: none, edits: [{ kind: 'spec', before: null, after: 'docs/specs/' }] });
+  assert.equal(r.text, none);
+
+  const crlf = '---\r\nplaces:\r\n  spec: "docs/specs/"\r\n  plan: docs/plans/\r\n---\r\nn\r\n';
+  r = revertPlaces({ text: crlf, edits: [{ kind: 'spec', before: 'doc/specs/', after: 'docs/specs/' }] });
+  assert.equal(r.text, '---\r\nplaces:\r\n  spec: doc/specs/\r\n  plan: docs/plans/\r\n---\r\nn\r\n');
 });
