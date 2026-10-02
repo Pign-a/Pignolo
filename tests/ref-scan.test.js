@@ -292,3 +292,71 @@ test('relativeLink: tabla', () => {
   assert.equal(relativeLink('docs/a', 'docs/b/c.md?y=1'), '../b/c.md?y=1');
   assert.equal(relativeLink('', 'docs/a.md'), 'docs/a.md');
 });
+
+// ---------------------------------------------------------------- I-2: src= y href= dentro de markdown
+
+function htmlRepo() {
+  const repo = base();
+  put(repo, 'doc/specs/d.png', 'png');
+  put(repo, 'doc/README.md', 'a <a href="specs/a.md">a</a>\n<img src="specs/d.png">\n');
+  put(repo, 'README.md', '<img src="doc/specs/d.png" width="300">\n');
+  commitAll(repo);
+  return repo;
+}
+
+test('I-2: <img src> y <a href> hacia lo movido son markdown-unsupported (frenan), no avisos ni silencio', () => {
+  const repo = htmlRepo();
+  const r = scan(repo);
+  const unsup = r.manual.filter((x) => x.class === 'markdown-unsupported');
+  assert.deepEqual(unsup.map((x) => `${x.file}:${x.line}`).sort(), ['README.md:1', 'doc/README.md:1', 'doc/README.md:2']);
+  assert.ok(unsup.every((x) => !x.rewritable));
+  assert.equal(r.warnings.length, 0, 'la de la raíz ya no es solo un aviso');
+});
+
+test('I-2: comillas simples y sin comillas; destino relativo desde un archivo que se mueve', () => {
+  const repo = base();
+  put(repo, 'doc/specs/d.png', 'png');
+  put(repo, 'doc/specs/b.md', "<a href='d.png'>x</a> <img src=d.png>\n");
+  put(repo, 'guide.md', "<a href='doc/specs/a.md'>x</a> <img src=doc/specs/d.png>\n");
+  commitAll(repo);
+  const r = scan(repo);
+  const unsup = r.manual.filter((x) => x.class === 'markdown-unsupported');
+  assert.equal(unsup.filter((x) => x.file === 'guide.md').length, 2);
+  assert.equal(unsup.filter((x) => x.file === 'doc/specs/b.md').length, 2, 'el archivo se mueve y el destino es relativo');
+});
+
+test('I-2: src/href a una URL, a algo que no se mueve o a algo que no existe no frenan', () => {
+  const repo = base();
+  put(repo, 'other/x.png', 'png');
+  put(repo, 'guide.md', '<img src="https://e.com/doc/specs/a.md"> <img src="other/x.png"> <a href="doc/specs/nada.md">n</a> <a href="#doc/specs">h</a>\n');
+  commitAll(repo);
+  const r = scan(repo);
+  assert.equal(r.manual.filter((x) => x.class === 'markdown-unsupported').length, 0);
+});
+
+test('I-2: un src= dentro de código no cuenta', () => {
+  const repo = base();
+  put(repo, 'guide.md', 'ejemplo `<img src="doc/specs/a.md">`\n\n```html\n<img src="doc/specs/a.md">\n```\n');
+  commitAll(repo);
+  const r = scan(repo);
+  assert.equal(r.manual.filter((x) => x.class === 'markdown-unsupported').length, 0);
+});
+
+// ---------------------------------------------------------------- M-3: un backtick suelto no enmascara otros párrafos
+
+test('M-3: backticks sueltos en párrafos distintos no enmascaran el enlace del medio', () => {
+  const repo = base();
+  put(repo, 'guide.md', 'un backtick suelto ` aca\n\nver [x](doc/specs/a.md)\n\notro suelto ` alla\n');
+  commitAll(repo);
+  const r = scan(repo);
+  assert.equal(r.rewritable.length, 1);
+  assert.equal(r.rewritable[0].class, 'markdown-link');
+});
+
+test('M-3: un código en línea que cruza un salto de línea simple sigue enmascarado', () => {
+  const repo = base();
+  put(repo, 'guide.md', 'ejemplo `[x](doc/specs/a.md)\ncontinúa` fin\n');
+  commitAll(repo);
+  const r = scan(repo);
+  assert.equal(r.rewritable.length, 0);
+});

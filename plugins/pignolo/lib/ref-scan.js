@@ -73,7 +73,9 @@ function maskCode(text) {
   while ((m = re.exec(out)) !== null) runs.push({ at: m.index, len: m[0].length });
   for (let i = 0; i < runs.length; i += 1) {
     const open = runs[i];
+    // Un código en línea no cruza un párrafo: no se empareja a través de una línea en blanco.
     const close = runs.slice(i + 1).find((r) => r.len === open.len);
+    if (close && /\n[ \t\r]*\n/.test(out.slice(open.at, close.at))) continue;
     if (close) { spans.push([open.at, close.at + close.len]); i = runs.indexOf(close); }
   }
   for (const [a, b] of spans) out = out.slice(0, a) + blank(out.slice(a, b)) + out.slice(b);
@@ -115,6 +117,14 @@ function mdLinks(masked) {
     const title = masked[j] !== ')';
     if (dest === '') continue;
     out.push({ start, end, dest, angle, title, simple: !angle && !title && !dest.includes('%') && !dest.startsWith('/') });
+  }
+  // HTML dentro de markdown: `src=` y `href=` (comillas dobles, simples o sin comillas). Nunca se reescriben (forma no simple).
+  const attrRe = /\b(?:src|href)[ \t]*=[ \t]*(?:"([^"\n]*)"|'([^'\n]*)'|([^\s"'<>`=]+))/gi;
+  while ((m = attrRe.exec(masked)) !== null) {
+    const dest = m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3]);
+    if (!dest) continue;
+    const start = m.index + m[0].lastIndexOf(dest);
+    out.push({ start, end: start + dest.length, dest, angle: true, title: false, simple: false });
   }
   const defRe = /^ {0,3}\[[^\]\n]+\]:[ \t]*(<[^>\n]*>|\S+)([ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t\r]*$/gm;
   while ((m = defRe.exec(masked)) !== null) {
