@@ -87,6 +87,15 @@ Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pi
 | Auditoría independiente de buenas prácticas de todo el proyecto, con fuentes | fable | ~399 mil | 10 min | 70 |
 | Debate a favor y en contra sobre esa auditoría (dos agentes) | opus | ~194 mil + ~206 mil | 5 min cada uno | 23 + 23 |
 | Evals pagas de tres agentes (hito 5: 35 corridas, 7 casos) | opus | 6,07 USD | — | — |
+| Ejecutar la etapa 1 del lienzo de pignolo-ui (8 tareas, ~183 tests, conversor, índice y publicación con filtro) | sonnet | ~567 mil | 68 min | 204 |
+| Revisión final de esa etapa (1 crítico, 6 importantes, 15 menores) y su pasada de arreglos | opus / sonnet | ~359 mil / ~295 mil | 29 / 36 min | 70 / 112 |
+| Ejecutar el hito 8b (casos de eval del `debugger`, contrato con el banco, cierre) con sus evals pagas | sonnet | ~264 mil | 58 min | 101 |
+| Retomar un hito cortado por límite desde trabajo sin commitear (hito 8d: 5 tareas que faltaban; hito 7a: 4 tareas y la unión con `main`) | sonnet | ~250 mil / ~119 mil | 41 / 58 min | 111 / 39 |
+| Cambio chico con contrato (reglas del brainstorming en `plan`, verbo de decisiones, segunda fuente del `spec-reviewer`): implementar, revisar y arreglar | sonnet / opus / sonnet | ~201 mil / ~166 mil / ~138 mil | 13 / 20 / 25 min | 73 / 30 / 42 |
+| **Un plan que cambió de alcance cuatro veces mientras se escribía** (lienzo 4c: escribir, corregir, auditar en dos pasos, corregir, segunda auditoría, corregir, partir en etapas) | sonnet y opus | **~2,0 millones** en total (escritura 225 mil; correcciones 182 + 281 + 281 + 347 mil; auditorías 207 + 159 + 325 mil) | ≈ 2 h de agentes | — |
+| Plan de riesgo completo (hito 8d: escribir, auditar en dos pasos con experimentos reales, corregir y recortar de ~172 a ~120 tests) | sonnet y opus | ~822 mil (176 + 217 + 194 + 235 mil) | ≈ 39 min | — |
+| Investigación con fuentes y propuesta (estructura de carpetas / tres skills de diseño / impeccable a fondo / diseño del brainstorming) | opus | ~128 mil / ~230 mil / ~302 mil / ~158 mil | 6 / 6 / 11 / 5 min | 14 / 39 / 38 / 23 |
+| Evals pagas del día: agentes de pignolo-ui (25 casos-corrida útiles, dos rondas), `debugger`, A/B del brainstorming (8 corridas) | opus y sonnet | 21,85 + 2,77 + 9,28 USD | — | — |
 
 **Lectura práctica:** un hito completo con el método liviano (plan ~250 mil, auditoría en dos pasos ~370 mil, corrección ~170 mil, ejecución ~280 mil por parte, revisión ~190 mil, arreglos ~150 mil) ronda 1,4 a 1,7 millones de tokens, contra los ~2,5 a 3 millones del método anterior con replay y revisión por tarea (sección 2). La revisión final del 5a, con el plan auditado antes, encontró 0 críticos y 3 importantes; la del 4a, sin auditoría con experimentos, 1 crítico y 4 importantes.
 
