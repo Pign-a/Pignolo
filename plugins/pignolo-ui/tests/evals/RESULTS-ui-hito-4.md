@@ -2,6 +2,8 @@
 
 Estado: **corrida completa frenada (2026-10-01): umbral 4/5 no cumplido en `clean-2` y `clean-3`, y 14 corridas cortadas por el límite de sesión.** Gasto 14,34 USD de 22. La primera calibración se frenó (freno iii); el autor relajó un grader y la recalibración dio 11/11. Ver las secciones siguientes. Decide el autor cómo seguir.
 
+**Actualización (2026-10-01, segunda corrida, pignolo-ui 0.6.3):** con la gravedad de juicio acotada (sección al final) `clean-2` y `clean-3` pasaron 5/5, y los casos de defecto medidos, 5/5 y 3/3. Gasto total 21,85 USD de 22. Quedan sin corrida completa `defect-state-04`, `defect-color-03`, `defect-a11y-16` y `clean-1` (solo calibración 1/1 en esta versión; en la primera corrida color, campo y clean-1 habían dado 5/5).
+
 Casos: `plugins/pignolo-ui/tests/evals/ui-cases.mjs` (8 de `ui-auditor`, 3 de `ui-option`, 3 briefs de ablación). Claude Code 2.1.285, Windows nativo con Git Bash por ruta absoluta (D-4-1), pignolo-ui 0.6.2 (main en 8d4119f). `ui-auditor` en opus, `ui-option` en sonnet. Umbral de la spec: al menos 4 de 5 corridas por caso. `generated/` y `results/` no se versionan; los temporales de `--keep-temp` se borraron tras leerlos.
 
 ## Tres problemas de entorno, no de los agentes
@@ -103,3 +105,30 @@ Con `ui-option` (3/3 de la primera calibración), la calibración quedó 11/11. 
 | Umbral 4/5 | **no cumplido** en `clean-2` y `clean-3` |
 
 Gasto total: **14,34 USD** de 22 (3,39 + 2,035 + 0,275 + 1,129 + 7,516). La ablación (3 briefs) no se corrió.
+
+## Segunda corrida, con la gravedad de juicio acotada (pignolo-ui 0.6.3)
+
+**Qué cambió (decisión del autor, 2026-10-01):** un hallazgo de criterio de juicio (`J-nn`) sin evidencia de script o de medida del navegador vale a lo sumo `medio`. Está en la carta del auditor, en `norms/base.md` y en la spec §10, y `auditor-output` lo hace cumplir: un `J-nn` `alto` o `bloquea` sin una entrada `ui-check` o `browser` en `fail` se rechaza (`judgment-without-measure`; se rechaza y no se baja, como los otros incumplimientos). El grader `no-false-positive-judgment` se dejó igual: sigue teniendo sentido (acepta `J-nn` de cualquier gravedad, y `no-false-positive-bloquea-alto` fija el tope), y su test determinista no cambió. Mismo entorno que arriba (Git Bash, copia en ruta corta `C:\w\pu2\pignolo-ui`, `--keep-temp --no-publish --json`, `--max-cost-usd` en cada corrida). Los casos no se tocaron.
+
+| Etapa | Comando (resumen) | Costo (USD) | Resultado |
+|---|---|---|---|
+| Recalibración | `--tag auditor --runs 1 -j 2 --max-cost-usd 3.5` | 2,310 | 8/8 |
+| clean-3 | `--case ui-auditor-clean-3 --runs 5 -j 1` | 1,419 | 5/5 |
+| clean-2 | `--case ui-auditor-clean-2 --runs 5 -j 1` | 1,406 | 5/5 |
+| defect-j-01 | `--runs 5 -j 1` | 1,455 | 5/5 |
+| defect-layout-11 | `--runs 3 -j 1 --max-cost-usd 1.0` | 0,923 | 3/3 |
+
+(Un primer intento con dos `--case` en el mismo comando corrió solo el último; por eso `clean-3` salió antes que `clean-2`.) Total de esta corrida: **7,513 USD** (tope restante 7,66). Gasto acumulado: 21,85 USD de 22. Sin frenos ni cortes de sesión.
+
+| Caso | Aciertos / corridas | USD por corrida | Segundos | Antes |
+|---|---|---|---|---|
+| clean-2 | **5/5** | 0,281 | 117 | 1/5 |
+| clean-3 | **5/5** | 0,284 | 85 | 3/5 |
+| defect-j-01 | 5/5 | 0,291 | 92 | sin servicio |
+| defect-layout-11 | 3/3 (no se llegó a 5 por el tope) | 0,308 | 98 | sin servicio |
+| defect-state-04 | solo calibración 1/1 | 0,292 | 78 | sin servicio |
+| color-03, a11y-16, clean-1 | solo calibración 1/1 | 0,265–0,306 | 69–81 | 5/5 |
+
+**Verificado en las trazas** (hallazgos del auditor de cada corrida, leídos de los archivos de salida): en las 10 corridas limpias ningún `J-nn` pasó de `medio` (clean-2: J-05, J-06, J-08, J-10, J-11 en `medio` o `detalle`; clean-3: J-01, J-02, J-04, J-06, J-11 en `detalle` o `medio`), con `COLOR-02` y `LAYOUT-04` medios. En j-01 sigue hallando `J-01` (medio). En layout-11 hay `LAYOUT-11` `bloquea` con evidencia de navegador.
+
+**Pendiente (decide el autor):** la corrida completa de `defect-state-04` (nunca medido en 5), completar `layout-11` a 5, y recorrer 5 veces color-03, a11y-16 y clean-1 si se quiere el umbral formal en esta versión; la ablación no se corrió. Los temporales `claude-eval-*` se borraron tras leerlos.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.2 — sin publicar
+
+Gravedad de juicio acotada en `ui-auditor` (decisión del autor, 2026-10-01, tras las evals: el auditor marcaba `alto` criterios J-04, J-08 y J-11 en páginas limpias).
+
+- **Regla:** un hallazgo de criterio de juicio (`J-nn`) sin evidencia de script o de medida del navegador (entrada `fail`) vale a lo sumo `medio`. Está en la carta (`agents/ui-auditor.md`), en `norms/base.md` y en la spec §10.
+- **Validador** (`lib/auditor-output.mjs`): un `J-nn` `alto` o `bloquea` sin entrada `ui-check` o `browser` en `fail` se rechaza con el problema `judgment-without-measure` (se rechaza, no se baja, como los demás incumplimientos). Test nuevo en `tests/auditor-output.test.mjs`, con el rojo demostrado contra el validador anterior.
+
 ## 0.7.1 — sin publicar
 
 Pasada de arreglos de la revisión final de la etapa 1 del hito 4c (1 crítico, 6 importantes, 15 menores). No cambia comandos ni contratos: cierra huecos que fallaban abiertos en lo que sale de la máquina.

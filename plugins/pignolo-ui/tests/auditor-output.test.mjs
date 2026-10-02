@@ -52,6 +52,19 @@ test('each problem is detected', () => {
   assert.ok(names(validate([], { rating: 5 })).includes('self-grade'));
 });
 
+test('a J-nn finding above medio needs failing script or browser evidence', () => {
+  const j = (severity, evidence) => finding({ id: 'J-01', severity, evidence });
+  const file = { kind: 'file', path: 'src/app.css', line: 2 };
+  assert.ok(names(validate([j('alto', file)])).includes('judgment-without-measure'));
+  assert.ok(names(validate([j('alto', { kind: 'capture', path: 'captures/a.png', sha256: pngSha })])).includes('judgment-without-measure'));
+  assert.ok(names(validate([j('alto', { kind: 'ui-check', fingerprint: 'fp-pass' })])).includes('judgment-without-measure'));
+  assert.deepEqual(names(validate([j('alto', { kind: 'ui-check', fingerprint: 'fp-fail' })])), []);
+  assert.deepEqual(names(validate([j('medio', file)])), []);
+  assert.deepEqual(names(validate([j('detalle', file)])), []);
+  // a rule finding (not J-nn) is not affected
+  assert.deepEqual(names(validate([finding({ severity: 'alto', evidence: file })])), []);
+});
+
 test('a path outside the project or the run is evidence-missing', () => {
   assert.ok(names(validate([finding({ severity: 'alto', evidence: { kind: 'file', path: '../x', line: 1 } })])).includes('evidence-missing'));
   assert.ok(names(validate([finding({ severity: 'alto', evidence: { kind: 'capture', path: '../../x.png', sha256: pngSha } })])).includes('evidence-missing'));
