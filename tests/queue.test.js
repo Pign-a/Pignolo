@@ -246,6 +246,30 @@ test('mergeIntoQueue: un conflicto trivial y uno de lógica en la misma tarea da
   assert.ok(!/[<>=|]{7}/.test(read(worktree, 'index.js')));
 });
 
+test('I5: un archivo que no es UTF-8 nunca se resuelve como trivial (no se reescribe con U+FFFD): da conflict y los bytes quedan intactos', () => {
+  const main = fixture();
+  const latin1 = (rel, lines) => fs.writeFileSync(path.join(main, rel), Buffer.concat([Buffer.from('// caf'), Buffer.from([0xe9]), Buffer.from(` top\n${lines}\nmodule.exports = 1;\n`)]));
+  git(['checkout', '-q', 'int/p'], main);
+  latin1('m.js', '');
+  commitAll(main, 'archivo latin1');
+  for (const [name, line] of [['task/p/01-a', "import a from 'b';"], ['task/p/02-b', "import c from 'd';"]]) {
+    git(['checkout', '-q', '-b', name, 'int/p'], main);
+    latin1('m.js', line);
+    commitAll(main, `tarea ${name}\n\nAgent: x\nGates: y`);
+    git(['checkout', '-q', 'int/p'], main);
+  }
+  git(['checkout', '-q', 'main'], main);
+  const { worktree } = Q.syncQueue({ main, plan: 'p' });
+  assert.strictEqual(Q.mergeIntoQueue({ main, plan: 'p', task: 'task/p/01-a' }).status, 'merged');
+  const r = Q.mergeIntoQueue({ main, plan: 'p', task: 'task/p/02-b', resolveTrivial: true });
+  assert.strictEqual(r.status, 'conflict', JSON.stringify(r));
+  assert.deepStrictEqual(r.logic.map((x) => x.path), ['m.js']);
+  assert.match(r.logic[0].why, /UTF-8/);
+  clean(worktree); noMerge(worktree);
+  assert.ok(fs.readFileSync(path.join(worktree, 'm.js')).includes(0xe9), 'el byte e9 sigue ahí');
+  assert.ok(!fs.readFileSync(path.join(worktree, 'm.js')).includes(Buffer.from([0xef, 0xbf, 0xbd])), 'sin U+FFFD');
+});
+
 test('mergeIntoQueue: una rama ya unida da already-merged y la cola sigue limpia', () => {
   const main = fixture();
   taskBranch(main, 'task/p/01-a', { 'a.txt': 'a\n' });

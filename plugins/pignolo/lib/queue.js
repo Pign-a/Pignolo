@@ -216,6 +216,7 @@ function parseConflictBlocks(text) {
 // Conflicto trivial = solo inserciones de ambos lados (la sección base de todos los bloques está vacía), de tamaño
 // acotado, de líneas que cumplen las expresiones de arriba, fuera de contracts / serial-paths / archivos de test
 // protegidos (`protectedPaths` = test-paths ∪ protected-test-config) y con etapa base (add/add es de lógica).
+const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
 function classifyConflict({ base, ours, theirs, path: file, contracts = [], serialPaths = [], protectedPaths = [], mergeFile } = {}) {
   if (matchAny(contracts, file)) return { trivial: false, why: 'contrato (contracts)' };
   if (matchAny(serialPaths, file)) return { trivial: false, why: 'serial-paths' };
@@ -223,6 +224,8 @@ function classifyConflict({ base, ours, theirs, path: file, contracts = [], seri
   if (base === null || base === undefined) return { trivial: false, why: 'add/add (sin versión base)' };
   if (ours === null || ours === undefined || theirs === null || theirs === undefined) return { trivial: false, why: 'borrado o renombrado en un lado' };
   if ([base, ours, theirs].some((t) => t.includes('\0'))) return { trivial: false, why: 'archivo binario' };
+  // Las etapas se leen como texto UTF-8: un byte inválido (Latin-1, UTF-16) ya llegó como U+FFFD y reescribirlo lo corrompería (I5).
+  if ([base, ours, theirs].some((t) => t.includes(REPLACEMENT_CHAR))) return { trivial: false, why: 'archivo que no es UTF-8 válido' };
   const merged = (mergeFile || mergeFileDiff3)({ base, ours, theirs });
   if (merged === null) return { trivial: false, why: 'no se pudo calcular el diff3' };
   const blocks = parseConflictBlocks(merged).filter((p) => p.ours);
