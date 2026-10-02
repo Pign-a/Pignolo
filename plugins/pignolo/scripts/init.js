@@ -24,6 +24,7 @@ const { detectPlaces } = require('../lib/places-detect');
 const { PLACE_KINDS, PLACE_DEFAULTS, RECOMMENDED_REFERENCE, resolvePlaces, samePath } = require('../lib/places');
 const { proposeAdaptation, planAdaptation, applyAdaptation } = require('../lib/init-adapt');
 const { applySkeleton } = require('../lib/init-skeleton');
+const { blankProject } = require('../lib/init-blank');
 const SM = require('../lib/safe-move');
 const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
@@ -95,6 +96,11 @@ function seedAdjusted(det) {
   return { seedPlan: out, gates };
 }
 
+// Proyecto en blanco (D-1, 2026-10-02). Si no se puede leer la raíz no se adivina: falla cerrado.
+function blankOf(main) {
+  try { return blankProject({ root: main }); } catch (e) { throw new Fail('blank-unknown', `no se pudo saber si el proyecto está en blanco: ${e.message}`, 'revisá los permisos de la carpeta del proyecto y repetí'); }
+}
+
 function detect({ cwd, env, run }) {
   const main = resolveRoot(cwd, run);
   const git = run || gitFor(main);
@@ -106,9 +112,13 @@ function detect({ cwd, env, run }) {
   let tracked = false;
   try { git(['ls-files', '--error-unmatch', '.pignolo/.gitignore'], main); tracked = true; } catch (_) { tracked = false; }
   const exists = (rel) => fs.existsSync(path.join(main, rel));
+  const blank = blankOf(main);
   return {
     ok: true,
     root: main,
+    blank: blank.blank,
+    blankReason: blank.reason,
+    blankFirstFile: blank.firstFile,
     detection,
     memory: { found: mem.dir !== null, dir: mem.dir, files: mem.files, tried: mem.tried, notes: mem.notes },
     existing: {
