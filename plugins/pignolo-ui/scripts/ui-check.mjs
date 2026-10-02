@@ -25,12 +25,12 @@ import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 class UsageError extends Error {}
 
 const VALUE_OPTS = new Set(['project', 'run', 'files', 'files-from', 'design', 'base', 'dom', 'url', 'measures', 'before']);
-const REPEATED = new Set(['files', 'dom', 'url']);
+const REPEATED = new Set(['files', 'dom', 'url', 'measures']);
 const MAX_URLS = 20;
 const FLAGS = new Set(['gate']);
 
 function parseArgs(argv) {
-  const opts = { files: [], dom: [], url: [] };
+  const opts = { files: [], dom: [], url: [], measures: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
@@ -147,7 +147,8 @@ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {})
     const dom = opts.dom.map((f) => inputFile(project, path.resolve(cwd, f), '--dom'));
     const design = opts.design !== undefined ? inputFile(project, path.resolve(cwd, opts.design), '--design') : null;
     const urls = checkUrls(opts.url, design);
-    const measures = opts.measures !== undefined ? readMeasures(project, inputFile(project, path.resolve(cwd, opts.measures), '--measures')) : null;
+    const measureList = opts.measures.map((m) => readMeasures(project, inputFile(project, path.resolve(cwd, m), '--measures')));
+    const measures = measureList.length ? measureList : null;
     if (!files.length && !dom.length && !design && !measures) throw new UsageError('falta --files, --dom, --design o --measures: no hay nada que chequear');
 
     // improve: the "before" ui-check.json; failures of rendered pages it already had are debt (spec §5)

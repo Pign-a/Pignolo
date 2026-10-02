@@ -2,7 +2,8 @@
 // it never writes anything (scripts/ui-check.mjs writes <run>/ui-check.json).
 //
 // runCheck({ project, files, design, base, dom, urls, measures, inject }) -> Promise<{ entries, inputs, exitCode }>
-//   measures   { file, entries } of a browser.json (scripts/browser.mjs measure) or null.
+//   measures   { file, entries } of a browser.json (scripts/browser.mjs measure), a list of them (browser.json
+//              and stress.json) or null.
 //   files/dom  paths relative to `project` (or absolute inside it); `files: []` is valid and
 //              runs only the project rules (checkProject).
 //   design     path of DESIGN.md or null.   base  git ref or null.
@@ -338,15 +339,16 @@ export async function runCheck({ project, files = [], design = null, base = null
   // (5) severity, (6) aggregation and order
   const entries = aggregate(scoped.map((e) => ({ ...e, severity: effectiveSeverity(e, byId.get(e.id)) }))).map(publicEntry);
   // Browser measures (browser.json) come scoped and with their severity: appended as they are.
-  if (measures) {
+  const measureList = Array.isArray(measures) ? measures : measures ? [measures] : [];
+  for (const measure of measureList) {
     // Same step 3 as the rules: DESIGN.md intentional, unless the validator rejected the file.
     const designFile = designRel ? path.join(root, designRel) : null;
     const info = designFile && fs.existsSync(designFile) ? readDesign(designFile, designRel, catalog, readTokenSources(root)) : null;
-    const browserEntries = info && !info.reject ? applyIntentional(measures.entries, info, byId) : measures.entries;
+    const browserEntries = info && !info.reject ? applyIntentional(measure.entries, info, byId) : measure.entries;
     entries.push(...browserEntries.map(publicEntry));
   }
 
-  const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : []), ...(measures ? [measures.file] : [])]
+  const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : []), ...measureList.map((m) => m.file)]
     .map((rel) => ({ file: rel, sha256: sha256(path.join(root, rel)) }));
   if (site) {
     for (const r of [...site.pages, site.robots, ...site.sitemaps]) if (r.sha256) inputs.push({ url: r.finalUrl, sha256: r.sha256 });

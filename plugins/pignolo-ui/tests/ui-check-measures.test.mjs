@@ -107,3 +107,14 @@ test('intentional also turns a RESP-01 fail into a pass', () => {
   const e = readOut(s.run).entries.find((x) => x.id === 'RESP-01');
   assert.deepEqual([e.status, e.reason], ['pass', 'intentional: on purpose']);
 });
+
+test('--measures can be given twice (browser.json and stress.json): both join the entries and both are inputs', () => {
+  const s = setup([entry({ scope: 'debt', severity: 'alto' })]);
+  const stress = path.join(s.run, 'stress.json');
+  fs.writeFileSync(stress, JSON.stringify({ version: 1, entries: [entry({ id: 'STRESS-01', severity: 'alto', fingerprint: 'STRESS-01|/|1440|light|long-text|clipped', selector: undefined })] }));
+  const r = runScript('ui-check.mjs', ['--project', s.root, '--run', s.run, '--measures', s.measures, '--measures', stress, '--files', 'src/a.css'], { cwd: s.root });
+  assert.equal(r.status, 0, r.stderr);
+  const out = readOut(s.run);
+  assert.ok(out.entries.some((e) => e.id === 'STRESS-01') && out.entries.some((e) => e.id === 'COLOR-03' && e.fingerprint.startsWith('COLOR-03|/')));
+  assert.deepEqual(out.inputs.map((i) => i.file).filter((f) => f.endsWith('.json')).sort(), ['.pignolo-ui/runs/r1/browser.json', '.pignolo-ui/runs/r1/stress.json']);
+});

@@ -255,11 +255,16 @@ const COMMANDS = {
       const doms = readJsonIf(path.join(run, 'dom.json'));
       const domList = doms && Array.isArray(doms.doms) ? doms.doms : [];
       for (const d of domList) args.push('--dom', path.join(run, d.path));
-      const hasMeasures = fs.existsSync(path.join(run, 'browser.json'));
-      if (hasMeasures) args.push('--measures', path.join(run, 'browser.json'));
+      // browser.json (measure) and stress.json (stress, hito 4e) are both measures of the page.
+      let hasMeasures = false;
+      for (const name of ['browser.json', 'stress.json']) {
+        if (!fs.existsSync(path.join(run, name))) continue;
+        hasMeasures = true;
+        args.push('--measures', path.join(run, name));
+      }
       const files = opts.files !== undefined ? list(opts.files) : [];
       for (const f of files) args.push('--files', path.resolve(project, f));
-      if (!domList.length && !hasMeasures && !files.length) throw new UsageError('no hay nada que chequear: falta dom.json, browser.json o --files');
+      if (!domList.length && !hasMeasures && !files.length) throw new UsageError('no hay nada que chequear: falta dom.json, browser.json, stress.json o --files');
       if (opts.design !== undefined) args.push('--design', path.resolve(project, opts.design));
       if (opts.base !== undefined) args.push('--base', opts.base);
       if (opts.url !== undefined) args.push('--url', opts.url);
@@ -381,7 +386,7 @@ const COMMANDS = {
         try { dict = mergeUserSymptoms(dict, extras); } catch (e) { warnings.push(`síntomas del autor ignorados: ${e.message}`); }
       }
       const failed = new Set();
-      for (const name of ['ui-check.json', 'browser.json']) {
+      for (const name of ['ui-check.json', 'browser.json', 'stress.json']) {
         const j = readJsonIf(path.join(run, name));
         for (const e of (j && Array.isArray(j.entries) ? j.entries : [])) if (e.status === 'fail') failed.add(e.id);
       }

@@ -70,3 +70,13 @@ test('prepare-run.md: an invalid capture is reported as "no verificado", not aud
   assert.match(text, /"no verificado"/);
   assert.match(text, /never audit it and never cite it as evidence/);
 });
+
+test('prepare-run.md: the stress test runs after dom, reloads, never blocks (hito 4e)', () => {
+  const text = readReference('prepare-run.md');
+  const subs = scriptCalls(text).map((c) => `${c.script} ${c.sub}`);
+  assert.ok(subs.indexOf('browser.mjs stress') > subs.indexOf('browser.mjs dom'), 'stress goes after dom');
+  assert.ok(subs.indexOf('browser.mjs stress') < subs.indexOf('run.mjs check'));
+  assert.match(text, /stress\.json/);
+  assert.match(text, /alters only the DOM in memory/);
+  assert.match(text, /It never blocks \(exit 0\)/);
+});

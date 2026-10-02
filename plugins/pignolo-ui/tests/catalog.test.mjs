@@ -6,7 +6,7 @@ const catalog = loadCatalog();
 const SPEC_5_4 = ['A11Y-01', 'A11Y-02', 'A11Y-04', 'A11Y-05', 'A11Y-16', 'A11Y-26', 'A11Y-28', 'A11Y-39', 'COLOR-03', 'COLOR-04',
   'STATE-04', 'MOTION-03', 'MOTION-04', 'COLOR-02', 'DEPTH-01', 'LAYOUT-04', 'DRIFT-01', 'THEME-01', 'THEME-02', 'COLOR-11',
   'COLOR-12', 'ICON-01', 'CONTENT-01', 'COPY-01', 'META-01'];
-const BROWSER = ['NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02', 'RESP-01'];
+const BROWSER = ['NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02', 'RESP-01', 'STRESS-01', 'STRESS-02', 'STRESS-03'];
 const STATIC_4E = ['A11Y-41', 'MOTION-05', 'MOTION-06', 'MOTION-08', 'MOTION-09', 'STRESS-04'];
 const SEO = ['SEO-01', 'SEO-02', 'SEO-04', 'SEO-05', 'SEO-06', 'SEO-09', 'SEO-18'];
 
@@ -87,7 +87,10 @@ const NEW_4E = {
   'MOTION-06': ['detalle', true],
   'MOTION-08': ['medio', true],
   'MOTION-09': ['detalle', true],
-  'STRESS-04': ['alto', true], 'TARGET-01': ['alto', false], 'FORM-01': ['medio', false], 'TYPE-01': ['medio', true], 'TYPE-02': ['medio', true], 'RESP-01': ['medio', true] };
+  'STRESS-04': ['alto', true],
+  'STRESS-01': ['alto', false],
+  'STRESS-02': ['alto', false],
+  'STRESS-03': ['alto', false], 'TARGET-01': ['alto', false], 'FORM-01': ['medio', false], 'TYPE-01': ['medio', true], 'TYPE-02': ['medio', true], 'RESP-01': ['medio', true] };
 test('hito 4e rules: no floor, never bloquea, TARGET-01 and FORM-01 refuse intentional, the type rules accept it', () => {
   for (const [id, [severity, intentional]] of Object.entries(NEW_4E)) {
     const r = catalog.rules.find((x) => x.id === id);

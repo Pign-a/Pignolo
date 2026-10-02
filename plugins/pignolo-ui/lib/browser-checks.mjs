@@ -65,7 +65,7 @@ const PAGE_HELPERS = String.raw`
 
 // One expression that defines the helpers and runs fn: nothing is added to the page as a <script>,
 // which a strict CSP would block (Runtime.evaluate itself is not subject to the page CSP).
-const inPage = (fn, arg) => `(() => { ${PAGE_HELPERS}; return (${fn.toString()})(${JSON.stringify(arg ?? null)}); })()`;
+export const inPage = (fn, arg) => `(() => { ${PAGE_HELPERS}; return (${fn.toString()})(${JSON.stringify(arg ?? null)}); })()`;
 
 // B1: foreground, background layers up to the first opaque one, font size and weight.
 function collectContrast() {

@@ -329,3 +329,46 @@ test('an unknown option or subcommand exits 2 with a Spanish message and no stac
     assert.doesNotMatch(r.stderr, /\n\s+at /);
   }
 });
+
+// ---- Hito 4e, T14: stress.json joins check and is evidence for auditor-check -----------------------------------
+const STRESS_FP = 'STRESS-01|/|1440|light|long-text|clipped';
+function stressRun(finding) {
+  const entry = { id: 'STRESS-01', status: 'fail', severity: 'alto', scope: 'new', fingerprint: STRESS_FP, measure: { count: 2, selectors: ['h1'], width: 1440, theme: 'light', page: '/' } };
+  const project = makeRepo({
+    [`${RUN_REL}/dom-1440.html`]: GOOD_DOM,
+    [`${RUN_REL}/dom.json`]: JSON.stringify({ doms: [{ path: 'dom-1440.html', width: 1440 }] }),
+    [`${RUN_REL}/stress.json`]: JSON.stringify({ version: 1, entries: [entry] }),
+  });
+  if (finding) writeTree(project, { [`${RUN_REL}/auditor.json`]: JSON.stringify({ findings: [finding], notVerified: [], independent: true }) });
+  return project;
+}
+
+test('check joins stress.json to ui-check.json, records it as an input, and an alto fail does not block (exit 0)', () => {
+  const project = stressRun();
+  const r = run(['check', '--project', project, '--run', runDir(project)]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const out = JSON.parse(fs.readFileSync(path.join(runDir(project), 'ui-check.json'), 'utf8'));
+  assert.ok(out.entries.some((e) => e.fingerprint === STRESS_FP && e.status === 'fail'));
+  assert.ok(out.inputs.some((i) => i.file.endsWith('stress.json')));
+});
+
+test('check with both browser.json and stress.json passes both as --measures', () => {
+  const project = stressRun();
+  writeTree(project, { [`${RUN_REL}/browser.json`]: JSON.stringify({ version: 1, entries: [{ id: 'COLOR-03', status: 'pass', severity: 'bloquea', scope: 'new', fingerprint: 'fp-1' }] }) });
+  assert.equal(run(['check', '--project', project, '--run', runDir(project)]).status, 0);
+  const out = JSON.parse(fs.readFileSync(path.join(runDir(project), 'ui-check.json'), 'utf8'));
+  assert.deepEqual(out.inputs.map((i) => i.file).filter((f) => /(browser|stress)\.json$/.test(f)).sort(), [`${RUN_REL}/browser.json`, `${RUN_REL}/stress.json`]);
+  assert.ok(out.entries.some((e) => e.fingerprint === 'fp-1') && out.entries.some((e) => e.fingerprint === STRESS_FP));
+});
+
+test('auditor-check accepts a browser finding that cites a stress fingerprint and rejects an unknown one', () => {
+  const cite = (fingerprint) => ({ id: 'STRESS-01', severity: 'alto', scope: 'new', plain: 'x', evidence: { kind: 'browser', fingerprint }, why: 'y' });
+  const ok = stressRun(cite(STRESS_FP));
+  assert.equal(run(['check', '--project', ok, '--run', runDir(ok)]).status, 0);
+  assert.equal(run(['auditor-check', '--project', ok, '--run', runDir(ok)]).status, 0);
+  const bad = stressRun(cite('STRESS-01|/|1440|light|long-text|nope'));
+  run(['check', '--project', bad, '--run', runDir(bad)]);
+  const r = run(['auditor-check', '--project', bad, '--run', runDir(bad)]);
+  assert.equal(r.status, 1);
+  assert.ok(r.json.problems.some((p) => p.problem === 'evidence-missing'));
+});

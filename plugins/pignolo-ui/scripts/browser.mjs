@@ -1,6 +1,6 @@
 // browser.mjs: CDP driver over --remote-debugging-pipe (spec §11). Run only by the main thread.
 //
-// node <root>/scripts/browser.mjs <capture|measure|dom> --project <repo> --run <folder in .pignolo-ui/runs/>
+// node <root>/scripts/browser.mjs <capture|measure|dom|stress> --project <repo> --run <folder in .pignolo-ui/runs/>
 //   (--url <local URL> | --file <HTML file in the project>) [--design <DESIGN.md>]
 //   [--platform desktop|mobile|both] [--dark] [--before <browser.json>] [--register brand|product]
 //   (--register: the register of this screen for TYPE-02; without it DESIGN.md pignolo.register rules)
@@ -12,6 +12,9 @@
 //            <run>/captures.json { version, browser, url, finalUrl, degraded, cleanup, captures, unverified }
 //   measure  <run>/browser.json { version, browser, url, finalUrl, degraded, cleanup, plan, entries } with
 //            B1-B4 as entries of the ui-check shape; --before makes its fails debt.
+//   stress   <run>/stress.json (same shape as browser.json): STRESS-01 long text, STRESS-02 emptied lists,
+//            STRESS-03 zoom of 200 %; every scenario reloads the page and alters the DOM in memory only.
+//            Findings are alto: exit 0 whatever it finds (1 never); --before takes a previous stress.json.
 //   dom      <run>/dom-<width>.html (rendered DOM, for ui-check --dom) and <run>/dom.json
 // cleanup = { graceful, killed, profileRemoved, profile } (null without a browser); a profile that
 // could not be removed is also printed as leftoverProfile. Ctrl+C (SIGINT) or SIGTERM kills the
@@ -27,11 +30,11 @@ import { findBrowser } from '../lib/browser-find.mjs';
 import { openBrowser, BrowserUnavailable } from '../lib/browser-session.mjs';
 import { shotPlan, planFromProject } from '../lib/shot-plan.mjs';
 import { validateDesign } from '../lib/design-doc.mjs';
-import { measurePage, capturePage, dumpDom } from '../lib/browser-run.mjs';
+import { measurePage, capturePage, dumpDom, stressPage } from '../lib/browser-run.mjs';
 import { effectiveRegister } from '../lib/browser-checks.mjs';
 
 class UsageError extends Error {}
-const COMMANDS = ['capture', 'measure', 'dom'];
+const COMMANDS = ['capture', 'measure', 'dom', 'stress'];
 const VALUE_OPTS = new Set(['project', 'run', 'url', 'file', 'design', 'platform', 'before', 'register']);
 const FLAGS = new Set(['dark']);
 
@@ -153,7 +156,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     const fromProject = planFromProject({ project, design });
     const plan = shotPlan({ platform: opts.platform ?? fromProject.platform, dark: opts.dark === true || fromProject.dark });
     const before = opts.before !== undefined ? readBefore(path.resolve(cwd, opts.before)) : null;
-    if (before && opts.command !== 'measure') throw new UsageError('--before solo vale con measure');
+    if (before && !['measure', 'stress'].includes(opts.command)) throw new UsageError('--before solo vale con measure o stress');
 
     const found = findBrowser({ env });
     // cleanup of the browser (§11.1) goes into the JSON: a profile that could not be removed is
@@ -177,6 +180,15 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
       const blockingNew = r.entries.filter((e) => e.status === 'fail' && e.severity === 'bloquea' && e.scope === 'new').length;
       exitCode = blockingNew ? 1 : 0;
       summary = { counts: { pass: count('pass'), fail: count('fail'), unverified: count('unverified'), blockingNew } };
+    } else if (opts.command === 'stress') {
+      // The stress alters the DOM of a page this process loaded itself, in memory: no project file
+      // and no browser.json are written (R-4e-17). Findings are alto, they never block: exit 0.
+      const r = await stressPage({ url, plan, open, before, page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
+      out = path.join(run, 'stress.json');
+      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, plan, entries: r.entries }, null, 2)}
+`);
+      const count = (s) => r.entries.filter((e) => e.status === s).length;
+      summary = { counts: { pass: count('pass'), fail: count('fail'), unverified: count('unverified') } };
     } else if (opts.command === 'capture') {
       const r = await capturePage({ url, plan, open, outDir: path.join(run, 'captures') });
       out = path.join(run, 'captures.json');

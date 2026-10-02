@@ -21,6 +21,7 @@ import { runChecks, runReducedMotionCheck, visibleTextSelectors, interactiveItem
 import { PageLoadError } from './browser-session.mjs';
 import { checkPng } from './png.mjs';
 import { checkCapture } from './captures-check.mjs';
+import { STRESS_RULES, readBefore, growTextIn, emptyListsIn, stressFindings, STRESS_ZOOM } from './browser-stress.mjs';
 
 export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02', 'RESP-01'];
 const MAX_CROPS = 3;
@@ -258,4 +259,66 @@ export async function dumpDom({ url, plan, open, outDir }) {
     unverified.push({ reason: e.message });
   }
   return { browser: product, finalUrl, degraded, doms, unverified };
+}
+
+// ---- stress (hito 4e, R-4e-17): its own subcommand, so the altered DOM never reaches browser.json ----
+
+const STRESS_WIDTHS = [1440, 375];
+const unverifiedStress = (reason, extra = {}) => STRESS_RULES.map((id) => ({ id, status: 'unverified', key: 'run', reason, measure: { ...extra } }));
+
+// stressPage({ url, plan, open, before, page }) -> { browser, finalUrl, entries, degraded }
+// Light theme only, at 1440 and 375 (the zoom, at 1440 only); every scenario loads the page again,
+// alters the DOM in memory and measures. Without a browser or with the URL down: all unverified.
+export async function stressPage({ url, plan, open, before = null, catalog = loadCatalog(), page = pathOf(url), navTimeoutMs = 30000, settleMs = SETTLE_MS }) {
+  const down = await preflight(url);
+  if (down) return { browser: null, finalUrl: null, degraded: down, entries: toEntries(unverifiedStress(down), { page, catalog, before }) };
+  const widths = plan.widths.filter((w) => STRESS_WIDTHS.includes(w.width));
+  if (!widths.length) widths.push(plan.widths[0]);
+  let product = null;
+  let finalUrl = null;
+  let degraded = null;
+  const raw = [];
+  try {
+    await open(async (browser) => {
+      product = browser.product;
+      const tab = await browser.newPage();
+      let unloadable = null;
+      for (const { width, height } of widths) {
+        const at = { width, theme: 'light' };
+        const scenarios = ['long-text', 'empty-lists', ...(width === 1440 ? ['zoom-200'] : [])];
+        for (const scenario of scenarios) {
+          if (unloadable) { raw.push(...unverifiedStress(unloadable, at)); continue; }
+          try {
+            finalUrl = await load(tab, { url, width, height, theme: 'light', navTimeoutMs, settleMs });
+            const session = await sessionReason(tab, url, finalUrl);
+            if (session) { degraded = session; raw.push(...unverifiedStress(session, at)); return; }
+            const found = [];
+            if (scenario === 'long-text') {
+              const pre = await readBefore(tab);
+              await growTextIn(tab);
+              found.push(...stressFindings({ scenario, before: pre, after: await readBefore(tab), width }));
+            } else if (scenario === 'empty-lists') {
+              found.push(...stressFindings({ scenario, after: await emptyListsIn(tab), width }));
+            } else {
+              const pre = await readBefore(tab);
+              await tab.setViewport({ width: Math.round(width / STRESS_ZOOM), height: Math.round(height / STRESS_ZOOM) });
+              await sleep(200);
+              found.push(...stressFindings({ scenario, before: pre, after: await readBefore(tab), width }));
+            }
+            const left = await leftThePage(tab, url);
+            if (left) { degraded = left; raw.push(...unverifiedStress(left, at)); return; }
+            for (const f of found) raw.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
+          } catch (e) {
+            const reason = `not measured: ${e.message}`;
+            if (e instanceof PageLoadError) unloadable = reason;
+            raw.push(...unverifiedStress(reason, at));
+          }
+        }
+      }
+    });
+  } catch (e) {
+    degraded = e.message;
+    raw.push(...unverifiedStress(e.message));
+  }
+  return { browser: product, finalUrl, degraded, entries: toEntries(raw, { page, catalog, before }) };
 }

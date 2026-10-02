@@ -39,7 +39,7 @@ export const SUBCOMMANDS = {
   'files.mjs': ['save', 'verify', 'restore'],
   'approve.mjs': ['save', 'record', 'verify'],
   'compare.mjs': ['fingerprint', 'distance', 'options', 'approved'],
-  'browser.mjs': ['capture', 'measure', 'dom'],
+  'browser.mjs': ['capture', 'measure', 'dom', 'stress'],
 };
 
 export function assertScriptsExist(calls) {

@@ -252,3 +252,48 @@ test('capture on a blank page: captures.json marks it invalid and browser.json s
     await site.close();
   }
 });
+
+// ---- Hito 4e, T14: browser.mjs stress ----------------------------------------------------------------------
+const STRESS_RULES_IDS = ['STRESS-01', 'STRESS-02', 'STRESS-03'];
+
+test('stress usage: a remote URL is exit 2, --before only with measure or stress, and the subcommand is listed', async () => {
+  const { root, run } = project();
+  const remote = await cli(['stress', '--project', root, '--run', run, '--url', 'http://example.com/']);
+  assert.equal(remote.status, 2);
+  assert.match(remote.stderr, /solo acepta direcciones locales/);
+  const cap = await cli(['capture', '--project', root, '--run', run, '--url', 'http://127.0.0.1:9/', '--before', path.join(root, 'index.html')]);
+  assert.equal(cap.status, 2);
+  const none = await cli([]);
+  assert.match(none.stderr, /capture \| measure \| dom \| stress/);
+});
+
+test('stress without a browser: every STRESS rule unverified with the reason, exit 0, never a pass', async () => {
+  const { root, run } = project();
+  const r = await cli(['stress', '--project', root, '--run', run, '--file', path.join(root, 'index.html')], { PIGNOLO_UI_BROWSER: path.join(root, 'no-browser.exe') });
+  assert.equal(r.status, 0, r.stderr);
+  const json = readJson(path.join(run, 'stress.json'));
+  assert.deepEqual(json.entries.map((e) => [e.id, e.status]), STRESS_RULES_IDS.map((id) => [id, 'unverified']));
+  assert.match(json.degraded, /no browser/);
+  assert.equal(fs.existsSync(path.join(run, 'browser.json')), false, 'stress never writes browser.json');
+});
+
+test('stress leaves no trace: the file and browser.json keep their sha256, the profile is removed, and findings exit 0', { skip }, async () => {
+  const wide = GOOD.replace('<h1>Inicio</h1>', '<h1 style="width:120px;overflow:hidden;white-space:nowrap">Panel</h1>');
+  const { root, run } = project({ 'wide.html': wide });
+  const file = path.join(root, 'wide.html');
+  const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+  const m = await cli(['measure', '--project', root, '--run', run, '--file', file, '--platform', 'desktop']);
+  assert.ok([0, 1].includes(m.status), m.stderr);
+  const before = { file: sha(file), browser: sha(path.join(run, 'browser.json')) };
+  const r = await cli(['stress', '--project', root, '--run', run, '--file', file, '--platform', 'desktop']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual({ file: sha(file), browser: sha(path.join(run, 'browser.json')) }, before);
+  const json = readJson(path.join(run, 'stress.json'));
+  assert.equal(json.cleanup.profileRemoved, true);
+  assert.equal(fs.existsSync(json.cleanup.profile), false);
+  assert.equal(r.json.leftoverProfile, undefined);
+  const clipped = json.entries.find((e) => e.id === 'STRESS-01' && e.status === 'fail');
+  assert.ok(clipped, JSON.stringify(json.entries.map((e) => [e.id, e.status, e.fingerprint])));
+  assert.equal(clipped.severity, 'alto');
+  assert.match(clipped.fingerprint, /^STRESS-01\|wide\.html\|1440\|light\|long-text\|clipped$/);
+});
