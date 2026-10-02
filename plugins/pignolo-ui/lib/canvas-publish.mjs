@@ -56,6 +56,24 @@ function writeAtomic(file, text) {
 }
 
 export const publishFile = (run) => path.join(run, 'publish.json');
+// What the last plan of canvas-publish handed out, kept apart from plan.json (the plan of a read overwrites that one): a
+// publication that never reached `record` still leaves the names of this run in the live canvas (RL2-04).
+export const plannedFile = (run) => path.join(run, 'planned.json');
+
+// The paths of the last canvas-publish plan of THIS canvas, or [] (another canvas, unreadable, a link: nothing is owned).
+function readPlanned(run, record) {
+  const file = plannedFile(run);
+  if (isLink(file)) return [];
+  const data = readJson(file);
+  if (!isObj(data) || data.canvasUrl !== record.url || !Array.isArray(data.paths)) return [];
+  return data.paths.filter((p) => typeof p === 'string' && p !== INDEX);
+}
+
+// A planned.json that is not a link goes away once what it says was recorded (or its canvas was replaced).
+function clearPlanned(run) {
+  const file = plannedFile(run);
+  if (fs.existsSync(file) && !isLink(file)) fs.rmSync(file, { force: true });
+}
 
 // <run>/publish.json -> { data, problem }. None is { data: null }; a file that is there and is not ours is a
 // problem, never "nothing published" (a plan on top of it would republish or rename things).
@@ -266,6 +284,8 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
 
   const planFiles = {};
   if (toSend) for (const p of [...toSend, INDEX]) planFiles[p] = sha(fs.readFileSync(path.join(canvas, ...p.split('/'))));
+  if (step.id === 'canvas-publish') writeAtomic(plannedFile(run), `${JSON.stringify({ canvasUrl: record.url, paths: [...toSend], at: new Date().toISOString() }, null, 2)}
+`);
   writeAtomic(path.join(run, 'plan.json'), `${JSON.stringify({ id: step.id, files: planFiles, changed: diff.changed, sendIndex: diff.sendIndex, at: new Date().toISOString() }, null, 2)}\n`);
   return { ok: true, problems: [], notes: noteList(manifest), done: false, step, ...(newCanvas ? { newCanvas: true } : {}) };
 }
@@ -367,8 +387,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   }
 
   const diff = diffPublished({ manifest, layoutSha256: manifest.layoutSha256, pageId: manifest.pageId, published: trusted });
-  const plan = readJson(path.join(run, 'plan.json'));
-  const owned = isObj(plan) && plan.id === 'canvas-publish' && isObj(plan.files) ? Object.keys(plan.files).filter((p) => p !== INDEX) : [];
+  const owned = readPlanned(run, record);
   const publishedForMerge = trusted ? { ...trusted, files: Object.fromEntries(checked.map((p) => [p, wasFiles[p]])) } : null;
   const result = mergeIndex({
     ours: fragment, live: liveIndex, liveFiles, published: publishedForMerge, owned, title: fragment.canvasTitle, now,
@@ -419,6 +438,7 @@ export function recordStep({ run, project, data, step, url }) {
     writeConfig({ data, project, key: 'canvas', value: { url, state: 'created', pages: 0, files: 0, bytes: 0, notes: 0 } });
     writeAtomic(publishFile(run), `${JSON.stringify({ v: 2, canvasUrl: url, pageId: null, ownsMain: false, layoutSha256: null, files: {}, sizes: {}, boards: {}, notes: {}, deleted: [], refusals: 0 }, null, 2)}\n`);
     try { removeOwnDir(mergeDir); } catch { /* a link there: plan does not take it as current */ }
+    clearPlanned(run);
     return { ok: true, state: 'created' };
   }
   const stored = readRecord({ data, project });
@@ -461,6 +481,7 @@ export function recordStep({ run, project, data, step, url }) {
     deleted, refusals: 0,
   }, null, 2)}\n`);
   try { removeOwnDir(mergeDir); } catch { /* a link there: plan does not take it as current */ }
+  clearPlanned(run);
   return { ok: true, state: 'published' };
 }
 
