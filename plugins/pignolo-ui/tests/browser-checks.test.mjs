@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serveRoutes, BROWSER_SKIP, browserPath } from './helpers.mjs';
 import { withBrowser } from '../lib/browser-session.mjs';
-import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
+import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, typeFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
 
 const skip = BROWSER_SKIP;
 const HTML = { 'content-type': 'text/html; charset=utf-8' };
@@ -260,4 +260,55 @@ test('TARGET-01 and FORM-01 in the browser', { skip }, async () => {
   assert.deepEqual(ids(f, 'FORM-01').map((x) => x.selector), ['#mail']);
   const desk = await checkPage(page('<input id="mail" aria-label="mail" style="font-size:14px">'), { width: 1440 });
   assert.deepEqual(desk.filter((x) => x.id === 'FORM-01'), []);
+});
+
+// ---- Hito 4e, T3: TYPE-01 and TYPE-02 --------------------------------------------------------------
+const typeData = (over = {}) => ({ title: { selector: 'h1', fontSize: 30 }, body: { fontSize: 24 }, blocks: [], tiny: [], ...over });
+const t02 = (data, register) => typeFindings(data, { register }).find((f) => f.id === 'TYPE-02');
+const block = (selector, chars, lines, leading = 1.5, tag = 'p') => ({ selector, chars, lines, leading, fontSize: 16, tag });
+
+test('TYPE-02 by register: brand needs 1.25, product and undeclared 1.125', () => {
+  assert.equal(t02(typeData({ title: { selector: 'h1', fontSize: 30 } }), 'brand').status, 'pass');
+  const brandFail = t02(typeData({ title: { selector: 'h1', fontSize: 29.9 } }), 'brand');
+  assert.deepEqual([brandFail.status, brandFail.measure.register, brandFail.measure.threshold, brandFail.measure.titlePx, brandFail.measure.bodyPx], ['fail', 'brand', 1.25, 29.9, 24]);
+  assert.ok(brandFail.measure.ratio < 1.25);
+  assert.equal(t02(typeData({ title: { selector: 'h1', fontSize: 27 } }), 'product').status, 'pass');
+  assert.equal(t02(typeData({ title: { selector: 'h1', fontSize: 26.9 } }), 'product').status, 'fail');
+  const unset = t02(typeData({ title: { selector: 'h1', fontSize: 27 } }), 'unset');
+  assert.deepEqual([unset.status, unset.measure.register, unset.measure.threshold], ['pass', 'unset', 1.125]);
+  const at28 = typeData({ title: { selector: 'h1', fontSize: 28 } });
+  assert.deepEqual([t02(at28, 'product').status, t02(at28, 'brand').status], ['pass', 'fail'], 'same 1.167 ratio: dense passes, airy fails');
+});
+
+test('TYPE-02 without an h1 or without body text is unverified with the reason', () => {
+  assert.match(t02(typeData({ title: null }), 'brand').reason, /no visible h1/);
+  assert.equal(t02(typeData({ title: null }), 'brand').status, 'unverified');
+  assert.match(t02(typeData({ body: null }), 'brand').reason, /no body text/);
+});
+
+test('TYPE-01: line length, leading and tiny text, one entry per motive', () => {
+  const only = (blocks, tiny = []) => typeFindings(typeData({ blocks, tiny })).filter((f) => f.id === 'TYPE-01');
+  assert.deepEqual(only([block('p.a', 81, 1)]).map((f) => f.key), ['line-length']);
+  assert.deepEqual(only([block('p.a', 80, 1)]).map((f) => [f.status, f.key]), [['pass', 'checked']]);
+  assert.deepEqual(only([block('p.a', 200, 3, 1.29)]).map((f) => f.key), ['leading']);
+  assert.deepEqual(only([block('p.a', 200, 3, 1.3)]).map((f) => f.status), ['pass']);
+  assert.deepEqual(only([block('p.a', 90, 1, 1.2)]).map((f) => f.key), ['line-length'], 'a one-line paragraph with tight leading is not a leading problem');
+  assert.deepEqual(only([block('blockquote', 200, 3, 1.1, 'blockquote')]).map((f) => f.status), ['pass'], 'leading is for p and li');
+  assert.deepEqual(only([], [{ selector: 'small', fontSize: 11 }]).map((f) => [f.key, f.measure.worst.value]), [['tiny-text', 11]]);
+  const seven = only(Array.from({ length: 7 }, (_, i) => block(`p.n${i}`, 200 + i, 1)));
+  assert.equal(seven.length, 1);
+  assert.deepEqual([seven[0].key, seven[0].measure.count, seven[0].measure.worst.selector, seven[0].measure.threshold], ['line-length', 7, 'p.n6', 80]);
+});
+
+test('TYPE-01 and TYPE-02 in the browser', { skip }, async () => {
+  const long = 'palabra '.repeat(25).trim();
+  const wide = await checkPage(page(`<h1>Título</h1><p id="long" style="font-size:16px;max-width:none">${long}</p>`), { width: 1440 });
+  assert.deepEqual(ids(wide, 'TYPE-01').map((x) => x.key), ['line-length']);
+  const tiny = await checkPage(page('<h1 style="font-size:32px">Título</h1><p>Cuerpo.</p><small id="s11" style="font-size:11px">chico</small><small id="s12" style="font-size:12px">justo</small>'), { width: 1440 });
+  assert.deepEqual(ids(tiny, 'TYPE-01').map((x) => [x.key, x.measure.count]), [['tiny-text', 1]]);
+  const flat = await checkPage(page('<h1 style="font-size:16px">Título</h1><p>Texto del cuerpo, igual de grande.</p>'), { width: 1440 });
+  assert.equal(ids(flat, 'TYPE-02').length, 1);
+  const ok = await checkPage(page('<h1 style="font-size:32px">Título</h1><p style="max-width:40ch;line-height:1.5">Texto del cuerpo, corto.</p>'), { width: 1440 });
+  assert.deepEqual([ids(ok, 'TYPE-02').length, ids(ok, 'TYPE-01').length], [0, 0]);
+  assert.equal(ids(ok, 'TYPE-02', 'pass').length, 1);
 });

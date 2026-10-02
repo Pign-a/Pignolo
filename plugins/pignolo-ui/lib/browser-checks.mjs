@@ -226,6 +226,41 @@ function collectFields() {
   return out;
 }
 
+// T3: title, body size, text blocks (characters per line, leading) and tiny text.
+function collectType() {
+  const out = { title: null, body: null, blocks: [], tiny: [] };
+  const sizes = new Map();
+  const h1 = [...document.querySelectorAll('h1')].find((h) => {
+    const r = h.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(h).visibility === 'visible' && !isVisuallyHidden(h);
+  });
+  if (h1) out.title = { selector: selectorOf(h1), fontSize: parseFloat(getComputedStyle(h1).fontSize) };
+  const seen = new Set();
+  for (const { node, el } of textNodes()) {
+    const cs = getComputedStyle(el);
+    const px = parseFloat(cs.fontSize);
+    const chars = node.nodeValue.trim().length;
+    if (el.closest('p, li')) sizes.set(px, (sizes.get(px) || 0) + chars);
+    if (px < 12 && !seen.has('t' + selectorOf(el))) { seen.add('t' + selectorOf(el)); out.tiny.push({ selector: selectorOf(el), fontSize: px }); }
+  }
+  let best = 0;
+  for (const [px, n] of sizes) if (n > best) { best = n; out.body = { fontSize: px }; }
+  for (const el of document.querySelectorAll('p, li, blockquote')) {
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    if (r.width <= 0 || r.height <= 0 || cs.visibility !== 'visible' || isVisuallyHidden(el)) continue;
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text.length <= 80 || el.querySelector('p, ul, ol, li, div, blockquote, table, pre')) continue;
+    const fontSize = parseFloat(cs.fontSize);
+    const lineHeight = cs.lineHeight === 'normal' ? fontSize * 1.2 : parseFloat(cs.lineHeight);
+    if (!(lineHeight > 0)) continue;
+    const inner = r.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth);
+    const lines = Math.max(1, Math.round(inner / lineHeight));
+    out.blocks.push({ selector: selectorOf(el), chars: text.length, lines, leading: lineHeight / fontSize, fontSize, tag: el.tagName.toLowerCase() });
+  }
+  return out;
+}
+
 // ---- Node side --------------------------------------------------------------------------------
 
 // Computed colors come as rgb()/rgba(), lab(), oklch()... and color(srgb r g b / a) for
@@ -354,6 +389,49 @@ export function fieldFindings(items, { width }) {
   return bad.map((i) => ({ id: 'FORM-01', status: 'fail', key: i.selector, selector: i.selector, measure: { fontSizePx: i.fontSize, requiredPx: MIN_FIELD_FONT_PX } }));
 }
 
+// ---- T3: TYPE-01 and TYPE-02 --------------------------------------------------------------------
+
+// Title/body ratio per register (R-4e-15): brand is airy, product is dense; an undeclared register
+// takes the more permissive one so the rule adds no noise when it does not know.
+export const MIN_TITLE_BODY_RATIO = { brand: 1.25, product: 1.125 };
+export const DEFAULT_RATIO_REGISTER = 'product';
+export const MAX_LINE_CHARS = 80;
+export const MIN_LEADING = 1.3;
+export const MIN_TEXT_PX = 12;
+
+const round3 = (n) => Math.round(n * 1000) / 1000;
+
+// data: collectType(). TYPE-02 is one entry; TYPE-01 is one entry per motive (line-length,
+// leading, tiny-text) with the count and the worst case.
+export function typeFindings(data, { register = 'unset' } = {}) {
+  const out = [];
+  const effective = MIN_TITLE_BODY_RATIO[register] ? register : DEFAULT_RATIO_REGISTER;
+  const threshold = MIN_TITLE_BODY_RATIO[effective];
+  if (!data.title || !data.body) {
+    out.push({ id: 'TYPE-02', status: 'unverified', key: 'title-ratio', reason: data.title ? 'no body text (p or li) to compare the title with' : 'no visible h1 to compare with the body text' });
+  } else {
+    const ratio = data.title.fontSize / data.body.fontSize;
+    const measure = { ratio: round3(ratio), titlePx: data.title.fontSize, bodyPx: data.body.fontSize, register, threshold };
+    out.push(ratio < threshold
+      ? { id: 'TYPE-02', status: 'fail', key: 'title-ratio', selector: data.title.selector, measure }
+      : { id: 'TYPE-02', status: 'pass', key: 'checked', measure });
+  }
+  const motives = [
+    ['line-length', data.blocks.filter((b) => b.chars / b.lines > MAX_LINE_CHARS).map((b) => ({ selector: b.selector, value: Math.round(b.chars / b.lines) })), MAX_LINE_CHARS, 'max'],
+    ['leading', data.blocks.filter((b) => (b.tag === 'p' || b.tag === 'li') && b.lines >= 2 && b.leading < MIN_LEADING).map((b) => ({ selector: b.selector, value: round3(b.leading) })), MIN_LEADING, 'min'],
+    ['tiny-text', data.tiny.map((t) => ({ selector: t.selector, value: t.fontSize })), MIN_TEXT_PX, 'min'],
+  ];
+  let failed = false;
+  for (const [key, bad, threshold2, kind] of motives) {
+    if (!bad.length) continue;
+    failed = true;
+    const worst = bad.reduce((w, b) => ((kind === 'max' ? b.value > w.value : b.value < w.value) ? b : w), bad[0]);
+    out.push({ id: 'TYPE-01', status: 'fail', key, selector: worst.selector, measure: { count: bad.length, worst, threshold: threshold2 } });
+  }
+  if (!failed) out.push({ id: 'TYPE-01', status: 'pass', key: 'checked', measure: { checked: data.blocks.length } });
+  return out;
+}
+
 // Walks the page with Tab: every expected element must be reached, and look different.
 export async function keyboardFindings(page, { maxSteps = 200 } = {}) {
   const expected = await page.evaluate(inPage(collectFocusables));
@@ -387,13 +465,14 @@ export async function keyboardFindings(page, { maxSteps = 200 } = {}) {
   return out;
 }
 
-export async function runChecks(page, { targets } = {}) {
+export async function runChecks(page, { targets, register = 'unset' } = {}) {
   const contrast = contrastFindings(await page.evaluate(inPage(collectContrast)));
   const findings = [...contrast.findings];
   if (!findings.some((f) => f.status === 'fail')) findings.push({ id: 'COLOR-03', status: 'pass', key: 'checked', measure: { checked: contrast.checked } });
   const width = await page.evaluate(() => innerWidth);
   findings.push(...reflowFindings(await page.evaluate(inPage(collectReflow)), { width }));
   findings.push(...targetFindings(await page.evaluate(inPage(collectTargets)), { width, ...(targets ?? {}) }));
+  findings.push(...typeFindings(await page.evaluate(inPage(collectType)), { register }));
   findings.push(...fieldFindings(await page.evaluate(inPage(collectFields)), { width }));
   findings.push(...await keyboardFindings(page));
   return findings;

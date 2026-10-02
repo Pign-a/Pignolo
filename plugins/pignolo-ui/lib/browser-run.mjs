@@ -21,7 +21,7 @@ import { runChecks, runReducedMotionCheck, visibleTextSelectors } from './browse
 import { PageLoadError } from './browser-session.mjs';
 import { checkPng } from './png.mjs';
 
-export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01'];
+export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02'];
 const MAX_CROPS = 3;
 
 export async function preflight(url, { timeoutMs = 5000, fetchImpl = globalThis.fetch } = {}) {
@@ -99,7 +99,7 @@ function toEntries(raw, { page, catalog, before }) {
   });
 }
 
-export async function measurePage({ url, plan, open, before = null, catalog = loadCatalog(), page = pathOf(url), navTimeoutMs = 30000, settleMs = SETTLE_MS, targets = null }) {
+export async function measurePage({ url, plan, open, before = null, catalog = loadCatalog(), page = pathOf(url), navTimeoutMs = 30000, settleMs = SETTLE_MS, targets = null, register = 'unset' }) {
   const down = await preflight(url);
   if (down) return { browser: null, finalUrl: null, degraded: down, entries: toEntries(unverifiedAll(down), { page, catalog, before }) };
   let product = null;
@@ -120,7 +120,7 @@ export async function measurePage({ url, plan, open, before = null, catalog = lo
             const session = await sessionReason(tab, url, finalUrl);
             if (session) { degraded = session; raw.push(...unverifiedAll(session, at)); return; }
             const found = [];
-            for (const f of await runChecks(tab, { targets })) found.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
+            for (const f of await runChecks(tab, { targets, register })) found.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
             const visible = await visibleTextSelectors(tab);
             const left = await leftThePage(tab, url);
             if (left) { degraded = left; raw.push(...unverifiedAll(left, at)); return; }

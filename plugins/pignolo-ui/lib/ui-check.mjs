@@ -159,6 +159,20 @@ function withRuleResults(findings, found, ruleId, catRule, file) {
   findings.push(...resolved);
 }
 
+// Step 3 for one list of entries: a fail of a rule that accepts `intentional` (and is not floor)
+// that DESIGN.md lists becomes a pass with the reason. Also used on the browser entries.
+function applyIntentional(entries, info, byId) {
+  if (!info.intentional.length) return entries;
+  const why = new Map();
+  for (const item of info.intentional) {
+    const r = byId.get(item.id);
+    if (r && r.acceptsIntentional && !r.floor && !why.has(item.id)) why.set(item.id, String(item.why ?? ''));
+  }
+  return entries.map((e) => (e.status === 'fail' && e.floor !== true && why.has(e.id)
+    ? { ...e, status: 'pass', reason: `intentional: ${why.get(e.id)}` }
+    : e));
+}
+
 // Steps 1-3 over `dir` (the project or a materialized base), plus the base severity and the
 // fingerprint, so both runs are compared the same way. Files missing in `dir` are skipped.
 function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, applyRejections, site = null }) {
@@ -202,15 +216,8 @@ function evaluateDir({ dir, relFiles, domFiles = [], designRel, rules, catalog, 
       id: 'DESIGN-INVALID', status: 'unverified', severity: 'alto', key: 'rejected', file: designRel,
       reason: `DESIGN.md rejected by the validator${info.rejectMessage ? ` (${info.rejectMessage})` : ''}: pignolo.intentional ignored`,
     }];
-  } else if (info && info.intentional.length) {
-    const why = new Map();
-    for (const item of info.intentional) {
-      const r = byId.get(item.id);
-      if (r && r.acceptsIntentional && !r.floor && !why.has(item.id)) why.set(item.id, String(item.why ?? ''));
-    }
-    entries = entries.map((e) => (e.status === 'fail' && e.floor !== true && why.has(e.id)
-      ? { ...e, status: 'pass', reason: `intentional: ${why.get(e.id)}` }
-      : e));
+  } else if (info) {
+    entries = applyIntentional(entries, info, byId);
   }
 
   // base severity (the rule's, else the catalog's); ids outside the catalog must bring one
@@ -329,7 +336,13 @@ export async function runCheck({ project, files = [], design = null, base = null
   // (5) severity, (6) aggregation and order
   const entries = aggregate(scoped.map((e) => ({ ...e, severity: effectiveSeverity(e, byId.get(e.id)) }))).map(publicEntry);
   // Browser measures (browser.json) come scoped and with their severity: appended as they are.
-  if (measures) entries.push(...measures.entries.map(publicEntry));
+  if (measures) {
+    // Same step 3 as the rules: DESIGN.md intentional, unless the validator rejected the file.
+    const designFile = designRel ? path.join(root, designRel) : null;
+    const info = designFile && fs.existsSync(designFile) ? readDesign(designFile, designRel, catalog, readTokenSources(root)) : null;
+    const browserEntries = info && !info.reject ? applyIntentional(measures.entries, info, byId) : measures.entries;
+    entries.push(...browserEntries.map(publicEntry));
+  }
 
   const inputs = [...relFiles, ...domFiles, ...(designRel ? [designRel] : []), ...(measures ? [measures.file] : [])]
     .map((rel) => ({ file: rel, sha256: sha256(path.join(root, rel)) }));

@@ -68,3 +68,35 @@ test('--measures outside the project is refused', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /--measures está fuera del proyecto/);
 });
+
+// ---- Hito 4e, T3-b: pignolo.intentional also applies to the browser entries ----------------------------
+const DESIGN_WITH = (ids) => `---\ncolors:\n  primary: "#0b6bcb"\npignolo:\n  schema: 1\n  intentional:\n${ids.map((id) => `    - id: ${id}\n      why: "on purpose"\n`).join('')}---\n`;
+function withDesign(entries, ids) {
+  const s = setup(entries);
+  writeTree(s.root, { 'DESIGN.md': DESIGN_WITH(ids) });
+  return s;
+}
+const fpOf = (id) => `${id}|/|1440|light|k`;
+const gusto = (id, over = {}) => entry({ id, severity: 'medio', fingerprint: fpOf(id), selector: undefined, measure: { width: 1440, theme: 'light', page: '/' }, ...over });
+
+test('intentional turns a taste fail of browser.json into a pass with the reason', () => {
+  const s = withDesign([gusto('TYPE-02')], ['TYPE-02']);
+  const r = uiCheck(s, ['--files', 'src/a.css', '--design', 'DESIGN.md']);
+  assert.equal(r.status, 0, r.stderr);
+  const e = readOut(s.run).entries.find((x) => x.id === 'TYPE-02');
+  assert.deepEqual([e.status, e.reason], ['pass', 'intentional: on purpose']);
+});
+
+test('intentional does not touch a rule that refuses it (TARGET-01) nor a floor one (COLOR-03)', () => {
+  const s = withDesign([gusto('TARGET-01', { severity: 'alto' }), entry()], ['TARGET-01', 'COLOR-03']);
+  uiCheck(s, ['--files', 'src/a.css', '--design', 'DESIGN.md']);
+  const out = readOut(s.run).entries;
+  assert.equal(out.find((x) => x.id === 'TARGET-01').status, 'fail');
+  assert.equal(out.find((x) => x.fingerprint === 'COLOR-03|/|1440|light|#low').status, 'fail');
+});
+
+test('without DESIGN.md the browser entries are appended as they come (regression guard)', () => {
+  const s = setup([gusto('TYPE-02')]);
+  uiCheck(s, ['--files', 'src/a.css']);
+  assert.equal(readOut(s.run).entries.find((x) => x.id === 'TYPE-02').status, 'fail');
+});
