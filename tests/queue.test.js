@@ -517,6 +517,25 @@ test('pre-merge: repetición (R-6, D-7-3) (a) rojo y verde al repetir solo ese a
   assert.strictEqual(fs.readdirSync(sealDir(q.env, repoId)).filter((f) => f.startsWith(`${tree}-pre-merge-`)).length, 1, 'exactamente un sello pre-merge');
 });
 
+test('I9: la repetición expande {seed} y exporta PIGNOLO_TEST_SEED con la MISMA semilla de la corrida completa (D-7-3)', () => {
+  const q = qrepo({ files: false });
+  write(q.main, '.pignolo/project.md', '---\ntype: code-tested\ngates:\n  pre-merge: "node seedgate.js {seed}"\ntest-paths:\n  - tests/\n---\n');
+  write(q.main, 'seedgate.js', [
+    "const fs = require('fs'); const log = process.env.H7_LOG;",
+    "const n = fs.readFileSync(log, 'utf8').split('\\n').filter(Boolean).length;",
+    'fs.appendFileSync(log, `run arg=${process.argv[2]} env=${process.env.PIGNOLO_TEST_SEED}\\n`);',
+    'process.exit(n === 0 ? 1 : 0);',
+  ].join('\n'));
+  commitAll(q.main, 'gate con semilla');
+  git(['branch', '-f', 'int/p', 'main'], q.main);
+  taskBranch(q.main, 'task/p/01-a', { 'src/a.txt': 'a\n' });
+  const e = kindOf(() => q.run('task/p/01-a'));
+  assert.strictEqual(e.kind, 'flaky', e.message);
+  const [first, second] = q.log();
+  assert.match(first, /^run arg=\d+ env=\d+$/);
+  assert.strictEqual(second, first, 'la repetición corre el mismo argumento y la misma semilla');
+});
+
 test('pre-merge: repetición (b) roja y roja de nuevo es gate-failed', () => {
   const q = qrepo();
   q.setCtl({ exits: [1], filesExits: [1] });

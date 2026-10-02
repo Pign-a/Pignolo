@@ -10,6 +10,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const B = require('./branches');
 const { realNorm } = require('./real-path');
+const { expandSeed } = require('./init-seed');
 const { matchAny } = require('./globs');
 const { readProjectConfig } = require('./project-config');
 const { runGate } = require('./gate');
@@ -449,12 +450,14 @@ function makeAfterRun({ git, wt, cfg, intSha, env, timeoutMs }) {
   const testFiles = () => (tryRun(git, ['ls-files'], { cwd: wt }) || '').split('\n').filter((f) => f && matchAny(cfg.testPaths, f));
   const touchedTests = () => (tryRun(git, ['diff', '--name-only', '--no-renames', intSha, 'HEAD'], { cwd: wt }) || '').split('\n')
     .filter((f) => f && matchAny(cfg.testPaths, f) && fs.existsSync(path.join(wt, f)));
-  return ({ status, log }) => {
+  return ({ status, log, seal }) => {
+    // La repetición corre lo mismo que la corrida completa: la misma semilla en {seed} y en PIGNOLO_TEST_SEED (I9, D-7-3).
+    const extraRun = (command, o) => directRun(expandSeed(command, seal.seedOffered), { ...o, env: { ...(o.env || process.env), PIGNOLO_TEST_SEED: String(seal.seedOffered) } });
     const repeat = { runs: 1, same: true, differing: [], available: Boolean(filesCmd) };
     if (status === 'FAIL') {
       const failed = filesCmd ? failedFiles(log, testFiles()) : [];
       const byFiles = Boolean(filesCmd) && failed.length > 0;
-      const r = directRun(byFiles ? expandFiles(filesCmd, failed) : cfg.gates['pre-merge'], { cwd: wt, timeoutMs, env });
+      const r = extraRun(byFiles ? expandFiles(filesCmd, failed) : cfg.gates['pre-merge'], { cwd: wt, timeoutMs, env });
       repeat.runs = 2;
       repeat.mode = byFiles ? 'failed-files' : 'full-suite';
       if (r.exit === 0) {
@@ -470,7 +473,7 @@ function makeAfterRun({ git, wt, cfg, intSha, env, timeoutMs }) {
     if (!filesCmd) return { repeat: { ...repeat, available: false, reason: 'no-files-command' } };
     const differing = new Set();
     for (let i = 0; i < 3; i += 1) {
-      const r = directRun(expandFiles(filesCmd, touched), { cwd: wt, timeoutMs, env });
+      const r = extraRun(expandFiles(filesCmd, touched), { cwd: wt, timeoutMs, env });
       repeat.runs += 1;
       if (r.exit !== 0) {
         const f = failedFiles(r.log, touched);
