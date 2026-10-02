@@ -378,3 +378,28 @@ test('I-4: si la carpeta frenada tampoco se puede adoptar (validatePlacePath), e
   assert.equal(p.places.spec, undefined);
   assert.ok(p.leftKinds.includes('spec'));
 });
+
+// Corte de planificación repetida: sin ítems descartados no se vuelve a planificar ni a escanear el mismo conjunto
+test('planAdaptation escanea las referencias una sola vez cuando ningún ítem se descarta (y repite si se descarta uno)', () => {
+  const countScans = (repo, answers) => {
+    const real = SM.makeRun(repo);
+    let scans = 0;
+    const run = (args, cwd, o) => { if (args[0] === 'ls-files' && args.includes('-c') && args.includes('-o') && args.includes('--exclude-standard')) scans += 1; return real(args, cwd, o); };
+    const p = plan(repo, answers, { run });
+    return { scans, p };
+  };
+  const ok = countScans(base(), { places: MOVE_SPEC });
+  assert.equal(ok.p.decisions[0].effective, 'move');
+  assert.equal(ok.scans, 1);
+  assert.equal(ok.p.moves.items.length, 1);
+
+  const repo = base();
+  put(repo, '.gitignore', 'doc/specs/*.pdf\n');
+  commitAll(repo, 'ig');
+  put(repo, 'doc/specs/x.pdf', 'pdf\n');
+  const dropped = countScans(repo, { places: { ...MOVE_SPEC, plan: { decision: 'move', from: 'doc/plans/' } } });
+  assert.equal(dropped.p.decisions.find((d) => d.kind === 'spec').effective, 'adopt');
+  assert.equal(dropped.p.decisions.find((d) => d.kind === 'plan').effective, 'move');
+  assert.equal(dropped.scans, 2, 'con un ítem descartado el conjunto cambió: se vuelve a escanear');
+  assert.deepEqual(dropped.p.moves.items.map((i) => i.from), ['doc/plans']);
+});

@@ -342,9 +342,8 @@ function planMoves({ main, items, config, run, fs = nodeFs } = {}) {
   const git = run || makeRun(main);
   const ctx = { main, fs, run: git, config };
   let busy = { merging: null, locked: false };
-  let stagedOther = 0;
   let scanError = null;
-  try { busy = repoBusy(git, main, fs); stagedOther = gitList(git, main, ['diff', '--cached', '--name-only', '-z']).length; } catch (e) { scanError = e; }
+  try { busy = repoBusy(git, main, fs); } catch (e) { scanError = e; }
   const planned = items.map((it) => (scanError ? { kind: it.kind === 'file' ? 'file' : 'dir', from: norm(it.from), to: norm(it.to), tracked: false, files: 0, status: 'refused', reason: 'scan-failed', detail: scanError.message } : planOne(ctx, it, busy)));
   const batch = { ok: true };
   for (let i = 0; i < planned.length; i += 1) {
@@ -361,7 +360,7 @@ function planMoves({ main, items, config, run, fs = nodeFs } = {}) {
     }
   }
   const ok = planned.every((i) => i.status === 'ok') && batch.ok;
-  return { ok, items: planned, batch, stagedOther };
+  return { ok, items: planned, batch };
 }
 
 // ---------------------------------------------------------------- registro (R-12)
@@ -500,7 +499,7 @@ function applyMoves({ main, plan, config, rewrites = [], mapEdits = [], env = pr
     updateRecord(recFile, (r) => { r.items[k].status = 'done'; }, fs);
   }
   updateRecord(recFile, (r) => { r.status = 'applied'; }, fs);
-  return { ok: true, record: recFile, items: record.items.map((i) => ({ ...i, status: 'done' })), createdDirs, stagedOther: again.stagedOther };
+  return { ok: true, record: recFile, items: record.items.map((i) => ({ ...i, status: 'done' })), createdDirs };
 }
 
 // ---------------------------------------------------------------- undoMoves (R-12)

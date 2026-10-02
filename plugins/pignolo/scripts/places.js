@@ -118,7 +118,7 @@ function buildFix({ main, config, deps }) {
   const s = findStray({ root: main, run: git, fs, config });
   const fixable = s.misplaced.filter((m) => m.suggest);
   const wanted = fixable.map((m) => ({ kind: 'file', from: m.suggest.from, to: m.suggest.to }));
-  const moves = wanted.length ? SM.planMoves({ main, items: wanted, config, run: git, fs }) : { ok: true, items: [], batch: { ok: true }, stagedOther: 0 };
+  const moves = wanted.length ? SM.planMoves({ main, items: wanted, config, run: git, fs }) : { ok: true, items: [], batch: { ok: true } };
   const okItems = moves.items.filter((i) => i.status === 'ok').map((i) => ({ kind: i.kind, from: i.from, to: i.to }));
   const refs = okItems.length ? RS.scanReferences({ main, moves: okItems, run: git, fs }) : { refs: [], rewritable: [], manual: [], warnings: [], unscanned: [] };
   const rewrites = okItems.length ? RS.planRewrites({ main, moves: okItems, refs: refs.refs, fs }) : { files: [] };
@@ -137,7 +137,7 @@ function buildFix({ main, config, deps }) {
 function fixPreview({ main, deps }) {
   const { config } = readConfig(main, { strict: false });
   const b = buildFix({ main, config, deps });
-  return { body: { ok: true, items: b.items, moves: { ok: b.moves.ok, batch: b.moves.batch, stagedOther: b.moves.stagedOther }, refs: { rewritable: b.refs.rewritable.length, manual: b.refs.manual.map((r) => ({ file: r.file, line: r.line, class: r.class })), unscanned: b.refs.unscanned.length }, rewrites: b.rewrites.files.map((f) => ({ file: f.file, edits: f.edits })), stamp: b.stamp }, code: 0 };
+  return { body: { ok: true, items: b.items, moves: { ok: b.moves.ok, batch: b.moves.batch }, refs: { rewritable: b.refs.rewritable.length, manual: b.refs.manual.map((r) => ({ file: r.file, line: r.line, class: r.class })), unscanned: b.refs.unscanned.length }, rewrites: b.rewrites.files.map((f) => ({ file: f.file, edits: f.edits })), stamp: b.stamp }, code: 0 };
 }
 
 function fixApply({ main, o, deps }) {

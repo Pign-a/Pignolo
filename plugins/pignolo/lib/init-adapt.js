@@ -158,7 +158,7 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
 
   const candidatesMoves = () => decisions.filter((d) => d.decision === 'move' && d.effective === 'move' && !d.refused);
   const toItem = (d) => ({ kind: 'dir', from: stripSlash(d.from), to: stripSlash(d.to) });
-  const emptyMoves = { ok: true, items: [], batch: { ok: true }, stagedOther: 0 };
+  const emptyMoves = { ok: true, items: [], batch: { ok: true } };
   const emptyRefs = { refs: [], rewritable: [], manual: [], warnings: [], unscanned: [] };
   let moves = emptyMoves;
   let refs = emptyRefs;
@@ -166,6 +166,8 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
 
   let movers = candidatesMoves();
   if (movers.length) {
+    const startCount = movers.length;
+    let scanned = null;
     const first = SM.planMoves({ main, items: movers.map(toItem), config, run: git, fs });
     movers.forEach((d, i) => {
       const it = first.items[i];
@@ -174,7 +176,7 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
     movers = candidatesMoves();
     if (movers.length) {
       const okItems = movers.map(toItem);
-      const scanned = RS.scanReferences({ main, moves: okItems, run: git, fs });
+      scanned = RS.scanReferences({ main, moves: okItems, run: git, fs });
       movers.forEach((d, i) => {
         const manual = scanned.manual.filter((r) => r.move === i);
         if (manual.length) {
@@ -186,8 +188,10 @@ function planAdaptation({ main, answers = {}, config, detection, run, fs = nodeF
     }
     if (movers.length) {
       const finalItems = movers.map(toItem);
-      moves = SM.planMoves({ main, items: finalItems, config, run: git, fs });
-      refs = RS.scanReferences({ main, moves: finalItems, run: git, fs });
+      // Si ningún ítem se descartó en las dos pasadas, el conjunto es el mismo que ya se planificó y escaneó: no se repite (applyMoves re-planifica igual antes de mover).
+      const unchanged = scanned !== null && movers.length === startCount;
+      moves = unchanged ? first : SM.planMoves({ main, items: finalItems, config, run: git, fs });
+      refs = unchanged ? scanned : RS.scanReferences({ main, moves: finalItems, run: git, fs });
       rewrites = RS.planRewrites({ main, moves: finalItems, refs: refs.refs, fs });
       movers.forEach((d, i) => { d.blockedBy = d.forced ? refs.manual.filter((r) => r.move === i) : []; });
     }
