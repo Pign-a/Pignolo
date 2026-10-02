@@ -162,3 +162,79 @@ test('por el handler: el payload con agent_id/agent_type decide; sin agent_id (h
   assert.strictEqual(call({ agent_id: 'a1', agent_type: 'pignolo:integrator' }).exit, 0);
   assert.strictEqual(call({}).exit, 0);
 });
+
+// ---- Fix pass 7a (I1, I2, I3): formas de git plano y de node que escribían refs protegidas o corrían la cola ----
+function repoOnInt() {
+  const repo = makeRepo();
+  git(['branch', 'int/p'], repo);
+  git(['branch', 'task/p/01-a'], repo);
+  const wt = path.join(makeTempDir('pignolo-wt-'), 'wt');
+  git(['worktree', 'add', '-q', wt, 'task/p/01-a'], repo);
+  git(['checkout', '-q', 'int/p'], repo);
+  return { repo: repo.split(path.sep).join('/'), wt: wt.split(path.sep).join('/') };
+}
+
+test('I1: -C, branch/tag con -v/--sort/--format, revert, am, worktree add, rebase con rama, push --delete y symbolic-ref se niegan', () => {
+  const { repo } = repoOnInt();
+  const other = makeTempDir('pignolo-other-').split(path.sep).join('/');
+  const deny = [
+    `git -C "${repo}" commit -am x`, `git -C "${repo}" reset --soft HEAD~1`, `git -C "${repo}" revert --no-edit HEAD`,
+    `cd "${repo}" && git revert --no-edit HEAD`, `cd "${repo}" && git am x.patch`,
+    'git -C "$D" commit -m x', `git --git-dir="${repo}/.git" commit -m x`,
+    'git branch -v -f int/p main~1', 'git branch -v int/p2', 'git branch --format=x int/p3', 'git branch -a int/p4', 'git branch --sort=refname -f int/p HEAD~1',
+    'git tag --sort=refname cp/p/9', 'git tag --format=x cp/p/8',
+    'git worktree add -B int/p ../x main', 'git worktree add -b int/p2 ../x', 'git worktree add ../x int/p',
+    'git rebase main int/p', 'git rebase --onto main HEAD~1 int/p',
+    'git push . --delete int/p', 'git push -d . int/p',
+    'git symbolic-ref refs/heads/int/p refs/heads/main', 'git symbolic-ref HEAD refs/heads/int/p',
+  ];
+  for (const cmd of deny) assert.strictEqual(rule(cmd, { cwd: other }), 'pignolo-protected-refs', cmd);
+  // pasan: lo mismo apuntado a una rama de tarea, lecturas con -C y las listas
+  const allow = [
+    `git -C "${repo}" log --oneline`, `git -C "${repo}" status`, `git -C "${repo}" diff`,
+    'git branch --contains int/p', 'git branch --list "int/*"', 'git branch -a', 'git branch -v', 'git branch --show-current',
+    'git tag -v cp/p/1', 'git tag -n cp/p/1', 'git tag --points-at HEAD',
+    'git worktree add ../x main', 'git worktree add -b task/p/01-a ../x int/p', 'git worktree list',
+    'git rebase int/p', 'git symbolic-ref HEAD', 'git symbolic-ref --short HEAD',
+  ];
+  for (const cmd of allow) assert.strictEqual(rule(cmd, { cwd: other }), 'allow', cmd);
+});
+
+test('I1: -C a la worktree de la tarea (rama task/...) pasa; con HEAD en int/p se niega', () => {
+  const { repo, wt } = repoOnInt();
+  const other = makeTempDir('pignolo-other-').split(path.sep).join('/');
+  for (const cmd of [`git -C "${wt}" commit -m x`, `git -C "${wt}" revert HEAD`]) assert.strictEqual(rule(cmd, { cwd: other }), 'allow', cmd);
+  assert.strictEqual(rule(`git -C "${wt}" commit -m x`, { cwd: repo }), 'allow', 'cwd en int/p pero -C va a la tarea');
+  assert.strictEqual(rule(`git -C "${repo}" commit -m x`, { cwd: wt }), 'pignolo-protected-refs', 'cwd en la tarea pero -C va a int/p');
+  const sub = path.basename(wt);
+  assert.strictEqual(rule(`git -C ../${sub} commit -m x`, { cwd: repo }), 'allow', '-C relativo se resuelve contra el cwd');
+  assert.strictEqual(rule(`git -C . commit -m x`, { cwd: repo }), 'pignolo-protected-refs', '-C relativo al cwd en int/p');
+  assert.notStrictEqual(rule(`git -C "${repo}" commit -m x`, { cwd: wt, subagent: false, agentType: null }), 'pignolo-protected-refs', 'hilo principal');
+});
+
+test('I2: crear una rama desde int/* como punto de partida pasa; con start point protegido sin flag de crear se niega', () => {
+  for (const cmd of ['git checkout -b x int/p', 'git switch -c task/p/02-b int/p', 'git switch --create y int/p'])
+    assert.strictEqual(rule(cmd), 'allow', cmd);
+  for (const cmd of ['git checkout -b int/x', 'git switch -c queue/y int/p', 'git switch int/p', 'git checkout int/p', 'git switch --detach int/p'])
+    assert.strictEqual(rule(cmd), 'pignolo-protected-refs', cmd);
+});
+
+test('I3: el script como cualquier operando del intérprete (opciones de node con valor) y node -e que carga la lib', () => {
+  const run = `"${P}/scripts/queue.js" run --plan p --task 01`;
+  for (const cmd of [
+    `node --title x ${run}`, `node --disable-warning x ${run}`, `node --max-old-space-size 100 ${run}`, `node --foo bar --baz ${run}`,
+    `node --title x "${P}/scripts/worktree.js" create --plan p --nn 01 --slug a`, `node --title x "${P}/scripts/cleanup.js" apply --proposal x`,
+  ]) assert.notStrictEqual(rule(cmd), 'allow', cmd);
+  assert.strictEqual(rule(`node --title x ${run}`), 'pignolo-queue');
+  assert.strictEqual(rule(`node --title x "${P}/scripts/worktree.js" create --plan p`), 'pignolo-worktree-tools');
+  assert.strictEqual(rule(`node -e "require('${P}/lib/queue.js').integrate({})"`), 'pignolo-queue');
+  assert.strictEqual(rule(`node -e "require('${P}/lib/branch-cleanup').apply({})"`), 'pignolo-worktree-tools');
+  assert.strictEqual(rule(`node -p "require('${P}/lib/worktrees.js').createTaskWorktree({})"`), 'pignolo-worktree-tools');
+  // siguen pasando: lectura de estado, el integrator, el hilo principal, la lib sin eval y --check
+  assert.strictEqual(rule(`node --title x "${P}/scripts/queue.js" status --plan p`), 'allow');
+  assert.strictEqual(rule(`node --title x ${run}`, { agentType: 'pignolo:integrator' }), 'allow');
+  assert.strictEqual(rule(`node --title x ${run}`, { subagent: false, agentType: null }), 'allow');
+  assert.strictEqual(rule(`node --check "${P}/lib/queue.js"`), 'allow');
+  assert.strictEqual(rule(`cat "${P}/lib/queue.js"`), 'allow');
+  assert.strictEqual(rule('node --title x runner.js'), 'allow');
+});

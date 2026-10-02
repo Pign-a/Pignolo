@@ -956,11 +956,10 @@ const TOOL_JS_LITERAL = new RegExp(`(?:^|/)(?:plugins/pignolo|\\.claude/plugins/
 const TOOL_JS_DYN = new RegExp(`^\\$(?:\\{(?:env:)?CLAUDE_PLUGIN_ROOT\\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\\\/]scripts[\\\\/]${TOOL_NAMES}$`, 'i');
 const TOOL_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/${TOOL_NAMES}$`);
 // `node -e|-p|--eval|--print` con el script bajo la ruta del plugin dentro del código: lo carga y corre su main.
-const EVAL_TOOL_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/)scripts/(queue|worktree|cleanup)(?![\\w-])`, 'i');
+const EVAL_TOOL_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/)(?:scripts/(queue|worktree|cleanup)|lib/(queue|branch-cleanup|worktrees))(?![\\w-])`, 'i');
+const EVAL_LIB_TOOL = { queue: 'queue', 'branch-cleanup': 'cleanup', worktrees: 'worktree' };
 // Subcomandos de solo lectura de cada script: los puede correr cualquier subagente.
 const TOOL_READ = { queue: 'status', worktree: 'list', cleanup: 'report' };
-// Opciones de node con valor (se saltan para hallar el script; -r/--require/--import con el script ya los cubre la rama de eval).
-const NODE_VALUE_OPTS = new Set(['-r', '--require', '--import', '-e', '--eval', '-p', '--print', '--input-type', '--loader', '--experimental-loader', '-C', '--conditions']);
 
 function toolOf(w, st, ctx) {
   if (w.dyn) { const m = TOOL_JS_DYN.exec(w.value); return m ? m[1].toLowerCase() : null; }
@@ -1003,17 +1002,11 @@ function checkToolScripts(name, words, st, ctx, out) {
     // `node --check <script>` solo mira la sintaxis: leer no se niega.
     if ((name === 'node' || name === 'nodejs') && !evalFlag && leading.some((v) => v === '--check' || v === '-c')) return;
     if (evalFlag) {
-      for (const w of argv) { const m = EVAL_TOOL_SCRIPT.exec(w.value.replace(/\\+/g, '/').replace(/\/+/g, '/')); if (m) { deny(m[1].toLowerCase()); return; } }
+      for (const w of argv) { const m = EVAL_TOOL_SCRIPT.exec(w.value.replace(/\\+/g, '/').replace(/\/+/g, '/')); if (m) { deny(m[1] ? m[1].toLowerCase() : EVAL_LIB_TOOL[m[2].toLowerCase()]); return; } }
     }
-    for (let i = 1; i < words.length; i++) {
-      const v = words[i].value;
-      if (!words[i].dyn && v.startsWith('-')) {
-        if (NODE_VALUE_OPTS.has(v) && words[i + 1]) i++;
-        continue;
-      }
-      cands.push(i);
-      break;
-    }
+    // Cualquier operando del intérprete que sea la ruta de una herramienta (como el holdout): una opción de node con valor
+    // propio (`--title x`) no oculta el script (I3).
+    for (let i = 1; i < words.length; i++) cands.push(i);
   }
   for (const i of cands) {
     const w = words[i];
@@ -1032,10 +1025,12 @@ function checkToolScripts(name, words, st, ctx, out) {
 const PROT_BRANCH = /^(?:refs\/heads\/)?(?:int|queue)\/./;
 const PROT_TAG = /^(?:refs\/tags\/)?(?:cp|contract)\/./;
 const PROT_FULL = /^refs\/(?:heads\/(?:int|queue)|tags\/(?:cp|contract))\/./;
-const BRANCH_READ_SHORTS = ['l', 'a', 'r', 'v'];
-const BRANCH_READ_LONGS = ['list', 'all', 'remotes', 'verbose', 'show-current', 'merged', 'no-merged', 'contains', 'no-contains', 'points-at', 'format', 'sort'];
+// Solo estas opciones ponen a git en modo lista (los operandos son patrones): -v, -a, -r, --sort y --format NO (I1).
+const BRANCH_READ_SHORTS = ['l'];
+const BRANCH_READ_LONGS = ['list', 'show-current', 'merged', 'no-merged', 'contains', 'no-contains', 'points-at'];
 const TAG_READ_SHORTS = ['l', 'n', 'v'];
-const TAG_READ_LONGS = ['list', 'verify', 'contains', 'no-contains', 'points-at', 'merged', 'no-merged', 'format', 'sort'];
+const TAG_READ_LONGS = ['list', 'verify', 'contains', 'no-contains', 'points-at', 'merged', 'no-merged'];
+const HEAD_VERBS = new Set(['merge', 'reset', 'rebase', 'cherry-pick', 'commit', 'pull', 'revert', 'am']);
 
 // Rama de HEAD de un directorio, leyendo el disco (sin git): sube hasta `.git` (carpeta o archivo `gitdir:`).
 function headBranchOf(dir) {
@@ -1071,14 +1066,45 @@ const refspecWrites = (v) => {
   return PROT_BRANCH.test(dst) || PROT_TAG.test(dst) || PROT_FULL.test(dst);
 };
 
-function protectsRefs(sub, o, st) {
+// Directorios donde se evalúa la rama de HEAD: el cwd real, o el de `-C <dir>` resuelto contra él. null: con -C /
+// --git-dir / --work-tree no se pudo resolver (variable, sin cwd conocido): un verbo que depende de HEAD se niega.
+function headDirs(st, redir) {
+  if (!redir) return realDirs(st);
+  if (redir.unresolved) return null;
+  let dirs = realDirs(st);
+  for (const d of redir.dirs) {
+    if (path.isAbsolute(d)) dirs = [path.resolve(d)];
+    else if (dirs.length) dirs = dirs.map((x) => path.resolve(x, d));
+    else return null;
+  }
+  return dirs;
+}
+
+function protectsRefs(sub, o, st, redir) {
   const pos = o.positionals.map((w) => w.value);
   const hasShort = (list) => list.some((c) => o.shorts.has(c));
   const hasLong = (list) => list.some((n) => o.longs.includes(n));
+  if (HEAD_VERBS.has(sub)) {
+    const dirs = headDirs(st, redir);
+    if (dirs === null) return true;
+    if (sub === 'pull' && pos.slice(1).some(refspecWrites)) return true;
+    if (sub === 'rebase' && PROT_BRANCH.test(pos[1] || '')) return true; // git rebase <upstream> <rama>: la saca y la reescribe
+    return dirs.some((d) => /^(?:int|queue)\//.test(headBranchOf(d) || ''));
+  }
   switch (sub) {
     case 'switch':
-    case 'checkout':
-      return [...(pos.length ? [pos[0]] : []), ...o.vals].some((x) => PROT_BRANCH.test(x));
+    case 'checkout': {
+      // Con flag de crear, el operando es el punto de partida: solo cuenta el nombre creado.
+      const creates = hasShort(['c', 'C', 'b', 'B']) || hasLong(['create', 'force-create', 'orphan']);
+      return (creates ? o.vals : [...(pos.length ? [pos[0]] : []), ...o.vals]).some((x) => PROT_BRANCH.test(x));
+    }
+    case 'worktree': {
+      if (pos[0] !== 'add') return false;
+      if (o.vals.some((x) => PROT_BRANCH.test(x))) return true; // -b/-B <rama>
+      return !hasShort(['b', 'B']) && !hasLong(['detach', 'orphan']) && PROT_BRANCH.test(pos[2] || '');
+    }
+    case 'symbolic-ref':
+      return PROT_FULL.test(pos[0] || '') || (pos[0] === 'HEAD' && PROT_FULL.test(pos[1] || ''));
     case 'tag':
       if (hasShort(TAG_READ_SHORTS) || hasLong(TAG_READ_LONGS)) return false;
       return pos.some((x) => PROT_TAG.test(x));
@@ -1090,16 +1116,11 @@ function protectsRefs(sub, o, st) {
     case 'update-ref':
       return pos.length > 0 && PROT_FULL.test(pos[0]);
     case 'push':
+      // push --delete / -d: los operandos tras el remoto son nombres a borrar, no refspecs.
+      if (hasShort(['d']) || hasLong(['delete'])) return pos.slice(1).some((x) => PROT_BRANCH.test(x) || PROT_TAG.test(x) || PROT_FULL.test(x));
+      return pos.slice(1).some(refspecWrites);
     case 'fetch':
       return pos.slice(1).some(refspecWrites);
-    case 'pull':
-      return pos.slice(1).some(refspecWrites) || realDirs(st).some((d) => /^(?:int|queue)\//.test(headBranchOf(d) || ''));
-    case 'merge':
-    case 'reset':
-    case 'rebase':
-    case 'cherry-pick':
-    case 'commit':
-      return realDirs(st).some((d) => /^(?:int|queue)\//.test(headBranchOf(d) || ''));
     default:
       return false;
   }
@@ -1142,6 +1163,8 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   let i = 1;
   let sub;
   let redirected = Boolean(cmd.gitRedirect);
+  // Los -C literales (en orden) y si algún directorio no se puede resolver: lo usa la regla de refs protegidas (I1).
+  const redir = { dirs: [], unresolved: Boolean(cmd.gitRedirect) };
   const lost = () => { if (ctx.collect) ctx.collect.push({ sub: null, incomplete: true }); };
   const cfg = [];
   let cfgUnknown = false;
@@ -1153,9 +1176,15 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       const w = words[i];
       const v = w.value;
       // El directorio de -C / --git-dir / --work-tree puede ser dinámico: solo se permiten lecturas.
-      if (!w.dyn && (v === '-C' || v === '--git-dir' || v === '--work-tree')) { redirected = true; i++; continue; }
+      if (!w.dyn && (v === '-C' || v === '--git-dir' || v === '--work-tree')) {
+        redirected = true;
+        const nx = words[i + 1];
+        if (v === '-C' && nx && !nx.dyn) redir.dirs.push(nx.value); else redir.unresolved = true;
+        i++;
+        continue;
+      }
       const dirOpt = /^(-C|--git-dir=|--work-tree=)/.exec(v);
-      if (dirOpt && (!w.dyn || w.dynAt >= dirOpt[0].length)) { redirected = true; continue; }
+      if (dirOpt && (!w.dyn || w.dynAt >= dirOpt[0].length)) { redirected = true; redir.unresolved = true; continue; }
       if (w.dyn) { lost(); out.push(hit('dynamic-argument')); return; }
       if (!v.startsWith('-') || v === '-') break;
       if (v === '-c' || v === '--config-env') {
@@ -1208,7 +1237,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   // Programas que git ejecuta por opción (G7): --upload-pack, --receive-pack, --exec, clone/ls-remote -u.
   if (longIs(o, 'upload-pack') || longIs(o, 'receive-pack') || (['push', 'archive', 'send-pack'].includes(sub) && longIs(o, 'exec'))
     || (['clone', 'ls-remote'].includes(sub) && o.shorts.has('u'))) out.push(hit('git-shell'));
-  for (const r of gitRules(sub, o, args, ctx, inner)) out.push(hit(r));
+  for (const r of gitRules(sub, o, args, ctx, inner, st, redirected ? redir : null)) out.push(hit(r));
   // Con un candado de sabotaje en el worktree (§11.6), commit y add guardarían el código
   // saboteado. Un existsSync por directorio: sin git, dentro del plazo de 3 s.
   if ((sub === 'commit' || sub === 'add') && realDirs(st).some((d) => lockedAt(d))) out.push(hit('sabotage-lock'));
@@ -1223,9 +1252,9 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   done();
 }
 
-function gitRules(sub, o, args, ctx, st) {
+function gitRules(sub, o, args, ctx, st, realSt, redir) {
   const base = gitRulesBase(sub, o, args, ctx, st);
-  return ctx.subagent && protectsRefs(sub, o, st) ? [...base, 'pignolo-protected-refs'] : base;
+  return ctx.subagent && protectsRefs(sub, o, realSt || st, redir) ? [...base, 'pignolo-protected-refs'] : base;
 }
 
 function gitRulesBase(sub, o, args, ctx, st) {
