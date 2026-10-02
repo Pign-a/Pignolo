@@ -101,7 +101,8 @@ function report({ main, deps }) {
   const list = PLACE_KINDS.filter((k) => places[k].path).map((k) => ({ kind: k, path: places[k].path, source: places[k].source, exists: exists(fs, main, places[k].path) }));
   const missing = list.filter((p) => p.source === 'declared' && !p.exists).map((p) => p.kind);
   const left = [...new Set(detection.candidates.filter((c) => places[c.kind].source !== 'declared' && c.path !== (PLACE_DEFAULTS[c.kind] || '')).map((c) => c.kind))];
-  const n = s.stray.length + s.misplaced.length;
+  // Solo los sueltos de gravedad alta y los mal ubicados cuentan (un Makefile sin versionar es info y nunca se mueve).
+  const n = s.stray.filter((x) => x.severity === 'high').length + s.misplaced.length;
   const summary = n === 0 ? '' : `${n} archivos sueltos o mal ubicados: corré \`places.js report\` para verlos y moverlos`;
   return { body: { ok: true, places: list, missing, left, stray: s.stray, misplaced: s.misplaced, caseCollisions: detection.caseCollisions, warnings, summary, lines: summary ? 1 : 0 }, code: 0 };
 }
@@ -130,7 +131,7 @@ function buildFix({ main, config, deps }) {
   const stamp = crypto.createHash('sha256').update(JSON.stringify({
     head: headOf(git, main), items, hashes, tracked: moves.items.map((i) => i.tracked), rewrites: rewrites.files.map((f) => [f.file, f.sha256Before, f.sha256After]), stray: s.stray.map((x) => x.path),
   })).digest('hex').slice(0, 24);
-  return { stray: s.stray, items, moves, refs, rewrites, stamp, git, fs };
+  return { stray: s.stray, misplaced: s.misplaced, items, moves, refs, rewrites, stamp, git, fs };
 }
 
 function fixPreview({ main, deps }) {
@@ -153,6 +154,8 @@ function fixApply({ main, o, deps }) {
   for (const rel of approval.approved.map(SM.norm)) {
     const it = known.get(rel);
     if (it) { if (it.status === 'ok') chosen.push({ kind: it.kind, from: it.from, to: it.to }); else refusedOnes.push({ from: rel, status: 'refused', reason: it.reason || it.status, ...(it.blockedBy ? { blockedBy: it.blockedBy } : {}) }); continue; }
+    const taken = b.misplaced.find((x) => x.path === rel && x.reason);
+    if (taken) { refusedOnes.push({ from: rel, status: 'refused', reason: taken.reason }); continue; }
     if (b.stray.some((x) => x.path === rel)) { refusedOnes.push({ from: rel, status: 'refused', reason: 'stray-never-moves' }); continue; }
     if (SM.nonDocFile(rel)) { refusedOnes.push({ from: rel, status: 'refused', reason: 'contains-non-doc' }); continue; }
     throw new Usage(`${rel} no está en la vista previa: no se puede aprobar un movimiento que no se mostró`);

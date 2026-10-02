@@ -240,3 +240,38 @@ test('fuera de un repo: not-a-repo con Alternativa en stderr', () => {
   assert.equal(r.json.kind, 'not-a-repo');
   assert.match(r.stderr, /Alternativa:/);
 });
+
+// ---------------------------------------------------------------- M-5 y M-6
+
+test('M-5: un suelto info (Makefile sin versionar) no dispara la línea de status; uno high sí', () => {
+  const repo = makeRepo();
+  put(repo, 'docs/specs/ok.md');
+  commitAll(repo);
+  put(repo, 'Makefile', 'all:\n');
+  put(repo, 'vercel.json', '{}\n');
+  let r = cli(['report', '--cwd', repo]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.json.stray.length >= 2, 'siguen listados en report');
+  assert.equal(r.json.summary, '');
+  assert.equal(r.json.lines, 0);
+  put(repo, '.env', 'A=1\n');
+  r = cli(['report', '--cwd', repo]);
+  assert.match(r.json.summary, /^1 archivos sueltos o mal ubicados/);
+  assert.equal(r.json.lines, 1);
+});
+
+test('M-6: un mal ubicado con destino ocupado y sin versionar se informa dest-exists, no stray-never-moves', () => {
+  const repo = misplacedRepo();
+  put(repo, 'docs/specs/2026-10-03-c-design.md', 'ya está\n');
+  commitAll(repo, 'c');
+  put(repo, '2026-10-03-c-design.md', 'suelto\n');
+  const pv = cli(['fix', 'preview', '--cwd', repo]);
+  assert.equal(pv.status, 0, pv.stderr);
+  const ap = cli(['fix', 'apply', '--moves', approvalFile(['2026-10-03-c-design.md', '2026-10-01-a-design.md']), '--expect', pv.json.stamp, '--cwd', repo]);
+  assert.equal(ap.status, 0, ap.stderr);
+  const byFrom = Object.fromEntries(ap.json.items.map((i) => [i.from, i]));
+  assert.equal(byFrom['2026-10-03-c-design.md'].status, 'refused');
+  assert.equal(byFrom['2026-10-03-c-design.md'].reason, 'dest-exists');
+  assert.equal(byFrom['2026-10-01-a-design.md'].status, 'done');
+  assert.ok(fs.existsSync(path.join(repo, '2026-10-03-c-design.md')));
+});
