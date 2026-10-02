@@ -221,7 +221,7 @@ export const NO_CONTROL_IN_LINK = String.raw`<a\b[^>]*>(?:(?!</a>)[\s\S])*<(?:bu
 export const NO_RESERVED_TAGS = String.raw`<(?:x-dc|helmet|dc-import|sc-[a-z0-9-]*)\b`;
 // Sample data (spec 7.1): the mark on a value with text, the visible line, no bare marker, no contact data.
 export const SAMPLE_MARKED = String.raw`data-sample[^>]*>\s*[^<\s]`;
-export const NO_BARE_MARKER = String.raw`[‹›]`;
+export const NO_BARE_MARKER = String.raw`‹[^‹›<]*›`;
 export const NO_CONTACT = String.raw`[\w.+-]+@[\w-]+\.[\w.-]+|\+\d[\d ()-]{8,}\d`;
 export const NO_FONT_HOSTS = String.raw`fonts\.(?:googleapis|gstatic)\.com`;
 export const NO_REMOTE = String.raw`<(?:img|script|link|source|iframe|video|audio|embed|object|input)\b[^>]*\b(?:src|href|srcset|poster|data)\s*=\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|<base\b|url\(\s*["']?\s*(?:[a-z][a-z0-9+.-]*:)?//|@import\s+(?:url\(\s*)?["']?\s*(?:[a-z][a-z0-9+.-]*:)?//`;
