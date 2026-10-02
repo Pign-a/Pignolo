@@ -185,3 +185,27 @@ test('T2b: a second run in the same canvas (first false, page r2) writes no Main
   assert.ok(Object.values(r2.fragment.notes).every((n) => n.page === 'r2'));
   assert.deepEqual(r2.fragment.page, { id: 'r2', name: 'improve · 2026-10-02' });
 });
+
+test('T7d verifyCanvas on a combined index: boards of other runs and of the user are fine; a frame the user deleted is excused only by merge.json; our own entry without file is not', () => {
+  const { dir, built } = writeCanvas();
+  const indexFile = path.join(dir, 'project', 'canvas.json');
+  const index = { v: 3, title: 'Proyecto', pages: [{ id: 'r0', name: 'otra' }, built.fragment.page], boards: { ...built.fragment.boards }, order: [...built.fragment.order], notes: { ...built.fragment.notes } };
+  index.boards['r0-a-inicio.dc.html'] = { x: 0, y: 0, w: 100, h: 100, page: 'r0' };
+  index.boards['boceto.dc.html'] = { x: 0, y: 0, w: 100, h: 100 };
+  index.order.push('r0-a-inicio.dc.html', 'boceto.dc.html');
+  fs.writeFileSync(indexFile, JSON.stringify(index));
+  assert.deepEqual(verifyCanvas({ dir }), { ok: true, problems: [] }, 'the artboards of others do not need a file in this run');
+  // the user deleted one of ours: without merge.json saying so it is a missing entry
+  const gone = 'r1-b-detalle.dc.html';
+  delete index.boards[gone];
+  index.order = index.order.filter((n) => n !== gone);
+  fs.writeFileSync(indexFile, JSON.stringify(index));
+  assert.ok(codes(dir).includes('missing-own-entry'));
+  fs.mkdirSync(path.join(path.dirname(dir), 'merge'));
+  fs.writeFileSync(path.join(path.dirname(dir), 'merge', 'merge.json'), JSON.stringify({ userDeleted: [gone] }));
+  assert.deepEqual(verifyCanvas({ dir }), { ok: true, problems: [] });
+  // an entry with OUR prefix and no file is still a defect
+  index.boards['r1-zz.dc.html'] = { x: 0, y: 0, w: 100, h: 100, page: 'r1' };
+  fs.writeFileSync(indexFile, JSON.stringify(index));
+  assert.ok(codes(dir).includes('entry-without-file'));
+});

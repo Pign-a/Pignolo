@@ -228,10 +228,15 @@ export function verifyCanvas({ dir }) {
   if (merged && typeof merged === 'object') {
     const mb = merged.boards ?? {};
     const mn = merged.notes ?? {};
-    for (const n of Object.keys(boards)) if (!(n in mb)) add('missing-own-entry', n);
-    for (const id of Object.keys(notes)) if (!(id in mn)) add('missing-own-entry', id);
+    // what the user deleted from the live canvas is not put back: merge says which (R-9), and only it can excuse an entry
+    const info = readJson(path.join(path.dirname(dir), 'merge', 'merge.json'));
+    const deleted = new Set(Array.isArray(info?.userDeleted) ? info.userDeleted.map(String) : []);
+    for (const n of Object.keys(boards)) if (!(n in mb) && !deleted.has(n)) add('missing-own-entry', n);
+    for (const id of Object.keys(notes)) if (!(id in mn) && !deleted.has(id)) add('missing-own-entry', id);
     if (!Array.isArray(merged.pages) || !merged.pages.some((p) => p && p.id === pageId)) add('missing-own-entry', pageId ?? 'page');
-    for (const n of Object.keys(mb)) if (!onDisk.includes(n) && !n.startsWith('ds/')) add('entry-without-file', n);
+    // a live canvas also holds the artboards of other runs and the user's own: only an entry of OUR page needs its file here
+    const ours = (n) => (typeof pageId === 'string' && n.startsWith(`${pageId}-`)) || (n === 'Main.dc.html' && manifest.first === true);
+    for (const n of Object.keys(mb)) if (ours(n) && !onDisk.includes(n)) add('entry-without-file', n);
   }
   const seen = new Set();
   const unique = problems.filter((p) => { const k = `${p.code}|${p.file ?? ''}|${p.detail ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true; });

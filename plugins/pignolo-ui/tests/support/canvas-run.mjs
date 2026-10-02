@@ -58,6 +58,18 @@ export function makeRun({ options = ['A', 'B', 'C'], screens = ['inicio.html', '
   return { project, run, runId, optionDir: (letter) => path.join(run, `option-${letter}`) };
 }
 
+// another run in the SAME project (the canvas of the project grows by one page per run)
+export function addRunTo(project, runId, { options = ['A', 'B', 'C'], screens = ['inicio.html', 'detalle.html'] } = {}) {
+  const run = path.join(project, '.pignolo-ui', 'runs', runId);
+  fs.mkdirSync(run, { recursive: true });
+  for (const letter of options) {
+    const dir = path.join(run, `option-${letter}`);
+    fs.mkdirSync(dir, { recursive: true });
+    screens.forEach((file, i) => fs.writeFileSync(path.join(dir, file), screenHtml(`${letter} ${file.replace('.html', '')} ${runId.slice(-6)}`, { link: screens.length > 1 ? screens[(i + 1) % screens.length] : null })));
+  }
+  return { project, run, runId, optionDir: (letter) => path.join(run, `option-${letter}`) };
+}
+
 export const BUILD_ARGS = (r, extra = {}) => {
   const o = { options: 'A,B,C', screens: 'inicio.html,detalle.html', platform: 'desktop', 'page-name': 'new · 2026-10-01', design: 'none', first: 'yes', now: '2026-10-01T18:00:00Z', ...extra };
   return ['build', '--project', r.project, '--run', r.run, ...Object.entries(o).flatMap(([k, v]) => [`--${k}`, String(v)])];

@@ -49,7 +49,7 @@ function flow({ options = ['A', 'B', 'C'] } = {}) {
   return k;
 }
 
-test('run 1 (new project): gate, present, checks, leak values, build, verify and the plan loop to done; regenerating B opens a NEW canvas', () => {
+test('run 1 (new project): gate, present, checks, leak values, build, verify and the plan loop to done; regenerating B reads the same canvas', () => {
   const k = flow();
   assert.equal(k.gate().status, 0);
   const present = k.present();
@@ -77,7 +77,8 @@ test('run 1 (new project): gate, present, checks, leak values, build, verify and
   SCREENS.forEach((f, i) => fs.writeFileSync(path.join(k.r.optionDir('B'), f), screenHtml('B nuevo', { link: SCREENS[(i + 1) % 2] })));
   assert.equal(k.build().status, 0);
   const again = k.plan();
-  assert.equal(again.json.step.id, 'canvas-create', 'a NEW canvas, never a canvas-publish straight on the old one');
+  assert.equal(again.json.step.id, 'canvas-read-live', 'the same canvas is read first, never a canvas-publish straight on it and never a new canvas');
+  assert.equal(again.json.step.params.url, url);
   assert.equal(gitStatus(k.r.project), '', 'everything lives under .pignolo-ui/');
 });
 
@@ -106,7 +107,7 @@ test('a leak seeded on the regeneration path stops plan; a project folder named 
   k.leakValues();
   k.build();
   const url = fakeUrl(12);
-  k.plan(); k.record('canvas-create', url); k.merge(); k.plan(); k.record('canvas-publish', url);
+  k.plan(); k.record('canvas-create', url); k.plan(); k.merge(); k.plan(); k.record('canvas-publish', url);
   // seed the git user name (Persona Ejemplo) in option B and regenerate
   run(['discard', '--run', k.r.run, '--option', 'B']);
   fs.mkdirSync(k.r.optionDir('B'));

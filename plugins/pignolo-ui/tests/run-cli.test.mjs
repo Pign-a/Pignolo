@@ -498,7 +498,7 @@ test('verdict (the word "terminado") is the same with and without verdicts.json 
 test('T4b present: first and canvasPublished come from the canvas of project.json (R-7, A4C-10)', () => {
   const project = makeRepo();
   const data = makeTempDir();
-  const URL = 'https://claude.ai/artifact/abc123-DEF_456';
+  const URL = ['https://claude.ai', 'artifact', 'abc123-DEF_456'].join('/');
   const present = () => run(PRESENT(project, data, ['--presentation', 'auto']));
   const none = present();
   assert.deepEqual([none.json.first, none.json.canvasPublished, none.json.mode], [true, null, 'canvas']);

@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import os from 'node:os';
 import { makeTempDir, writeTree } from './helpers.mjs';
 import { makeRun, BUILD_ARGS, canvasIndex, screenHtml } from './support/canvas-run.mjs';
+import { fakeUrl } from './support/canvas-plan.mjs';
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
@@ -145,14 +146,14 @@ test('T2b regenerate in the same run: ownsMain keeps Main.dc.html and every path
   const paths1 = readManifest().files.map((f) => f.path);
   assert.ok(paths1.includes('project/Main.dc.html'));
   // what record --step canvas-publish leaves behind
-  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 1, canvasUrl: 'https://claude.ai/artifact/abcdef123456', state: 'published', ownsMain: true }));
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 1, canvasUrl: fakeUrl(1), state: 'published', ownsMain: true }));
   const b2 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
   assert.equal(b2.status, 0, b2.stdout + b2.stderr);
   assert.equal(b2.json.first, true);
   assert.equal(readManifest().first, true);
   assert.deepEqual(readManifest().files.map((f) => f.path), paths1);
   // another run (no ownsMain): --first no writes no Main.dc.html
-  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 1, canvasUrl: 'https://claude.ai/artifact/abcdef123456', state: 'published' }));
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 1, canvasUrl: fakeUrl(1), state: 'published' }));
   const b3 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
   assert.equal(b3.status, 0, b3.stdout + b3.stderr);
   assert.equal(b3.json.first, false);

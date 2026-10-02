@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempDir, writeTree } from './helpers.mjs';
-import { scanBytes, decodeEntities } from '../lib/leak-scan.mjs';
+import { scanBytes, decodeEntities, diffStrings } from '../lib/leak-scan.mjs';
 
 const VALUES = ['Pérez & Hijos', 'otro-valor-largo'];
 const dirWith = (tree) => writeTree(makeTempDir(), tree);
@@ -106,4 +106,22 @@ test('decodeEntities: the five basics, numeric forms and the Latin-1 names', () 
   assert.equal(decodeEntities('&#233;&#xe9;&eacute;&ntilde;&Eacute;'), 'éééñÉ');
   assert.equal(decodeEntities('&nbsp;'), '\u00a0');
   assert.equal(decodeEntities('&nombreraro;'), '&nombreraro;');
+});
+
+test('T7d diffStrings: only what the combined index adds or changes (new keys included) is looked at; what the live one had is not', () => {
+  const base = { title: 'Mi lienzo', pages: [{ id: 'r1', name: 'new' }], notes: { ajena: { text: 'Persona Ejemplo' } }, order: ['a'] };
+  assert.deepEqual(diffStrings(JSON.parse(JSON.stringify(base)), base), []);
+  const next = JSON.parse(JSON.stringify(base));
+  next.pages.push({ id: 'r2', name: 'improve' });
+  next.notes.nuestra = { text: 'Opción A' };
+  next.order.push('b');
+  next.title = 'otro título';
+  assert.deepEqual([...diffStrings(next, base)].sort(), ['Opción A', 'b', 'id', 'improve', 'name', 'nuestra', 'otro título', 'r2', 'text']);
+  // the note of someone else is not in the diff; a new key with a value is
+  assert.ok(!diffStrings(next, base).includes('Persona Ejemplo'));
+  const planted = JSON.parse(JSON.stringify(base));
+  planted.notes.nueva = { text: 'Persona Ejemplo' };
+  assert.ok(diffStrings(planted, base).includes('Persona Ejemplo'));
+  // nothing to compare with: everything is new
+  assert.ok(diffStrings({ a: 'x' }, null).includes('x'));
 });

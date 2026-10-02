@@ -2,6 +2,7 @@
 // fewer than two), a folder without files, a link, an unreadable entry: all of them are problems,
 // never "no leaks". There is no option to accept fewer values (D-4c-16).
 //
+// diffStrings(next, base) -> string[]   what of the combined canvas.json is new (R-8 e)
 // scanBytes({ roots: [{ dir, expect }], texts: [{ label, text }], values, skipFiles, readFile }) -> { ok, problems, notes }   (readFile: injectable, for the test of unreadable entries)
 //   problems: { code, file?, kind?, view? }   code: no-leak-values | no-files | root-missing | root-is-link |
 //   link-in-output | unreadable-entry | leak. A leak says the file and the kind, NEVER the value.
@@ -140,4 +141,27 @@ export function scanBytes({ roots = [], texts = [], values = [], skipFiles = [],
     for (const l of leaksIn(String(t.text ?? ''), variants)) problems.push({ code: 'leak', file: t.label, kind: l.kind, view: l.view });
   }
   return { ok: problems.length === 0, problems, notes };
+}
+
+// R-8 e: the strings of `next` (keys of new objects included) that `base` does not already have at the
+// same place. What the live canvas already held lives in the user's account and is not checked again;
+// whatever we add or change is. Arrays are compared by position (we only ever append), so a reordered
+// array is scanned whole: conservative, never lenient.
+export function diffStrings(next, base) {
+  const out = [];
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const walk = (n, b) => {
+    if (same(n, b)) return;
+    if (typeof n === 'string') { out.push(n); return; }
+    if (Array.isArray(n)) { n.forEach((x, i) => walk(x, Array.isArray(b) ? b[i] : undefined)); return; }
+    if (n && typeof n === 'object') {
+      const bb = b && typeof b === 'object' && !Array.isArray(b) ? b : null;
+      for (const [k, v] of Object.entries(n)) {
+        if (!bb || !Object.prototype.hasOwnProperty.call(bb, k)) out.push(k);
+        walk(v, bb ? bb[k] : undefined);
+      }
+    }
+  };
+  walk(next, base);
+  return out;
 }
