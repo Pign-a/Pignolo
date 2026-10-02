@@ -41,6 +41,13 @@ function taskLine(message) {
   return null;
 }
 
+// Todo el texto de una respuesta de herramienta (cadena, { content: [{ text }] } u objetos anidados), con tope de profundidad.
+function responseText(v, depth = 0) {
+  if (typeof v === 'string') return v;
+  if (!v || typeof v !== 'object' || depth > 4) return '';
+  return (Array.isArray(v) ? v : Object.values(v)).map((x) => responseText(x, depth + 1)).filter(Boolean).join('\n');
+}
+
 const silent = () => ({ exit: 0 });
 
 function postToolUse(input, env) {
@@ -60,15 +67,26 @@ function postToolUse(input, env) {
     }
     const tasks = r.run ? taskList(r.run) : [];
     if (!tasks.length) return silent();
-    let bad = null;
-    let c = null;
-    for (const key of [...tasks.map((t) => t.id), NOTASK]) {
+    // La tarea del escritor que volvió, por la línea `Task: <id>` de su informe (M8): con una ola, otra tarea con un rechazo pudo no
+    // ser la de este escritor.
+    const mine = taskLine(responseText(input.tool_response));
+    const known = mine && tasks.some((t) => t.id === mine) ? mine : null;
+    const bads = [];
+    for (const key of known ? [known] : [...tasks.map((t) => t.id), NOTASK]) {
       const k = readCounter(env, cwd, key);
-      if (k.blocked || (k.count > 0 && !k.accepted)) { bad = key; c = k; break; }
+      if (k.blocked || (k.count > 0 && !k.accepted)) bads.push({ key, c: k });
     }
-    if (!bad) return silent();
+    if (!bads.length) return silent();
+    const { key: bad, c } = bads[0];
     const what = bad === NOTASK ? 'el informe del escritor (sin una tarea identificable: línea "Task: <id>")' : `la tarea ${bad}`;
-    const additionalContext = `pignolo: ${what} no pasó el handback-gate (${c.lastReason || 'sin motivo registrado'}); tratala como BLOCKED y no la des por terminada.`;
+    const reason = c.lastReason || 'sin motivo registrado';
+    let additionalContext;
+    if (!known && tasks.length > 1 && bad !== NOTASK) {
+      // Una ola y un informe sin `Task:`: se dice el estado, no se acusa a un escritor que pudo no ser el que volvió.
+      additionalContext = `pignolo: ${what} tiene un rechazo del handback-gate sin aceptar (${reason}); si es la que acaba de volver, tratala como BLOCKED y no la des por terminada.`;
+    } else {
+      additionalContext = `pignolo: ${what} no pasó el handback-gate (${reason}); tratala como BLOCKED y no la des por terminada.`;
+    }
     return { exit: 0, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext } }) };
   } catch (e) {
     // PostToolUse nunca bloquea (la herramienta ya corrió).
