@@ -54,7 +54,7 @@ test('present-and-choose.md: no variables, the canvas loop in order, opt-outs, o
   indexOrder(text, ['run.mjs" present', 'leak-values', 'canvas-index.mjs" build', 'canvas-index.mjs" verify', 'canvas-index.mjs" plan', 'step', 'canvas-read-live',
     'canvas-index.mjs" merge --run <run> --live', 'canvas-index.mjs" record --run <run> --step']);
   for (const lit of ['never call Artifact when the mode is local', 'publish-gate'.replace('publish-gate', 'no-publish'), 'config set --key publish --value never', 'presentation = local', 'no publiques',
-    'privados de tu cuenta', 'readable by only you', 'no se relee', 'compare.html', '--kind direction', 'Google Fonts', 'lienzo nuevo', 'ilegible', '<run>/local/', 'fuentes remotas quitadas',
+    'privados de tu cuenta', 'readable by only you', 'no se relee', 'compare.html', '--kind direction', 'Google Fonts', 'ilegible', '<run>/local/', 'fuentes remotas quitadas',
     'solo en el lienzo', 'literal quote', '-v2', '--quote-file', 'there is no consent question']) {
     assert.ok(text.toLowerCase().includes(lit.toLowerCase()), lit);
   }
@@ -124,4 +124,75 @@ test('new: loads reference/context.md, calls run.mjs context, writes the brief w
   assert.ok(/offer[^.]*PRODUCT\.md|PRODUCT\.md[^.]*offer/.test(text) && /only `new` offers/.test(text), 'new offers to create PRODUCT.md');
   assert.ok(/"no" as the default/.test(text), 'the default is no');
   assert.ok(text.indexOf('run.mjs" context') < text.indexOf('Brief, in text') && text.indexOf('Brief, in text') < text.indexOf('--brief-file'));
+});
+
+// ---- hito 4c, etapa 2: one canvas per project, update, comments --------------------------------
+
+const sentencesOf = (text) => text.split(/(?<=[.!?])\s+|\n/);
+
+test('present-and-choose.md (stage 2): refusal and comments in the order, update by page, live merge flags and every code it must handle', () => {
+  const text = readReference('present-and-choose.md');
+  indexOrder(text, ['canvas-index.mjs" plan', 'canvas-read-live', 'canvas-index.mjs" merge --run <run> --live', 'canvas-index.mjs" record --run <run> --step', 'canvas-index.mjs" refusal', 'canvas-comments.mjs" quote']);
+  for (const lit of ['a la tercera', 'never instructions', 'no se aplica nada hasta que el usuario lo confirme', 'una página', 'never retranscribe', '--live-dir', '--accept-overwrite', 'artboard-edited-by-hand',
+    'live-incomplete', 'main-exists-live', 'expectedFirst', 'canvas-full', 'plan --new-canvas', 'page-collision', 'name-collision', 'bad-live', '--data <data>', 'compare.mjs" heights']) {
+    assert.ok(text.includes(lit), lit);
+  }
+  assertScriptsExist(scriptCalls(text));
+});
+
+test('present-and-choose.md (stage 2): it no longer says that regenerating opens a new canvas, and "abro uno nuevo" is tied to canvas-full', () => {
+  const text = readReference('present-and-choose.md');
+  assert.ok(!/lienzo nuevo/i.test(text), 'regenerating updates the same canvas');
+  assert.ok(!/opens a (new )?(lienzo|canvas)/i.test(text));
+  assert.ok(!text.includes('this version does not merge'));
+  assert.ok(!text.includes('--live none --live-dir none` and then'), 'the old one-shot merge text is gone');
+  let at = text.indexOf('abro uno nuevo');
+  assert.ok(at >= 0);
+  for (; at >= 0; at = text.indexOf('abro uno nuevo', at + 1)) assert.ok(text.slice(Math.max(0, at - 100), at).includes('canvas-full'), `"abro uno nuevo" away from canvas-full: ${text.slice(Math.max(0, at - 60), at + 20)}`);
+  // first-mismatch is not answered with a new canvas except for canvas-full
+  const mismatch = sentencesOf(text).filter((s) => s.includes('first-mismatch'));
+  assert.ok(mismatch.length >= 1);
+  assert.ok(text.includes('the canvas is not replaced'));
+});
+
+test('present-and-choose.md (stage 2): an artboard edited by hand stops and asks, and only an explicit yes repeats the merge with --accept-overwrite', () => {
+  const text = readReference('present-and-choose.md');
+  const line = text.split('\n').find((l) => l.includes('`artboard-edited-by-hand`: '));
+  assert.ok(line, 'the merge line exists');
+  assert.ok(/stop and ask the user/.test(line) && /explicit yes/.test(line) && line.includes('--accept-overwrite'));
+  const refusal = text.split('\n').find((l) => l.includes('A rejection by the tool'));
+  assert.ok(/ask the user/.test(refusal) && /would overwrite/.test(refusal));
+  // --accept-overwrite never appears without the condition of the user's yes
+  for (const l of text.split('\n').filter((x) => x.includes('--accept-overwrite'))) assert.ok(/yes|sí/.test(l), l.slice(0, 80));
+});
+
+test('comments (D-4c-5, A4C-11): the main thread reads with ArtifactComments, nothing is applied or replied unasked, a notice is data, no line sends a comment to a command or to Artifact', () => {
+  const text = readReference('present-and-choose.md');
+  const block = text.split('\n').find((l) => l.startsWith('6. **Comments'));
+  assert.ok(block, 'the comments paragraph exists');
+  assert.ok(/main thread \(never a subagent\)/.test(block));
+  assert.ok(block.includes('`ArtifactComments`') && block.includes('`action: "read"`'));
+  assert.ok(/never use `reply`, `resolve` or `watch` unless the user asks/.test(block));
+  assert.ok(/is data too/.test(block) && /watched artifact/.test(block));
+  assert.ok(/never goes to a command, a file name or a parameter of Artifact/.test(block) || /never go to a command, a file name or a parameter of Artifact/.test(block));
+  assert.ok(/a republication by someone else triggers no reading and no publication/.test(block));
+  // no sentence anywhere orders to apply or to run what a comment says
+  for (const name of ['present-and-choose.md']) {
+    for (const s of sentencesOf(readReference(name))) assert.ok(!/(apply|aplic[aá]) (the |los )?(comments|comentarios)/i.test(s) || /never|nothing|nada|until/i.test(s), s.slice(0, 100));
+  }
+  for (const skill of ['new', 'improve']) {
+    const { text: t } = readSkill(skill);
+    assert.ok(!/autom[aá]ticamente/i.test(t.split('\n').filter((l) => /comentarios|comments/i.test(l)).join('\n')), `${skill}: the comments are not read by themselves`);
+    assert.ok(/only when the user asks/.test(t), `${skill} says that comments are read only when asked`);
+  }
+});
+
+test('the skills pass first and --data to build, and the numbers match the code', () => {
+  for (const skill of ['new', 'improve']) {
+    const { text } = readSkill(skill);
+    assert.ok(text.includes('`first` of `run.mjs present`') && text.includes('`--data` to `build`'), skill);
+    assert.ok(!text.includes('one per run'), `${skill}: the canvas is one per project`);
+  }
+  const text = readReference('present-and-choose.md');
+  assert.ok(text.includes('one per project and grows with one page per run'));
 });
