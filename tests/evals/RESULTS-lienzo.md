@@ -66,3 +66,18 @@ Mismo brief y misma tarea (4 pantallas HTML más la página de comparación), co
 ## Juicio del autor tras mirar los seis resultados (2026-10-01)
 
 El que más le gustó fue **el lienzo generado por opus con el brief original** (brazo "Lienzo, opus"). Ese brazo no usó la carta de `ui-option`: siguió las instrucciones del propio tipo "Design" (que traen reglas de oficio y permiten fuentes de Google) y lo escribió opus. La carta mejorada de `ui-option` no cambió su preferencia. Consecuencia para el plan del hito 4c: la calidad que el autor prefirió salió de opus más las reglas del tipo, así que el modelo de `ui-option` y qué reglas de oficio recibe se deciden con ese dato (decisión del autor pendiente al momento de escribir esto).
+
+## Tercera medición: carta candidata, contexto de producto y datos de muestra (2026-10-01)
+
+Mismo brief (4 pantallas HTML locales más la página de comparación), todos con sonnet, un agente por brazo, una corrida. La carta "actual" es la de `main` (pignolo-ui 0.7.2, con la sección de oficio del 0.6.2).
+
+| Brazo | Qué cambia | Tokens | Tiempo | HTML escrito | Estilos que declaró |
+|---|---|---|---|---|---|
+| Carta actual | línea de base | ~76 mil | 81 s | 14,2 KB | A libro denso (blanco, tinta pizarra); B utilitario fuerte (pizarra oscura, un `[SALDO]` enorme, acción amarilla) |
+| Carta candidata | suma las reglas de oficio tomadas de impeccable, de las skills de Emil Kowalski y de la guía de Apple (texto propio) | ~79 mil | 92 s | 20,1 KB | A libro denso (claro, acento verde azulado); B editorial nocturno (tinta oscura, número con serifas, acento ámbar) |
+| Carta actual + `PRODUCT.md` | un contexto de producto de 7 líneas (para quién, qué quiere saber primero, tono, qué no se quiere) | ~78 mil | 96 s | 17,2 KB | A libro denso (tipografía condensada, verde azulado); B editorial sereno (un número grande con serifas, márgenes amplios, verde) |
+| Carta actual, datos de muestra rotulados | en vez de marcadores, datos de ejemplo con `data-sample` y la línea "Datos de muestra" | ~77 mil | 81 s | 15,8 KB | A libro denso; B número único con serifas, calmo |
+
+**Lo que cuenta un script:** los cuatro brazos entregaron los 5 archivos (verificado mirando las carpetas), ninguno trae recursos remotos, y el costo es el mismo (76 a 79 mil tokens, 81 a 96 s): ni la carta candidata ni el contexto de producto ni los datos de muestra encarecen. La carta candidata escribe ≈ 40 % más HTML.
+
+**Lo que no cuenta un script:** cuál se ve mejor. Lo juzga el autor mirando las cuatro páginas de comparación; hasta entonces no se toca la carta en `main`, no se decide `PRODUCT.md` por esta medición ni la regla de los datos de muestra (D-IM-7). Una corrida por brazo: orden de magnitud.
