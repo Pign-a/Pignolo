@@ -27,6 +27,7 @@ Plugin de Claude Code con una metodología de desarrollo con agentes: autonomía
   - **El revisor recibe el diff como archivo** armado por script; tras los arreglos hay una sola re-revisión acotada al diff del arreglo, en sonnet.
   - **Lista de autochequeo en el encargo del ejecutor** (máximo 5 ítems, cada uno respondido con evidencia): formas de git que saltan la guardia; rutas con otra capitalización, junctions y symlinks; archivos que no son UTF-8; lectores que quedaron con la forma vieja de un dato; cada afirmación del informe marcada "probado" o "no probado".
   - Los arreglos los hace un agente nuevo (retomar al ejecutor gasta más tokens); solo se retoma para un cambio chico sin cortes. Los informes entre agentes siguen en markdown, a un archivo, sin pegar historial.
+- Pruebas y mediciones: siguen `docs/protocolo-de-pruebas.md` (ficha con hipótesis, métricas y regla de decisión antes de correr; brazo de control; repeticiones; calidad a ciegas; mediana y rango; nivel de evidencia E0 a E3 en cada cifra).
 - Revisores y auditores siempre en opus.
 - Decisiones del autor (el agente nunca las toma solo): identidad y alcance del producto, costos, dependencias, push, publicar, borrar, cambiar un contrato, temas legales. Lo técnico lo decide el agente y lo deja registrado.
 - El repo es público: nada de datos del proyecto donde se usa pignolo, personas ni credenciales en lo versionado.
