@@ -28,6 +28,7 @@ import { readTokenSources } from './token-sources.mjs';
 import { validateDesign, resolveAliases } from './design-doc.mjs';
 import { pass, unverified } from './rules/api.mjs';
 import { RULES as DOCUMENT } from './rules/document.mjs';
+import { RULES as MOTION } from './rules/motion.mjs';
 import { RULES as A11Y_ELEMENT } from './rules/a11y-element.mjs';
 import { RULES as CONTENT } from './rules/content.mjs';
 import { RULES as STYLE } from './rules/style.mjs';
@@ -40,7 +41,7 @@ import { RULES as SEO_PAGE } from './rules/seo-page.mjs';
 import { fetchSite } from './site-fetch.mjs';
 import { siteFiles } from './site-files.mjs';
 
-const DISK_RULES = [...DOCUMENT, ...A11Y_ELEMENT, ...CONTENT, ...STYLE, ...CONTRAST, ...DEFAULTS, ...SEO_SITE, ...SEO_PAGE, ...REJECTIONS];
+const DISK_RULES = [...DOCUMENT, ...A11Y_ELEMENT, ...CONTENT, ...STYLE, ...MOTION, ...CONTRAST, ...DEFAULTS, ...SEO_SITE, ...SEO_PAGE, ...REJECTIONS];
 const SYNTAX = { html: 'html', htm: 'html', jsx: 'jsx', tsx: 'jsx', css: 'css', vue: 'vue', svelte: 'svelte' };
 const TAILWIND_CONFIGS = ['tailwind.config.js', 'tailwind.config.cjs', 'tailwind.config.mjs', 'tailwind.config.ts'];
 const STATUSES = new Set(['pass', 'fail', 'unverified']);
