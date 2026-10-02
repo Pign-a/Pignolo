@@ -109,16 +109,19 @@ export function mergeIndex({ ours, live = null, liveFiles = null, published = nu
   const problems = [];
   if (pageInLive && !ownsPage) problems.push({ code: 'page-collision', detail: pageId });
   // names: unique without regard to case, also against the artboards of others
+  const main = 'Main.dc.html';
+  const mainIsOurs = ownsMain || ownedNames.has(main);
   const roots = new Map(boardNames.map((n) => [rootOf(n), n]));
   for (const n of Object.keys(ours.boards)) {
-    // Main.dc.html has its own check below: only one run holds it
-    if (n === 'Main.dc.html') continue;
+    // Main.dc.html: the exact name has its own check below (only one run holds it); another capitalisation of it is somebody else's (RL2-06)
+    if (n === main) {
+      const other = roots.get(rootOf(n));
+      if (other !== undefined && other !== main) problems.push({ code: mainIsOurs ? 'name-collision' : 'main-exists-live', file: n });
+      continue;
+    }
     const other = roots.get(rootOf(n));
     if (other !== undefined && !(other === n && ownedNames.has(n))) problems.push({ code: 'name-collision', file: n });
   }
-  // the first screen of this run is Main.dc.html only when nobody else holds it
-  const main = 'Main.dc.html';
-  const mainIsOurs = ownsMain || ownedNames.has(main);
   if (first && main in live.boards && !mainIsOurs) problems.push({ code: 'main-exists-live', file: main });
   if (!first && !(main in live.boards)) kept.warnings.push('no-main-live');
 
