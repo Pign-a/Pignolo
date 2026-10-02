@@ -18,14 +18,15 @@ test('frontmatter: human-only, name init, real script references and verbs', () 
   assert.ok(fs.existsSync(path.join(PLUGIN_ROOT, 'skills', 'init', 'SKILL.md')));
 });
 
-test('the fourteen steps come in order: detect before preview, preview before apply, apply before verify', () => {
+test('the fourteen steps of the review come in order: detect before preview, preview before apply, apply before verify', () => {
   const t = SKILL.text;
-  const steps = [...t.matchAll(/^(\d+)\. \*\*/gm)].map((m) => Number(m[1]));
+  const review = t.slice(t.indexOf('## Review point by point'), t.indexOf('## Rules'));
+  const steps = [...review.matchAll(/^(\d+)\. \*\*/gm)].map((m) => Number(m[1]));
   assert.deepEqual(steps, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   const at = (re) => t.search(re);
-  assert.ok(at(/init\.js" detect/) < at(/init\.js" preview/));
-  assert.ok(at(/init\.js" preview/) < at(/init\.js" apply/));
-  assert.ok(at(/init\.js" apply/) < at(/init\.js" verify/));
+  assert.ok(at(/init\.js"? detect/) < at(/init\.js"? preview/));
+  assert.ok(at(/init\.js"? preview/) < at(/init\.js"? apply/));
+  assert.ok(at(/init\.js"? apply/) < at(/init\.js"? verify/));
   assert.match(t, /init does not migrate any memory/);
   assert.match(t, /autoMemoryEnabled/);
 });
@@ -42,11 +43,12 @@ test('forbidden instructions are absent: no push, no Edit/Write of the protected
   assert.match(SKILL.text, /Only after the explicit yes/);
 });
 
-test('the two layers are required for every step message', () => {
+test('plain words come first and the technical detail only on request or on failure (D-3); the review keeps one step per message', () => {
   assert.match(SKILL.text, /In plain words/);
   assert.match(SKILL.text, /En pocas palabras/);
   assert.match(SKILL.text, /Technical detail/);
   assert.match(SKILL.text, /Detalle técnico/);
+  assert.match(SKILL.text, /only if the human asks or something fails/);
   assert.match(SKILL.text, /One step per message/);
 });
 
@@ -120,4 +122,69 @@ test('M-7 (R-25): the gate runs apart from apply with its exact command, and the
 
 test('I-4: a folder stopped by a hard guard is adopted where it is and the reason stays in refused', () => {
   assert.match(SKILL.text, /adopted where it is \(it goes into the map as that place and the reason stays in `refused`\)/);
+});
+
+// ---------------------------------------------------------------- plan 2026-10-02: init rápido y repo en blanco
+const { STEP_IDS, BLANK_STEPS, detect } = require('../plugins/pignolo/scripts/init');
+const { makeTempDir, git } = require('./helpers');
+
+test('2026-10-02: the blank path comes before the fast flow and the fast flow before the review; each is a section', () => {
+  const t = SKILL.text;
+  const at = (h) => t.indexOf(h);
+  assert.ok(at('## Start') < at('## Blank project'));
+  assert.ok(at('## Blank project') < at('## Fast flow (existing project)'));
+  assert.ok(at('## Fast flow (existing project)') < at('## Review point by point'));
+  const blank = t.slice(at('## Blank project'), at('## Fast flow (existing project)'));
+  assert.match(blank, /Walk no steps/);
+  assert.match(blank, /nothing to configure yet/);
+  assert.match(blank, /`blank-project`/);
+  assert.match(blank, /ONE yes\/no question/);
+  assert.match(blank, /`\/pignolo:init` again/);
+  assert.match(blank, /No gates and no `type` are written/);
+  assert.match(blank, /install and scaffold nothing/);
+});
+
+test('2026-10-02: closed answers use AskUserQuestion, recommended first, up to 4 per call, with a plain-text fallback', () => {
+  const t = SKILL.text;
+  assert.match(t, /`AskUserQuestion` tool/);
+  assert.match(t, /recommended option first, labelled as recommended, up to 4 questions per call/);
+  assert.match(t, /If the tool is not available, ask in plain text with the same options/);
+  assert.match(t, /Free text only where there are no options/);
+});
+
+test('2026-10-02: the fast flow offers the three choices and an option chosen counts as the yes only for the exact plan shown', () => {
+  const t = SKILL.text;
+  for (const re of [/\*\*Apply the recommended setup\*\* \(recommended\)/, /\*\*Review point by point\*\*/, /\*\*Cancel\*\*/]) assert.match(t, re, String(re));
+  assert.match(t, /explicit yes in their own turn/);
+  assert.match(t, /counts as that yes only for the exact plan shown/);
+  assert.match(t, /Cancel: say nothing was written/);
+  assert.match(t, /init\.js apply --plan <file> --expect <stamp>/);
+});
+
+test('2026-10-02: every subcommand, summary field, step id, refusal kind and attention code the skill names exists in the scripts', () => {
+  const t = SKILL.text;
+  const root = makeTempDir('pignolo-skill-detect-');
+  git(['init', '-q', '-b', 'main'], root);
+  const out = detect({ cwd: root, env: { ...process.env, PIGNOLO_HOME: makeTempDir('pignolo-skill-home-'), CLAUDE_CONFIG_DIR: makeTempDir('pignolo-skill-cfg-') } });
+  assert.equal(out.blank, true);
+  for (const m of t.matchAll(/`summary\.(\w+)`/g)) assert.ok(m[1] in out.summary, 'summary.' + m[1]);
+  for (const key of ['blank']) assert.ok(key in out, key);
+  const ids = [...t.matchAll(/Step ids: ([^.]*)\./g)][0][1].match(/`([a-z-]+)`/g).map((x) => x.replace(/`/g, ''));
+  assert.deepEqual(ids, STEP_IDS);
+  assert.deepEqual(out.summary.recommended, BLANK_STEPS);
+  for (const id of BLANK_STEPS) assert.match(t, new RegExp('`' + id + '`'), id);
+  const src = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'init.js'), 'utf8');
+  assert.ok(src.includes("'blank-project'"));
+  const sum = fs.readFileSync(path.join(PLUGIN_ROOT, 'lib', 'init-summary.js'), 'utf8');
+  const attention = t.match(/`summary\.attention` \(([^)]*\))?/);
+  assert.ok(attention, 'names the attention codes');
+  for (const code of ['no-type', 'untested', 'test-placeholder', 'unrecognized-runner', 'mutation-config', 'runner-excludes', 'existing-project-md', 'places-candidates']) {
+    assert.match(t, new RegExp('`' + code + '`'), code);
+    assert.ok(sum.includes("'" + code + "'"), code);
+  }
+});
+
+test('2026-10-02: the skill is not longer than before by more than a small margin and carries no user paths', () => {
+  assert.ok(SKILL.text.length <= 11500, String(SKILL.text.length));
+  assert.doesNotMatch(SKILL.text, /[A-Za-z]:[\\/]+Users|\/home\/|\/Users\//);
 });
