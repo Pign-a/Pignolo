@@ -117,3 +117,33 @@ Mediciones aprobadas: tope de 14 USD para los hitos 4f y 4g (≈ 6,3 USD estimad
 ## Decisión del 2026-10-01 (noche): todo pignolo-ui se implementa sin pruebas del autor
 
 El autor no prueba nada hasta que la v1 esté terminada; después la prueba y da feedback. La **puerta manual del lienzo** (publicación real de prueba) deja de frenar: 4f, las etapas 2 a 4 del lienzo, 4g y 4e se ejecutan de corrido y la prueba real pasa a la revisión de la v1. Riesgo aceptado: si en el lienzo real fallan las clases CSS, el `@media` o las fuentes, el conversor y lo construido encima se corrigen después. En curso: rama `ui/hito-4e-chequeos` (olas 2 a 4 de 4e, en paralelo con el resto).
+
+## Cierre de sesión del 2026-10-02 (madrugada): dónde quedó todo
+
+Se frenaron todos los agentes porque el autor se quedaba sin cupo. Nada de lo de abajo está en `main` salvo que lo diga. **Retomar por acá.**
+
+**En `main`:** núcleo 0.14.0, pignolo-ui 0.7.5, protocolo de pruebas, registro `docs/ejecuciones.csv`, fichas de los tres experimentos.
+
+**Ramas listas o casi, por orden de cierre:**
+
+| Rama | Qué es | Estado exacto | Falta |
+|---|---|---|---|
+| `exp/lienzo2-x` (`f19d341`) | Etapa 2 del lienzo, pignolo-ui 0.8.0 | ejecutada, revisada (2 críticos y 6 importantes) y arreglada; 1240 de 1242 tests de pignolo-ui | re-revisión acotada al arreglo (se cortó a mitad), unir `main`, suite completa, unir |
+| `core/init-rapido` (`91816de`) | `init` y `setup` rápidos, repo en blanco, núcleo 0.15.0 | ejecutada; 328 tests de lo que toca | revisión opus (se cortó), arreglos, suite, unir |
+| `core/guard-sin-confirmar-push` (`61dc844`) | La guardia no pregunta en push ni merge; regla `subagent-main`; núcleo 0.14.1 | revisada: 3 críticos y 5 importantes; los 57 tests del revisor ya están en la rama y **fallan**; el arreglo de R1 quedó **sin commitear** en el worktree de la sesión | pasada de arreglos (R1 a R5, R7, R8; R6 queda como gap), suite, unir |
+| `ui/hito-4e-chequeos` (`5c02540`) | Olas 2 a 4 de 4e | ejecutada | revisión opus, arreglos, unir |
+| `plan/guardia-sin-tropiezos` (`76f5d4c`) | Plan de 13 tarjetas y auditoría de reglas (núcleo 0.16.0) | plan escrito | auditoría previa opus (se cortó), partir en etapas, ejecutar |
+| `bench/revision-prep` (`d4d3606`) | Scripts de las pruebas de revisión | lista | unir a `main` |
+| `exp/lienzo2-y` (`f2166df`) | Brazo de relevo del experimento | ejecutada | no se une; queda como dato |
+
+**Experimentos (fichas en `tests/evals/RESULTS-relevo.md`, `-lentes-reales.md`, `-momento-de-revision.md`):**
+
+- **Ejecución (único contra relevo):** una corrida por brazo. Único: 7 tareas, 43 min, ≈ 7,7 M ponderado. Relevo: 7 tareas, 65 min, ≈ 6,75 M. La auditoría del diseño dice que con una corrida no se concluye; el protocolo recomendado (tramo final con repeticiones, más el brazo "un agente por tarea") **no se corrió**.
+- **Lentes reales:** sonda paga hecha (1,07 USD por corrida; la etapa paga se canceló por costo). La etapa con suscripción (84 corridas) **se cortó a mitad**; se retoma con el mismo workflow, que reusa las corridas terminadas. Después: chequeo de fuga, extracción, calificación a ciegas, armado de brazos.
+- **Momento de la revisión:** sin correr.
+
+**Decisiones del autor de hoy:** la guardia frena solo lo realmente peligroso; sin confirmación en push ni merge; solo el hilo principal pushea y mergea a `main`; ajustes D-G1 a D-G4 (ver el plan); `init` rápido, con opciones y "avisar y salir" en repo en blanco; suite completa solo antes de unir; la forma de ejecutar un plan se elige por la más rápida medida.
+
+**Decisiones abiertas del autor:** clave `brief` en el núcleo; `test-paths` por defecto (commit `9d6f84f`); G44 (`code-untested`); si `subagent-main` se extiende a `commit`, `pull`, `rebase` y similares sobre `main`; `git branch -d` sin confirmar, `--force-with-lease`, `navigate`; un solo proceso por evento de hook.
+
+**Sin anotar todavía en `docs/ejecuciones.csv`:** ejecuciones y revisión de la etapa 2 del lienzo, `init` rápido, cambio de la guardia y su revisión, auditoría de reglas, plan de la guardia, preparación de las pruebas.
