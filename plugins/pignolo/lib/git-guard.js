@@ -117,7 +117,8 @@ const GIT_ENV_NAME = /^GIT_(CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS|GLOBAL|SY
 // como código de shell (G7). `GIT_EDITOR=true`, `EDITOR=vim` o un `sed -i` pasan.
 const GIT_EXEC_ENV = /^(GIT_EDITOR|EDITOR|VISUAL|GIT_SEQUENCE_EDITOR|GIT_EXTERNAL_DIFF|GIT_SSH_COMMAND|GIT_SSH|GIT_ASKPASS|SSH_ASKPASS|GIT_PAGER|PAGER|GIT_PROXY_COMMAND)$/i;
 const LAUNCHER_RE = /(^|\/)hooks\/launcher\.js$/i;
-const MAIN = /^(main|master)$/;
+// Sin distinguir mayúsculas: en Windows y macOS `git switch Main` saca la rama main (R5).
+const MAIN = /^(main|master)$/i;
 
 const PROTECTED_CONFIG = /^(alias\..+|core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass|gitproxy|logallrefupdates|worktree)|sequence\.editor|diff\.external|diff\..+\.(textconv|command)|merge\..+\.driver|pager\..+|filter\..+|credential(\..+)?\.helper|gpg(\..+)?\.program|uploadpack\.packobjectshook|protocol\..+\.allow|include\.path|includeif\..+\.path|gc\..+|clean\.requireforce|remote\..+\.(mirror|receivepack|uploadpack|vcs|push)|interactive\.difffilter|protocol\.allow|(difftool|mergetool|browser|man)\..+\.(cmd|path)|gpg\..+\.[a-z]*command)$/;
 const CONFIG_ALLOW = /^(user\.(name|email|signingkey)|color\..+|core\.(autocrlf|eol|filemode|ignorecase|quotepath|longpaths|safecrlf|whitespace|symlinks)|init\.defaultbranch|pull\.(rebase|ff)|push\.(default|autosetupremote)|fetch\.prune|merge\.conflictstyle|rerere\.enabled|diff\.(algorithm|renames|colormoved)|log\.[a-z]+|format\.[a-z]+|branch\.[^.]+\.(remote|merge|rebase|description)|remote\.[^.]+\.url|advice\..+|help\.autocorrect|safe\.directory|commit\.gpgsign|tag\.gpgsign)$/;
@@ -217,6 +218,10 @@ const WRAPPERS = {
   npx: { val: ['-p', '--package'], code: /^(-c|--call)$/, pkg: true }, bunx: { val: ['-p', '--package'], pkg: true }, shx: {},
   wsl: { val: ['-d', '--distribution', '-u', '--user', '--cd', '--shell-type'], joined: true },
 };
+
+// env: `-C <dir>`, `-C<dir>` (con -i/-v/-0 antes) y `--chdir[=<dir>]` (también abreviado: `--c`, `--ch`...).
+const ENV_CHDIR_LONG = /^--c(?:h(?:d(?:i(?:r)?)?)?)?(?:=(.*))?$/s;
+const ENV_CHDIR_SHORT = /^-[iv0]*C(.*)$/s;
 
 const SPAWN_RE = /child_process|\bexec(Sync|FileSync|File)?\s*\(|\bspawn(Sync)?\s*\(|subprocess|os\.(system|popen|exec\w*|spawn\w*)|\bsystem\s*\(|\bpopen\b|Deno\.(run|Command)|Bun\.(spawn|\$)|shell_exec|passthru|proc_open|pcntl_exec/;
 const SPAWN_PERL_RUBY = /\b(system|exec|spawn)\b|`|\bqx\s*\W|%x\s*\W|IO\.popen|Open3|\bopen\s*\(?\s*["']?\s*\|/;
@@ -365,12 +370,18 @@ function script(text, shell, ctx, out, depth, st) {
   }
   out.push(...extra);
   const states = new Map();
+  let offFrom = null; // estado del comando anterior si cambió a una rama literal que no es main (switchedTo)
   cmds.forEach((cmd, k) => {
     // PowerShell no corta la línea si Set-Location falla: cada comando es como tras un ';'.
     const s = shell === 'powershell' ? st : scopeState(cmd, st, states);
     settle(s, shell === 'powershell' ? (k ? ';' : null) : cmd.sep);
+    // Con `&&` lo que sigue corre solo si el cambio de rama anduvo: HEAD ya no está en main (R7). Con cualquier otro
+    // separador el cambio pudo fallar y HEAD seguir donde estaba: onMain no se baja.
+    if (offFrom === s && shell !== 'powershell' && cmd.sep === '&&') s.onMain = false;
     const before = out.length;
     analyze(cmd, shell, ctx, out, depth, s);
+    offFrom = s.offNext ? s : null;
+    s.offNext = false;
     const got = out.slice(before).map((v) => v.rule).join(', ');
     ctx.trace.push(`${'  '.repeat(depth)}[${shell}] ${JSON.stringify(cmd.words.map((w) => (w.dyn ? `«${w.value}»` : w.value)))} -> ${got || 'ok'}`);
   });
@@ -487,6 +498,7 @@ function recordAssignments(words, st) {
     for (const w of decl ? words.slice(1) : words) {
       const m = /^([A-Za-z_][A-Za-z0-9_]*)(\+?)=/.exec(w.value);
       if (!m) continue;
+      if (/^GIT_(DIR|WORK_TREE)$/i.test(m[1])) st.gitEnv = true; // puede salir exportada (R4): se supone que sí
       if (w.dyn || m[2]) st.vars.delete(m[1]);
       else st.vars.set(m[1], w.value.slice(m[0].length));
     }
@@ -591,6 +603,8 @@ function runWords(input, cmd, shell, ctx, out, depth, st) {
     const u = unwrap(name, spec, words.slice(1), out, onExec);
     if (name !== 'command' && name !== 'builtin') inShell = false;
     if (u.done) return;
+    if (u.chdir) st = stateIn(st, ctx, u.chdir);
+    if (u.gitRedirect) cmd = { ...cmd, gitRedirect: true };
     if (u.code) { code(u.code, 'bash', ctx, out, depth, st); return; }
     words = u.words;
     // npx rimraf@5 .git: el nombre del paquete sin la versión.
@@ -607,6 +621,8 @@ function unwrap(name, spec, args, out, onExec) {
   let skip = spec.skip || 0;
   let codeWord = null;
   let repl = null; // xargs -I<r>: <r> se reemplaza por la entrada (G8)
+  let chdir = null; // env -C <dir> / --chdir=<dir>: el comando envuelto corre en <dir> (R5)
+  let gitRedirect = false; // env GIT_DIR=… / GIT_WORK_TREE=…: git trabaja en otro repo (R4)
   while (i < args.length) {
     const w = args[i];
     const v = w.value;
@@ -618,6 +634,13 @@ function unwrap(name, spec, args, out, onExec) {
     }
     if (w.dyn) break;
     if (v === '--') { i++; break; }
+    if (name === 'env') {
+      const longDir = ENV_CHDIR_LONG.exec(v);
+      const shortDir = longDir ? null : ENV_CHDIR_SHORT.exec(v);
+      if (longDir && longDir[1] !== undefined) { chdir = assignedValue(w, v.indexOf('=') + 1); i++; continue; }
+      if (longDir || (shortDir && !shortDir[1])) { chdir = args[i + 1] || dynWord(); i += 2; continue; }
+      if (shortDir) { chdir = assignedValue(w, v.indexOf('C') + 1); i++; continue; }
+    }
     if (name === 'xargs') {
       if (v === '-I' && args[i + 1]) repl = args[i + 1].value;
       else if (/^-I./.test(v)) repl = v.slice(2);
@@ -626,6 +649,7 @@ function unwrap(name, spec, args, out, onExec) {
     }
     if (spec.assign && /^[A-Za-z_][A-Za-z0-9_]*=/.test(v)) {
       if (GIT_ENV_NAME.test(v.slice(0, v.indexOf('=')))) out.push(hit('git-env-config'));
+      if (/^GIT_(DIR|WORK_TREE)=/i.test(v)) gitRedirect = true;
       if (onExec && GIT_EXEC_ENV.test(v.slice(0, v.indexOf('=')))) onExec(assignedValue(w, v.indexOf('=') + 1));
       i++;
       continue;
@@ -640,14 +664,14 @@ function unwrap(name, spec, args, out, onExec) {
     if (skip > 0) { skip--; i++; continue; }
     break;
   }
-  if (codeWord) return { code: codeWord };
+  if (codeWord) return { code: codeWord, chdir, gitRedirect };
   if (spec.needsCode) return { done: true };
   let rest = args.slice(i);
   if (!rest.length) return spec.empty ? { words: [word(spec.empty)] } : { done: true };
   if (repl) rest = rest.map((w) => (w.value.includes(repl) ? { ...w, dyn: true, dynAt: Math.min(w.dyn ? w.dynAt : Infinity, w.value.indexOf(repl)) } : w));
   if (spec.appendDyn) rest = rest.concat(dynWord());
   if (spec.joined && rest.length > 1 && !rest.some((w) => w.dyn)) return { code: word(rest.map((w) => w.value).join(' ')) };
-  return { words: rest };
+  return { words: rest, chdir, gitRedirect };
 }
 
 // Código de shell pasado como texto: si es literal se evalúa; si no, no es verificable.
@@ -680,6 +704,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   if (name === 'git' || (name.startsWith('git-') && GIT_BUILTINS.has(name.slice(4)))) { analyzeGit(name, words, cmd, st, ctx, out); return; }
   if (name === 'export' || name === 'declare' || name === 'typeset' || name === 'local' || name === 'readonly') {
     if (args.some((w) => GIT_ENV_NAME.test(w.value.split('=')[0]))) out.push(hit('git-env-config'));
+    if (args.some((w) => /^GIT_(DIR|WORK_TREE)(=|$)/i.test(w.value))) st.gitEnv = true;
     for (const w of args) {
       const eq = w.value.indexOf('=');
       if (eq > 0 && GIT_EXEC_ENV.test(w.value.slice(0, eq)) && !(w.dyn && w.dynAt < eq)) code(assignedValue(w, eq + 1), 'bash', ctx, out, depth, st);
@@ -1086,6 +1111,8 @@ const HEAD_VERBS = new Set(['merge', 'reset', 'rebase', 'cherry-pick', 'commit',
 function headBranchOf(dir) {
   try {
     let d = path.resolve(dir);
+    // Un directorio que todavía no existe (`git worktree add w main && cd w`) no es el repo de más arriba: ilegible (R5).
+    if (!fs.statSync(d).isDirectory()) return null;
     for (let i = 0; i < 64; i++) {
       const dot = path.join(d, '.git');
       let s = null;
@@ -1187,6 +1214,25 @@ function claudePluginOff(args) {
   return pos.slice(k + 1).some((w) => w.dyn || /^pignolo(@|$)/i.test(w.value));
 }
 
+// Directorios posibles después de pasar a `t` desde los de `before` (null: no se sabe).
+function dirsAfter(t, before, ctx) {
+  const home = /^~([\\/]|$)/.test(t.value);
+  const abs = resolveAt(t.value, { cwd: null }, ctx) !== null;
+  const from = before || (abs ? [{ cwd: '/', real: null }] : null);
+  return from && merge(from.map((c) => ({ cwd: resolveClean(t.value, c.cwd || '/', ctx.locs.home),
+    real: c.real && !home ? path.resolve(c.real, t.value) : null })), []);
+}
+
+// Copia del estado con otro directorio, para un solo comando que corre en él sin mover el de la shell: `env -C <dir>`,
+// `env --chdir=<dir>`, `Start-Process -WorkingDirectory <dir>` (R5). Un directorio dinámico o ausente queda desconocido.
+function stateIn(st, ctx, dir) {
+  const f = forkState(st);
+  f.moved = true;
+  const lost = !dir || dir.dyn || dir.glob || dir.value === '-' || dir.value === '';
+  setPossible(f, lost ? null : dirsAfter(dir, possible(st), ctx));
+  return f;
+}
+
 function changeDir(name, args, st, ctx, negated) {
   st.moved = true; // gitCommands: un comando git posterior corre en otro directorio
   const t = args.find((w) => w.kind !== 'param' && !(w.value.startsWith('-') && w.value.length > 1));
@@ -1194,13 +1240,7 @@ function changeDir(name, args, st, ctx, negated) {
   let next;
   if (name === 'popd' || name === 'pop-location' || (t && (t.dyn || t.glob || t.value === '-'))) next = null;
   else if (!t) next = [{ cwd: ctx.locs.home, real: null }];
-  else {
-    const home = /^~([\\/]|$)/.test(t.value);
-    const abs = resolveAt(t.value, { cwd: null }, ctx) !== null;
-    const from = before || (abs ? [{ cwd: '/', real: null }] : null);
-    next = from && merge(from.map((c) => ({ cwd: resolveClean(t.value, c.cwd || '/', ctx.locs.home),
-      real: c.real && !home ? path.resolve(c.real, t.value) : null })), []);
-  }
+  else next = dirsAfter(t, before, ctx);
   // Hasta el próximo `;`, el directorio de antes sigue siendo posible (el cd pudo fallar).
   st.pending = { list: st.pending ? merge(st.pending.list, before) : before };
   // `! cd x`: con `&&`, lo que sigue corre justo cuando el cd falló (M7). Queda desconocido.
@@ -1212,9 +1252,11 @@ function changeDir(name, args, st, ctx, negated) {
 function analyzeGit(name, words, cmd, st, ctx, out) {
   let i = 1;
   let sub;
-  let redirected = Boolean(cmd.gitRedirect);
+  // GIT_DIR / GIT_WORK_TREE puestas en este comando (cmd.gitRedirect) o antes en la línea (st.gitEnv): git trabaja en otro repo.
+  const envRedirect = Boolean(cmd.gitRedirect || st.gitEnv);
+  let redirected = envRedirect;
   // Los -C literales (en orden) y si algún directorio no se puede resolver: lo usa la regla de refs protegidas (I1).
-  const redir = { dirs: [], unresolved: Boolean(cmd.gitRedirect) };
+  const redir = { dirs: [], unresolved: envRedirect };
   const lost = () => { if (ctx.collect) ctx.collect.push({ sub: null, incomplete: true }); };
   const cfg = [];
   let cfgUnknown = false;
@@ -1267,7 +1309,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     sub = words[i].value;
   }
   if (!GIT_BUILTINS.has(sub)) { lost(); out.push(hit('unknown-git-subcommand')); done(); return; }
-  const args = words.slice(i + 1);
+  const args = words.slice(name === 'git' ? i + 1 : 1); // la forma con guion (git-push) no tiene subcomando entre los operandos
   const o = parseOpts(args, SPECS[sub]);
   if (ctx.collect) {
     ctx.collect.push({
@@ -1285,7 +1327,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   // Programas que git ejecuta por opción (G7): --upload-pack, --receive-pack, --exec, clone/ls-remote -u.
   if (longIs(o, 'upload-pack') || longIs(o, 'receive-pack') || (['push', 'archive', 'send-pack'].includes(sub) && longIs(o, 'exec'))
     || (['clone', 'ls-remote'].includes(sub) && o.shorts.has('u'))) out.push(hit('git-shell'));
-  for (const r of gitRules(sub, o, args, ctx, inner, st, redirected ? redir : null)) out.push(hit(r));
+  for (const r of gitRules(sub, o, args, ctx, inner, st, redirected ? redir : null, cfg)) out.push(hit(r));
   // Con un candado de sabotaje en el worktree (§11.6), commit y add guardarían el código
   // saboteado. Un existsSync por directorio: sin git, dentro del plazo de 3 s.
   if ((sub === 'commit' || sub === 'add') && realDirs(st).some((d) => lockedAt(d))) out.push(hit('sabotage-lock'));
@@ -1300,18 +1342,18 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   done();
 }
 
-function gitRules(sub, o, args, ctx, st, realSt, redir) {
+function gitRules(sub, o, args, ctx, st, realSt, redir, cfg = []) {
   const base = gitRulesBase(sub, o, args, ctx, st);
   if (!ctx.subagent) return base;
   const extra = [];
   if (protectsRefs(sub, o, realSt || st, redir)) extra.push('pignolo-protected-refs');
-  if (touchesMain(sub, o, realSt || st, redir)) extra.push('subagent-main');
+  if (touchesMain(sub, o, realSt || st, redir, cfg)) extra.push('subagent-main');
   return extra.length ? [...base, ...extra] : base;
 }
 
 // Solo el hilo principal hace push y merge sobre main/master (decisión del autor, 2026-10-02). Solo se llama para un
 // subagente y falla cerrado: una rama de HEAD ilegible (HEAD suelto, sin repo, -C sin resolver) cuenta como main.
-const MAIN_REF = /^(?:refs\/heads\/)?(?:main|master)$/;
+const MAIN_REF = /^(?:refs\/heads\/|heads\/)?(?:main|master)$/i;
 function headOnMain(st, redir) {
   if (st.onMain) return true;
   const dirs = headDirs(st, redir);
@@ -1319,19 +1361,50 @@ function headOnMain(st, redir) {
   return dirs.some((d) => { const b = headBranchOf(d); return b === null || MAIN_REF.test(b); });
 }
 
-function touchesMain(sub, o, st, redir) {
+// `push.default` distinto de simple/current hace que un push sin refspec lleve más que la rama actual (matching: todas las
+// que coinciden; upstream: la rama que HEAD siga, que puede ser main) (R4). Sin `=` o con valor que no se lee: no verificable.
+const SAFE_PUSH_DEFAULT = /^(simple|current)$/i;
+function unsafePushDefault(kv) {
+  const eq = kv.indexOf('=');
+  if (kv.slice(0, eq < 0 ? undefined : eq).trim().toLowerCase() !== 'push.default') return false;
+  return eq < 0 || !SAFE_PUSH_DEFAULT.test(kv.slice(eq + 1).trim());
+}
+
+// `git config push.default <valor no seguro>`: lo deja escrito para un `git push` posterior (también de otra llamada).
+function setsUnsafePushDefault(o) {
+  const pos = o.positionals;
+  const k = pos.findIndex((w) => !w.dyn && w.value.toLowerCase() === 'push.default');
+  return k >= 0 && Boolean(pos[k + 1]) && (pos[k + 1].dyn || !SAFE_PUSH_DEFAULT.test(pos[k + 1].value));
+}
+
+function touchesMain(sub, o, st, redir, cfg) {
   if (sub === 'merge') return headOnMain(st, redir);
+  if (sub === 'config') return setsUnsafePushDefault(o);
   if (sub !== 'push') return false;
+  if (cfg.some(unsafePushDefault)) return true;
   const pos = o.positionals;
   if (pos.some((w) => w.dyn)) return true;
-  const specs = pos.slice(1).map((w) => w.value.replace(/^\+/, ''));
-  if (longIs(o, 'all')) return true;
+  // --branches empuja todas las ramas locales, como --all (R4).
+  if (longIs(o, 'all') || longIs(o, 'branches')) return true;
+  // Con --repo=<remoto> el primer operando ya es un refspec.
+  const specs = (longIs(o, 'repo') ? pos : pos.slice(1)).map((w) => w.value.replace(/^\+/, ''));
   if (!specs.length) return longIs(o, 'tags') ? false : headOnMain(st, redir);
   return specs.some((x) => {
+    // Un comodín puede alcanzar main (`refs/heads/*`, `m*:m*`).
+    if (/[*?[]/.test(x)) return true;
     const dst = x.includes(':') ? x.slice(x.indexOf(':') + 1) : x;
-    if (dst === 'HEAD' || dst === '') return x === 'HEAD' ? headOnMain(st, redir) : false;
+    if (dst === '') return true; // `:` empuja las ramas que coinciden
+    if (dst === 'HEAD' || dst === '@') return x === 'HEAD' || x === '@' ? headOnMain(st, redir) : false;
     return MAIN_REF.test(dst);
   });
+}
+
+// Qué sabe la guardia de HEAD después de un `checkout`/`switch` a `name` (R5, R7). main (o la rama anterior, `-` y `@{-N}`,
+// que puede ser main) deja HEAD en main para lo que sigue. Una rama literal que no es main lo saca de main solo si lo que
+// sigue corre únicamente cuando el cambio anduvo (`&&`): `script` lee `offNext` y baja `onMain` entonces.
+function switchedTo(st, name) {
+  if (MAIN.test(name) || name === '-' || /^@\{-\d+\}$/.test(name)) st.onMain = true;
+  else st.offNext = true;
 }
 
 function gitRulesBase(sub, o, args, ctx, st) {
@@ -1360,14 +1433,14 @@ function gitRulesBase(sub, o, args, ctx, st) {
         if (p.value === '.' || p.glob) return ['checkout-path'];
         if (p.dyn) return ['dynamic-argument'];
         if (realDirs(st).some((d) => fs.existsSync(path.resolve(d, p.value)))) return ['checkout-path'];
-        if (MAIN.test(p.value) && !has('b') && !has('B') && !long('orphan')) st.onMain = true;
+        if (!has('b') && !has('B') && !long('orphan')) switchedTo(st, p.value);
       }
       if (has('B')) r.push('ref-move');
       return r;
     }
     case 'switch':
       if (has('f') || long('force') || long('discard-changes')) return ['switch-force'];
-      if (pos.length && MAIN.test(pos[0].value) && !has('c') && !has('C') && !long('create') && !long('force-create') && !long('orphan')) st.onMain = true;
+      if (pos.length && !has('c') && !has('C') && !long('create') && !long('force-create') && !long('orphan')) switchedTo(st, pos[0].value);
       if (has('C') || long('force-create')) r.push('ref-move');
       return r;
     case 'restore':
@@ -1891,11 +1964,13 @@ function memberTarget(t) {
 
 function analyzeStartProcess(args, cmd, shell, ctx, out, depth, st) {
   let file = null;
+  let workDir = null; // -WorkingDirectory: el proceso corre en ese directorio (R5)
   const argList = [];
   for (let i = 0; i < args.length; i++) {
     const w = args[i];
     if (w.kind === 'param') {
       const p = w.value.toLowerCase();
+      if (p.length >= 3 && '-workingdirectory'.startsWith(p)) { workDir = args[i + 1] || dynWord(); i++; continue; }
       if (/^-(filepath|file|f|path)$/.test(p)) { file = args[i + 1]; i++; continue; }
       if (/^-(argumentlist|args|a)$/.test(p)) {
         while (args[i + 1] && args[i + 1].kind !== 'param') { argList.push(args[i + 1]); i++; }
@@ -1913,7 +1988,7 @@ function analyzeStartProcess(args, cmd, shell, ctx, out, depth, st) {
     if (a.dyn) words.push(a);
     else words.push(...a.value.split(/\s+/).filter(Boolean).map((v) => word(v)));
   }
-  runWords(words, { ...cmd, redirects: [], pipedIn: false, stdinBody: undefined, noCd: true }, shell, ctx, out, depth + 1, st);
+  runWords(words, { ...cmd, redirects: [], pipedIn: false, stdinBody: undefined, noCd: true }, shell, ctx, out, depth + 1, workDir ? stateIn(st, ctx, workDir) : st);
 }
 
 // ------------------------------------------------------------ PowerShell
@@ -1972,6 +2047,7 @@ function psCommands(text, ctx, st) {
   const values = new Map();
   for (const a of r.assigns) {
     if (/^\$env:(GIT_\w+)$/i.test(a.left) && GIT_ENV_NAME.test(a.left.slice(5))) extra.push(hit('git-env-config'));
+    if (/^\$env:GIT_(DIR|WORK_TREE)$/i.test(a.left)) st.gitEnv = true; // (R4)
     if (/^\$env:\w+$/i.test(a.left) && GIT_EXEC_ENV.test(a.left.slice(5))) {
       if (a.value === null) extra.push(hit('hidden-code'));
       else script(a.value, 'bash', ctx, extra, 1, { ...st, vars: new Map(st.vars) });
