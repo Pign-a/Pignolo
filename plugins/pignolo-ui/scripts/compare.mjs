@@ -5,6 +5,7 @@
 //   node <root>/scripts/compare.mjs distance --a <fp.json> --b <fp.json>
 //   node <root>/scripts/compare.mjs options --run <run> --kind mockup|tile --main <screen.html> [--second-round]
 //   node <root>/scripts/compare.mjs approved --project <repo> --approved <design/approved/flow> --map <json file> --run <run>
+//   node <root>/scripts/compare.mjs heights --run <run> --kind mockup --screens <a.html,b.html> --options <A,B,C> --platform desktop|mobile|both --out <json inside the run>
 //
 // mockup fingerprints need the browser (one per command, signals handled like browser.mjs); without
 // one the result is { unverified: <reason> } with exit 0. Exit 0 done, 2 usage or own error.
@@ -19,6 +20,9 @@ import { APPROVED_PATH } from '../lib/approved.mjs';
 import { createOpener, watchSignals } from './browser.mjs';
 import { preflight } from '../lib/browser-run.mjs';
 import { fingerprintPage, FINGERPRINT_WIDTH, FINGERPRINT_HEIGHT } from '../lib/fingerprint-page.mjs';
+import { pageHeight, clampHeight, heightKey } from '../lib/page-height.mjs';
+import { sizesFor } from '../lib/canvas.mjs';
+import { runLinkProblem, isLink } from '../lib/link-guard.mjs';
 import { mockupDistance, tileDistance, tileFingerprint, pairwise, samePrimary } from '../lib/fingerprint.mjs';
 import { writeLocalCopies, pagesToOpen, LocalCopyError } from '../lib/local-copy.mjs';
 
@@ -29,6 +33,7 @@ const ALLOWED = {
   distance: { value: ['a', 'b'], flags: [] },
   options: { value: ['run', 'kind', 'main'], flags: ['second-round'] },
   approved: { value: ['project', 'approved', 'map', 'run'], flags: [] },
+  heights: { value: ['run', 'kind', 'screens', 'options', 'platform', 'out'], flags: [] },
 };
 
 function parseArgs(argv) {
@@ -72,23 +77,24 @@ function pageSource(project, { file, url }) {
   return { url: pathToFileURL(abs).href, file: abs };
 }
 
-// Runs fn(takeFingerprint) with one browser; returns { unverified } when there is none.
+// Runs fn(take) with one browser; take(url, { width, height, measure }) opens the page at that size and
+// returns what measure(page) says (the fingerprint by default). Returns { unverified } when there is no browser.
 async function withPageFingerprints({ env, browserOptions, stdout, proc }, fn) {
   const found = findBrowser({ env });
   const opener = createOpener({ found, browserOptions });
   const signals = watchSignals({ proc, current: () => opener.state.current, stdout });
   try {
     const result = await opener.open(async (browser) => {
-      const take = async (url) => {
+      const take = async (url, { width = FINGERPRINT_WIDTH, height = FINGERPRINT_HEIGHT, measure = fingerprintPage } = {}) => {
         const down = await preflight(url);
         if (down) return { unverified: `la página no cargó: ${down}` };
         const page = await browser.newPage();
         try {
-          await page.setViewport({ width: FINGERPRINT_WIDTH, height: FINGERPRINT_HEIGHT });
+          await page.setViewport({ width, height });
           await page.setMedia({ theme: 'light' });
           await page.navigate(url);
           await page.waitReady();
-          return await fingerprintPage(page);
+          return await measure(page);
         } catch (e) {
           if (e instanceof PageLoadError) return { unverified: `la página no cargó: ${e.message}` };
           throw e;
@@ -209,6 +215,67 @@ async function cmdOptions(opts, ctx) {
   return 0;
 }
 
+const SCREEN_RE = /^[a-z0-9][a-z0-9-]*.html$/;
+
+// Real height of each screen at the width of each row (R-15). The pages opened are the COPIES under <run>/local/
+// (no remote font is ever asked for); a screen that cannot be measured leaves the whole answer unverified, and
+// then the canvas keeps the sizes of R-3. The file is written only when every measure is a number.
+async function cmdHeights(opts, ctx) {
+  need(opts, 'run', 'kind', 'screens', 'options', 'platform', 'out');
+  if (opts.kind !== 'mockup') throw new UsageError('--kind debe ser mockup (solo las pantallas van al lienzo)');
+  const run = path.resolve(ctx.cwd, opts.run);
+  if (!fs.existsSync(run) || !fs.statSync(run).isDirectory()) throw new UsageError(`--run no existe: ${opts.run}`);
+  if (runLinkProblem(run)) throw new UsageError('--run es o pasa por un enlace: se rechaza');
+  const out = path.resolve(ctx.cwd, opts.out);
+  if (!insideDir(run, out)) throw new UsageError('--out debe estar dentro de la carpeta de la corrida');
+  if (isLink(out)) throw new UsageError('--out es un enlace: se rechaza');
+  const letters = String(opts.options).split(',').map((x) => x.trim()).filter(Boolean);
+  if (!letters.length || new Set(letters).size !== letters.length || !letters.every((l) => /^[A-Z]$/.test(l))) throw new UsageError('--options debe ser una lista de letras mayúsculas distintas (A,B,C)');
+  const screens = String(opts.screens).split(',').map((x) => x.trim()).filter(Boolean);
+  if (!screens.length || new Set(screens).size !== screens.length || !screens.every((s) => SCREEN_RE.test(s) && s.length <= 37)) throw new UsageError('--screens debe listar pantallas distintas con nombre válido (inicio.html)');
+  let sizes;
+  try { sizes = sizesFor(opts.platform); } catch { throw new UsageError('--platform debe ser desktop, mobile o both'); }
+  const dirs = optionDirs(run, 'mockup');
+  for (const l of letters) {
+    if (!dirs[l]) throw new UsageError(`no existe la opción ${l}`);
+    for (const s of screens) if (!fs.existsSync(path.join(dirs[l], s))) throw new UsageError(`falta ${s} en la opción ${l}`);
+  }
+  let written;
+  try { written = writeLocalCopies({ run, folders: letters.map((l) => path.basename(dirs[l])) }); } catch (e) {
+    if (e instanceof LocalCopyError) throw new UsageError(e.message);
+    throw e;
+  }
+  const r = await withPageFingerprints(ctx, async (take) => {
+    const got = {};
+    for (const l of letters) {
+      for (const s of screens) {
+        const file = pagesToOpen({ run, folders: [path.basename(dirs[l])], screens: [s] })[0];
+        for (const size of sizes) {
+          const v = await take(pathToFileURL(file).href, { width: size.w, height: size.h, measure: pageHeight });
+          if (v && v.unverified) return { unverified: v.unverified };
+          const h = clampHeight(v);
+          if (h === null) return { unverified: `la medida de ${l}/${s} no es un número` };
+          got[heightKey(l, s, size.w)] = h;
+        }
+      }
+    }
+    return { heights: got };
+  });
+  const unverified = r.result ? r.result.unverified : r.unverified;
+  if (unverified) {
+    // an older answer must not outlive a failed measure: the build would trust it
+    if (fs.existsSync(out)) fs.unlinkSync(out);
+    print(ctx.stdout, { unverified, ...cleanupInfo(r.cleanup) });
+    return 0;
+  }
+  const tmp = `${out}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(r.result.heights, null, 2)}
+`);
+  fs.renameSync(tmp, out);
+  print(ctx.stdout, { out, heights: r.result.heights, count: Object.keys(r.result.heights).length, fontsRemoved: written.removed, ...cleanupInfo(r.cleanup) });
+  return 0;
+}
+
 function differences(a, b) {
   const out = [];
   if (JSON.stringify(a.blocks) !== JSON.stringify(b.blocks)) out.push({ kind: 'blocks', a: a.blocks, b: b.blocks });
@@ -258,6 +325,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     if (opts.cmd === 'fingerprint') return await cmdFingerprint(opts, ctx);
     if (opts.cmd === 'distance') return cmdDistance(opts, ctx);
     if (opts.cmd === 'options') return await cmdOptions(opts, ctx);
+    if (opts.cmd === 'heights') return await cmdHeights(opts, ctx);
     return await cmdApproved(opts, ctx);
   } catch (e) {
     process.stderr.write(`compare: ${e instanceof UsageError ? e.message : `error interno (${e.stack || e.message})`}\n`);

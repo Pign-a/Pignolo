@@ -11,6 +11,7 @@ import path from 'node:path';
 import { toArtboard, sizesFor, artboardName, isInteractive } from './canvas.mjs';
 import { CanvasError, scanMarkup } from './canvas-html.mjs';
 import { parseFontLinks } from './remote-fonts.mjs';
+import { clampHeight } from './page-height.mjs';
 
 export { CanvasError };
 
@@ -27,11 +28,9 @@ export function pageIdFor(runId) {
   return `r-${m[1]}${m[2]}${m[3]}${m[4]}-${sha(String(runId)).slice(0, 6)}`;
 }
 
-const clamp = (v) => Math.min(8000, Math.max(400, v));
-
 function heightOf(heights, option, file, w, fallback) {
   const v = heights?.[`${option}/${file}@${w}`];
-  return typeof v === 'number' && Number.isFinite(v) ? clamp(Math.round(v)) : fallback;
+  return clampHeight(v) ?? fallback;
 }
 
 export function buildCanvas({ options, platform, pageId, pageName, canvasTitle, first = true, heights = null }) {
