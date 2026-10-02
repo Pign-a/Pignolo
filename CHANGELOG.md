@@ -11,6 +11,18 @@ Cambio de contrato de la guardia de git, por decisión del autor (2026-10-02): l
 - **Sin cambios para subagentes:** `pignolo-protected-refs` (un subagente no escribe `int/*`, `queue/*`, `cp/*` ni `contract/*`) y las demás reglas por subagente.
 - **Plantilla de permisos (decisión del autor, 2026-10-02):** `/pignolo:setup` ya no pone `git push *` ni `git merge *` en `ask` (commit a13dd6b); sigue pidiendo confirmación el borrado de ramas y tags. Texto de la skill `setup` y de la spec al día.
 
+Arreglos de la revisión de esta versión (cada uno con un test que falla sin el arreglo).
+
+- **R1, crítico:** una expansión de llaves de bash ya no esconde una opción o un refspec forzado. La guardia expande las llaves en literal (`git push {-f,origin} main`, `--mir{ror,}`, `origin {+main,feat}`, `git reset {--hard,HEAD}`) y evalúa cada regla sobre el resultado; lo que no puede expandir (comillas mezcladas, rangos raros, más de 64 palabras) queda dinámico y se niega en los verbos destructivos. Antes pasaba sin que nadie lo viera (también `reset --hard` en `main`).
+- **R2, crítico:** `git remote add --mirror` y `--mirror=push` se niegan con `push-force` (dejan `remote.<n>.mirror=true`, la clave que la guardia ya negaba por `git config` y por `-c`); `--mirror=fetch` pasa. `git clone --mirror` sigue permitido: decisión del autor (G49).
+- **R3, crítico (ya estaba en `main`):** `cmd //c "…"` se desenvuelve igual que `cmd /c` (en Git Bash la forma que funciona lleva dos barras).
+- **R4, `subagent-main`:** un subagente tampoco empuja a main con `@`, comodines (`refs/heads/*`, `m*:m*`), `heads/main`, `--branches`, `:` (ramas que coinciden), `--repo=<remoto> main`, otra capitalización, `-c push.default=<distinto de simple/current>`, `git config push.default <distinto de simple/current>` (también escrito en otra llamada), `env -C <dir>`/`--chdir`, ni con `GIT_DIR`/`GIT_WORK_TREE` puestas con `env`, asignadas, exportadas o con `$env:` (un push sin refspec se cierra; con un refspec que no es main pasa).
+- **R5, `subagent-main`:** `merge` sobre main con la rama que la guardia no veía: `switch -`/`checkout -`/`@{-N}` (HEAD puede quedar en main), `Main`/`MASTER` (sin distinguir mayúsculas), un directorio que todavía no existe (`git worktree add w main && cd w`, `git -C w merge`: ilegible, falla cerrado), `env -C`/`--chdir` y `Start-Process -WorkingDirectory` (cambian el directorio del comando, no el de la shell).
+- **R7, `subagent-main`:** `git switch main && git switch feat && git push` ya no se niega: solo `&&` baja la marca "HEAD en main" tras un cambio a una rama literal (con `;`, `||` o `&` el cambio pudo fallar y se sigue negando).
+- **R8 (test):** la fila `git -C "$d" merge` no podía fallar (la niega antes `pignolo-protected-refs`); ahora `git -C "$d" push` y `git --git-dir="$d" push` exigen `subagent-main`, y falla si el directorio sin resolver deja de cerrar.
+- **Menores:** `git-push --force` (la forma con guion descartaba el primer operando) conserva `push-force`; filas nuevas para las mutaciones M7, M9 y M12 de la revisión.
+- **Abiertos:** R6 (otros verbos con los que un subagente mueve main: `pull`, `rebase`, `cherry-pick`, `commit`, `reset --soft`, `fetch . x:main`, `worktree add -B main`) y los menores sin arreglar, en G49 y G50 de `docs/gaps.md`.
+
 ## 0.14.0 — 2026-10-02
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Se une después del hito 8d (0.13.1); en su rama llevó los números 0.13.0 y 0.13.1 (brainstorming), así que esta es la versión menor libre siguiente.
