@@ -1,0 +1,228 @@
+{
+  "_note": "Copied literally from the cards tests/evals/RESULTS-lentes-reales.md and tests/evals/RESULTS-momento-de-revision.md (sections 3, 4, 6, 7). Do not edit cases, arms or seeds after the first run.",
+  "plans": {
+    "7a": { "file": "docs/plans/2026-09-30-hito-7-ramas-y-paralelismo.md", "from": "tree" },
+    "8d": { "file": "docs/plans/2026-10-01-hito-8d-estructura-de-carpetas.md", "from": "tree" },
+    "ui-4e": { "file": "docs/plans/2026-10-01-pignolo-ui-hito-4e-oficio-y-chequeos.md", "from": "tree" },
+    "ui-4f": { "file": "docs/plans/2026-10-01-pignolo-ui-hito-4f-contexto-de-producto.md", "from": "d12401a" }
+  },
+  "snapshots": [
+    { "id": "ui-p1", "commit": "731ac8d", "parent": "69e4c44", "card": { "mode": "task" } },
+    { "id": "7a-t1", "commit": "79fa823", "parent": "8d4119f", "card": { "mode": "task", "plan": "7a", "tasks": ["1"] } },
+    { "id": "7a-t2", "commit": "29ae5b1", "parent": "79fa823", "card": { "mode": "task", "plan": "7a", "tasks": ["2"] } },
+    { "id": "7a-t3", "commit": "c8a4c30", "parent": "29ae5b1", "card": { "mode": "task", "plan": "7a", "tasks": ["3"] } },
+    { "id": "7a-t4", "commit": "025b2b0", "parent": "c8a4c30", "card": { "mode": "task", "plan": "7a", "tasks": ["4"] } },
+    { "id": "7a-t7", "commit": "f10bf1d", "parent": "025b2b0", "card": { "mode": "task", "plan": "7a", "tasks": ["7"] } },
+    { "id": "7a-t8", "commit": "26705eb", "parent": "f10bf1d", "card": { "mode": "task", "plan": "7a", "tasks": ["8"] } },
+    { "id": "7a-t10", "commit": "0fb7d94", "parent": "26705eb", "card": { "mode": "task", "plan": "7a", "tasks": ["10", "16"] } },
+    { "id": "7a-t56", "commit": "f8222ec", "parent": "0fb7d94", "card": { "mode": "task", "plan": "7a", "tasks": ["5", "6"] } },
+    { "id": "7a-t9", "commit": "cd7f910", "parent": "f8222ec", "card": { "mode": "task", "plan": "7a", "tasks": ["9"] } },
+    { "id": "7a-end", "commit": "c3e45af", "parent": "56799f1", "card": { "mode": "plan", "plan": "7a" } },
+    { "id": "8d-d4", "commit": "3cf2ea5", "parent": "efca017", "card": { "mode": "task", "plan": "8d" } },
+    { "id": "8d-d5", "commit": "553541a", "parent": "54f86bc", "card": { "mode": "task", "plan": "8d" } },
+    { "id": "8d-l2", "commit": "7a2f29f", "parent": "d6014c0", "card": { "mode": "task", "plan": "8d" } },
+    { "id": "ui-p2", "commit": "f80b6fd", "parent": "731ac8d", "card": { "mode": "plan", "plan": "ui-4e" } },
+    { "id": "ui-p3", "commit": "12659b1", "parent": "f80b6fd", "card": { "mode": "plan", "plan": "ui-4f" } },
+    { "id": "ui-group", "commit": "12659b1", "parent": "69e4c44", "card": { "mode": "plans", "parts": [
+      { "label": "pignolo-ui 0.7.3 (no plan document: commit message)", "message": "731ac8d" },
+      { "label": "pignolo-ui 0.7.4 plan (4e)", "plan": "ui-4e" },
+      { "label": "pignolo-ui 0.7.5 plan (4f)", "plan": "ui-4f" }
+    ] } }
+  ],
+  "defects": [
+    { "id": "ui073-I1", "plan": "ui", "introducedIn": ["ui-p1"], "fix": "ce38376", "tip": "12659b1",
+      "tests": [{ "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I1: a --provided-file that does not exist", "role": "primary" }],
+      "behaviour": "options.md always passes --provided-file <run>/provided.json, but only step 3 of `new` writes that file; run.mjs options-check with the file absent exits 2 and says the values file is not valid JSON.",
+      "reviewLocation": "reference/options.md:27; skills/new/SKILL.md:30-31; scripts/run.mjs:316-319" },
+    { "id": "ui073-I2", "plan": "ui", "introducedIn": ["ui-p1"], "fix": "ce38376", "tip": "12659b1",
+      "tests": [{ "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I2: a style tile that options-check accepts", "role": "primary" }],
+      "behaviour": "approve.mjs save --flow direction rejects (no-sample-strip) a style tile with a data-sample value and no visible line, although checkOption(kind direction) accepts it.",
+      "reviewLocation": "lib/approved.mjs:69-71; lib/option-check.mjs:58" },
+    { "id": "ui073-I3", "plan": "ui", "introducedIn": ["ui-p1"], "fix": "d89c1f7", "tip": "12659b1",
+      "tests": [
+        { "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I3: numbers that are not phones", "role": "primary" },
+        { "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I3: real phone shapes still fail", "role": "guard" }
+      ],
+      "behaviour": "real-looking-contact reports a phone for common numbers (neighbour cells, ISO dates and times, order numbers, tax ids, year ranges) because the phone pattern crosses the newline that joins the text of different elements.",
+      "reviewLocation": "lib/sample-data.mjs:25,37-41" },
+    { "id": "ui073-I4", "plan": "ui", "introducedIn": ["ui-p1"], "fix": "d89c1f7", "tip": "12659b1",
+      "tests": [{ "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I4: emails and phones inside attributes", "role": "primary" }],
+      "behaviour": "Emails and phones in attributes (value, placeholder, title, mailto:/tel: href) or split between inline tags are not detected by the sample-data check (problems: []).",
+      "reviewLocation": "lib/sample-data.mjs:57,68-84" },
+    { "id": "ui073-I5", "plan": "ui", "introducedIn": ["ui-p1"], "fix": "d89c1f7", "tip": "12659b1",
+      "tests": [{ "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I5: a value the user gave in another format", "role": "primary" }],
+      "behaviour": "unmarked-sample rejects a value the user gave when the screen writes it in another format (3200 vs $ 3.200,00, dates), and accepts by substring ('10' inside '$ 9.810,10').",
+      "reviewLocation": "lib/sample-data.mjs:35,66-67" },
+    { "id": "ui073-I6", "plan": "ui", "introducedIn": ["ui-p1"], "fix": "d89c1f7", "tip": "12659b1",
+      "tests": [
+        { "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I6: a lone typographic chevron", "role": "primary" },
+        { "file": "plugins/pignolo-ui/tests/sample-data-fixes.test.mjs", "name": "I6/I5: the eval grader", "role": "secondary" }
+      ],
+      "behaviour": "bare-placeholder fails on a single typographic chevron (a 'back' link or pagination arrow), although the rule is about a lone pair marker.",
+      "reviewLocation": "lib/sample-data.mjs:22,74; tests/evals/ui-cases.mjs:224" },
+
+    { "id": "7a-I1", "plan": "7a", "introducedIn": ["7a-t8"], "fix": "bfb52ba", "tip": "c3e45af",
+      "tests": [
+        { "file": "tests/guard-queue.test.js", "name": "I1: -C, branch/tag con -v/--sort/--format", "role": "primary" },
+        { "file": "tests/guard-queue.test.js", "name": "I1: -C a la worktree de la tarea", "role": "guard" }
+      ],
+      "behaviour": "The pignolo-protected-refs guard fails open in plain-git forms: git -C <main on int/p> commit/reset, revert, am, branch -v -f, tag --sort, worktree add -B, rebase main int/p, push --delete, symbolic-ref write a protected ref and are allowed.",
+      "reviewLocation": "plugins/pignolo/lib/git-guard.js:1074-1107, :1207" },
+    { "id": "7a-I2", "plan": "7a", "introducedIn": ["7a-t8"], "fix": "bfb52ba", "tip": "c3e45af",
+      "tests": [{ "file": "tests/guard-queue.test.js", "name": "I2: crear una rama desde int/*", "role": "primary" }],
+      "behaviour": "The same rule denies a must-allow form: git checkout -b x int/p and git switch -c task/p/02-b int/p are denied because the start point is read as the created name.",
+      "reviewLocation": "plugins/pignolo/lib/git-guard.js:1079-1081" },
+    { "id": "7a-I3", "plan": "7a", "introducedIn": ["7a-t8"], "fix": "bfb52ba", "tip": "c3e45af",
+      "tests": [{ "file": "tests/guard-queue.test.js", "name": "I3: el script como cualquier operando", "role": "primary" }],
+      "behaviour": "The queue/worktree-tools guard finds the script only as node's first operand: node --title x <P>/scripts/queue.js run ... and node -e require('<P>/lib/queue.js') are allowed to a subagent.",
+      "reviewLocation": "plugins/pignolo/lib/git-guard.js:1007-1015, :959" },
+    { "id": "7a-I4", "plan": "7a", "introducedIn": ["7a-t9"], "fix": "6e82bee", "tip": "c3e45af",
+      "tests": [{ "file": "tests/branch-cleanup.test.js", "name": "I4 (A7-14)", "role": "primary" }],
+      "behaviour": "Cleanup deletes an ignored file (.env) created in the second branch's worktree after the batch check: only the sha and the realpath are rechecked per branch, not that the worktree has no ignored files.",
+      "reviewLocation": "plugins/pignolo/lib/branch-cleanup.js:257, :283-288" },
+    { "id": "7a-I5", "plan": "7a", "introducedIn": ["7a-t56"], "fix": "e31531c", "tip": "c3e45af",
+      "tests": [{ "file": "tests/queue.test.js", "name": "I5: un archivo que no es UTF-8", "role": "primary" }],
+      "behaviour": "A 'trivial' conflict resolution decodes the three stages as UTF-8 and corrupts a Latin-1 file (e9 becomes ef bf bd) and integrates it with PASS.",
+      "reviewLocation": "plugins/pignolo/lib/queue.js:267-270, :345" },
+    { "id": "7a-I6", "plan": "7a", "introducedIn": ["7a-t2", "7a-t10"], "distributed": true, "fix": "82fefa0", "tip": "c3e45af",
+      "tests": [
+        { "file": "tests/multi-task-readers.test.js", "name": "subagent-start con dos tareas del mismo agente", "role": "primary" },
+        { "file": "tests/multi-task-readers.test.js", "name": "next con dos tareas sin aceptar", "role": "primary" },
+        { "file": "tests/multi-task-readers.test.js", "name": "la línea \"Flujo en curso\"", "role": "primary" }
+      ],
+      "behaviour": "Three readers still use the old run.task shape and are silent with two tasks: subagent-start gives no card nor Worktree line, next falls through to the plan stage instead of task-in-progress, the 'Flujo en curso' line loses the task.",
+      "reviewLocation": "hooks/handlers/subagent-start.js:26; lib/next.js:137,161; hooks/handlers/session-start.js:176; lib/context-budget.js:47" },
+    { "id": "7a-I7", "plan": "7a", "introducedIn": ["7a-t3", "7a-t56", "7a-t9"], "distributed": true, "fix": "bd760f3", "tip": "c3e45af",
+      "tests": [
+        { "file": "tests/real-paths.test.js", "name": "syncQueue por una junction", "role": "primary" },
+        { "file": "tests/real-paths.test.js", "name": "listTaskWorktrees por una junction", "role": "primary" },
+        { "file": "tests/real-paths.test.js", "name": "cleanup por una junction", "role": "primary" },
+        { "file": "tests/real-paths.test.js", "name": "realPath / realNorm", "role": "secondary" }
+      ],
+      "behaviour": "Queue, worktree listing and cleanup compare path.resolve text while git reports real paths: reaching the repo through a junction or symlink makes syncQueue fail on the second entry (queue-path-occupied) and listTaskWorktrees return [].",
+      "reviewLocation": "queue.js:46-49,91; worktrees.js:69-72,125-135; branch-cleanup.js:168" },
+    { "id": "7a-I8", "plan": "7a", "introducedIn": ["7a-t9"], "fix": "a352045", "tip": "c3e45af",
+      "tests": [{ "file": "tests/session-start-branches.test.js", "name": "I8: el aviso no corre un git por rama", "role": "primary" }],
+      "behaviour": "The SessionStart cleanup notice runs one git process per merged branch and one status per worktree: with 8 merged branches and 3 worktrees it exceeds the 1.5 s budget and the line is never shown.",
+      "reviewLocation": "plugins/pignolo/lib/branch-cleanup.js:215, :159-163, :317-334" },
+    { "id": "7a-I9", "plan": "7a", "introducedIn": ["7a-t56"], "fix": "81b70ee", "tip": "c3e45af",
+      "tests": [{ "file": "tests/queue.test.js", "name": "I9: la repetici", "role": "primary" }],
+      "behaviour": "The repeated gate run does not expand {seed} and does not export PIGNOLO_TEST_SEED, so the repetition runs a different command from the full run.",
+      "reviewLocation": "plugins/pignolo/lib/queue.js:456,472" },
+    { "id": "7a-I10", "plan": "7a", "introducedIn": ["7a-t2"], "fix": "fbe3df2", "tip": "c3e45af",
+      "tests": [{ "file": "tests/run-lifecycle.test.js", "name": "start writes a valid run.json and the gitignore", "role": "primary" }],
+      "behaviour": "run.js start still writes run.json v1 until the first task, against decision D-7-2 (always v2).",
+      "reviewLocation": "plugins/pignolo/scripts/run.js:175-178" },
+    { "id": "7a-I11", "plan": "7a", "introducedIn": ["7a-t3"], "fix": "a19abae", "tip": "c3e45af",
+      "tests": [
+        { "file": "tests/worktree.test.js", "name": "shellRun: al vencer el plazo", "role": "primary" },
+        { "file": "tests/worktree.test.js", "name": "shellRun: el código de salida", "role": "guard" }
+      ],
+      "behaviour": "shellRun does not kill the process tree on timeout: taskkill /T runs after the shell was already killed, so a child that writes a marker after the timeout still writes it.",
+      "reviewLocation": "plugins/pignolo/lib/worktrees.js:34-40" },
+
+    { "id": "8d-I-2", "plan": "8d", "introducedIn": ["8d-d4"], "fix": "88a257b", "tip": "46d6ac3",
+      "tests": [
+        { "file": "tests/ref-scan.test.js", "name": "I-2: <img src> y <a href>", "role": "primary" },
+        { "file": "tests/ref-scan.test.js", "name": "I-2: comillas simples", "role": "primary" }
+      ],
+      "behaviour": "HTML links inside markdown (<img src>, <a href>) pointing at what is moved neither stop the move nor get rewritten: adapt finishes done with manual [] and the references stay broken.",
+      "reviewLocation": "plugins/pignolo/lib/ref-scan.js:84-127, :263-270, :285" },
+    { "id": "8d-I-4", "plan": "8d", "introducedIn": ["8d-d5"], "distributed": true, "fix": "75c5089", "tip": "46d6ac3",
+      "tests": [
+        { "file": "tests/init-adapt.test.js", "name": "I-4: una guarda de planMoves frena el move", "role": "primary" },
+        { "file": "tests/skill-init.test.js", "name": "I-4: a folder stopped by a hard guard", "role": "primary" }
+      ],
+      "behaviour": "A move stopped by a hard guard (for example an ignored pdf) leaves the kind out of the map (leftKinds) although the init skill says it stays adopted; where spec then answers the default docs/specs/ and a second specs folder appears.",
+      "reviewLocation": "plugins/pignolo/lib/init-adapt.js:201-206; skills/init/SKILL.md:31" },
+
+    { "id": "ui074-A-1", "plan": "ui", "introducedIn": ["ui-p2"], "fix": "1e47b65", "tip": "12659b1",
+      "testFrom": "8da669f",
+      "tests": [{ "file": "plugins/pignolo-ui/tests/review-keep-menu.test.mjs", "name": "review A-1: an invalid keep line", "role": "primary" }],
+      "behaviour": "bad-keep is reported with index -1 and run.mjs menu reads any -1 problem as 'the whole auditor output is untrusted': one invalid keep line (161 chars, empty, null, two lines) makes the improve menu pre-tick none of the valid auditor findings.",
+      "reviewLocation": "scripts/run.mjs:520; lib/auditor-output.mjs:83" },
+    { "id": "ui075-B-1", "plan": "ui", "outOfScope": "test defect (a test that cannot fail)", "introducedIn": ["ui-p3"], "fix": "3fa4ecc", "tip": "12659b1",
+      "tests": [], "behaviour": "Out of scope of the lens (test defect): run-cli and hito-4f-acceptance run `verdict --run <run>` while the file lives in <run>/after.", "reviewLocation": "tests/run-cli.test.mjs:478; tests/hito-4f-acceptance.test.mjs:66-71" },
+    { "id": "ui075-B-2", "plan": "ui", "outOfScope": "test defect (privacy check without a test)", "introducedIn": ["ui-p3"], "fix": "79c820e", "tip": "12659b1",
+      "tests": [], "behaviour": "Out of scope of the lens (test defect): no test covers that `context` passes --values-file values to the brief.", "reviewLocation": "scripts/run.mjs:398" }
+  ],
+  "minors": [
+    { "id": "ui073-M1", "snapshots": ["ui-p1"], "text": "The 'Datos de muestra' line hidden by CSS passes (class display:none, visibility, opacity, off-screen, details closed...)." },
+    { "id": "ui073-M2", "snapshots": ["ui-p1"], "text": "data-sample on a container exempts everything (body data-sample, data-sample=\"false\")." },
+    { "id": "ui073-M3", "snapshots": ["ui-p1"], "text": "approve.mjs save only checks no-sample-strip (a screen with a real-looking email or phone is saved)." },
+    { "id": "ui073-M4", "snapshots": ["ui-p1"], "text": "Emails: the text says never, the script accepts reserved domains; nobody tells the agent what to put in an email field." },
+    { "id": "ui073-M5", "snapshots": ["ui-p1"], "text": "Auditor card says a data-sample value is not a finding but ui-check emits CONTENT-01 for each data-sample." },
+    { "id": "ui073-M6", "snapshots": ["ui-p1"], "text": "Test gaps: surviving mutations M11, M17, M21, M23." },
+    { "id": "ui073-M7", "snapshots": ["ui-p1"], "text": "Existing tests touched: agents.test.mjs raises the card body cap from 6000 to 7000 characters." },
+    { "id": "ui073-M8", "snapshots": ["ui-p1"], "text": "<template> with data-sample gives no-sample-strip (filters by own tag, not ancestors)." },
+    { "id": "ui073-M9", "snapshots": ["ui-p1"], "text": "Version: a test title says 0.7.3 but still measures the 0.7.0 entry length." },
+    { "id": "7a-M1", "snapshots": ["7a-t56"], "approx": true, "text": "Stuck queue after a run leaves a file behind (deps-install / gate writes a file: queue-dirty)." },
+    { "id": "7a-M2", "snapshots": ["7a-t56"], "approx": true, "text": "Raw error without kind when the queue worktree directory was deleted." },
+    { "id": "7a-M3", "snapshots": ["7a-t2", "7a-t56"], "approx": true, "text": "Lock steal race; the deadline does not count deps-install nor the mutation run." },
+    { "id": "7a-M4", "snapshots": ["7a-t56"], "approx": true, "text": "queue.js sync and merge take no lock; wrong comment in scripts/queue.js." },
+    { "id": "7a-M5", "snapshots": ["7a-t9"], "text": "Cleanup fails open on an unreadable run.json (malformed means no live tasks)." },
+    { "id": "7a-M6", "snapshots": ["7a-t3"], "approx": true, "text": "'Ni se crea' of D-7-7 not implemented: a packed task/p/03-C does not stop creating task/p/03-c." },
+    { "id": "7a-M7", "snapshots": ["7a-t56"], "approx": true, "text": "precheck compares paths case-sensitively." },
+    { "id": "7a-M8", "snapshots": ["7a-t7"], "approx": true, "text": "PostToolUse handback-gate blames another running task." },
+    { "id": "7a-M9", "snapshots": ["7a-t56"], "approx": true, "text": "previewMerge result is discarded in integrate." },
+    { "id": "7a-M10", "snapshots": ["7a-t10"], "approx": true, "text": "Sticky queue-conflict in next." },
+    { "id": "7a-M11", "snapshots": ["7a-t1"], "approx": true, "text": "Worktree path collision between plans (a-01 / 02 / x vs a / 01 / 02-x)." },
+    { "id": "7a-M12", "snapshots": ["7a-t56"], "approx": true, "text": "failedFiles/quoteArg: shell expansion in double quotes; substring match." },
+    { "id": "7a-M13", "snapshots": ["7a-t9"], "text": "Weak assertions in the cleanup tests (T5b)." },
+    { "id": "7a-M14", "snapshots": ["7a-t56", "7a-t10"], "approx": true, "text": "CRLF files are never trivial; typos in scripts/plan.js and queue.js." },
+    { "id": "7a-M15", "snapshots": ["7a-t9"], "text": "No test for 'current branch / plan origin is never a candidate'." },
+    { "id": "8d-M-3", "snapshots": ["8d-d4"], "text": "A loose backtick masks links of other paragraphs." },
+    { "id": "8d-M-9", "snapshots": ["8d-d4"], "text": "Text search is case-sensitive and does not see references to an ancestor folder." },
+    { "id": "8d-M-1", "snapshots": ["8d-d5"], "text": "skeleton without approved adapt creates docs/specs next to doc/specs and declares it." }
+  ],
+  "lentes": {
+    "experiment": "lentes-reales",
+    "seed": 20261002,
+    "reps": 3,
+    "lenses": ["reliability", "risk", "resilience", "readability"],
+    "arms": { "A": ["reliability", "risk", "resilience", "readability"], "B": ["reliability"], "C": ["risk"] },
+    "cases": [
+      { "id": "D1", "snapshot": "ui-p1", "kind": "defect", "defects": ["ui073-I1", "ui073-I2", "ui073-I3", "ui073-I4", "ui073-I5", "ui073-I6"] },
+      { "id": "D2", "snapshot": "7a-t8", "kind": "defect", "defects": ["7a-I1", "7a-I2", "7a-I3"] },
+      { "id": "D3", "snapshot": "7a-t9", "kind": "defect", "defects": ["7a-I4", "7a-I8", "7a-I7"] },
+      { "id": "D4", "snapshot": "8d-d4", "kind": "defect", "defects": ["8d-I-2"] },
+      { "id": "D5", "snapshot": "8d-d5", "kind": "defect", "defects": ["8d-I-4"] },
+      { "id": "L1", "snapshot": "7a-t4", "kind": "clean", "defects": [] },
+      { "id": "L2", "snapshot": "8d-l2", "kind": "clean", "defects": [] }
+    ],
+    "stageA": { "cases": ["D1", "D2", "D5"], "lenses": ["reliability", "risk", "resilience", "readability"], "runs": 1, "maxCostUsd": 5, "probeMaxCostUsd": 0.6, "stageMaxCostUsd": 4.4 },
+    "probe": { "case": "D2", "lens": "reliability" }
+  },
+  "momento": {
+    "experiment": "momento-de-revision",
+    "seed": 20261003,
+    "reps": 3,
+    "lens": "reliability",
+    "blocks": [
+      { "id": "T-7a", "arm": "T", "batch": "7a", "runs": [
+        { "id": "t1", "snapshot": "7a-t1" },
+        { "id": "t2", "snapshot": "7a-t2" },
+        { "id": "t3", "snapshot": "7a-t3" },
+        { "id": "t4", "snapshot": "7a-t4", "reusedFrom": { "case": "L1", "lens": "reliability" } },
+        { "id": "t7", "snapshot": "7a-t7" },
+        { "id": "t8", "snapshot": "7a-t8", "reusedFrom": { "case": "D2", "lens": "reliability" } },
+        { "id": "t10", "snapshot": "7a-t10" },
+        { "id": "t56", "snapshot": "7a-t56" },
+        { "id": "t9", "snapshot": "7a-t9", "reusedFrom": { "case": "D3", "lens": "reliability" } }
+      ] },
+      { "id": "F-7a", "arm": "F", "batch": "7a", "probe": true, "runs": [{ "id": "end", "snapshot": "7a-end" }] },
+      { "id": "F-ui", "arm": "F", "batch": "ui", "runs": [
+        { "id": "p1", "snapshot": "ui-p1", "reusedFrom": { "case": "D1", "lens": "reliability" } },
+        { "id": "p2", "snapshot": "ui-p2" },
+        { "id": "p3", "snapshot": "ui-p3" }
+      ] },
+      { "id": "G-ui", "arm": "G", "batch": "ui", "runs": [{ "id": "group", "snapshot": "ui-group" }] }
+    ],
+    "comparisons": [
+      { "id": "T-vs-F-7a", "batch": "7a", "arms": ["T", "F"] },
+      { "id": "G-vs-F-ui", "batch": "ui", "arms": ["G", "F"] }
+    ],
+    "scope": { "7a": ["7a-I1", "7a-I2", "7a-I3", "7a-I4", "7a-I5", "7a-I6", "7a-I7", "7a-I8", "7a-I9", "7a-I10", "7a-I11"],
+               "ui": ["ui073-I1", "ui073-I2", "ui073-I3", "ui073-I4", "ui073-I5", "ui073-I6", "ui074-A-1"] }
+  }
+}
