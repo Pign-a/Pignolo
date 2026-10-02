@@ -190,8 +190,9 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   // (2b) the canvas of the project and what this run published: unreadable or not ours is closed
   let stored;
   try { stored = readRecord({ data, project }); } catch (e) { if (e instanceof ConfigError) return fail([{ code: 'config-unreadable' }]); throw e; }
-  if (stored.problem) return fail([{ code: 'bad-canvas-state', detail: stored.problem }]);
-  const record = stored.canvas;
+  // a record that is not valid is a way out only through --new-canvas: it opens a canvas of its own and the record starts over (RL2-07)
+  if (stored.problem && !askedNew) return fail([{ code: 'bad-canvas-state', detail: stored.problem }]);
+  const record = stored.problem ? null : stored.canvas;
   const read = readPublished(run);
   if (read.problem) return fail([{ code: read.problem }]);
   // --new-canvas asked for the canvas that this run has already created and recorded (empty, and this run's publish.json points to

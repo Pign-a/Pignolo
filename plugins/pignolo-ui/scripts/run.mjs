@@ -234,11 +234,13 @@ const COMMANDS = {
         optOut,
       });
       const reasons = runOptOut ? [...decision.reasons.filter((r) => r !== 'run-opt-out'), 'run-opt-out'] : decision.reasons;
-      const mode = runOptOut ? 'local' : decision.mode;
+      let mode = runOptOut ? 'local' : decision.mode;
       // the canvas of the project (R-16): present says where it is and whether this run opens it. `first` is by
       // state only: build adds the ownsMain of the run (R-7). A record that is not valid is not a canvas.
       const stored = readCanvas(readConfig({ data: path.resolve(cwd, opts.data), project }).config);
       const first = stored.canvas === null || stored.canvas.state === 'created' || stored.canvas.pages === 0;
+      // an invalid record of the canvas is not a canvas: this run stays local and says why (RL2-07); the way out is plan --new-canvas
+      if (stored.problem && mode === 'canvas') { mode = 'local'; reasons.push('canvas-invalid'); }
       const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local', canvasPublished: stored.canvas, first };
       if (stored.problem) out.canvasInvalid = true;
       if (mode === 'canvas') out.notice = NOTICE;
