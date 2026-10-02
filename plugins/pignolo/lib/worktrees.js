@@ -29,21 +29,20 @@ const tailOf = (log) => log.split('\n').filter((l, i, a) => l !== '' || i < a.le
 
 // Con shell (los shims .cmd de Windows), con plazo y matando el árbol al vencer; salida a un archivo por fd.
 // Devuelve el código de salida (124 si no terminó).
+// El plazo y el kill del árbol los hace un corredor aparte (lib/shell-runner.js): desde acá, con spawnSync, el shell ya está
+// muerto cuando se intenta `taskkill /T` y sus hijos quedan huérfanos (I11).
+const RUNNER = path.join(__dirname, 'shell-runner.js');
+const RUNNER_GRACE_MS = 20000;
 function shellRun(command, { cwd, timeoutMs, logFile, env }) {
-  const fd = fs.openSync(logFile, 'a');
-  try {
-    const r = spawnSync(command, { cwd, env: env || process.env, shell: true, windowsHide: true, timeout: timeoutMs, stdio: ['ignore', fd, fd] });
-    if (r.error || r.status === null) {
-      if (r.pid && process.platform === 'win32') {
-        try { spawnSync('taskkill', ['/pid', String(r.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }); } catch (_) { /* ya terminó */ }
-      }
-      fs.writeSync(fd, `\n[pignolo] el comando no terminó: ${r.error ? r.error.message : `señal ${r.signal}`}\n`);
-      return 124;
-    }
-    return r.status;
-  } finally {
-    fs.closeSync(fd);
+  const r = spawnSync(process.execPath, [RUNNER, logFile, String(timeoutMs), command], {
+    cwd, env: env || process.env, windowsHide: true, stdio: 'ignore', timeout: timeoutMs + RUNNER_GRACE_MS,
+  });
+  if (r.error || r.status === null) {
+    // El propio corredor se colgó (no debería): sin árbol que buscar, se informa igual que un plazo vencido.
+    try { fs.appendFileSync(logFile, `\n[pignolo] el comando no terminó: ${r.error ? r.error.message : `señal ${r.signal}`}\n`); } catch (_) { /* sin log */ }
+    return 124;
   }
+  return r.status;
 }
 
 // El instalador de dependencias (extraído de lib/holdout.js sin cambiar su comportamiento): corre `command`

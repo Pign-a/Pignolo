@@ -153,3 +153,28 @@ test('resolveWorktree: la de ruta más larga que sea prefijo; wt-a y wt-ab no se
   if (process.platform === 'win32') assert.strictEqual(f(path.join(root.toUpperCase(), 'WT-A', 'x.js')).task.id, 'a', 'win32 no distingue mayúsculas');
   assert.strictEqual(W.resolveWorktree({ main: root, filePath: '', tasks }), null);
 });
+
+// I11 (fix pass 7a): al vencer el plazo, shellRun mata el ÁRBOL (el shell y lo que lanzó), no solo el shell.
+test('shellRun: al vencer el plazo da 124 y el proceso hijo que escribiría un marcador después no llega a escribirlo', () => {
+  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pignolo-kill-'));
+  const marker = path.join(dir, 'vivo.txt').split(path.sep).join('/');
+  const log = path.join(dir, 'log.txt');
+  const child = `setTimeout(() => require('fs').writeFileSync(${JSON.stringify(marker)}, 'vivo'), 3000)`;
+  const t0 = Date.now();
+  const code = W.shellRun(`node -e "${child.replace(/"/g, '\\"')}"`, { cwd: dir, timeoutMs: 800, logFile: log });
+  assert.strictEqual(code, 124);
+  assert.ok(Date.now() - t0 < 2900, `volvió al vencer el plazo (${Date.now() - t0} ms)`);
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 4500);
+  assert.ok(!fs.existsSync(marker), 'el hijo siguió vivo después del plazo y escribió el marcador');
+  assert.match(fs.readFileSync(log, 'utf8'), /el comando no terminó/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('shellRun: el código de salida, la salida al log y el cwd/env pasan tal cual', () => {
+  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pignolo-run-'));
+  const log = path.join(dir, 'log.txt');
+  assert.strictEqual(W.shellRun('node -e "console.log(process.env.PIGNOLO_X + \':\' + process.cwd().length > 0); process.exit(3)"', { cwd: dir, timeoutMs: 20000, logFile: log, env: { ...process.env, PIGNOLO_X: 'hola' } }), 3);
+  assert.match(fs.readFileSync(log, 'utf8'), /true|false/);
+  assert.strictEqual(W.shellRun('node -e "0"', { cwd: dir, timeoutMs: 20000, logFile: log }), 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
