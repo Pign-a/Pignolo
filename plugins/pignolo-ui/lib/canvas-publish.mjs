@@ -345,6 +345,15 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
     if (st.size > LIVE_MAX) throw new PublishError('--live pesa más de 8 MB', true);
     liveText = fs.readFileSync(live);
     try { liveIndex = JSON.parse(liveText.toString('utf8').replace(/^﻿/, '')); } catch { return { ok: false, problems: [{ code: 'bad-live' }] }; }
+    // a frame that was deleted and is back in the live index is not exempt any more: it leaves publish.json.deleted, the next
+    // read-live asks for it and the next merge compares its hash (RL2-02). Nothing of this merge is kept.
+    const liveNames = isObj(liveIndex) && isObj(liveIndex.boards) ? Object.keys(liveIndex.boards).map((n) => n.toLowerCase()) : [];
+    const back = deleted.filter((n) => liveNames.includes(n.toLowerCase()));
+    if (back.length && trusted) {
+      writeAtomic(publishFile(run), `${JSON.stringify({ ...trusted, deleted: deleted.filter((n) => !back.includes(n)) }, null, 2)}
+`);
+      return { ok: false, problems: back.map((file) => ({ code: 'live-incomplete', file })), kept: emptyKept() };
+    }
     if (liveDir === 'none') {
       if (checked.length) throw new PublishError('falta --live-dir: la corrida ya publicó artboards y hay que compararlos con los que se leyeron', true);
     } else {
