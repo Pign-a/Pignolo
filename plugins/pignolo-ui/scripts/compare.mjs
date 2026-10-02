@@ -25,7 +25,7 @@ import { mockupDistance, tileDistance, tileFingerprint, pairwise, samePrimary } 
 import { writeLocalCopies, pagesToOpen, LocalCopyError } from '../lib/local-copy.mjs';
 import { measureHeight, clampHeight } from '../lib/page-height.mjs';
 import { sizesFor } from '../lib/canvas.mjs';
-import { isLink } from '../lib/link-guard.mjs';
+import { isLink, runLinkProblem } from '../lib/link-guard.mjs';
 
 class UsageError extends Error {}
 
@@ -231,6 +231,13 @@ async function cmdHeights(opts, ctx) {
   const out = path.resolve(ctx.cwd, opts.out);
   if (!insideDir(run, out)) throw new UsageError('--out debe estar dentro de la carpeta de la corrida');
   if (isLink(out)) throw new UsageError('--out es un enlace: se rechaza');
+  // the real folder of --out must be inside the real run: a junction or a symlink in between takes the write outside
+  if (runLinkProblem(run)) throw new UsageError('--run es o está dentro de un enlace: se rechaza');
+  let realRun;
+  let realOutDir;
+  try { realRun = fs.realpathSync.native(run); realOutDir = fs.realpathSync.native(path.dirname(out)); } catch { throw new UsageError('la carpeta de --out no existe'); }
+  const rel = path.relative(realRun, realOutDir);
+  if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) throw new UsageError('--out pasa por un enlace que sale de la corrida: se rechaza');
   const folders = letters.map((l) => `option-${l}`);
   for (const l of letters) for (const sc of screens) if (!fs.existsSync(path.join(run, `option-${l}`, sc))) throw new UsageError(`falta ${sc} en la opción ${l}`);
   try { writeLocalCopies({ run, folders }); } catch (e) {
