@@ -6,6 +6,7 @@
 //   run.mjs init --project <repo> --command new|improve|audit --slug <slug> [--now <ISO>] [--url <local URL> | --file <path>] [--files <a,b>]
 //   run.mjs config get|set --data <dir> --project <repo> [--key <k> --value <v>]
 //   run.mjs present --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> --kind option|direction --artifact yes|no --design-type yes|no [--run <run>]
+//     prints mode, destination, reasons, notice, canvasPublished (the canvas record of the project or null) and first (by state)
 //   run.mjs publish-gate --data <dir> --project <repo> --presentation <auto|local|unsubstituted text> [--run <run>]
 //   run.mjs no-publish --run <run>
 //   run.mjs norms --run <run> [--norms <norms.md>]
@@ -31,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { envReport } from '../lib/env-check.mjs';
 import { initRun } from '../lib/run-init.mjs';
-import { readConfig, readOptOut, writeConfig, ConfigError } from '../lib/project-config.mjs';
+import { readConfig, readCanvas, readOptOut, writeConfig, ConfigError } from '../lib/project-config.mjs';
 import { decidePresentation, gateDecision, NOTICE } from '../lib/presentation.mjs';
 import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
@@ -234,7 +235,12 @@ const COMMANDS = {
       });
       const reasons = runOptOut ? [...decision.reasons.filter((r) => r !== 'run-opt-out'), 'run-opt-out'] : decision.reasons;
       const mode = runOptOut ? 'local' : decision.mode;
-      const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local' };
+      // the canvas of the project (R-16): present says where it is and whether this run opens it. `first` is by
+      // state only: build adds the ownsMain of the run (R-7). A record that is not valid is not a canvas.
+      const stored = readCanvas(readConfig({ data: path.resolve(cwd, opts.data), project }).config);
+      const first = stored.canvas === null || stored.canvas.state === 'created' || stored.canvas.pages === 0;
+      const out = { mode, reasons, destination: mode === 'canvas' ? 'canvas' : 'local', canvasPublished: stored.canvas, first };
+      if (stored.problem) out.canvasInvalid = true;
       if (mode === 'canvas') out.notice = NOTICE;
       if (unresolved) out.presentationUnresolved = true;
       return { out, code: 0 };
