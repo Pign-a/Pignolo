@@ -17,11 +17,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { loadCatalog } from './catalog.mjs';
-import { runChecks, runReducedMotionCheck, visibleTextSelectors } from './browser-checks.mjs';
+import { runChecks, runReducedMotionCheck, visibleTextSelectors, interactiveItems, respFindings, RESP_WIDE_MIN, RESP_NARROW_MAX } from './browser-checks.mjs';
 import { PageLoadError } from './browser-session.mjs';
 import { checkPng } from './png.mjs';
 
-export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02'];
+export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02', 'RESP-01'];
 const MAX_CROPS = 3;
 
 export async function preflight(url, { timeoutMs = 5000, fetchImpl = globalThis.fetch } = {}) {
@@ -110,6 +110,7 @@ export async function measurePage({ url, plan, open, before = null, catalog = lo
     await open(async (browser) => {
       product = browser.product;
       const tab = await browser.newPage();
+      const byWidth = {}; // collectInteractive of the light theme, for RESP-01
       let unloadable = null; // reason of the first PageLoadError: the same page will not load at the rest
       for (const { width, height } of plan.widths) {
         for (const theme of plan.themes) {
@@ -128,6 +129,7 @@ export async function measurePage({ url, plan, open, before = null, catalog = lo
             for (const f of await runReducedMotionCheck(tab, visible)) found.push({ ...f, measure: { ...(f.measure ?? {}), ...at } });
             const leftLater = await leftThePage(tab, url);
             if (leftLater) { degraded = leftLater; raw.push(...unverifiedAll(leftLater, at)); return; }
+            if (theme === 'light') byWidth[width] = { items: await interactiveItems(tab) };
             raw.push(...found);
           } catch (e) {
             const reason = `not measured: ${e.message}`;
@@ -135,6 +137,12 @@ export async function measurePage({ url, plan, open, before = null, catalog = lo
             raw.push(...unverifiedAll(reason, at));
           }
         }
+      }
+      if (!unloadable && !degraded) {
+        const widths = plan.widths.map((w) => w.width);
+        const wide = Math.max(...widths.filter((x) => x >= RESP_WIDE_MIN));
+        const narrow = Math.min(...widths.filter((x) => x <= RESP_NARROW_MAX));
+        raw.push(...respFindings(byWidth, { wide, narrow }));
       }
     });
   } catch (e) {

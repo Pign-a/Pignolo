@@ -261,6 +261,63 @@ function collectType() {
   return out;
 }
 
+// T10: the interactive elements with an accessible name, for the desktop/phone comparison.
+// `disclosed`: the element sits inside what a visible disclosure control opens (aria-controls or
+// id target of a button, summary or role=button with aria-expanded/aria-controls, or a closed
+// <details> whose <summary> is visible).
+function collectInteractive() {
+  const SEL = 'a[href], button, [role="button"], [role="link"], [role="menuitem"], [role="tab"], summary, input:not([type="hidden"])';
+  const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const shown = (el) => {
+    const r = el.getBoundingClientRect();
+    const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility === 'visible' && !isVisuallyHidden(el);
+  };
+  const nameOf = (el) => {
+    const label = el.getAttribute('aria-label');
+    if (label && label.trim()) return norm(label);
+    const by = el.getAttribute('aria-labelledby');
+    if (by) {
+      const text = by.split(/\s+/).map((id) => (document.getElementById(id) || {}).textContent || '').join(' ');
+      if (norm(text)) return norm(text);
+    }
+    if (el.labels && el.labels.length) return norm([...el.labels].map((l) => l.textContent).join(' '));
+    const own = norm(el.textContent);
+    if (own) return own;
+    const img = el.querySelector('img[alt]');
+    if (img && norm(img.getAttribute('alt'))) return norm(img.getAttribute('alt'));
+    return norm(el.getAttribute('title') || el.getAttribute('placeholder') || '');
+  };
+  const controls = [...document.querySelectorAll('button, summary, [role="button"]')].filter((c) => (c.hasAttribute('aria-expanded') || c.hasAttribute('aria-controls') || c.tagName === 'SUMMARY') && shown(c));
+  const targets = [];
+  for (const c of controls) {
+    if (c.tagName === 'SUMMARY') continue;
+    const ids = (c.getAttribute('aria-controls') || '').split(/\s+/).filter(Boolean);
+    for (const id of ids) { const t = document.getElementById(id); if (t) targets.push(t); }
+  }
+  const disclosedBy = (el) => {
+    if (targets.some((t) => t.contains(el))) return true;
+    const details = el.closest('details');
+    if (details && !details.open) { const sum = details.querySelector(':scope > summary'); if (sum && shown(sum) && sum !== el) return true; }
+    return false;
+  };
+  const byKey = new Map();
+  for (const el of document.querySelectorAll(SEL)) {
+    if (el.closest('[aria-hidden="true"]') || isDisabled(el)) continue;
+    const name = nameOf(el);
+    if (!name) continue;
+    let href = '';
+    if (el.tagName === 'A') { try { const u = new URL(el.href); href = u.pathname + u.search + u.hash; } catch { href = el.getAttribute('href') || ''; } }
+    const kind = el.getAttribute('role') || el.tagName.toLowerCase();
+    const key = `${kind}|${name}|${href}`;
+    const item = byKey.get(key) || { key, name, visible: false, disclosed: false };
+    if (shown(el)) item.visible = true;
+    else if (disclosedBy(el)) item.disclosed = true;
+    byKey.set(key, item);
+  }
+  return { items: [...byKey.values()] };
+}
+
 // ---- Node side --------------------------------------------------------------------------------
 
 // Computed colors come as rgb()/rgba(), lab(), oklch()... and color(srgb r g b / a) for
@@ -430,6 +487,43 @@ export function typeFindings(data, { register = 'unset' } = {}) {
   }
   if (!failed) out.push({ id: 'TYPE-01', status: 'pass', key: 'checked', measure: { checked: data.blocks.length } });
   return out;
+}
+
+// ---- T10: RESP-01, controls that exist on the wide page and are gone on the phone ------------------
+
+export const RESP_WIDE_MIN = 1024;
+export const RESP_NARROW_MAX = 480;
+export const RESP_MAX_NAMES = 5;
+
+export async function interactiveItems(page) {
+  return (await page.evaluate(inPage(collectInteractive))).items;
+}
+
+// byWidth = { [width]: { items } } from collectInteractive. One entry: fail (missing-on-phone),
+// pass or unverified when the plan has no wide (1024 or more) and narrow (480 or less) width.
+// What the opening control does is not measured.
+export function respFindings(byWidth, { wide, narrow } = {}) {
+  const widths = Object.keys(byWidth).map(Number);
+  const w = wide ?? Math.max(...widths.filter((x) => x >= RESP_WIDE_MIN));
+  const n = narrow ?? Math.min(...widths.filter((x) => x <= RESP_NARROW_MAX));
+  if (!Number.isFinite(w) || !Number.isFinite(n)) {
+    return [{ id: 'RESP-01', status: 'unverified', key: 'missing-on-phone', reason: 'a desktop width and a phone width are needed to compare' }];
+  }
+  if (!byWidth[w] || !byWidth[n]) {
+    return [{ id: 'RESP-01', status: 'unverified', key: 'missing-on-phone', reason: 'the page was not measured at both widths of the comparison' }];
+  }
+  const phone = new Map(byWidth[n].items.map((i) => [i.key, i]));
+  const missing = byWidth[w].items.filter((i) => {
+    if (!i.visible) return false;
+    const there = phone.get(i.key);
+    return !(there && (there.visible || there.disclosed));
+  });
+  const at = { width: n, theme: 'light' };
+  if (!missing.length) return [{ id: 'RESP-01', status: 'pass', key: 'checked', measure: { checked: byWidth[w].items.filter((i) => i.visible).length, wide: w, narrow: n, ...at } }];
+  return [{
+    id: 'RESP-01', status: 'fail', key: 'missing-on-phone', severity: 'medio',
+    measure: { count: missing.length, names: missing.slice(0, RESP_MAX_NAMES).map((i) => i.name), wide: w, narrow: n, ...at },
+  }];
 }
 
 // Walks the page with Tab: every expected element must be reached, and look different.

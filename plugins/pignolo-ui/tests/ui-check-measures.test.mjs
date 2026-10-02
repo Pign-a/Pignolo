@@ -100,3 +100,10 @@ test('without DESIGN.md the browser entries are appended as they come (regressio
   uiCheck(s, ['--files', 'src/a.css']);
   assert.equal(readOut(s.run).entries.find((x) => x.id === 'TYPE-02').status, 'fail');
 });
+
+test('intentional also turns a RESP-01 fail into a pass', () => {
+  const s = withDesign([gusto('RESP-01', { key: 'missing-on-phone' })], ['RESP-01']);
+  uiCheck(s, ['--files', 'src/a.css', '--design', 'DESIGN.md']);
+  const e = readOut(s.run).entries.find((x) => x.id === 'RESP-01');
+  assert.deepEqual([e.status, e.reason], ['pass', 'intentional: on purpose']);
+});

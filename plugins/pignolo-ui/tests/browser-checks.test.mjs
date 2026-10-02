@@ -4,7 +4,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serveRoutes, BROWSER_SKIP, browserPath } from './helpers.mjs';
 import { withBrowser } from '../lib/browser-session.mjs';
-import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, typeFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
+import { measurePage } from '../lib/browser-run.mjs';
+import { shotPlan } from '../lib/shot-plan.mjs';
+import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, typeFindings, respFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
 
 const skip = BROWSER_SKIP;
 const HTML = { 'content-type': 'text/html; charset=utf-8' };
@@ -311,4 +313,68 @@ test('TYPE-01 and TYPE-02 in the browser', { skip }, async () => {
   const ok = await checkPage(page('<h1 style="font-size:32px">Título</h1><p style="max-width:40ch;line-height:1.5">Texto del cuerpo, corto.</p>'), { width: 1440 });
   assert.deepEqual([ids(ok, 'TYPE-02').length, ids(ok, 'TYPE-01').length], [0, 0]);
   assert.equal(ids(ok, 'TYPE-02', 'pass').length, 1);
+});
+
+// ---- Hito 4e, T10: RESP-01, controls that go missing on the phone ----------------------------------------
+const item = (name, over = {}) => ({ key: `a|${name.toLowerCase()}|/x`, name, visible: true, disclosed: false, ...over });
+const resp = (wideItems, narrowItems, widths = { 1440: 1, 375: 1 }) => respFindings(
+  Object.fromEntries(Object.keys(widths).map((w) => [w, { items: Number(w) >= 1024 ? wideItems : narrowItems }])), {});
+
+test('RESP-01 on measured items: a visible desktop control with no phone twin and no way to open it fails', () => {
+  const gone = resp([item('Facturación')], [item('Facturación', { visible: false })]);
+  assert.deepEqual(gone.map((f) => [f.status, f.key, f.severity, f.measure.names, f.measure.narrow, f.measure.width]), [['fail', 'missing-on-phone', 'medio', ['Facturación'], 375, 375]]);
+  assert.equal(resp([item('Facturación')], [item('Facturación', { visible: false, disclosed: true })])[0].status, 'pass', 'a collapsed menu is not a loss');
+  assert.equal(resp([item('Inicio')], [item('Inicio')])[0].status, 'pass');
+  assert.equal(resp([item('Inicio')], [])[0].status, 'fail', 'absent from the DOM at phone width');
+  assert.equal(resp([item('Oculto', { visible: false })], [])[0].status, 'pass', 'only what was visible on desktop counts');
+});
+
+test('RESP-01 without a desktop and a phone width is unverified with the reason', () => {
+  const f = respFindings({ 1440: { items: [item('A')] }, 768: { items: [item('A')] } }, {});
+  assert.deepEqual([f[0].status, f[0].id], ['unverified', 'RESP-01']);
+  assert.match(f[0].reason, /desktop width and a phone width/);
+  const only = respFindings({ 375: { items: [] }, 320: { items: [] } }, {});
+  assert.equal(only[0].status, 'unverified');
+});
+
+test('RESP-01: seven missing controls are one entry with the count and at most five names', () => {
+  const many = Array.from({ length: 7 }, (_, i) => item(`Enlace ${i}`));
+  const f = resp(many, []);
+  assert.equal(f.length, 1);
+  assert.deepEqual([f[0].measure.count, f[0].measure.names.length], [7, 5]);
+});
+
+test('RESP-01: two of three "Ver" links are missing, so identity is name plus href, not name alone', () => {
+  const ver = (href, over = {}) => ({ key: `a|ver|${href}`, name: 'Ver', visible: true, disclosed: false, ...over });
+  const f = resp([ver('/a'), ver('/b'), ver('/c')], [ver('/a')]);
+  assert.deepEqual([f[0].status, f[0].measure.count], ['fail', 2]);
+});
+
+async function measureReal(html, platform = 'both') {
+  const site = await serveRoutes({ '/': { headers: HTML, body: html } });
+  try {
+    const open = (fn) => withBrowser({ executable: browserPath() }, fn);
+    return (await measurePage({ url: `${site.base}/`, plan: shotPlan({ platform }), open, settleMs: 0 })).entries.filter((e) => e.id === 'RESP-01');
+  } finally {
+    await site.close();
+  }
+}
+const NAV = '<nav class="side"><a href="/billing">Facturación</a> <a href="/team">Equipo</a></nav><main><h1>Panel</h1><p>Texto.</p></main>';
+
+test('RESP-01 in the browser: hidden side nav fails, a collapsed menu with its button passes, an identical page passes', { skip }, async () => {
+  const hidden = await measureReal(page(NAV, '@media (max-width:480px){.side{display:none}}'));
+  assert.deepEqual(hidden.map((e) => [e.status, e.measure.names]), [['fail', ['facturación', 'equipo']]]);
+  assert.equal(hidden[0].measure.width, 320);
+  const collapsed = await measureReal(page(`<button aria-expanded="false" aria-controls="m" class="burger">Menú</button><nav id="m" class="side"><a href="/billing">Facturación</a> <a href="/team">Equipo</a></nav><main><h1>Panel</h1></main>`,
+    '.burger{display:none}@media (max-width:480px){.burger{display:inline-block}.side{display:none}}'));
+  assert.deepEqual(collapsed.map((e) => e.status), ['pass']);
+  const same = await measureReal(page(NAV));
+  assert.deepEqual(same.map((e) => e.status), ['pass']);
+  const hiddenOnes = await measureReal(page('<a href="/x" aria-hidden="true">Oculto</a><button disabled>Apagado</button><main><h1>Panel</h1></main>', '@media (max-width:480px){a,button{display:none}}'));
+  assert.deepEqual(hiddenOnes.map((e) => e.status), ['pass'], 'aria-hidden and disabled controls do not count');
+});
+
+test('RESP-01 in the browser: a plan without a desktop width is unverified', { skip }, async () => {
+  const f = await measureReal(page(NAV), 'mobile');
+  assert.deepEqual(f.map((e) => e.status), ['unverified']);
 });
