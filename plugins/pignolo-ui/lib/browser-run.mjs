@@ -20,6 +20,7 @@ import { loadCatalog } from './catalog.mjs';
 import { runChecks, runReducedMotionCheck, visibleTextSelectors, interactiveItems, respFindings, RESP_WIDE_MIN, RESP_NARROW_MAX } from './browser-checks.mjs';
 import { PageLoadError } from './browser-session.mjs';
 import { checkPng } from './png.mjs';
+import { checkCapture } from './captures-check.mjs';
 
 export const BROWSER_RULES = ['COLOR-03', 'STATE-04', 'NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02', 'RESP-01'];
 const MAX_CROPS = 3;
@@ -44,6 +45,12 @@ const samePage = (a, b) => {
 };
 
 const SETTLE_MS = 500;
+const RECAPTURE_REST_MS = 1000;
+// Read in the page just before a screenshot: finished loading, and no one-shot animation running.
+const READ_SETTLED = () => new Promise((resolve) => setTimeout(() => resolve({
+  readyState: document.readyState,
+  runningAnimations: document.getAnimations().filter((a) => a.playState === 'running' && a.effect && a.effect.getTiming().iterations === 1).length,
+}), 150));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const hrefOf = (tab) => tab.evaluate(() => location.href);
 
@@ -174,19 +181,40 @@ export async function capturePage({ url, plan, open, outDir }) {
           const crops = Math.min(MAX_CROPS, Math.max(1, Math.ceil(total / height)));
           for (let crop = 1; crop <= crops; crop++) {
             await tab.evaluate((y) => new Promise((r) => { scrollTo(0, y); requestAnimationFrame(() => requestAnimationFrame(() => r(true))); }), (crop - 1) * height);
-            let shot = null;
-            let reason = null;
-            for (let attempt = 0; attempt < 2 && !shot; attempt++) { // one retry (spec §11.3)
-              try {
-                const buf = await tab.screenshot();
-                const v = checkPng(buf);
-                if (v.ok) shot = { buf, ...v }; else reason = v.reason;
-              } catch (e) { reason = e.message; }
-            }
+            // One screenshot with its readiness read just before (spec §11.3 retry on error; hito 4e
+            // validity: a flat image, a wrong width, a page still loading or animating is not evidence).
+            const shoot = async () => {
+              let shot = null;
+              let reason = null;
+              for (let attempt = 0; attempt < 2 && !shot; attempt++) { // one retry (spec §11.3)
+                try {
+                  const settled = await tab.evaluate(READ_SETTLED);
+                  const buf = await tab.screenshot();
+                  const v = checkPng(buf);
+                  if (v.ok) shot = { buf, ...v, settled }; else reason = v.reason;
+                } catch (e) { reason = e.message; }
+              }
+              return { shot, reason };
+            };
+            let { shot, reason } = await shoot();
             if (!shot) { unverified.push({ width, theme, crop, reason: `capture failed: ${reason}` }); continue; }
+            let check = checkCapture({ png: shot.buf, width, settled: shot.settled });
+            let recaptured = false;
+            if (!check.valid) { // one automatic recapture after a longer rest, then it stays marked
+              recaptured = true;
+              await sleep(RECAPTURE_REST_MS);
+              const again = await shoot();
+              if (again.shot) { shot = again.shot; check = checkCapture({ png: shot.buf, width, settled: shot.settled }); }
+            }
             const name = `${width}-${theme}-${crop}.png`;
             fs.writeFileSync(path.join(outDir, name), shot.buf);
-            captures.push({ path: `captures/${name}`, sha256: shot.sha256, width: shot.width, height: shot.height, theme, crop });
+            const entry = { path: `captures/${name}`, sha256: shot.sha256, width: shot.width, height: shot.height, theme, crop, valid: check.valid, settled: shot.settled };
+            if (recaptured) entry.recaptured = true;
+            if (!check.valid) {
+              entry.reason = check.reason;
+              unverified.push({ width, theme, crop, reason: `capture invalid: ${check.reason}` });
+            }
+            captures.push(entry);
           }
         }
       }

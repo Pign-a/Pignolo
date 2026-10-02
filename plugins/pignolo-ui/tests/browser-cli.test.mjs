@@ -135,7 +135,7 @@ test('measure: a redirect to a login page is "requires session", not a pass (§1
 });
 
 test('capture: valid PNGs per viewport, sha256 recorded, dark only when detected, at most 3 crops', { skip }, async () => {
-  const long = GOOD.replace('<p>Texto</p>', '<p>Texto</p><div style="height:5000px"></div>').replace('</style>', '@media (prefers-color-scheme: dark){body{background:#000;color:#eee}}</style>');
+  const long = GOOD.replace('<p>Texto</p>', '<p>Texto</p><div style="height:5000px;background:linear-gradient(#0b6bcb,#fff)"></div>').replace('</style>', '@media (prefers-color-scheme: dark){body{background:#000;color:#eee}}</style>');
   const { root, run } = project({ 'app.css': ':root{--bg:#fff}\n@media (prefers-color-scheme: dark){:root{--bg:#000}}\n' });
   const site = await serveRoutes({ '/': { headers: HTML, body: long } });
   try {
@@ -232,4 +232,23 @@ test('prepare-run.md: --register is added to measure only when the brief declare
   assert.match(text, /--register <brand\|product>/);
   assert.match(text, /only when the flow brief declares a `register`/);
   assert.match(text, /otherwise omit it/);
+});
+
+test('capture on a blank page: captures.json marks it invalid and browser.json stays byte for byte the same', { skip }, async () => {
+  const { root, run } = project();
+  const site = await serveRoutes({ '/': { headers: HTML, body: '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>v</title></head><body></body></html>' } });
+  try {
+    const url = `${site.base}/`;
+    await cli(['measure', '--project', root, '--run', run, '--url', url, '--platform', 'desktop']);
+    const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+    const before = sha(path.join(run, 'browser.json'));
+    const c = await cli(['capture', '--project', root, '--run', run, '--url', url, '--platform', 'desktop']);
+    assert.equal(c.status, 0, c.stderr);
+    const json = readJson(path.join(run, 'captures.json'));
+    assert.deepEqual(json.captures.map((x) => [x.valid, x.reason]), [[false, 'uniform']]);
+    assert.deepEqual(json.unverified.map((x) => x.reason), ['capture invalid: uniform']);
+    assert.equal(sha(path.join(run, 'browser.json')), before);
+  } finally {
+    await site.close();
+  }
 });

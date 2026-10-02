@@ -62,3 +62,11 @@ test('prepare-run.md: no variables, steps in order, budget, session and exit 2 r
 test('the plugin linter stays green with the skill and reference/', () => {
   assert.deepEqual(lintPlugin(PLUGIN_ROOT), []);
 });
+
+test('prepare-run.md: an invalid capture is reported as "no verificado", not audited (hito 4e)', () => {
+  const text = readReference('prepare-run.md');
+  assert.match(text, /`valid: false`/);
+  assert.match(text, /invalid capture/);
+  assert.match(text, /"no verificado"/);
+  assert.match(text, /never audit it and never cite it as evidence/);
+});

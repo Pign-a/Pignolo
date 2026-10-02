@@ -8,7 +8,7 @@
 // --url accepts only localhost, 127.0.0.0/8 and [::1] (nothing remote at run time, spec §0);
 // the browser is the installed Chrome or Edge (PIGNOLO_UI_BROWSER forces the path).
 // Widths and themes (§11.3) come from --platform/--dark, else from DESIGN.md and the project CSS.
-//   capture  <run>/captures/<width>-<theme>-<n>.png (viewport crops, at most 3 per width) and
+//   capture  <run>/captures/<width>-<theme>-<n>.png (viewport crops, at most 3 per width; each one has valid, reason? and settled, an invalid one is kept and listed in unverified) and
 //            <run>/captures.json { version, browser, url, finalUrl, degraded, cleanup, captures, unverified }
 //   measure  <run>/browser.json { version, browser, url, finalUrl, degraded, cleanup, plan, entries } with
 //            B1-B4 as entries of the ui-check shape; --before makes its fails debt.
