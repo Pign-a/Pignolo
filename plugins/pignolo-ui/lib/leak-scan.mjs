@@ -2,6 +2,7 @@
 // fewer than two), a folder without files, a link, an unreadable entry: all of them are problems,
 // never "no leaks". There is no option to accept fewer values (D-4c-16).
 //
+// indexDiffTexts(merged, live) -> [{ label, text }]   the new strings of a merged index (see the function)
 // scanBytes({ roots: [{ dir, expect }], texts: [{ label, text }], values, skipFiles, readFile }) -> { ok, problems, notes }   (readFile: injectable, for the test of unreadable entries)
 //   problems: { code, file?, kind?, view? }   code: no-leak-values | no-files | root-missing | root-is-link |
 //   link-in-output | unreadable-entry | leak. A leak says the file and the kind, NEVER the value.
@@ -140,4 +141,28 @@ export function scanBytes({ roots = [], texts = [], values = [], skipFiles = [],
     for (const l of leaksIn(String(t.text ?? ''), variants)) problems.push({ code: 'leak', file: t.label, kind: l.kind, view: l.view });
   }
   return { ok: problems.length === 0, problems, notes };
+}
+
+// The strings of a merged index (keys included) that the live index did not already have at the same place:
+// what the user had in the canvas (notes, names, frames of theirs) lives in their account already and is not
+// looked at again; everything that is new or different is, as loose texts for scanBytes (R-8 e).
+// indexDiffTexts(merged, live) -> [{ label, text }]    live null: every string. The labels carry a number, never a key
+// (a key may be the very text that leaks).
+export function indexDiffTexts(merged, live) {
+  const flat = (value, at, out) => {
+    if (typeof value === 'string') out.push([at, value]);
+    else if (Array.isArray(value)) value.forEach((v, i) => flat(v, `${at}[${i}]`, out));
+    else if (value && typeof value === 'object') for (const [k, v] of Object.entries(value)) { out.push([`${at}.${k}#key`, k]); flat(v, `${at}.${k}`, out); }
+  };
+  const have = new Set();
+  if (live !== null && live !== undefined) {
+    const liveEntries = [];
+    flat(live, '$', liveEntries);
+    for (const [at, text] of liveEntries) have.add(`${at}\u0000${text}`);
+  }
+  const mine = [];
+  flat(merged, '$', mine);
+  const out = [];
+  for (const [at, text] of mine) if (!have.has(`${at}\u0000${text}`)) out.push({ label: `canvas.json#${out.length + 1}`, text });
+  return out;
 }

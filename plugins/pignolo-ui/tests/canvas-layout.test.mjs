@@ -161,9 +161,26 @@ test('verifyCanvas with a merged canvas.json: a missing own entry and an entry w
   fs.writeFileSync(path.join(dir, 'project', 'canvas.json'), JSON.stringify(index));
   assert.ok(codes(dir).includes('missing-own-entry'));
   index.boards['r1-a-detalle.dc.html'] = built.fragment.boards['r1-a-detalle.dc.html'];
-  index.boards['r1-zz.dc.html'] = { x: 0, y: 0, w: 100, h: 100 };
+  // a frame of OUR page without its file is wrong; the frames of other pages and the manual ones are not on this disk
+  index.boards['r1-zz.dc.html'] = { x: 0, y: 0, w: 100, h: 100, page: 'r1' };
   fs.writeFileSync(path.join(dir, 'project', 'canvas.json'), JSON.stringify(index));
   assert.ok(codes(dir).includes('entry-without-file'));
+  index.boards['r1-zz.dc.html'] = { x: 0, y: 0, w: 100, h: 100, page: 'r0' };
+  index.boards['boceto.dc.html'] = { x: 0, y: 0, w: 100, h: 100 };
+  index.order = [...built.fragment.order, 'r1-zz.dc.html', 'boceto.dc.html'];
+  fs.writeFileSync(path.join(dir, 'project', 'canvas.json'), JSON.stringify(index));
+  assert.deepEqual(verifyCanvas({ dir }), { ok: true, problems: [] });
+});
+
+test('verifyCanvas: a frame or a note of ours that the user deleted is not a missing entry when merge says so (userDeleted)', () => {
+  const { dir, built } = writeCanvas();
+  const index = { v: 3, title: 'Proyecto', pages: [built.fragment.page], boards: { ...built.fragment.boards }, order: built.fragment.order, notes: { ...built.fragment.notes } };
+  delete index.boards['r1-b-inicio.dc.html'];
+  delete index.notes['r1-row-b'];
+  fs.writeFileSync(path.join(dir, 'project', 'canvas.json'), JSON.stringify(index));
+  assert.deepEqual(codes(dir).filter((c) => c === 'missing-own-entry').length, 2);
+  assert.deepEqual(verifyCanvas({ dir, userDeleted: ['r1-b-inicio.dc.html', 'r1-row-b'] }), { ok: true, problems: [] });
+  assert.equal(verifyCanvas({ dir, userDeleted: ['r1-row-b'] }).ok, false, 'only what merge listed');
 });
 
 test('verifyCanvas never throws on a folder without page.json or manifest.json', () => {

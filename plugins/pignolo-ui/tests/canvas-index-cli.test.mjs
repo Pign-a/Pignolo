@@ -156,6 +156,13 @@ test('build: first is the effective one, --first yes or ownsMain of publish.json
   const b3 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
   assert.equal(b3.json.first, false);
   assert.ok(!paths().files.some((f) => f.path === 'project/Main.dc.html'));
+  // with --canvas-url (the canvas that project.json registers) a publish.json of another canvas does not count
+  const url = ['https://claude.ai', 'artifact', 'aaaa1111-bbbb-4ccc-8ddd-000000000009'].join('/');
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 2, canvasUrl: url, ownsMain: true }));
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': url })).json.first, true);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': `${url}9` })).json.first, false);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': 'https://example.com/artifact/aaaa' })).status, 2);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': `${url}?x=1` })).status, 2);
   // a publish.json that cannot be read does not silently mean "not mine": exit 2
   fs.writeFileSync(path.join(r.run, 'publish.json'), '{ no es json');
   assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).status, 2);

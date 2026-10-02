@@ -9,6 +9,7 @@ import { FIXTURES, PLUGIN_ROOT, makeTempDir, runScript, writeBrief } from './hel
 import { makeRun, screenHtml, BUILD_ARGS, canvasIndex } from './support/canvas-run.mjs';
 import { fakeUrl, TYPE_URL } from './support/canvas-plan.mjs';
 import { readReference } from './support/skill-checks.mjs';
+import { readConfig } from '../lib/project-config.mjs';
 
 const FONT_HEAD = '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap">\n';
 const SCREENS = ['inicio.html', 'detalle.html'];
@@ -43,13 +44,13 @@ function flow({ options = ['A', 'B', 'C'] } = {}) {
     verify: () => seen(canvasIndex(['verify', '--run', r.run])),
     plan: () => seen(canvasIndex(['plan', '--project', r.project, '--run', r.run, '--values-file', k.values, '--types-file', k.types, '--data', data])),
     record: (step, url) => seen(canvasIndex(['record', '--run', r.run, '--step', step, '--url', url, '--data', data, '--project', r.project])),
-    merge: () => seen(canvasIndex(['merge', '--run', r.run, '--live', 'none', '--live-dir', 'none'])),
+    merge: (live = ['--live', 'none', '--live-dir', 'none']) => seen(canvasIndex(['merge', '--run', r.run, '--data', data, '--project', r.project, ...live])),
   };
   fs.writeFileSync(k.types, JSON.stringify({ design: TYPE_URL }));
   return k;
 }
 
-test('run 1 (new project): gate, present, checks, leak values, build, verify and the plan loop to done; regenerating B opens a NEW canvas', () => {
+test('run 1 (new project): gate, present, checks, leak values, build, verify and the plan loop to done; regenerating B updates the SAME canvas', () => {
   const k = flow();
   assert.equal(k.gate().status, 0);
   const present = k.present();
@@ -69,15 +70,16 @@ test('run 1 (new project): gate, present, checks, leak values, build, verify and
   assert.equal(k.merge().status, 0);
   assert.equal(k.plan().json.step.id, 'canvas-publish');
   assert.equal(k.record('canvas-publish', url).status, 0);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(k.r.run, 'publish.json'), 'utf8')).state, 'published');
+  assert.equal(readConfig({ data: k.data, project: k.r.project }).config.canvas.state, 'published');
   assert.equal(k.plan().json.done, true);
   // regenerate B
   assert.equal(run(['discard', '--run', k.r.run, '--option', 'B']).status, 0);
   fs.mkdirSync(k.r.optionDir('B'));
   SCREENS.forEach((f, i) => fs.writeFileSync(path.join(k.r.optionDir('B'), f), screenHtml('B nuevo', { link: SCREENS[(i + 1) % 2] })));
-  assert.equal(k.build().status, 0);
+  assert.equal(k.build({ first: 'no' }).status, 0);
   const again = k.plan();
-  assert.equal(again.json.step.id, 'canvas-create', 'a NEW canvas, never a canvas-publish straight on the old one');
+  assert.equal(again.json.step.id, 'canvas-read-live', 'the same canvas, read before anything is published');
+  assert.equal(again.json.step.params.url, url);
   assert.equal(gitStatus(k.r.project), '', 'everything lives under .pignolo-ui/');
 });
 
@@ -111,7 +113,7 @@ test('a leak seeded on the regeneration path stops plan; a project folder named 
   run(['discard', '--run', k.r.run, '--option', 'B']);
   fs.mkdirSync(k.r.optionDir('B'));
   SCREENS.forEach((f, i) => fs.writeFileSync(path.join(k.r.optionDir('B'), f), screenHtml('B', { link: SCREENS[(i + 1) % 2], extra: '<p>Persona Ejemplo</p>\n' })));
-  assert.equal(k.build().status, 0);
+  assert.equal(k.build({ first: 'no' }).status, 0);
   const p = k.plan();
   assert.deepEqual([p.status, p.json.step], [1, null]);
   assert.ok(p.json.problems.some((x) => x.code === 'leak'));

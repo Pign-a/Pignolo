@@ -25,11 +25,6 @@ test('mergeIndex from scratch: v3, createdOnFiles.at = now, one page, launch.vie
   assert.equal(JSON.stringify(fragment), snapshot, 'the index is a copy');
 });
 
-test('mergeIndex with a live index is unsupported-live in stage 1 and gives no index', () => {
-  const r = mergeIndex({ ours: ours(), live: { v: 3 }, title: 'x', now: '2026-10-01T18:00:00Z' });
-  assert.deepEqual([r.ok, r.index, r.problems.map((p) => p.code)], [false, null, ['unsupported-live']]);
-});
-
 test('limits of one call (A4C-15, A4C2-18): 255 entries, a 17 MB file, two 9 MB files', () => {
   const MB = 1024 * 1024;
   assert.deepEqual(callLimitProblems({ entries: 254, sizes: [] }), []);

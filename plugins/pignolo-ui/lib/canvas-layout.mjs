@@ -4,7 +4,8 @@
 // pageIdFor(runId) -> 'r-YYYYMMDDHHMM-<6 hex>'           (21 characters, unique per run)
 // buildCanvas({ options, platform, pageId, pageName, canvasTitle, first, now, heights }) -> { files, fragment }
 // layoutSha256(fragment) -> hex
-// verifyCanvas({ dir }) -> { ok, problems: [{ code, file?, detail? }] }
+// verifyCanvas({ dir, userDeleted }) -> { ok, problems: [{ code, file?, detail? }] }
+//   userDeleted: names of frames or notes of ours that the user deleted and merge did not put back (R-9): not "missing".
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -139,7 +140,8 @@ function checkArtboard(name, html, problems) {
   if (/<link\b/i.test(outside) || !parseFontLinks(helmet).ok) problems.push({ code: 'bad-font', file: name });
 }
 
-export function verifyCanvas({ dir }) {
+export function verifyCanvas({ dir, userDeleted = [] }) {
+  const deleted = new Set(userDeleted);
   const problems = [];
   const add = (code, file, detail) => problems.push({ code, ...(file ? { file } : {}), ...(detail ? { detail } : {}) });
   const fragment = readJson(path.join(dir, 'page.json'));
@@ -228,10 +230,11 @@ export function verifyCanvas({ dir }) {
   if (merged && typeof merged === 'object') {
     const mb = merged.boards ?? {};
     const mn = merged.notes ?? {};
-    for (const n of Object.keys(boards)) if (!(n in mb)) add('missing-own-entry', n);
-    for (const id of Object.keys(notes)) if (!(id in mn)) add('missing-own-entry', id);
+    for (const n of Object.keys(boards)) if (!(n in mb) && !deleted.has(n)) add('missing-own-entry', n);
+    for (const id of Object.keys(notes)) if (!(id in mn) && !deleted.has(id)) add('missing-own-entry', id);
     if (!Array.isArray(merged.pages) || !merged.pages.some((p) => p && p.id === pageId)) add('missing-own-entry', pageId ?? 'page');
-    for (const n of Object.keys(mb)) if (!onDisk.includes(n) && !n.startsWith('ds/')) add('entry-without-file', n);
+    // the live index also holds frames of other runs and of the user: only the ones of this page need their file here
+    for (const [n, b] of Object.entries(mb)) if (b && b.page === pageId && !onDisk.includes(n) && !n.startsWith('ds/')) add('entry-without-file', n);
   }
   const seen = new Set();
   const unique = problems.filter((p) => { const k = `${p.code}|${p.file ?? ''}|${p.detail ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true; });

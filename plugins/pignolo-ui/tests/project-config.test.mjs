@@ -140,7 +140,7 @@ test('canvas (T4b): another host, a bad state, a negative or fractional counter,
   const data = makeTempDir();
   const bad = (value) => assert.throws(() => writeConfig({ data, project: repo, key: 'canvas', value }), ConfigError);
   bad({ ...CANVAS, url: 'https://example.com/artifact/aaaa1111' });
-  bad({ ...CANVAS, url: 'http://claude.ai/artifact/aaaa1111' });
+  bad({ ...CANVAS, url: CANVAS.url.replace('https', 'http') });
   bad({ ...CANVAS, state: 'draft' });
   bad({ ...CANVAS, pages: -1 });
   bad({ ...CANVAS, files: 1.5 });
@@ -149,7 +149,7 @@ test('canvas (T4b): another host, a bad state, a negative or fractional counter,
   bad({ ...CANVAS, extra: 1 });
   bad({ ...CANVAS, dsInstalledSha256: 'zz' });
   bad({ ...CANVAS, launchPage: 'a b' });
-  bad('https://claude.ai/artifact/aaaa1111');
+  bad(CANVAS.url);
   bad(null);
   bad([CANVAS]);
   assert.equal(fs.existsSync(readConfig({ data, project: repo }).file), false, 'nothing written by a refused value');
