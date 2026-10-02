@@ -179,7 +179,7 @@ function currentMerge({ run, canvas, record, diff }) {
   return { info, live };
 }
 
-export function planNext({ run, project, data, types = {}, valuesFile, newCanvas: forceNew = false }) {
+export function planNext({ run, project, data, types = {}, valuesFile, newCanvas: askedNew = false }) {
   // (1) the opt-out comes before anything else, and a refusal carries no params
   const optOut = optOutProblems({ run, project, data });
   if (optOut.length) return fail(optOut);
@@ -194,6 +194,9 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   const record = stored.canvas;
   const read = readPublished(run);
   if (read.problem) return fail([{ code: read.problem }]);
+  // --new-canvas asked for the canvas that this run has already created and recorded (empty, and this run's publish.json points to
+  // it): that request is done, another canvas would leave an orphan per repetition (RL2-05)
+  const forceNew = askedNew && !(record && record.state === 'created' && record.pages === 0 && read.data && read.data.canvasUrl === record.url);
   // (3) what was written is valid (a frame of ours that the user deleted and merge left out is not missing)
   const mergeFile = readJson(path.join(run, 'merge', 'merge.json'));
   const deleted = isObj(mergeFile) && Array.isArray(mergeFile.userDeleted) ? mergeFile.userDeleted.filter((n) => typeof n === 'string') : [];
