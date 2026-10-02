@@ -17,6 +17,7 @@ Hito 4c, etapa 2: **un único lienzo por proyecto, que crece una página por cor
   - `deleted` de `publish.json` ya no exime para siempre: si un marco borrado reaparece en el índice vivo, `merge` lo saca de `deleted`, frena con `live-incomplete` y el siguiente `read-live` lo pide y compara su hash. Un marco repuesto y editado a mano no se pisa en silencio.
   - `main-exists-live` tiene salida: `merge` deja anotado `mainTaken` en `publish.json` y `plan` espera `first: false` para ese lienzo (motivo `main-taken`), sin el bucle con `build --first yes`. Falla cerrado sin la nota.
   - Una publicación que no llegó a `record` ya no traba la corrida en `page-collision`: el plan de `canvas-publish` deja los caminos en `<run>/planned.json` (con la url del lienzo), que el plan de lectura no pisa; `merge` lo toma como propio y `record` lo borra.
+  - Esa publicación sin `record` deja también el sha256 de cada artboard enviado: `merge` y la lectura del vivo lo usan como base, y una edición a mano de un artboard nuestro se detiene en vez de pisarse (RR-01).
   - `plan --new-canvas` repetido no crea otro lienzo cuando el registrado está creado y vacío y es el de esta corrida.
   - `Main.dc.html` entra al chequeo de nombres sin distinguir mayúsculas: un `main.dc.html` del usuario frena con `main-exists-live`.
   - Un registro `canvas` inválido tiene salida: `plan --new-canvas` abre un lienzo propio y el registro empieza de cero. `present` dice `mode: local` con el motivo `canvas-invalid` y sin el aviso de publicación.

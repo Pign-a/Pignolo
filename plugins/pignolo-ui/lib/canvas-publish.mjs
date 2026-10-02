@@ -69,6 +69,19 @@ function readPlanned(run, record) {
   return data.paths.filter((p) => typeof p === 'string' && p !== INDEX);
 }
 
+// The sha256 that each artboard of the last plan had when it went out ({ path: sha256 }): the base to compare against when the
+// publication never reached `record` (RR-01). A planned.json without hashes (older) or with a bad one gives no base.
+function readPlannedFiles(run, record) {
+  const file = plannedFile(run);
+  if (isLink(file)) return {};
+  const data = readJson(file);
+  if (!isObj(data) || data.canvasUrl !== record.url || !isObj(data.files)) return {};
+  return Object.fromEntries(Object.entries(data.files).filter(([p, h]) => p !== INDEX && typeof h === 'string' && HEX.test(h)));
+}
+
+// What the run published to this canvas plus what it planned and never recorded: the published hash wins for a path in both.
+const knownFiles = (trusted, planned) => ({ ...planned, ...(trusted?.files ?? {}) });
+
 // A planned.json that is not a link goes away once what it says was recorded (or its canvas was replaced).
 function clearPlanned(run) {
   const file = plannedFile(run);
@@ -241,7 +254,7 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   } else {
     merged = currentMerge({ run, canvas, record, diff });
     if (!merged) {
-      const paths = [INDEX, ...Object.keys(trusted?.files ?? {}).filter((p) => !(trusted.deleted ?? []).includes(nameOf(p))).sort()];
+      const paths = [INDEX, ...Object.keys(knownFiles(trusted, readPlannedFiles(run, record))).filter((p) => !(trusted.deleted ?? []).includes(nameOf(p))).sort()];
       if (paths.length > LIMITS.paths) return fail([{ code: 'too-many-paths' }]);
       step = { id: 'canvas-read-live', params: { action: 'read', url: record.url, paths } };
     } else {
@@ -288,7 +301,7 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
 
   const planFiles = {};
   if (toSend) for (const p of [...toSend, INDEX]) planFiles[p] = sha(fs.readFileSync(path.join(canvas, ...p.split('/'))));
-  if (step.id === 'canvas-publish') writeAtomic(plannedFile(run), `${JSON.stringify({ canvasUrl: record.url, paths: [...toSend], at: new Date().toISOString() }, null, 2)}\n`);
+  if (step.id === 'canvas-publish') writeAtomic(plannedFile(run), `${JSON.stringify({ canvasUrl: record.url, paths: [...toSend], files: Object.fromEntries(toSend.map((p) => [p, planFiles[p]])), at: new Date().toISOString() }, null, 2)}\n`);
   writeAtomic(path.join(run, 'plan.json'), `${JSON.stringify({ id: step.id, files: planFiles, changed: diff.changed, sendIndex: diff.sendIndex, at: new Date().toISOString() }, null, 2)}\n`);
   return { ok: true, problems: [], notes: noteList(manifest), done: false, step, ...(newCanvas ? { newCanvas: true } : {}) };
 }
@@ -353,7 +366,8 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   if (read.problem) return { ok: false, problems: [{ code: read.problem }] };
   const trusted = ownPublished(read.data, record, false);
   const deleted = trusted?.deleted ?? [];
-  const wasFiles = trusted?.files ?? {};
+  const plannedFiles = readPlannedFiles(run, record);
+  const wasFiles = knownFiles(trusted, plannedFiles);
   const checked = Object.keys(wasFiles).filter((p) => !deleted.includes(nameOf(p))).sort();
 
   let liveIndex = null;
@@ -392,12 +406,14 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
       try { dst = fs.lstatSync(liveDir); } catch { throw new PublishError('--live-dir no existe', true); }
       if (dst.isSymbolicLink() || !dst.isDirectory()) throw new PublishError('--live-dir es un enlace o no es una carpeta: se rechaza', true);
       liveFiles = readLiveFiles({ liveDir, paths: checked });
+      // planned and never recorded, and not there: the publication may not have happened, so it is not a deletion by the user
+      for (const p of checked) if (!(trusted?.files && p in trusted.files) && liveFiles[p] === null) delete liveFiles[p];
     }
   }
 
   const diff = diffPublished({ manifest, layoutSha256: manifest.layoutSha256, pageId: manifest.pageId, published: trusted });
   const owned = readPlanned(run, record);
-  const publishedForMerge = trusted ? { ...trusted, files: Object.fromEntries(checked.map((p) => [p, wasFiles[p]])) } : null;
+  const publishedForMerge = trusted || checked.length ? { ...(trusted ?? {}), files: Object.fromEntries(checked.map((p) => [p, wasFiles[p]])) } : null;
   const result = mergeIndex({
     ours: fragment, live: liveIndex, liveFiles, published: publishedForMerge, owned, title: fragment.canvasTitle, now,
     changed: diff.changed, launchPage: record.launchPage ?? null, first: manifest.first === true, ownsMain: trusted?.ownsMain === true,
