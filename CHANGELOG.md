@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.1 — 2026-10-01
+
+Arreglos de la revisión final de 0.13.0 (hito 8d); cada uno con un test que falla sin el arreglo.
+
+- **I-1:** un `git mv` que renombra en disco y falla después (el índice abierto por otro programa) ya no se informa como "fallido, nada movido": se decide por el disco, el resultado es `partial` (exit 3) y el deshacer sigue aunque el registro diga `undone` si algún ítem está movido.
+- **I-2:** en `.md` y `.mdx`, `src=` y `href=` (comillas dobles, simples o sin comillas) hacia lo movido, o desde un archivo que se mueve con destino relativo, son `markdown-unsupported` y frenan el movimiento; no se reescriben.
+- **I-3:** la guardia niega a un subagente ejecutar `init.js` y `places.js` aunque el `cd`, `Set-Location` o `Push-Location` vaya separado por `;` o salto de línea, y la forma pelada `node places.js` tras un `cd` dinámico. Leer los scripts sigue pasando.
+- **I-4:** una mudanza frenada por una guarda dura adopta la carpeta (entra en el mapa) y deja el motivo en `refused`; antes el tipo quedaba fuera y `where` apuntaba a una carpeta por defecto inexistente.
+- **I-5 (espera la confirmación del autor; commit separado, se puede revertir solo):** los `test-paths` por defecto suman `spec/`, `**/*_spec.*`, `**/*-test.*`, `**/tests.py` y `**/conftest.py`, que los anclados de 0.13.0 habían dejado sin proteger (RSpec, Django, `foo-test.js`). Siguen sin casar `docs/specs/`, `docs/research/latest.md`, `src/latest.js`, `src/contest.js` ni `src/inspector.js`. Quedan fuera `test-utils.js` y `testing/helpers.py`: el proyecto los declara en `test-paths`.
+- **Menores:** M-1 `skeleton` sin `adapt` aprobado ya no crea `docs/specs/` al lado de `doc/specs/`; M-2 el deshacer solo quita del mapa lo que el movimiento escribió; M-3 un backtick suelto ya no enmascara enlaces de otros párrafos; M-4 `.DS_Store`, `Thumbs.db` y `desktop.ini` no frenan el movimiento; M-5 la línea de `/pignolo:status` cuenta solo sueltos de gravedad alta y mal ubicados; M-6 `fix apply` informa `dest-exists` en vez de `stray-never-moves`; M-7 la skill `init` detalla la compuerta de R-25 (comando exacto, deshacer que puede negarse, sin compuerta, plazo de Bash); M-8 el deshacer exige que el respaldo siga siendo el original (`backup-modified`).
+- **Recortes sin tocar guardas:** se quita `stagedOther` (nadie lo mostraba) y `planAdaptation` no repite `planMoves` ni el escaneo cuando ningún ítem se descartó; `applyMoves` sigue re-planificando antes de mover.
+- **Límite declarado (M-9):** la búsqueda textual de referencias distingue mayúsculas y no ve referencias a un ancestro de lo movido (`doc/**` en `.gitattributes` o en CI, `/doc/` en `CODEOWNERS`, `"files": ["doc"]` en `package.json`): esos casos no se avisan.
+
 ## 0.13.0 — 2026-10-01
 
 Versión menor: clave nueva en `project.md`, script nuevo y dos pasos nuevos de `init`. Hito 8d: estructura de carpetas del proyecto.
