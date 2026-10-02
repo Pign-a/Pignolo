@@ -17,6 +17,12 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 - `/pignolo-ui:improve <URL o ruta>`: inspecciona la pantalla (script y navegador), te muestra un menú de síntomas, genera versiones mejoradas, aplica la elegida y confirma con antes y después.
 - `/pignolo-ui:audit <URL o ruta>`: una pasada de auditoría con evidencia; no cambia ningún archivo y no bloquea.
 
+## Contexto de producto y brief
+
+- `PRODUCT.md` (opcional, en la raíz del proyecto, 60 líneas como máximo) dice para quién es la pantalla: `## Audience`, `## First look`, `## Tone`, `## Not wanted` y `## Do not touch`. Lo que no reconoce lo ignora; una sección con la sola palabra `undecided` es una laguna declarada. Si falta, el flujo sigue y lo dice en una línea. Solo `/pignolo-ui:new` ofrece crearlo, una vez y con tu confirmación; nunca lo sobrescribe. El contexto ayuda a decidir si un criterio de juicio aplica; nunca crea hallazgos, no sube severidades y `DESIGN.md` sigue ganando.
+- `brief.md` viaja dentro de la versión aprobada (`design/approved/<flujo>/`) y queda sellado en el manifest: la primera vista de la pantalla, qué no se toca y, si hace falta, su registro (`Register: product` o `brand`).
+- En `/pignolo-ui:improve`, si elegís criterios de juicio (`J-nn`), una segunda lectura del auditor (≈ 0,3 USD) puntúa solo esos arreglos como resuelto, parcial o sin resolver. Es un juicio: no cambia la palabra "terminado" ni cuenta como una segunda confirmación.
+
 ## Configuración (`userConfig`)
 
 - `optionsPerDecision` (`1` o `3`, por defecto `3`): cuántas opciones se generan por decisión, cada una con su subagente. Con `1` las opciones salen en secuencia del hilo principal y el informe lo dice.

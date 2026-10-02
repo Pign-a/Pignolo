@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PLUGIN_ROOT } from './helpers.mjs';
-import { readSkill, readReference, assertNoVariables } from './support/skill-checks.mjs';
+import { readSkill, readReference, assertNoVariables, scriptCalls, assertScriptsExist } from './support/skill-checks.mjs';
 
 const SKILLS = ['new', 'improve', 'audit'];
 const REFERENCES = fs.readdirSync(path.join(PLUGIN_ROOT, 'reference')).filter((n) => n.endsWith('.md'));
@@ -53,4 +53,15 @@ test('the opt-out is first: in new and improve publish-gate precedes the first A
     assert.ok(text.indexOf('publish-gate') >= 0 && text.indexOf('publish-gate') < text.indexOf('scope: "types"'), n);
   }
   assert.ok(readReference('present-and-choose.md').toLowerCase().includes('never call artifact when the mode is local'));
+});
+
+test('reference/context.md has the four parts, creates PRODUCT.md only with a confirmed diff, and present-and-choose saves with --brief-file (hito 4f)', () => {
+  const text = readReference('context.md');
+  assertNoVariables(text);
+  for (const lit of ['run.mjs" context', 'run.mjs" register', 'product-md.mjs" create', 'verdict-request', 'auditor-check --project <repo> --run <run>/after --mode verdict']) assert.ok(text.includes(lit), lit);
+  assert.ok(/only with a diff the user confirms/.test(text) && text.includes('never overwrites'));
+  assert.ok(text.includes('`improve` and `audit` never create it'));
+  assert.ok(text.length < 6000, `${text.length} characters`);
+  assert.ok(readReference('present-and-choose.md').includes('--brief-file'));
+  assertScriptsExist(scriptCalls(text));
 });

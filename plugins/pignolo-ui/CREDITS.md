@@ -10,7 +10,7 @@ Fuentes de las ideas de pignolo-ui. No se copia código de terceros (los valores
 - RFC 5646 / BCP 47 (IETF): forma de las etiquetas de idioma (A11Y-01).
 - CSS Transitions y Media Queries Level 5 (W3C): `transition`, `prefers-reduced-motion` (MOTION-03, MOTION-04).
 - Carta `ui-option` (reglas de oficio y datos de muestra), ideas con texto propio y sin copiar nada, todas consultadas el 2026-10-01:
-  - impeccable (Paul Bakaus), https://github.com/pbakaus/impeccable, Apache-2.0.
+  - impeccable (Paul Bakaus), https://github.com/pbakaus/impeccable, Apache-2.0. Ideas del hito 4f, con texto propio: separar el contexto del producto del diseño, guardar el brief de la pantalla con lo aprobado y puntuar los arreglos con un segundo veredicto.
   - Skills de Emil Kowalski, https://github.com/emilkowalski/skills, MIT.
   - Human Interface Guidelines de Apple, https://developer.apple.com/design/human-interface-guidelines/, documentación de Apple (solo enlace; sin licencia de reúso).
 - Material Design 3 (Google): nombres semánticos de color; guía para el auditor, con enlace y sin citas textuales.
