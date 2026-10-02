@@ -64,6 +64,7 @@ const RULES = {
   'pignolo-queue': ['deny', 'la cola de integración (scripts/queue.js) la opera solo el hilo principal o el integrator; el resto de los subagentes solo puede correr queue.js status', 'la cola la opera el integrator; pedile la integración al hilo principal'],
   'pignolo-worktree-tools': ['deny', 'solo el hilo principal crea worktrees de tarea, etiqueta contratos y aplica la limpieza (worktree.js create|tag-contract, cleanup.js apply)', 'pedile al hilo principal que lo haga; podés leer con worktree.js list o cleanup.js report'],
   'pignolo-protected-refs': ['deny', 'int/*, queue/*, cp/* y contract/* solo las escriben la cola y el hilo principal (git switch/checkout, tag, branch, update-ref, push, fetch o commit/merge sobre esas ramas)', 'trabajá en la rama de tu tarea y pedí la integración al hilo principal'],
+  'subagent-main': ['deny', 'un subagente no hace push ni merge sobre main/master: lo hace solo el hilo principal', 'terminá tu tarea y respondé (handback); el hilo principal hace el push o el merge'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
@@ -1251,7 +1252,36 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
 
 function gitRules(sub, o, args, ctx, st, realSt, redir) {
   const base = gitRulesBase(sub, o, args, ctx, st);
-  return ctx.subagent && protectsRefs(sub, o, realSt || st, redir) ? [...base, 'pignolo-protected-refs'] : base;
+  if (!ctx.subagent) return base;
+  const extra = [];
+  if (protectsRefs(sub, o, realSt || st, redir)) extra.push('pignolo-protected-refs');
+  if (touchesMain(sub, o, realSt || st, redir)) extra.push('subagent-main');
+  return extra.length ? [...base, ...extra] : base;
+}
+
+// Solo el hilo principal hace push y merge sobre main/master (decisión del autor, 2026-10-02). Solo se llama para un
+// subagente y falla cerrado: una rama de HEAD ilegible (HEAD suelto, sin repo, -C sin resolver) cuenta como main.
+const MAIN_REF = /^(?:refs\/heads\/)?(?:main|master)$/;
+function headOnMain(st, redir) {
+  if (st.onMain) return true;
+  const dirs = headDirs(st, redir);
+  if (dirs === null || !dirs.length) return true;
+  return dirs.some((d) => { const b = headBranchOf(d); return b === null || MAIN_REF.test(b); });
+}
+
+function touchesMain(sub, o, st, redir) {
+  if (sub === 'merge') return headOnMain(st, redir);
+  if (sub !== 'push') return false;
+  const pos = o.positionals;
+  if (pos.some((w) => w.dyn)) return true;
+  const specs = pos.slice(1).map((w) => w.value.replace(/^\+/, ''));
+  if (longIs(o, 'all')) return true;
+  if (!specs.length) return longIs(o, 'tags') ? false : headOnMain(st, redir);
+  return specs.some((x) => {
+    const dst = x.includes(':') ? x.slice(x.indexOf(':') + 1) : x;
+    if (dst === 'HEAD' || dst === '') return x === 'HEAD' ? headOnMain(st, redir) : false;
+    return MAIN_REF.test(dst);
+  });
 }
 
 function gitRulesBase(sub, o, args, ctx, st) {
