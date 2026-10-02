@@ -1,6 +1,15 @@
 # Estado de pignolo
 
-_Última actualización: 2026-10-01, tarde._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
+_Última actualización: 2026-10-02._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
+
+## Estado al 2026-10-02 (manda sobre lo de arriba si se contradicen)
+
+- **En `main`:** núcleo **0.14.0** (hitos 1 a 6, 7a, 8a, 8b y 8d) y pignolo-ui **0.7.5** (0.7.3 datos de muestra rotulados, 0.7.4 auditor con "cuándo aplica", tope de 3 y línea `keep`, 0.7.5 `PRODUCT.md`, brief sellado y pase de veredicto).
+- **Ramas sin unir:** `ui/hito-4e-chequeos` (olas 2 a 4 de 4e, construidas, falta su revisión opus) y `exp/lienzo2-x` / `exp/lienzo2-y` (los dos brazos del experimento de relevo, etapa 2 del lienzo; ficha en `tests/evals/RESULTS-relevo.md`; se une el que salga mejor).
+- **Método vigente:** `liviano-v2` (ver `CLAUDE.md`) y pruebas con `docs/protocolo-de-pruebas.md`. Cada fase que cierra suma su fila a `docs/ejecuciones.csv`.
+- **Sigue:** revisión y unión de las olas 2 a 4 de 4e → resultado del experimento y unión de la etapa 2 del lienzo → etapas 3 y 4 → 4g → olas 5 y 6 de 4e. Núcleo: 7b → 8c → deuda técnica.
+- **Decisiones abiertas del autor:** si el núcleo aprende la clave `brief` de las aprobaciones de pignolo-ui (hay un test pendiente que lo marca); los cinco patrones nuevos de `test-paths` por defecto (ya unidos; se revierten con el commit `9d6f84f`); G44 (un proyecto `code-untested` no puede integrar por la cola una tarea sin tests).
+- **Sin pruebas del autor hasta cerrar la v1:** las puertas manuales del lienzo (T6, T6b, T6c) no se hacen; pasan a su revisión de la v1.
 
 ## Qué hay en `main`
 
