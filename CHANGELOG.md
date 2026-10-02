@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.15.0 — 2026-10-02
+
+`init` y `setup` rápidos y el repositorio en blanco (decisión del autor, 2026-10-02; plan en `docs/plans/2026-10-02-init-rapido-y-repo-en-blanco.md`). Salta de 0.14.0 a 0.15.0 porque otra rama toma 0.14.1.
+
+- **Repo en blanco (D-1):** `init.js detect` suma `blank`, `blankReason` y `blankFirstFile` (`lib/init-blank.js`). Es blanco solo si todo lo que hay en el disco es oculto (nombre con punto), un README, LICENSE, COPYING, NOTICE o AUTHORS de la raíz, o un README del esqueleto de `init`; código, manifiestos, enlaces, carpetas desconocidas u otros markdown impiden el blanco. No lee contenido ni usa git. Si no puede leer la raíz, `detect` falla (`blank-unknown`). En un blanco, `preview` y `apply` solo aceptan `ignores`, `gitattributes`, `reflog` y `skeleton` (`blank-project`, exit 1, falla cerrado), no escriben `project.md`, `type` ni compuertas, y dejan la marca local `.pignolo/tmp/init-blank.json`. `verify` informa `blank`.
+- **Aviso al tener código:** `next` (y con él SessionStart) devuelve `init-blank-ready` en una línea cuando existe la marca, no hay `project.md` y el repo ya no es blanco: hay que volver a correr `/pignolo:init`.
+- **Resumen para la vista rápida (D-2):** `detect.summary` (`lib/init-summary.js`): modo, pasos recomendados, lugares a adoptar (nunca mover), propuesta lista (sin `mutation`), preguntas que solo el humano puede responder, opcionales y códigos de atención. En un blanco `detect` lista solo los cuatro pasos del camino en blanco.
+- **Skills `init` y `setup`:** primero el camino en blanco; en un proyecto existente, preguntas con `AskUserQuestion` (recomendada primero, respaldo en texto), preview del plan recomendado y una pantalla con tres opciones (aplicar lo recomendado, revisar punto por punto, cancelar); el recorrido de catorce pasos queda como segunda opción (D-4). Detalle técnico solo a pedido o si algo falla (D-3). Un sí elegido en el selector vale solo para el plan exacto mostrado; no cambia ninguna regla de seguridad (vista previa antes de aplicar, `stale-preview`, commit solo con un sí, nunca se lee la auto-memoria ni las reglas de dominio).
+- **Tests:** `init-blank`, `init-blank-cli`, `init-summary`, `next-blank`, `skill-setup` y los de `skill-init`. Dos tests de proyecto nuevo (`init-cli`, `e2e-hito-8d`) llevan ahora un archivo de código: un repo vacío ya no admite `project-md`.
+- **Límites declarados:** un repo con solo `CLAUDE.md`, o con un `docs/` de markdown propio, no se considera en blanco (conservador); la marca vive en `.pignolo/tmp/` (local, no viaja con el repo); el orden del flujo rápido es preguntas, preview y una pantalla con el plan exacto, para que el sí del selector cubra justo lo que se muestra.
+
 ## 0.14.0 — 2026-10-02
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Se une después del hito 8d (0.13.1); en su rama llevó los números 0.13.0 y 0.13.1 (brainstorming), así que esta es la versión menor libre siguiente.
