@@ -1404,6 +1404,11 @@ function gitRulesBase(sub, o, args, ctx, st) {
       if (pos.some((w) => w.value.startsWith('+'))) return ['push-force'];
       if (has('d') || long('delete') || pos.slice(1).some((w) => w.value.startsWith(':'))) return ['push-delete'];
       return r;
+    case 'remote':
+      // `remote add --mirror[=push]` escribe remote.<n>.mirror=true (lo mismo que `git config remote.x.mirror true`, que se
+      // niega): el `git push <n>` siguiente es un push --mirror. Solo `--mirror=fetch` es inofensivo (R2).
+      if (pos.length && pos[0].value === 'add' && long('mirror') && !(o.vals.includes('fetch') && !o.vals.includes('push'))) return ['push-force'];
+      return r;
     case 'send-pack':
       return ['send-pack'];
     case 'fetch': {
