@@ -327,3 +327,18 @@ test('guard (M05): a note of ours that the user deleted does not come back', () 
   assert.ok(!(id in res.index.notes), 'the note came back');
   assert.ok(res.kept.userDeleted.includes(id));
 });
+
+// ---- minors that cost a line --------------------------------------------------------------------------
+
+test('minor: --live cannot be a file of the own canvas/ or merge/ of the run (exit 2); a canvas url with an underscore is one url for every command', () => {
+  const { r, kit, saved } = secondRound(87);
+  assert.equal(mergeWith(kit, saved).status, 0);
+  const own = kit.merge(['--live', canvasFile(r, 'project', 'canvas.json'), '--live-dir', saved.liveDir]);
+  assert.equal(own.status, 2, own.stdout);
+  assert.match(own.stderr, /de esta corrida/);
+  const under = 'https://claude.ai/artifact/abc_def-1234';
+  const fresh = ready();
+  assert.equal(stepId(fresh.kit.plan()), 'canvas-create');
+  assert.equal(fresh.kit.record('canvas-create', under).status, 0);
+  assert.equal(fresh.kit.canvas().url, under);
+});
