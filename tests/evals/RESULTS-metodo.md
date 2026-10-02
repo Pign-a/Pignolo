@@ -42,3 +42,21 @@ Atacante: ≈ 126 mil tokens, 3 min. Fuentes externas: ≈ 120 mil tokens, 3 min
 ## Decisión del autor (2026-10-01)
 
 Aplicar las mejoras validadas a los planes que siguen y como estrategia de desarrollo del plugin: puntos 1, 3, 4 y 5 con sus resguardos y las tres ideas extra. Los puntos 2 y 6 no se adoptan. Quedó en `CLAUDE.md`. El ahorro real se mide en los próximos hitos contra `docs/benchmarks.md` §2d.
+
+## Partir un plan largo en ejecutores en serie (2026-10-01, nivel E1: simulación sobre transcripciones)
+
+Pregunta del autor: en planes largos el contexto del ejecutor llega al 70 % de la ventana; ¿conviene relevarlo por agentes nuevos en serie, como hace superpowers? Un agente opus midió las transcripciones de las ejecuciones largas (7a, 8d, 8a, hito 4 de pignolo-ui, etapa 1 del lienzo) y simuló los cortes. Precios supuestos: entrada 1, escritura de caché 1,25, lectura de caché 0,1, salida 5. (M) medido, (I) inferido.
+
+| Qué | Dato |
+|---|---|
+| Releer el contexto acumulado | 97 a 99 % de los tokens y 72 a 93 % del costo ponderado de una ejecución larga (M) |
+| Crecimiento del contexto | ≈ 2,3 a 2,9 mil tokens por turno; el 7a llegó a 770 mil (M) |
+| Arranque en frío de un agente nuevo | 12 a 26 llamadas hasta la primera edición, contexto en 120 a 247 mil; 2 a 7 min (M) |
+| Caché vencida por esperas de más de 5 min (la suite en segundo plano) | 9 % del costo en 8a y lienzo, 25 % en el hito 6 (M) |
+| Un corte al pasar 300 mil de contexto | 7a −31 a −38 %; lienzo etapa 1 −17 a −24 %; ui hito 4 −15 a −23 %; 8d −10 a −19 %; 8a −10 a −18 % de costo ponderado (I) |
+| Un agente nuevo por tarea (superpowers) | +21 a +105 % en ui hito 4, 8d y 8a; +31 a +114 % en las cortas (I) |
+| Punto de equilibrio | partir gana si la ejecución va a pasar de ≈ 400 mil de contexto (≈ 9 a 12 tareas, ≈ 55 a 65 min); por debajo de ≈ 320 mil pierde (I) |
+| Tiempo de pared | no baja: cada corte suma 2 a 7 min y el modelo casi no se pone más lento con contexto grande (M) |
+| Calidad | no se ve que las tareas tardías fallen más (M, pocos casos) |
+
+Conclusión provisoria (hipótesis, no decisión): relevo **por ola**, solo cuando al cerrar una ola con commit el contexto pasó de ≈ 300 mil tokens y quedan 3 tareas o más; nunca por tarea. Traspaso: commits por tarea, una libreta con una línea por tarea (commit, rulings, interfaces que cambiaron), rutas de las tarjetas que faltan; sin historia pegada. Falta el experimento controlado (ver `docs/protocolo-de-pruebas.md`). Costo del análisis: ≈ 205 mil tokens, 3 min.
