@@ -8,7 +8,7 @@ import { saveApproved, verifyApproved, checkScreens, decisionEntry } from '../li
 
 const DESIGN = fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8');
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
-const page = (title, extra = '') => `<!doctype html>\n<html lang="es">\n<head><meta charset="utf-8"><title>${title}</title></head>\n<body><main><h1 data-sample>‹${title}›</h1>${extra}</main></body>\n</html>\n`;
+const page = (title, extra = '') => `<!doctype html>\n<html lang="es">\n<head><meta charset="utf-8"><title>${title}</title></head>\n<body><main><h1 data-sample>${title}</h1>${extra}<p>Datos de muestra</p></main></body>\n</html>\n`;
 
 function screens(tree = {}) {
   return writeTree(makeTempDir(), {

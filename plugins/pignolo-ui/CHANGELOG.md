@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.3 — sin publicar
+
+Dos decisiones del autor (2026-10-01, tras la tercera medición de `tests/evals/RESULTS-lienzo.md`, que juzgó a ojo).
+
+- **Carta `ui-option` candidata adoptada.** `agents/ui-option.md` pasa a ser la carta que el autor prefirió: a la sección de oficio (13 reglas) le suma estados visibles, ritmo de espaciado, escala tipográfica visible, énfasis en un solo lugar y movimiento solo para mostrar estado. Conserva lo que la `main` ganó después (etapa 1 del lienzo: `destination: canvas|local`, Google Fonts solo para el lienzo, las tres reglas de forma, modelo por perfil). Descripción de una línea; texto propio. Inspirada en impeccable, las skills de Emil Kowalski y la guía de Apple: una línea por fuente en `CREDITS.md`, sin copiar nada.
+- **Datos de muestra rotulados en vez de marcadores sueltos.** Lo que el usuario dio se usa literal; lo que falta se completa con valores de muestra realistas (importes, fechas, nombres de ítems; nunca personas, emails, teléfonos, empresas ni marcas reales), cada uno con `data-sample` en su elemento, y cada pantalla lleva una línea visible "Datos de muestra" (reemplaza al `‹…›` y a la franja "Datos de ejemplo"). Spec §7.1 reescrita.
+- **`options-check`** (`lib/sample-data.mjs`): `no-sample-strip`, `empty-sample`, `bare-placeholder`, `real-looking-contact` y, con `--provided-file` (lista JSON de los valores literales del brief), `unmarked-sample`. Sin esa lista, un importe o una fecha sin marcar es solo la advertencia `maybe-unmarked-sample`. **No decide** si un valor es realista, si un nombre es real o si un nombre de ítem inventado quedó sin marcar: eso lo juzga el auditor.
+- **`approve.mjs save`** no guarda una pantalla con `data-sample` sin la línea; lo aprobado conserva las marcas tal cual. El conversor a artboards las conserva. El chequeo de fuga no se exime por la marca (un valor del usuario o una ruta local dentro de un `data-sample` se detecta). `CONTENT-01` sigue igual: dato de muestra o marcador viejo es `detalle` en un mockup y `bloquea` en código real.
+- **`ui-auditor`:** un dato marcado no es "contenido inventado"; un valor de muestra sin `data-sample` es un hallazgo `CONTENT-01` `medio`.
+- **Evals:** los casos de `ui-option` piden la línea "Datos de muestra", un `data-sample` con texto, ningún `‹…›` y ningún email ni teléfono; los graders se prueban contra salidas buenas y malas. Tests nuevos en `tests/sample-data.test.mjs`; los de versión (`hito-4b`, `hito-4c`) siguen a 0.7.3.
+
 ## 0.7.2 — sin publicar
 
 Gravedad de juicio acotada en `ui-auditor` (decisión del autor, 2026-10-01, tras las evals: el auditor marcaba `alto` criterios J-04, J-08 y J-11 en páginas limpias).

@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import { checkLeaks } from './leak-check.mjs';
 import { stripRemoteFonts } from './remote-fonts.mjs';
 import { resourceProblems } from './remote-check.mjs';
+import { checkSampleData } from './sample-data.mjs';
 
 const FLOW = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREEN = /^[a-z0-9][a-z0-9-]*\.html$/;
@@ -64,6 +65,10 @@ export function saveApproved({ projectRoot, flow, from, date, leakValues = [] })
   if (!FLOW.test(flow || '')) return { ok: false, problems: [{ file: '', problem: 'bad-flow-name' }] };
   // the origin may carry the allowed Google Fonts <link> (R-19); the copy never does
   const { files, problems } = checkScreens(from, { allowFonts: true });
+  // the sample values keep their marks: a screen with `data-sample` and no "Datos de muestra" line is not saved (spec §7.1)
+  for (const f of files) {
+    if (checkSampleData(fs.readFileSync(path.join(from, f), 'utf8')).problems.includes('no-sample-strip')) problems.push({ file: f, problem: 'no-sample-strip' });
+  }
   // leak check before saving as approved (spec §7.4); values are never echoed back
   for (const l of checkLeaks(from, leakValues).leaks) {
     const { file, kind, line } = l;

@@ -22,8 +22,9 @@ body{margin:0;font-family:system-ui,sans-serif}
 <body>
 <main>
 <h1>${title}</h1>
-<p data-sample>[CONTENIDO]</p>
-${link ? `<a class="cta" data-primary="true" href="${link}">Siguiente</a>\n` : ''}${extra}</main>
+<p data-sample>$ 12.480,00</p>
+${link ? `<a class="cta" data-primary="true" href="${link}">Siguiente</a>\n` : ''}${extra}<p>Datos de muestra</p>
+</main>
 </body>
 </html>
 `;

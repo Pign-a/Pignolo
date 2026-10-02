@@ -26,7 +26,7 @@ Short written criteria for the agents. Rules that a script checks live in the ca
 
 - product: calm, dense, tool-like; one accent color, neutral surfaces, familiar patterns.
 - brand: more expressive type and color are allowed when they serve the message; contrast and hierarchy rules still apply.
-- Never invent content: missing copy, names, numbers and logos stay marked as sample data.
+- Data the user gave is used literally; missing data is filled with realistic sample values marked `data-sample`, with a visible "Datos de muestra" line on the screen. Never real people, emails, companies or brands, and never invented testimonials, logos or press mentions.
 
 ## Judgment criteria
 

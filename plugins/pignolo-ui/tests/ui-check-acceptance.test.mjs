@@ -127,7 +127,7 @@ test('unsupported extension: Page.astro leaves only unverified entries and exit 
 
 // ---- approved mockups ----
 
-const MOCKUP = '<!doctype html><html lang="es"><head><title>Home</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><h1 data-sample>‹Cifra real›</h1></main></body></html>';
+const MOCKUP = '<!doctype html><html lang="es"><head><title>Home</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><h1 data-sample>$ 12.480,00</h1><p>Datos de muestra</p></main></body></html>';
 
 test('approved mockup: markers are detalle under design/approved/, bloquea in src/', () => {
   const approved = check({ 'design/approved/checkout/home.html': MOCKUP });

@@ -65,13 +65,13 @@ test('tool lists: ui-option only Write; ui-auditor read-only', () => {
 test('ui-option: patterns, rules, output contract, size, no absolute paths, only real catalog ids', () => {
   const { body } = frontmatterOf(read('ui-option'));
   const low = body.toLowerCase();
-  assert.ok(body.length <= 6000, `${body.length} characters`);
+  assert.ok(body.length <= 7000, `${body.length} characters`);
   for (const needle of ['cream or off-white', 'italic', 'numbered', 'monospace', 'pill',
-    'do not invent content', 'no personal data', 'never overwrite', 'data-primary="true"', '--color-primary',
-    '--font-body', '--radius-sm', '<meta charset="utf-8">', 'datos de ejemplo', 'done:']) {
+    'sample values', 'data-sample', 'never use real people', 'no personal data', 'never overwrite', 'data-primary="true"', '--color-primary',
+    '--font-body', '--radius-sm', '<meta charset="utf-8">', 'datos de muestra', 'done:']) {
     assert.ok(low.includes(needle.toLowerCase()), `missing: ${needle}`);
   }
-  assert.ok(body.includes('‹'));
+  assert.ok(!body.includes('‹'), 'the bare placeholder is gone: sample values are labelled with data-sample');
   // a drive letter on its own (C:\ or D:/), never the "s:/" of an https:// URL
   assert.doesNotMatch(body, /(?<![A-Za-z])[A-Za-z]:[\\/]|\/Users\/|\/home\//);
   const ids = citedIds(body);

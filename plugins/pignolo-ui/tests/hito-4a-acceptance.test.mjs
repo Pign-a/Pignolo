@@ -34,7 +34,7 @@ function initRun(project, slug = 'cuenta') {
 }
 
 const OPTION = {
-  'inicio.html': page('<h1>Cuenta</h1><p data-sample="‹saldo›">‹saldo›</p><a href="detalle.html" data-primary="true">Ver detalle</a>'),
+  'inicio.html': page('<h1>Cuenta</h1><p data-sample>$ 12.480,00</p><p>Datos de muestra</p><a href="detalle.html" data-primary="true">Ver detalle</a>'),
   'detalle.html': page('<h1>Detalle</h1><a href="inicio.html">Volver</a>'),
 };
 

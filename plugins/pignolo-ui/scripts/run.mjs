@@ -12,7 +12,7 @@
 //   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>] [--before <ui-check.json>]
 //   run.mjs leak-values --project <repo> --out <file> [--email <mail>]
 //   run.mjs git-state --project <repo> --out <file>
-//   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local]
+//   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local] [--provided-file <json list>]
 //   run.mjs discard --run <run> --option <A|B|C> [--kind option|direction]
 //   run.mjs auditor-check --project <repo> --run <run>
 //   run.mjs menu --run <run> [--norms <file>] [--extra-symptoms-file <json>] [--words-file <txt>]
@@ -35,6 +35,7 @@ import { loadCatalog } from '../lib/catalog.mjs';
 import { loadSymptoms, mergeUserSymptoms, buildMenu, matchWords } from '../lib/symptoms.mjs';
 import { collectLeakValues, collectLeakOrigins } from '../lib/leak-values.mjs';
 import { optionModel } from '../lib/option-model.mjs';
+import { readValuesFile } from '../lib/leak-check.mjs';
 import { gitState, checkOption } from '../lib/option-check.mjs';
 import { runCheck } from '../lib/ui-check.mjs';
 import { findDesignFile } from '../lib/approved.mjs';
@@ -300,7 +301,7 @@ const COMMANDS = {
   },
 
   'options-check': {
-    spec: { value: ['project', 'run', 'option', 'kind', 'expected', 'git-before', 'destination'] },
+    spec: { value: ['project', 'run', 'option', 'kind', 'expected', 'git-before', 'destination', 'provided-file'] },
     async run(opts, { cwd }) {
       const project = projectDir(cwd, opts);
       const run = runDirOf(cwd, project, opts);
@@ -312,8 +313,12 @@ const COMMANDS = {
       const expected = list(opts.expected);
       let gitBefore;
       try { gitBefore = fs.readFileSync(path.resolve(cwd, opts['git-before']), 'utf8'); } catch (e) { throw new UsageError(`no se pudo leer --git-before (${e.code || e.message})`); }
+      let provided = null;
+      if (opts['provided-file']) {
+        try { provided = readValuesFile(path.resolve(cwd, opts['provided-file'])); } catch (e) { throw new UsageError(`--provided-file: ${e.message}`); }
+      }
       const dir = path.join(run, `${kind}-${letter}`);
-      const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`], kind, destination });
+      const result = checkOption({ dir, expected, project, gitBefore, ignoreUnder: [`${RUN_ROOT}/`], kind, destination, provided });
       const files = isDir(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.html')).map((f) => path.join(dir, f)) : [];
       let contradicted = [];
       if (files.length) {
