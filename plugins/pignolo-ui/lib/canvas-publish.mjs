@@ -138,6 +138,8 @@ const sizeOf = (canvas, p) => fs.statSync(path.join(canvas, ...p.split('/'))).si
 // <run>/merge/merge.json when it is consistent with what is on disk and with the diff of this run, else null:
 // a merge that is not current is never published (the live index may have changed, or build ran again).
 function currentMerge({ run, canvas, record, diff }) {
+  // a merge folder that is a link, or has one inside, is never current
+  if (linkProblem(path.join(run, 'merge'))) return null;
   const info = readJson(path.join(run, 'merge', 'merge.json'));
   if (!isObj(info)) return null;
   let indexBytes;
@@ -311,6 +313,8 @@ function readLiveFiles({ liveDir, paths }) {
 
 export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, project, now }) {
   const canvas = path.join(run, 'canvas');
+  // whatever this merge ends in, the merge of before is no longer current: a merge that stops leaves none behind (RL2-01)
+  try { removeOwnDir(path.join(run, 'merge')); } catch { return { ok: false, problems: [{ code: 'root-is-link' }] }; }
   if (linkProblem(canvas)) return { ok: false, problems: [{ code: 'root-is-link' }] };
   const fragment = readJson(path.join(canvas, 'page.json'));
   const manifest = readJson(path.join(canvas, 'manifest.json'));
@@ -363,7 +367,6 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   if (!result.ok) return { ok: false, problems: result.problems, kept: result.kept };
 
   const mergeDir = path.join(run, 'merge');
-  try { removeOwnDir(mergeDir); } catch { return { ok: false, problems: [{ code: 'root-is-link' }] }; }
   if (linkProblem(path.join(canvas, 'project'))) return { ok: false, problems: [{ code: 'root-is-link' }] };
   fs.mkdirSync(path.join(canvas, 'project'), { recursive: true });
   fs.mkdirSync(mergeDir, { recursive: true });
@@ -397,7 +400,7 @@ export function recordStep({ run, project, data, step, url }) {
     // a creation always means a canvas of its own: the record and the figures start over (R-16)
     writeConfig({ data, project, key: 'canvas', value: { url, state: 'created', pages: 0, files: 0, bytes: 0, notes: 0 } });
     writeAtomic(publishFile(run), `${JSON.stringify({ v: 2, canvasUrl: url, pageId: null, ownsMain: false, layoutSha256: null, files: {}, sizes: {}, boards: {}, notes: {}, deleted: [], refusals: 0 }, null, 2)}\n`);
-    try { removeOwnDir(mergeDir); } catch { /* a link there: plan refuses it */ }
+    try { removeOwnDir(mergeDir); } catch { /* a link there: plan does not take it as current */ }
     return { ok: true, state: 'created' };
   }
   const stored = readRecord({ data, project });
@@ -439,7 +442,7 @@ export function recordStep({ run, project, data, step, url }) {
     notes: Object.fromEntries(Object.entries(fragment.notes ?? {}).map(([id, n]) => [id, subset(n, ['x', 'y', 'text', 'maxW'])])),
     deleted, refusals: 0,
   }, null, 2)}\n`);
-  try { removeOwnDir(mergeDir); } catch { /* a link there: plan refuses it */ }
+  try { removeOwnDir(mergeDir); } catch { /* a link there: plan does not take it as current */ }
   return { ok: true, state: 'published' };
 }
 
@@ -449,6 +452,8 @@ export function recordStep({ run, project, data, step, url }) {
 // defense: the first is the hash comparison of merge). Counts them: the third one stops (R-9).
 export function noteRefusal({ run, kind, named }) {
   if (kind !== 'canvas') throw new PublishError('--kind solo admite canvas en esta versión', true);
+  // every exit leaves no merge as current: the next merge reads the live canvas again (RL2-01)
+  try { removeOwnDir(path.join(run, 'merge')); } catch { /* a link there: plan does not take it as current */ }
   const file = publishFile(run);
   const read = readPublished(run);
   if (read.problem) return { count: 0, stop: true, reason: read.problem };
@@ -460,7 +465,6 @@ export function noteRefusal({ run, kind, named }) {
   if (typeof named === 'string' && named !== '' && ours.has(nameOf(named).toLowerCase())) return { count: read.data.refusals ?? 0, stop: true, reason: 'artboard-edited-by-hand' };
   writeAtomic(file, `${JSON.stringify({ ...read.data, v: 2, refusals: count }, null, 2)}\n`);
   const stop = count >= REFUSAL_STOP.canvas;
-  if (!stop) { try { removeOwnDir(path.join(run, 'merge')); } catch { /* a link there: plan refuses it */ } }
   return stop ? { count, stop, reason: 'too-many-refusals' } : { count, stop };
 }
 
