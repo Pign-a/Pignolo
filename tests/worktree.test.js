@@ -5,7 +5,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { PLUGIN_ROOT, makeRepo, git } = require('./helpers');
+const { PLUGIN_ROOT, makeRepo, makeTempDir, git } = require('./helpers');
 const W = require('../plugins/pignolo/lib/worktrees');
 
 const CLI = path.join(PLUGIN_ROOT, 'scripts', 'worktree.js');
@@ -156,7 +156,7 @@ test('resolveWorktree: la de ruta más larga que sea prefijo; wt-a y wt-ab no se
 
 // I11 (fix pass 7a): al vencer el plazo, shellRun mata el ÁRBOL (el shell y lo que lanzó), no solo el shell.
 test('shellRun: al vencer el plazo da 124 y el proceso hijo que escribiría un marcador después no llega a escribirlo', () => {
-  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pignolo-kill-'));
+  const dir = makeTempDir('pignolo-kill-');
   const marker = path.join(dir, 'vivo.txt').split(path.sep).join('/');
   const log = path.join(dir, 'log.txt');
   const child = `setTimeout(() => require('fs').writeFileSync(${JSON.stringify(marker)}, 'vivo'), 3000)`;
@@ -171,7 +171,7 @@ test('shellRun: al vencer el plazo da 124 y el proceso hijo que escribiría un m
 });
 
 test('shellRun: el código de salida, la salida al log y el cwd/env pasan tal cual', () => {
-  const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'pignolo-run-'));
+  const dir = makeTempDir('pignolo-run-');
   const log = path.join(dir, 'log.txt');
   assert.strictEqual(W.shellRun('node -e "console.log(process.env.PIGNOLO_X + \':\' + process.cwd().length > 0); process.exit(3)"', { cwd: dir, timeoutMs: 20000, logFile: log, env: { ...process.env, PIGNOLO_X: 'hola' } }), 3);
   assert.match(fs.readFileSync(log, 'utf8'), /true|false/);
