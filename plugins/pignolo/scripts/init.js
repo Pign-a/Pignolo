@@ -30,6 +30,9 @@ const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
 
 const STEP_IDS = ['ignores', 'gitattributes', 'reflog', 'adapt', 'skeleton', 'project-md', 'security-md', 'auto-memory-off'];
+// Pasos que valen en un proyecto en blanco (D-1): el esqueleto y lo que no depende de la detección. Nada más.
+const BLANK_STEPS = ['ignores', 'gitattributes', 'reflog', 'skeleton'];
+const BLANK_MARKER = ['.pignolo', 'tmp', 'init-blank.json'];
 const NEEDS = { 'project-md': ['piiPatterns'], 'security-md': ['channel'] };
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'SECURITY.md');
 
@@ -232,6 +235,9 @@ function finalPlaces({ plan, adapt, skeleton }) {
 
 function runSteps({ cwd, env, run, plan, dry }) {
   const main = resolveRoot(cwd, run);
+  const blank = blankOf(main).blank;
+  const outside = plan.approved.filter((id) => !BLANK_STEPS.includes(id));
+  if (blank && outside.length) throw new Fail('blank-project', `el proyecto está en blanco: solo se aprueban ${BLANK_STEPS.join(', ')} (pidió además ${outside.join(', ')})`, 'no hay nada que configurar todavía: aprobá solo esos pasos y volvé a correr /pignolo:init cuando haya código');
   const git = run || gitFor(main);
   const steps = [];
   const conflicts = [];
@@ -276,6 +282,14 @@ function runSteps({ cwd, env, run, plan, dry }) {
       } else step = { id, status: 'refused', reason: `unexpected: ${e.message}`, unexpected: true };
     }
     steps.push(step);
+  }
+  if (blank && !dry && steps.every((s) => s.status !== 'refused')) {
+    // La marca (solo local, bajo tmp/ que .pignolo/.gitignore ya ignora) le dice a `next` que hay que volver a correr init cuando haya código.
+    let ignoresTmp = false;
+    try { ignoresTmp = fs.readFileSync(path.join(main, '.pignolo', '.gitignore'), 'utf8').split(/\r?\n/).includes('tmp/'); } catch (_) { ignoresTmp = false; }
+    if (ignoresTmp) {
+      try { A.atomicWrite(path.join(main, ...BLANK_MARKER), `${JSON.stringify({ v: 1, at: new Date().toISOString() })}\n`); } catch (e) { notes.push(`no se pudo dejar la marca del proyecto en blanco (${e.message})`); }
+    }
   }
   const adaptDone = adapt && adapt.step && ['done', 'would-do'].includes(adapt.step.status);
   if (adaptDone && path.resolve(projectRoot(cwd)).toLowerCase() !== path.resolve(main).toLowerCase()) notes.push('estás en una worktree enlazada: init movió y escribió en el checkout principal; esta worktree conserva su layout viejo hasta que la actualices');
@@ -379,14 +393,17 @@ function verify({ cwd, env, run }) {
   const files = ['.pignolo/project.md', '.gitattributes', 'SECURITY.md'].filter((f) => fs.existsSync(path.join(main, f)) && dirty(f));
   if (trackedModified) files.push('.pignolo/.gitignore');
   notes.push(...placesVerify({ main, config, env, run }));
+  let blank = false;
+  try { blank = blankProject({ root: main }).blank; } catch (_) { blank = false; }
   return {
     ok: configError === null,
+    blank,
     ...(configError ? { configError } : {}),
     config: config ? { found: config.found, conservative: config.conservative, type: config.type, gates: config.gates, mutation: config.mutation } : null,
     active: state.active,
     warnings: config ? config.warnings : [],
     runnerExcludes, reflog, ignores, trackedModified, notes,
-    nextCommit: { files, message: 'chore: activar pignolo (project.md, .gitattributes y SECURITY.md)' },
+    nextCommit: { files, message: blank ? 'chore: esqueleto de pignolo (carpetas y .gitattributes)' : 'chore: activar pignolo (project.md, .gitattributes y SECURITY.md)' },
   };
 }
 
@@ -418,7 +435,7 @@ function main(argv, env = process.env) {
   return report(runSteps({ cwd, env, plan, dry: false }));
 }
 
-module.exports = { main, detect, verify, runSteps, STEP_IDS };
+module.exports = { main, detect, verify, runSteps, STEP_IDS, BLANK_STEPS };
 
 if (require.main === module) {
   try {

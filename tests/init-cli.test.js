@@ -431,6 +431,7 @@ test('8d: STEP_IDS exacto; el apply de 8a sin adapt no pide --expect; id descono
 test('8d: proyecto nuevo con skeleton y project-md: seis lugares con public false, cinco sin public; adapt no corre', () => {
   const env = env0();
   const a = freshRepo();
+  write(a, 'tool.sh', 'echo hi'); // con código: un repo en blanco no admite project-md (D-1)
   const planA = planFile({ v: 1, approved: ['adapt', 'skeleton', 'project-md'], answers: { public: false, piiPatterns: [] }, proposal: { type: 'docs' } });
   const stamp = cli(['preview', '--plan', planA, '--cwd', a], { env }).json.stamp;
   const ra = cli(withExpect(['apply', '--plan', planA, '--cwd', a], stamp), { env });
@@ -443,6 +444,7 @@ test('8d: proyecto nuevo con skeleton y project-md: seis lugares con public fals
   assert.ok(!fs.existsSync(path.join(a, 'docs', 'specs', '.gitkeep')));
 
   const b = freshRepo();
+  write(b, 'tool.sh', 'echo hi');
   const rb = cli(['apply', '--plan', planFile({ v: 1, approved: ['skeleton', 'project-md'], answers: { piiPatterns: [] }, proposal: { type: 'docs' } }), '--cwd', b], { env });
   assert.equal(rb.status, 0, rb.stderr + rb.stdout);
   const pmb = fs.readFileSync(path.join(b, '.pignolo', 'project.md'), 'utf8');

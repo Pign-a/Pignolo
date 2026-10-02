@@ -49,9 +49,11 @@ const previewApply = (plan, repo, env) => {
 test('e2e proyecto nuevo: detect, plan, preview, apply, verify; carpetas con README, local/ ignorada, mapa sin reference', () => {
   const env = env0();
   const repo = emptyRepo();
+  put(repo, 'tool.sh'); // con código: un repo en blanco no admite project-md (D-1)
   const det = run('init.js', ['detect', '--cwd', repo], env);
   assert.equal(det.status, 0, det.stderr + det.stdout);
-  assert.equal(det.json.places.existing, false);
+  assert.equal(det.json.blank, false);
+  assert.equal(det.json.places.candidates.length, 0);
   const plan = planFile({ v: 1, approved: ['ignores', 'gitattributes', 'reflog', 'adapt', 'skeleton', 'project-md'], answers: { piiPatterns: [] }, proposal: { type: 'docs' } });
   const { pv, ap } = previewApply(plan, repo, env);
   assert.equal(ap.status, 0, ap.stderr + ap.stdout);
