@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1 — 2026-10-01
+
+Arreglos de la revisión final del hito 7a (cada uno con un test que falla sin el arreglo; el rojo de cada uno está en el informe del arreglo).
+
+- **Guardia (I1, I2, I3):** `pignolo-protected-refs` resuelve `git -C <dir>` contra el cwd y mira la rama de HEAD de ese directorio (un `-C`, `--git-dir` o `--work-tree` que no se puede resolver, con un verbo que depende de HEAD, se niega); `branch` y `tag` solo son lectura con `-l/--list/--contains/--merged/--points-at` (no con `-v`, `-a`, `-r`, `--sort`, `--format`); se suman `revert`, `am`, `worktree add -b/-B` y su rama, `rebase <upstream> <rama>`, `push --delete/-d` y `symbolic-ref`. `git checkout -b x int/p` y `git switch -c x int/p` pasan (con flag de crear solo cuenta el nombre creado). `pignolo-queue` y `pignolo-worktree-tools` ven el script como cualquier operando del intérprete (`node --title x queue.js run …`) y `node -e` que carga `lib/queue`, `lib/branch-cleanup` o `lib/worktrees`. Las lecturas siguen pasando.
+- **Limpieza (I4, I8, M5, M13, M15):** antes de quitar cada worktree se recomprueba que no tenga ignorados (un `.env` creado tras el chequeo del lote ya no se borra); el aviso de SessionStart usa un solo `for-each-ref --merged HEAD`, lee los planes del disco y no mira el estado de las worktrees de ramas ya unidas (con unas pocas ramas ya no agota su presupuesto y se calla); un `run.json` ilegible no deja proponer nada (`run-malformed`); tests nuevos de "la rama de HEAD y el origin de otro plan nunca son candidatas".
+- **Cola (I5, I7, I9, M1, M2, M4, M7, M9):** un archivo que no es UTF-8 válido nunca se resuelve como trivial; la cola, el listado de worktrees y la limpieza comparan rutas reales (`lib/real-path.js`), así que un repo alcanzado por una junction o un enlace funciona; la repetición expande `{seed}` y exporta `PIGNOLO_TEST_SEED` como la corrida completa; `deps-dirty` si `deps-install` deja archivos sin commitear (antes de gastar la suite); `queue-worktree-missing`; `queue.js sync` y `merge` toman el lock; el precheck compara sin distinguir mayúsculas; `integrate` informa `mergeTree` y una previsión que falla no lo aborta.
+- **Lectores de `run.json` v2 (I6, I10, M8, M10):** `subagent-start`, `next` y la línea "Flujo en curso" leen todas las tareas (con dos, el escritor no recibía su tarjeta ni `next` decía `task-in-progress`); `run.js start` escribe v2 (D-7-2); el PostToolUse del handback-gate resuelve la tarea por la línea `Task: <id>` y no acusa a otra de la ola; un `last.json` en conflicto deja de valer si el plan se cerró o la rama de la tarea se movió.
+- **Worktrees (I11, M6):** `shellRun` mata el árbol de procesos al vencer el plazo con un corredor aparte (`lib/shell-runner.js`; probado en Windows, la rama POSIX no se pudo correr); una rama que difiere solo en mayúsculas ni se crea (`case-collision`).
+- **Menores (M14):** typos `///`; frase sobre CRLF (nunca es trivial: falla cerrado).
+- **Abiertos:** G37 (la cola y `code-untested` sin tests: decisión del autor) y G41 (carrera al robar un lock, choque de ruta de worktree entre planes, `failedFiles`/`quoteArg`) en `docs/gaps.md`.
+
 ## 0.13.0 — 2026-10-01
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Parte de `core` 0.11.1; `main` trae hasta 0.12.1 (brainstorming), así que esta es la versión menor libre siguiente.
