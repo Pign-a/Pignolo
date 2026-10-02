@@ -170,3 +170,18 @@ test('verifyCanvas never throws on a folder without page.json or manifest.json',
   const dir = makeTempDir();
   assert.equal(verifyCanvas({ dir }).ok, false);
 });
+
+test('T2b: a second run in the same canvas (first false, page r2) writes no Main, a disjoint set of names and its own coordinates', () => {
+  const r1 = buildCanvas(base({ options: mkOptions(['A', 'B', 'C']) }));
+  const r2 = buildCanvas(base({ options: mkOptions(['A', 'B', 'C']), pageId: 'r2', first: false, pageName: 'improve · 2026-10-02' }));
+  const names2 = Object.keys(r2.files);
+  assert.ok(!names2.includes('Main.dc.html'));
+  assert.ok(names2.every((n) => n.startsWith('r2-')), names2.join());
+  const names1 = new Set(Object.keys(r1.files));
+  assert.deepEqual(names2.filter((n) => names1.has(n)), []);
+  const firstRow = Math.min(...Object.values(r2.fragment.boards).map((b) => b.y));
+  assert.equal(firstRow, 260);
+  assert.ok(Object.values(r2.fragment.boards).every((b) => b.page === 'r2'));
+  assert.ok(Object.values(r2.fragment.notes).every((n) => n.page === 'r2'));
+  assert.deepEqual(r2.fragment.page, { id: 'r2', name: 'improve · 2026-10-02' });
+});

@@ -135,3 +135,31 @@ test('build refuses a run folder that is a link (no writes through it)', (t) => 
   assert.equal(b.status, 2);
   assert.deepEqual(fs.readdirSync(target), []);
 });
+
+test('T2b regenerate in the same run: ownsMain keeps Main.dc.html and every path, even when the state says --first no (A4C2-02)', () => {
+  const r = makeRun();
+  const readManifest = () => JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'manifest.json'), 'utf8'));
+  const b1 = canvasIndex(BUILD_ARGS(r, { first: 'yes' }));
+  assert.equal(b1.status, 0, b1.stdout + b1.stderr);
+  assert.equal(b1.json.first, true);
+  const paths1 = readManifest().files.map((f) => f.path);
+  assert.ok(paths1.includes('project/Main.dc.html'));
+  // what record --step canvas-publish leaves behind
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 1, canvasUrl: 'https://claude.ai/artifact/abcdef123456', state: 'published', ownsMain: true }));
+  const b2 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
+  assert.equal(b2.status, 0, b2.stdout + b2.stderr);
+  assert.equal(b2.json.first, true);
+  assert.equal(readManifest().first, true);
+  assert.deepEqual(readManifest().files.map((f) => f.path), paths1);
+  // another run (no ownsMain): --first no writes no Main.dc.html
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 1, canvasUrl: 'https://claude.ai/artifact/abcdef123456', state: 'published' }));
+  const b3 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
+  assert.equal(b3.status, 0, b3.stdout + b3.stderr);
+  assert.equal(b3.json.first, false);
+  assert.ok(!readManifest().files.some((f) => f.path === 'project/Main.dc.html'));
+  // a publish.json that is not literal about it (or unreadable) is not ownership
+  for (const bad of ['{"ownsMain":"true"}', '{"ownsMain":1}', 'no es json']) {
+    fs.writeFileSync(path.join(r.run, 'publish.json'), bad);
+    assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).json.first, false, bad);
+  }
+});

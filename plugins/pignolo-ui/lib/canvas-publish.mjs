@@ -41,6 +41,13 @@ function writeAtomic(file, text) {
 
 export const publishFile = (run) => path.join(run, 'publish.json');
 
+// A4C2-02: true only when <run>/publish.json says, literally, that this run already published its own
+// Main.dc.html. Anything unreadable or not literal counts as false.
+export function ownsMainOf(run) {
+  const published = readJson(publishFile(run));
+  return !!published && typeof published === 'object' && published.ownsMain === true;
+}
+
 // ---- the index ---------------------------------------------------------------------------------------
 
 export function mergeIndex({ ours, live = null, title, now }) {
