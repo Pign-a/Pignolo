@@ -153,13 +153,13 @@ test('leak-check: any tool other than Read, Grep and Glob is a leak (Bash reache
 });
 
 test('leak-check: paths outside the snapshot are leaks, also with .. and with the other drive spelling', () => {
-  for (const p of [`${path.dirname(ROOT)}/other/tree/x.js`, `${ROOT}/../c7654321/tree/x.js`, 'D:/pignolo/lib/x.js', '../escape.js']) {
+  for (const p of [`${path.dirname(ROOT)}/other/tree/x.js`, `${ROOT}/../c7654321/tree/x.js`, 'D:/elsewhere/lib/x.js', '../escape.js']) {
     const r = check([use('Read', { file_path: p })]);
     assert.strictEqual(r.ok, false, p);
     assert.strictEqual(r.leaks[0].kind, 'path', p);
   }
   assert.strictEqual(check([use('Grep', { pattern: 'x', path: path.dirname(ROOT) })]).ok, false);
-  assert.strictEqual(check([say('see D:/pignolo/lib/x.js')]).leaks[0].kind, 'outside');
+  assert.strictEqual(check([say('see D:/elsewhere/lib/x.js')]).leaks[0].kind, 'outside');
 });
 
 test('leak-check: hash (full or abbreviated), fix commit subject and fix test title are leaks wherever they appear', () => {
