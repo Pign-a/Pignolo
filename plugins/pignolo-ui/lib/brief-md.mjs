@@ -22,7 +22,7 @@ export function validateBrief(text, { leakValues = [] } = {}) {
   const problems = [];
   if (lines.length > BRIEF_MAX_LINES) problems.push({ problem: 'too-long', lines: lines.length, max: BRIEF_MAX_LINES });
 
-  const bodies = {};
+  const bodies = Object.create(null);
   let register = null;
   let current = null;
   lines.forEach((raw, i) => {

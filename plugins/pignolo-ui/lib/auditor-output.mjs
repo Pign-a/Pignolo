@@ -116,7 +116,7 @@ const VERDICT_KEYS = ['id', 'status', 'why', 'evidence'];
 export function validateVerdicts({ output, request, run, project }) {
   const problems = [];
   const ids = Array.isArray(request?.ids) ? request.ids : [];
-  if (!isMap(output) || !Array.isArray(output.verdicts)) return { ok: false, problems: [{ index: -1, problem: 'bad-shape' }] };
+  if (!isMap(output) || !Array.isArray(output.verdicts) || !Array.isArray(request?.ids)) return { ok: false, problems: [{ index: -1, problem: 'bad-shape' }] };
   if (SELF_GRADE.some((k) => k in output)) problems.push({ index: -1, problem: 'self-grade' });
   // `findings` or any other top-level key would be a way to add findings in a mode that must not
   if (Object.keys(output).some((k) => !['verdicts', 'independent'].includes(k) && !SELF_GRADE.includes(k))) problems.push({ index: -1, problem: 'new-finding' });
