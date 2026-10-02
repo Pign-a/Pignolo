@@ -2,11 +2,12 @@
 // CLI de la compuerta (spec §8.2): fuera de todo hook.
 // Uso: node gate.js --level on-edit|on-done|pre-merge [--cwd <dir>] [--task]
 //      [--no-tests-reason <archivo>] [--timeout-min <n>] [--seed <n>] [--base <ref>]
+//      Con varias tareas registradas, --task pide --id <tarea> (sale 2 con kind ambiguous-task si falta).
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const { runGate, LEVELS, DEFAULT_TIMEOUT_MS } = require('../lib/gate');
 const { mainRoot } = require('../lib/disabled');
-const { readRun } = require('../lib/project');
+const { readRun, taskList, taskById } = require('../lib/project');
 
 const ALTERNATIVES = {
   NO_GATE: 'no hay comando para este nivel en gates de .pignolo/project.md; declaralo (nunca es verde).',
@@ -17,6 +18,7 @@ const ALTERNATIVES = {
   NO_MUTATION_TOOL: '`mutation: true` y el diff toca `high-risk-paths`, pero no hay `gates.mutation`; el humano agrega la herramienta y su comando a `project.md`, o pone `mutation: false`.',
   MUTATION: 'sobrevivieron mutantes: un test nuevo que los mate, un equivalente justificado aprobado por un revisor, o deuda registrada.',
   SCOPE: 'hay cambios fuera de los archivos de la tarea o archivos vaciados; revertilos.',
+  FLAKY: 'el comando dio rojo y verde con el mismo árbol (o un archivo de test tocado falló en alguna repetición): un test inestable o una carga; corregilo, no se integra.',
   NO_TESTS: 'ningún test cambió; pasá --no-tests-reason <archivo> con el motivo o agregá tests.',
 };
 
@@ -33,6 +35,7 @@ function parse(argv) {
     if (a === '--level') o.level = val();
     else if (a === '--cwd') o.cwd = val();
     else if (a === '--task') o.task = true;
+    else if (a === '--id') o.id = val();
     else if (a === '--no-tests-reason') o.reasonFile = val();
     else if (a === '--timeout-min') o.timeoutMin = Number(val());
     else if (a === '--seed') {
@@ -42,6 +45,7 @@ function parse(argv) {
     } else if (a === '--base') o.base = val();
     else usage(`argumento desconocido: ${a}`);
   }
+  if (o.id !== undefined && !o.task) usage('--id va con --task');
   if (!LEVELS.includes(o.level)) usage(`--level debe ser ${LEVELS.join(' | ')}`);
   if (o.timeoutMin !== undefined && !(o.timeoutMin > 0)) usage('--timeout-min debe ser un número positivo');
   return o;
@@ -53,8 +57,16 @@ function main() {
   let task;
   if (o.task) {
     const st = readRun(mainRoot(cwd));
-    if (!st.run || !st.run.task) usage('no hay una tarea registrada en .pignolo/run.json');
-    task = st.run.task;
+    const tasks = st.run ? taskList(st.run) : [];
+    if (!tasks.length) usage('no hay una tarea registrada en .pignolo/run.json');
+    const ids = tasks.map((t) => t.id);
+    if (o.id !== undefined) {
+      task = taskById(st.run, o.id);
+      if (!task) usage(`la tarea ${o.id} no está registrada (${ids.join(', ')})`);
+    } else if (tasks.length > 1) {
+      process.stdout.write(`${JSON.stringify({ ok: false, kind: 'ambiguous-task', tasks: ids })}\n`);
+      usage(`hay varias tareas registradas (${ids.join(', ')}). Alternativa: agregá --id <tarea>`);
+    } else task = tasks[0];
     if (!o.cwd) cwd = task.worktree;
   }
   let noTestsReason;

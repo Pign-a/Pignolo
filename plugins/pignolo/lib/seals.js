@@ -8,7 +8,7 @@ const { withDeadline } = require('./git');
 const { repoIdForGitDir } = require('./shadow');
 const { pignoloHome } = require('./home');
 
-const STATUSES = ['PASS', 'FAIL', 'NO_GATE', 'NO_TESTS', 'TREE_CHANGED', 'SCOPE', 'INTEGRITY', 'INTEGRITY_NO_REF', 'NO_MUTATION_TOOL', 'MUTATION'];
+const STATUSES = ['PASS', 'FAIL', 'NO_GATE', 'NO_TESTS', 'TREE_CHANGED', 'SCOPE', 'INTEGRITY', 'INTEGRITY_NO_REF', 'NO_MUTATION_TOOL', 'MUTATION', 'FLAKY'];
 const LISTS = ['scope', 'emptied', 'integrity'];
 
 function repoIdFor({ cwd, timeoutMs = 5000, run } = {}) {
@@ -49,6 +49,7 @@ function validateSeal(o) {
   if (!nullableStr(o.noTestsReason)) errs.push('noTestsReason debe ser texto o null');
   if (o.seedOffered !== undefined && !Number.isInteger(o.seedOffered)) errs.push('seedOffered debe ser un entero');
   if (o.seedInCommand !== undefined && typeof o.seedInCommand !== 'boolean') errs.push('seedInCommand debe ser un booleano');
+  if (o.repeat !== undefined && !isObj(o.repeat)) errs.push('repeat debe ser un objeto');
   if (!isObj(o.checks)) errs.push('checks debe ser un objeto');
   else {
     for (const k of LISTS) if (!Array.isArray(o.checks[k]) || !o.checks[k].every((x) => typeof x === 'string')) errs.push(`checks.${k} debe ser una lista de textos`);

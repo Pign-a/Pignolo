@@ -99,7 +99,7 @@ test('§15 gates: flujo daily de punta a punta', async (t) => {
   assert.notStrictEqual(c1, c0);
   const reg2 = runJs(main, ['task', '--id', 'demo', '--test-ref', c1, '--file', 'src/a.js', '--agent', 'pignolo:implementer']);
   assert.strictEqual(reg2.status, 0, reg2.stderr);
-  const task = JSON.parse(fs.readFileSync(path.join(main, '.pignolo', 'run.json'), 'utf8')).task;
+  const task = JSON.parse(fs.readFileSync(path.join(main, '.pignolo', 'run.json'), 'utf8')).tasks.demo;
   assert.strictEqual(task.testRef, c1);
   assert.strictEqual(task.base, c0);
 

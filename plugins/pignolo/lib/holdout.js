@@ -6,12 +6,12 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
 const { pignoloHome } = require('./home');
 const { repoIdFor } = require('./seals');
 const { projectRoot } = require('./disabled');
 const { gitRun } = require('./git');
 const { readProjectConfig } = require('./project-config');
+const { installDeps, shellRun: shellExec } = require('./worktrees');
 
 const PLAN_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const LEVELS = ['on-edit', 'on-done', 'pre-merge'];
@@ -92,21 +92,6 @@ function dropHoldout({ cwd, env = process.env, plan }) {
   return { plan, dropped: existed };
 }
 
-// Con shell, como defaultExec de lib/gate.js (los shims .cmd de Windows), log a archivo.
-function shellExec(command, { cwd, timeoutMs, logFile }) {
-  const fd = fs.openSync(logFile, 'a');
-  try {
-    const r = spawnSync(command, { cwd, shell: true, windowsHide: true, timeout: timeoutMs, stdio: ['ignore', fd, fd] });
-    if (r.error || r.status === null) {
-      fs.writeSync(fd, `\n[pignolo holdout] el comando no terminó: ${r.error ? r.error.message : `señal ${r.signal}`}\n`);
-      return 124;
-    }
-    return r.status;
-  } finally {
-    fs.closeSync(fd);
-  }
-}
-
 const tailOf = (log) => log.split('\n').filter((l, i, a) => l !== '' || i < a.length - 1).slice(-TAIL_LINES).join('\n');
 
 // Corre el holdout contra <ref> (HEAD por defecto) en un worktree temporal: deps-install
@@ -135,9 +120,9 @@ function runHoldout({ cwd, env = process.env, plan, ref, gate = 'on-done', timeo
     gitRun(['worktree', 'add', '--detach', wt, sha], root, { timeout: GIT_MS });
     added = true;
     if (config.depsInstall) {
-      const code = shellExec(config.depsInstall, { cwd: wt, timeoutMs, logFile });
-      if (code !== 0) {
-        result.exit = code;
+      const deps = installDeps({ cwd: wt, command: config.depsInstall, timeoutMs, logFile });
+      if (!deps.ok) {
+        result.exit = deps.code;
         Object.defineProperty(result, 'depsFailed', { value: true, enumerable: false });
         return result;
       }

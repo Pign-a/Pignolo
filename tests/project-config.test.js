@@ -183,6 +183,24 @@ test('presentation y canvas-consent: claves aditivas, valor inválido es aviso y
   assert.strictEqual(readProjectConfig({ root: makeRepo() }).presentation, null);
 });
 
+test('gates.pre-merge-files (hito 7a, D-7-3): con {files} es válida, sin el marcador se ignora con aviso; gates.repeat ya no existe', () => {
+  const root = makeRepo();
+  write(root, fm('gates:\n  pre-merge: "npm test"\n  pre-merge-files: "node --test {files}"'));
+  const ok = readProjectConfig({ root });
+  assert.strictEqual(ok.gates['pre-merge-files'], 'node --test {files}');
+  assert.ok(!ok.warnings.some((w) => /pre-merge-files|desconocida/.test(w)), ok.warnings.join(' | '));
+
+  write(root, fm('gates:\n  pre-merge: "npm test"\n  pre-merge-files: "node --test"'));
+  const bad = readProjectConfig({ root });
+  assert.strictEqual(bad.gates['pre-merge-files'], undefined, 'sin {files} la clave es inválida');
+  assert.ok(bad.warnings.some((w) => /pre-merge-files.*\{files\}/.test(w)), bad.warnings.join(' | '));
+
+  write(root, fm('gates:\n  pre-merge: "npm test"\n  repeat: 3'));
+  const rep = readProjectConfig({ root });
+  assert.strictEqual(rep.gates.repeat, undefined);
+  assert.ok(rep.warnings.some((w) => /gates: clave desconocida "repeat"/.test(w)), 'gates.repeat ya no existe: clave desconocida');
+});
+
 // A8D-01: los defaults anclados no tratan los documentos como tests.
 test('defaults de test-paths: los documentos no son tests y los tests siguen siéndolo', () => {
   const docs = ['docs/specs/a.md', 'docs/specs/2026-10-01-x-design.md', 'docs/research/latest.md', 'docs/plans/p.md', 'doc/specs/a.md', 'docs/contest/x.md', 'README.md', 'src/app.js'];

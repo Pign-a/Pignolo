@@ -4,6 +4,10 @@ _Última actualización: 2026-10-01, tarde._ Leer esto primero al retomar. Es co
 
 ## Qué hay en `main`
 
+- **HITO 7a CONSTRUIDO en `core/hito-7a`** (2026-10-01, núcleo **0.13.0** porque `main` ya trae 0.12.0 y 0.12.1 del brainstorming; sin unir a `main`, sin push; plan `docs/plans/2026-09-30-hito-7-ramas-y-paralelismo.md`, Tasks 1 a 11 y 16, un solo ejecutor serial). `run.json` v2 con varias tareas (lock corto, tope por perfil, `task-end`), `lib/branches.js`, `lib/worktrees.js` + `worktree.js` (mecanismo B hasta el A/B del 7b), `lib/waves.js` + `waves.js`, la cola (`lib/queue.js` + `queue.js`: `pre-merge` sellado con repetición D-7-3, `FLAKY` sellable no-PASS, avance por compare-and-swap, `revert`, lock), reglas `pignolo-queue`/`pignolo-worktree-tools`/`pignolo-protected-refs`, limpieza (`lib/branch-cleanup.js` + `cleanup.js`, aviso en `SessionStart`), `next` con la cola y `plan.js list`. Spec editado con los cambios aprobados (§3.2, §5.3, §6, §9.4, §10.1, §11.3, §11.5, §11.6). Informe por tarea fuera del repo (`h7a-report.md` del job).
+  - **Falta (7b, con costo que decide el autor):** skills `execute-plan` y `cleanup`, edición de `plan`, carta del `integrator`, A/B medido del mecanismo de worktrees (D-7-1, `tests/manual/hito-7.md`) y evals `agents` (D-7-4, tope 5 USD). **Antes de empezar 7b:** verificar que el `PreToolUse` de Bash trae `agent_type` (si no, `pignolo-queue` niega al `integrator`).
+
+
 Versiones leídas de los `plugin.json`.
 
 - **Núcleo `pignolo` 0.13.1:** hitos 1 a 6, 8a, 8b y 8d (estructura de carpetas: mapa `places`, esqueleto, adaptar un proyecto existente, mover con deshacer). Guardia y respaldos (1), agentes, perfiles y `setup` (2), carriles, compuertas y revisión (3), tests, sabotaje y holdout (4), modo plan (5), continuidad (6), `/pignolo:init` (8a), evals del `debugger` y contrato con el banco (8b). Más las **reglas del brainstorming** en el paso 2 de la skill `plan` (sin skill nueva), `plan.js decision add`, el `spec-reviewer` con las decisiones del autor como segunda fuente y `CREDITS.md`. El agente `learning-validator` se borró.

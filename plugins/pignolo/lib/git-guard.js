@@ -61,6 +61,9 @@ const RULES = {
   'pignolo-plan': ['deny', 'un subagente no opera el plan ni el estado de pignolo (plan.js, plan-audit.js, approved.js, close-session.js, state-index.js): solo el hilo principal', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en el plan'],
   'pignolo-init': ['deny', 'un subagente no opera init.js ni places.js: solo el hilo principal y con el sí del humano', 'respondé BLOCKED o NEEDS_CONTEXT y nombrá lo que haga falta cambiar en project.md'],
   'pignolo-holdout': ['deny', 'solo el hilo principal y el validator ejecutan el holdout de pignolo (scripts/holdout.js)', 'el holdout lo corre el validator; pedile el resultado al hilo principal'],
+  'pignolo-queue': ['deny', 'la cola de integración (scripts/queue.js) la opera solo el hilo principal o el integrator; el resto de los subagentes solo puede correr queue.js status', 'la cola la opera el integrator; pedile la integración al hilo principal'],
+  'pignolo-worktree-tools': ['deny', 'solo el hilo principal crea worktrees de tarea, etiqueta contratos y aplica la limpieza (worktree.js create|tag-contract, cleanup.js apply)', 'pedile al hilo principal que lo haga; podés leer con worktree.js list o cleanup.js report'],
+  'pignolo-protected-refs': ['deny', 'int/*, queue/*, cp/* y contract/* solo las escriben la cola y el hilo principal (git switch/checkout, tag, branch, update-ref, push, fetch o commit/merge sobre esas ramas)', 'trabajá en la rama de tu tarea y pedí la integración al hilo principal'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
@@ -247,7 +250,8 @@ function findRoot(cwd) {
 function parseOpts(words, spec = {}) {
   const shortVal = spec.short || '';
   const longVal = spec.long || [];
-  const o = { shorts: new Set(), longs: [], positionals: [], dd: false, dynSlot: false };
+  // vals: lo que consumen las opciones con valor (git switch -c <rama>, branch -u ...): los nombres que escribe la regla de refs protegidas.
+  const o = { shorts: new Set(), longs: [], positionals: [], vals: [], dd: false, dynSlot: false };
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     const v = w.value;
@@ -258,7 +262,8 @@ function parseOpts(words, spec = {}) {
       const name = eq < 0 ? v.slice(2) : v.slice(2, eq);
       if (w.dyn && w.dynAt < 2 + name.length) { o.dynSlot = true; continue; }
       o.longs.push(name);
-      if (eq < 0 && longVal.some((l) => l === name || l.startsWith(name))) i++;
+      if (eq >= 0) o.vals.push(v.slice(eq + 1));
+      else if (longVal.some((l) => l === name || l.startsWith(name))) { if (words[i + 1]) o.vals.push(words[i + 1].value); i++; }
       continue;
     }
     if (v.startsWith('-') && v.length > 1) {
@@ -266,7 +271,10 @@ function parseOpts(words, spec = {}) {
       for (let k = 1; k < v.length; k++) {
         if (w.dyn && k >= w.dynAt) { o.dynSlot = true; break; }
         o.shorts.add(v[k]);
-        if (shortVal.includes(v[k])) { if (k === v.length - 1) i++; break; }
+        if (shortVal.includes(v[k])) {
+          if (k === v.length - 1) { if (words[i + 1]) o.vals.push(words[i + 1].value); i++; } else o.vals.push(v.slice(k + 1));
+          break;
+        }
       }
       continue;
     }
@@ -617,6 +625,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   checkLauncher(name, words, st, ctx, out);
   checkRunScript(name, words, st, ctx, out);
   checkHoldoutScript(name, words, st, ctx, out);
+  checkToolScripts(name, words, st, ctx, out);
   if ((name === 'claude' || name === 'claude-code') && claudePluginOff(args)) out.push(hit('protected-flag'));
   checkPathArgs(name, args, st, ctx, out);
   if (name === 'robocopy' && args.some((w) => /^\/(mir|purge|move|mov)$/i.test(w.value))) {
@@ -941,6 +950,186 @@ function checkHoldoutScript(name, words, st, ctx, out) {
   }
 }
 
+// La cola (scripts/queue.js), las worktrees de tarea (scripts/worktree.js) y la limpieza (scripts/cleanup.js) de pignolo
+// (hito 7a, R-13, R-21). Detección ESTRUCTURAL: solo cuando se EJECUTA (el argv del intérprete o el programa mismo), nunca
+// un grep del texto del comando: un `cat`, `grep`, `head`, `sed -n`, `Get-Content` o `Select-String` sobre el script, o un
+// `git show HEAD:plugins/pignolo/scripts/queue.js`, pasan. Anclada a la ruta del plugin (como pignolo-plan): el
+// scripts/cleanup.js de un proyecto cualquiera, corrido con una variable, no es el de pignolo.
+const TOOL_NAMES = '(queue|worktree|cleanup)(?:\\.js)?';
+const TOOL_JS_LITERAL = new RegExp(`(?:^|/)(?:plugins/pignolo|\\.claude/plugins/cache/[^/]+/pignolo/[^/]+)/scripts/${TOOL_NAMES}$`);
+const TOOL_JS_DYN = new RegExp(`^\\$(?:\\{(?:env:)?CLAUDE_PLUGIN_ROOT\\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\\\/]scripts[\\\\/]${TOOL_NAMES}$`, 'i');
+const TOOL_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/${TOOL_NAMES}$`);
+// `node -e|-p|--eval|--print` con el script bajo la ruta del plugin dentro del código: lo carga y corre su main.
+const EVAL_TOOL_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/)(?:scripts/(queue|worktree|cleanup)|lib/(queue|branch-cleanup|worktrees))(?![\\w-])`, 'i');
+const EVAL_LIB_TOOL = { queue: 'queue', 'branch-cleanup': 'cleanup', worktrees: 'worktree' };
+// Subcomandos de solo lectura de cada script: los puede correr cualquier subagente.
+const TOOL_READ = { queue: 'status', worktree: 'list', cleanup: 'report' };
+
+function toolOf(w, st, ctx) {
+  if (w.dyn) { const m = TOOL_JS_DYN.exec(w.value); return m ? m[1].toLowerCase() : null; }
+  const p = resolveAt(w.value, st, ctx);
+  const c = p === null ? cleanPath(w.value) : p;
+  const m = TOOL_JS_LITERAL.exec(c) || TOOL_JS_OWN.exec(c);
+  return m ? m[1].toLowerCase() : null;
+}
+
+// El primer operando posicional tras el script, saltando `--cwd <valor>` (A7-21). Solo cuenta un literal; uno dinámico,
+// ausente, desconocido o con `--cwd` mal formado se niega (nunca se lee como `list`).
+function subcommandAfter(words, idx) {
+  for (let j = idx + 1; j < words.length; j++) {
+    const x = words[j];
+    if (x.dyn) return { kind: 'dynamic' };
+    if (x.value === '--cwd') {
+      const nx = words[j + 1];
+      if (!nx || nx.dyn || nx.value.startsWith('-')) return { kind: 'bad' };
+      j++;
+      continue;
+    }
+    if (x.value.startsWith('--cwd=')) { if (x.value.length === 6) return { kind: 'bad' }; continue; }
+    if (x.value.startsWith('-')) return { kind: 'bad' };
+    return { kind: 'literal', value: x.value };
+  }
+  return { kind: 'none' };
+}
+
+function checkToolScripts(name, words, st, ctx, out) {
+  if (!ctx.subagent) return;
+  const deny = (tool) => { out.push(hit(tool === 'queue' ? 'pignolo-queue' : 'pignolo-worktree-tools')); };
+  const argv = words.slice(1);
+  // Los candidatos a script: el programa mismo o, de un intérprete, su primer operando y lo que precarga.
+  const cands = [];
+  if (!INTERP.has(name)) cands.push(0);
+  else {
+    const evalFlag = argv.some((w) => !w.dyn && NODE_CODE_FLAG.test(w.value));
+    const leading = [];
+    for (const w of argv) { if (w.dyn || !w.value.startsWith('-')) break; leading.push(w.value); }
+    // `node --check <script>` solo mira la sintaxis: leer no se niega.
+    if ((name === 'node' || name === 'nodejs') && !evalFlag && leading.some((v) => v === '--check' || v === '-c')) return;
+    if (evalFlag) {
+      for (const w of argv) { const m = EVAL_TOOL_SCRIPT.exec(w.value.replace(/\\+/g, '/').replace(/\/+/g, '/')); if (m) { deny(m[1] ? m[1].toLowerCase() : EVAL_LIB_TOOL[m[2].toLowerCase()]); return; } }
+    }
+    // Cualquier operando del intérprete que sea la ruta de una herramienta (como el holdout): una opción de node con valor
+    // propio (`--title x`) no oculta el script (I3).
+    for (let i = 1; i < words.length; i++) cands.push(i);
+  }
+  for (const i of cands) {
+    const w = words[i];
+    const tool = toolOf(w, st, ctx);
+    if (!tool) continue;
+    const sub = subcommandAfter(words, i);
+    if (sub.kind === 'literal' && sub.value === TOOL_READ[tool]) return; // lectura: pasa
+    if (tool === 'queue' && ctx.agentType === 'pignolo:integrator') return; // el integrator opera la cola
+    deny(tool);
+    return;
+  }
+}
+
+// int/*, queue/*, cp/* y contract/* solo las escriben la cola y el hilo principal (R-13, A7-20): a un subagente se le niega
+// escribirlas con git plano. Las lecturas (log, show, tag -l, branch --list) pasan.
+const PROT_BRANCH = /^(?:refs\/heads\/)?(?:int|queue)\/./;
+const PROT_TAG = /^(?:refs\/tags\/)?(?:cp|contract)\/./;
+const PROT_FULL = /^refs\/(?:heads\/(?:int|queue)|tags\/(?:cp|contract))\/./;
+// Solo estas opciones ponen a git en modo lista (los operandos son patrones): -v, -a, -r, --sort y --format NO (I1).
+const BRANCH_READ_SHORTS = ['l'];
+const BRANCH_READ_LONGS = ['list', 'show-current', 'merged', 'no-merged', 'contains', 'no-contains', 'points-at'];
+const TAG_READ_SHORTS = ['l', 'n', 'v'];
+const TAG_READ_LONGS = ['list', 'verify', 'contains', 'no-contains', 'points-at', 'merged', 'no-merged'];
+const HEAD_VERBS = new Set(['merge', 'reset', 'rebase', 'cherry-pick', 'commit', 'pull', 'revert', 'am']);
+
+// Rama de HEAD de un directorio, leyendo el disco (sin git): sube hasta `.git` (carpeta o archivo `gitdir:`).
+function headBranchOf(dir) {
+  try {
+    let d = path.resolve(dir);
+    for (let i = 0; i < 64; i++) {
+      const dot = path.join(d, '.git');
+      let s = null;
+      try { s = fs.statSync(dot); } catch (_) { s = null; }
+      if (s) {
+        let gitDir = dot;
+        if (s.isFile()) {
+          const m = /^gitdir:\s*(.+)$/m.exec(fs.readFileSync(dot, 'utf8'));
+          if (!m) return null;
+          gitDir = path.resolve(d, m[1].trim());
+        }
+        const r = /^ref:\s*refs\/heads\/(.+)$/m.exec(fs.readFileSync(path.join(gitDir, 'HEAD'), 'utf8'));
+        return r ? r[1].trim() : null;
+      }
+      const up = path.dirname(d);
+      if (up === d) return null;
+      d = up;
+    }
+  } catch (_) { return null; }
+  return null;
+}
+
+const refspecWrites = (v) => {
+  const s = v.replace(/^\+/, '');
+  const i = s.indexOf(':');
+  if (i < 0) return false;
+  const dst = s.slice(i + 1);
+  return PROT_BRANCH.test(dst) || PROT_TAG.test(dst) || PROT_FULL.test(dst);
+};
+
+// Directorios donde se evalúa la rama de HEAD: el cwd real, o el de `-C <dir>` resuelto contra él. null: con -C /
+// --git-dir / --work-tree no se pudo resolver (variable, sin cwd conocido): un verbo que depende de HEAD se niega.
+function headDirs(st, redir) {
+  if (!redir) return realDirs(st);
+  if (redir.unresolved) return null;
+  let dirs = realDirs(st);
+  for (const d of redir.dirs) {
+    if (path.isAbsolute(d)) dirs = [path.resolve(d)];
+    else if (dirs.length) dirs = dirs.map((x) => path.resolve(x, d));
+    else return null;
+  }
+  return dirs;
+}
+
+function protectsRefs(sub, o, st, redir) {
+  const pos = o.positionals.map((w) => w.value);
+  const hasShort = (list) => list.some((c) => o.shorts.has(c));
+  const hasLong = (list) => list.some((n) => o.longs.includes(n));
+  if (HEAD_VERBS.has(sub)) {
+    const dirs = headDirs(st, redir);
+    if (dirs === null) return true;
+    if (sub === 'pull' && pos.slice(1).some(refspecWrites)) return true;
+    if (sub === 'rebase' && PROT_BRANCH.test(pos[1] || '')) return true; // git rebase <upstream> <rama>: la saca y la reescribe
+    return dirs.some((d) => /^(?:int|queue)\//.test(headBranchOf(d) || ''));
+  }
+  switch (sub) {
+    case 'switch':
+    case 'checkout': {
+      // Con flag de crear, el operando es el punto de partida: solo cuenta el nombre creado.
+      const creates = hasShort(['c', 'C', 'b', 'B']) || hasLong(['create', 'force-create', 'orphan']);
+      return (creates ? o.vals : [...(pos.length ? [pos[0]] : []), ...o.vals]).some((x) => PROT_BRANCH.test(x));
+    }
+    case 'worktree': {
+      if (pos[0] !== 'add') return false;
+      if (o.vals.some((x) => PROT_BRANCH.test(x))) return true; // -b/-B <rama>
+      return !hasShort(['b', 'B']) && !hasLong(['detach', 'orphan']) && PROT_BRANCH.test(pos[2] || '');
+    }
+    case 'symbolic-ref':
+      return PROT_FULL.test(pos[0] || '') || (pos[0] === 'HEAD' && PROT_FULL.test(pos[1] || ''));
+    case 'tag':
+      if (hasShort(TAG_READ_SHORTS) || hasLong(TAG_READ_LONGS)) return false;
+      return pos.some((x) => PROT_TAG.test(x));
+    case 'branch': {
+      if (hasShort(BRANCH_READ_SHORTS) || hasLong(BRANCH_READ_LONGS)) return false;
+      const names = hasShort(['d', 'D', 'm', 'M', 'c', 'C']) || hasLong(['delete', 'move', 'copy']) ? pos : pos.slice(0, 1);
+      return names.some((x) => PROT_BRANCH.test(x));
+    }
+    case 'update-ref':
+      return pos.length > 0 && PROT_FULL.test(pos[0]);
+    case 'push':
+      // push --delete / -d: los operandos tras el remoto son nombres a borrar, no refspecs.
+      if (hasShort(['d']) || hasLong(['delete'])) return pos.slice(1).some((x) => PROT_BRANCH.test(x) || PROT_TAG.test(x) || PROT_FULL.test(x));
+      return pos.slice(1).some(refspecWrites);
+    case 'fetch':
+      return pos.slice(1).some(refspecWrites);
+    default:
+      return false;
+  }
+}
+
 // `claude plugin disable|uninstall|remove pignolo` (y `plugin marketplace remove pignolo`)
 // apaga pignolo en las sesiones siguientes: es cosa del humano, como el interruptor (M8).
 function claudePluginOff(args) {
@@ -978,6 +1167,8 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   let i = 1;
   let sub;
   let redirected = Boolean(cmd.gitRedirect);
+  // Los -C literales (en orden) y si algún directorio no se puede resolver: lo usa la regla de refs protegidas (I1).
+  const redir = { dirs: [], unresolved: Boolean(cmd.gitRedirect) };
   const lost = () => { if (ctx.collect) ctx.collect.push({ sub: null, incomplete: true }); };
   const cfg = [];
   let cfgUnknown = false;
@@ -989,9 +1180,15 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       const w = words[i];
       const v = w.value;
       // El directorio de -C / --git-dir / --work-tree puede ser dinámico: solo se permiten lecturas.
-      if (!w.dyn && (v === '-C' || v === '--git-dir' || v === '--work-tree')) { redirected = true; i++; continue; }
+      if (!w.dyn && (v === '-C' || v === '--git-dir' || v === '--work-tree')) {
+        redirected = true;
+        const nx = words[i + 1];
+        if (v === '-C' && nx && !nx.dyn) redir.dirs.push(nx.value); else redir.unresolved = true;
+        i++;
+        continue;
+      }
       const dirOpt = /^(-C|--git-dir=|--work-tree=)/.exec(v);
-      if (dirOpt && (!w.dyn || w.dynAt >= dirOpt[0].length)) { redirected = true; continue; }
+      if (dirOpt && (!w.dyn || w.dynAt >= dirOpt[0].length)) { redirected = true; redir.unresolved = true; continue; }
       if (w.dyn) { lost(); out.push(hit('dynamic-argument')); return; }
       if (!v.startsWith('-') || v === '-') break;
       if (v === '-c' || v === '--config-env') {
@@ -1044,7 +1241,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   // Programas que git ejecuta por opción (G7): --upload-pack, --receive-pack, --exec, clone/ls-remote -u.
   if (longIs(o, 'upload-pack') || longIs(o, 'receive-pack') || (['push', 'archive', 'send-pack'].includes(sub) && longIs(o, 'exec'))
     || (['clone', 'ls-remote'].includes(sub) && o.shorts.has('u'))) out.push(hit('git-shell'));
-  for (const r of gitRules(sub, o, args, ctx, inner)) out.push(hit(r));
+  for (const r of gitRules(sub, o, args, ctx, inner, st, redirected ? redir : null)) out.push(hit(r));
   // Con un candado de sabotaje en el worktree (§11.6), commit y add guardarían el código
   // saboteado. Un existsSync por directorio: sin git, dentro del plazo de 3 s.
   if ((sub === 'commit' || sub === 'add') && realDirs(st).some((d) => lockedAt(d))) out.push(hit('sabotage-lock'));
@@ -1059,7 +1256,12 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   done();
 }
 
-function gitRules(sub, o, args, ctx, st) {
+function gitRules(sub, o, args, ctx, st, realSt, redir) {
+  const base = gitRulesBase(sub, o, args, ctx, st);
+  return ctx.subagent && protectsRefs(sub, o, realSt || st, redir) ? [...base, 'pignolo-protected-refs'] : base;
+}
+
+function gitRulesBase(sub, o, args, ctx, st) {
   const has = (ch) => o.shorts.has(ch);
   const long = (n) => longIs(o, n);
   const pos = o.positionals;

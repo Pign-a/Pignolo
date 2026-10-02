@@ -21,10 +21,19 @@ function branchOf(worktree) {
 }
 
 function cardSection(main, agent) {
-  const { readRun } = require('../../lib/project');
+  const { readRun, taskList } = require('../../lib/project');
   const r = readRun(main);
-  const t = r.running && !r.malformed && r.run && r.run.task;
-  if (!t || !Array.isArray(t.agents) || !t.agents.includes(agent)) return null;
+  if (!(r.running && !r.malformed && r.run)) return null;
+  const mine = taskList(r.run).filter((x) => x && Array.isArray(x.agents) && x.agents.includes(agent));
+  if (!mine.length) return null;
+  // Con varias tareas del mismo agente (una ola en paralelo) el hook no sabe cuál es la suya: las lista todas (I6).
+  if (mine.length > 1) {
+    const lines = ['Tareas del flujo para este agente (la tuya es la que te nombra tu prompt; su tarjeta está en la ruta indicada):'];
+    for (const x of mine) lines.push(`- ${x.id}: Worktree: ${x.worktree}; tarjeta: ${path.join(main, '.pignolo', 'tmp', `task-${x.id}.md`)}`);
+    lines.push('Tu informe final empieza con la línea "Task: <id>" de tu tarea.');
+    return lines.join('\n');
+  }
+  const t = mine[0];
   let card;
   try { card = fs.readFileSync(path.join(main, '.pignolo', 'tmp', `task-${t.id}.md`), 'utf8'); } catch (_) { return null; }
   card = card.replace(/\r\n/g, '\n').trim();

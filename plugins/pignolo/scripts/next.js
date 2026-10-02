@@ -5,7 +5,8 @@
 // Imprime { kind, text, facts } como JSON; con --text, solo el texto (nada si no hay nada).
 // Exit 0 siempre salvo uso incorrecto (2).
 const path = require('node:path');
-const { deriveNext } = require('../lib/next');
+const { deriveNext, planList } = require('../lib/next');
+const { mainRoot } = require('../lib/disabled');
 
 const argv = process.argv.slice(2);
 let cwd = process.cwd();
@@ -22,5 +23,8 @@ const n = deriveNext({ cwd, env: process.env, now: Date.now() });
 if (textOnly) {
   if (n.text) process.stdout.write(`${n.text}\n`);
 } else {
-  process.stdout.write(`${JSON.stringify(n)}\n`);
+  // `plans`: todos los planes con su etapa (el mismo contenido que `plan.js list`).
+  let plans = [];
+  try { plans = planList(mainRoot(cwd)); } catch (_) { plans = []; }
+  process.stdout.write(`${JSON.stringify({ ...n, plans })}\n`);
 }

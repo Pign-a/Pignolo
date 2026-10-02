@@ -77,7 +77,25 @@ function roleRule({ input, env, cwd, file }) {
   const state = projectState({ env, cwd });
   if (!state.active) return null;
   const { run } = readRun(state.main);
-  const task = run && run.task ? run.task : null;
+  const { taskList } = require('../../lib/project');
+  const tasks = run ? taskList(run) : [];
+  let task = run && run.task ? run.task : null;
+  if (input.agent_id && tasks.length) {
+    // Hito 7a (§15 `worktree`): con tareas registradas, un escritor solo escribe dentro de la worktree de alguna de
+    // ellas, no en el checkout principal. Con B (D-7-1) esta regla es el único control de escritura; no se confunde
+    // la tarea exacta (límite declarado: el scope de la compuerta ata los archivos de cada una).
+    const hit = require('../../lib/worktrees').resolveWorktree({ main: state.main, filePath: file, tasks });
+    if (hit) task = hit.task;
+    else {
+      const relMain = path.relative(state.main, file);
+      const inMain = relMain !== '' && !relMain.startsWith('..') && !path.isAbsolute(relMain);
+      const holdout = agent === 'pignolo:test-writer' && relMain.split(path.sep).join('/').toLowerCase().startsWith(HOLDOUT_DIR);
+      if (inMain && !holdout) {
+        return alt(`${agent.slice(8)} no escribe en el checkout principal mientras haya tareas registradas (${path.basename(file)}). Alternativa: editá con la ruta absoluta dentro de tu worktree (${tasks.map((t) => t.worktree).join(' | ')}).`);
+      }
+      if (!inMain) return null; // fuera del principal y de toda worktree de tarea: como hoy (otro repo, un temporal)
+    }
+  }
   const wt = worktreeOf(file, task);
   if (!wt) return null;
   const lc = (x) => (process.platform === 'win32' ? x.toLowerCase() : x); // NTFS no distingue mayúsculas

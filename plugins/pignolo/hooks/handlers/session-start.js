@@ -2,7 +2,7 @@
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { readState, mainRoot } = require('../../lib/disabled');
-const { readRun } = require('../../lib/project');
+const { readRun, taskList } = require('../../lib/project');
 const { gitRun } = require('../../lib/git');
 const { KINDS, readEntries } = require('../../lib/state-store');
 const { buildHot, HOT_LIMIT } = require('../../lib/context-budget');
@@ -120,6 +120,18 @@ exports.run = (input, ctx = {}) => {
       lines.push(`⚠ pignolo: no se pudo derivar la próxima acción (${e.message}).`);
     }
   }
+  // Ramas ya unidas para limpiar (hito 7a, D-7-5): una línea solo si hay algo; presupuesto propio de 1,5 s y, al vencer, silencio.
+  // Sin proyecto activo o con /pignolo:off, nada.
+  if (!st.hooksOff && input.source !== 'status') {
+    try {
+      const { projectState } = require('../../lib/project');
+      const proj = projectState({ cwd, env });
+      if (proj.active) {
+        const line = require('../../lib/branch-cleanup').noticeLine({ main: proj.main, opts: ctx.cleanupOpts, budgetMs: ctx.cleanupBudgetMs });
+        if (line) lines.push(line);
+      }
+    } catch (_) { /* callado: es un aviso, no un requisito */ }
+  }
   if (input.source === 'status') {
     // /pignolo:status muestra lo de siempre (systemMessage), sin el nivel caliente.
     if (nextText) lines.push(nextText);
@@ -161,7 +173,7 @@ function mainBranch(main) {
 function hotContext({ cwd, nextText, limit }) {
   const main = mainRoot(cwd);
   const r = readRun(main);
-  const flow = r.running && r.run ? { flow: r.run.flow, task: r.run.task } : null;
+  const flow = r.running && r.run ? { flow: r.run.flow, tasks: taskList(r.run) } : null;
   const entries = [];
   let bad = 0;
   for (const kind of KINDS) {

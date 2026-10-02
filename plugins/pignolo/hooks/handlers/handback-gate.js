@@ -8,8 +8,8 @@
 // Agent le avisa al hilo principal si la tarea no pasó. Callado en el éxito.
 // Los módulos de git se cargan solo después de filtrar evento y agente (carga perezosa):
 // en un despacho suelto este hook no cuesta más que el arranque.
-const { projectState, readRun } = require('../../lib/project');
-const { readCounter, writeCounter } = require('../../lib/handback-counter');
+const { projectState, readRun, taskList } = require('../../lib/project');
+const { readCounter, writeCounter, NOTASK } = require('../../lib/handback-counter');
 
 const WRITERS = new Set(['pignolo:implementer', 'pignolo:fixer', 'pignolo:test-writer']);
 const WORDS = new Set(['DONE', 'BLOCKED', 'NEEDS_CONTEXT']);
@@ -19,6 +19,9 @@ const MARGIN_MS = 400;
 const PROJECT_MD = '.pignolo/project.md';
 const PLUGIN_ROOT = require('node:path').join(__dirname, '..', '..');
 const MALFORMED = '_malformed';
+// R-3: la tarea del informe se resuelve por la primera línea `Task: <id>` (la exige la carta del escritor).
+const TASK_LINE = /^Task:\s*([a-z0-9][a-z0-9-]{0,63})\s*$/;
+const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 // Última línea no vacía, sin `*` ni `` ` `` y sin puntuación final.
 function lastWord(message) {
@@ -27,6 +30,22 @@ function lastWord(message) {
   if (!lines.length) return null;
   const w = lines[lines.length - 1].replace(/[.!:;,]+$/, '').trim();
   return WORDS.has(w) ? w : null;
+}
+
+function taskLine(message) {
+  if (typeof message !== 'string') return null;
+  for (const raw of message.split(/\r?\n/)) {
+    const m = TASK_LINE.exec(raw.replace(/[*`]/g, '').trim());
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// Todo el texto de una respuesta de herramienta (cadena, { content: [{ text }] } u objetos anidados), con tope de profundidad.
+function responseText(v, depth = 0) {
+  if (typeof v === 'string') return v;
+  if (!v || typeof v !== 'object' || depth > 4) return '';
+  return (Array.isArray(v) ? v : Object.values(v)).map((x) => responseText(x, depth + 1)).filter(Boolean).join('\n');
 }
 
 const silent = () => ({ exit: 0 });
@@ -46,11 +65,28 @@ function postToolUse(input, env) {
       const additionalContext = `pignolo: el marcador del flujo (${r.file}) está ilegible y el handback-gate rechazó el DONE del escritor; tratá la tarea como BLOCKED y limpialo con run.js end o start --replace.`;
       return { exit: 0, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext } }) };
     }
-    const task = r.run && r.run.task;
-    if (!task) return silent();
-    const c = readCounter(env, cwd, task.id);
-    if (!(c.blocked || (c.count > 0 && !c.accepted))) return silent();
-    const additionalContext = `pignolo: la tarea ${task.id} no pasó el handback-gate (${c.lastReason || 'sin motivo registrado'}); tratala como BLOCKED y no la des por terminada.`;
+    const tasks = r.run ? taskList(r.run) : [];
+    if (!tasks.length) return silent();
+    // La tarea del escritor que volvió, por la línea `Task: <id>` de su informe (M8): con una ola, otra tarea con un rechazo pudo no
+    // ser la de este escritor.
+    const mine = taskLine(responseText(input.tool_response));
+    const known = mine && tasks.some((t) => t.id === mine) ? mine : null;
+    const bads = [];
+    for (const key of known ? [known] : [...tasks.map((t) => t.id), NOTASK]) {
+      const k = readCounter(env, cwd, key);
+      if (k.blocked || (k.count > 0 && !k.accepted)) bads.push({ key, c: k });
+    }
+    if (!bads.length) return silent();
+    const { key: bad, c } = bads[0];
+    const what = bad === NOTASK ? 'el informe del escritor (sin una tarea identificable: línea "Task: <id>")' : `la tarea ${bad}`;
+    const reason = c.lastReason || 'sin motivo registrado';
+    let additionalContext;
+    if (!known && tasks.length > 1 && bad !== NOTASK) {
+      // Una ola y un informe sin `Task:`: se dice el estado, no se acusa a un escritor que pudo no ser el que volvió.
+      additionalContext = `pignolo: ${what} tiene un rechazo del handback-gate sin aceptar (${reason}); si es la que acaba de volver, tratala como BLOCKED y no la des por terminada.`;
+    } else {
+      additionalContext = `pignolo: ${what} no pasó el handback-gate (${reason}); tratala como BLOCKED y no la des por terminada.`;
+    }
     return { exit: 0, stdout: JSON.stringify({ hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext } }) };
   } catch (e) {
     // PostToolUse nunca bloquea (la herramienta ya corrió).
@@ -93,21 +129,41 @@ exports.run = (input, ctx = {}) => {
     taskId = MALFORMED;
     preReason = `el marcador del flujo (${state.file}) no se puede leer, así que no se puede verificar este DONE. Alternativa: respondé BLOCKED con este motivo; el hilo principal lo limpia con run.js end (o start --replace).`;
   } else {
-    task = state.run && state.run.task;
-    if (!task) return silent(); // sin run.json o sin tarea de escritura (vencido o no)
-    taskId = task.id;
-    // 6. Salto del SubagentStop posterior a un handback aceptado del mismo agente.
-    if (isStop) {
-      const prev = readCounter(env, cwd, task.id);
-      if (prev.accepted && prev.acceptedAgentId === input.agent_id) return silent();
-    }
-    // El cierre sin palabra cuenta en la tarea: lo reinician la aceptación y run.js task,
-    // y PostToolUse lo ve.
-    key = task.id;
-    if (!word) {
-      preReason = 'el mensaje no termina con una palabra de cierre. Alternativa: terminá con DONE, BLOCKED o NEEDS_CONTEXT en la última línea.';
-    } else if (!require('node:fs').existsSync(task.worktree)) {
-      preReason = `la worktree de la tarea (${task.worktree}) no existe. Alternativa: respondé BLOCKED con este motivo; el orquestador tiene que registrar la tarea de nuevo (run.js task) o cerrar el flujo.`;
+    const tasks = state.run ? taskList(state.run) : [];
+    if (!tasks.length) return silent(); // sin run.json o sin tarea de escritura (vencido o no)
+    const ids = tasks.map((t) => t.id).join(', ');
+    // R-3: la tarea sale de `Task: <id>` ANTES de leer sellos. Con una sola tarea registrada la falta no bloquea;
+    // con varias sí; un id que no está registrado bloquea con la lista de los válidos. Todo eso cuenta bajo _notask.
+    const said = taskLine(message);
+    const multi = tasks.length > 1;
+    if (said !== null && !hasOwn(state.run.tasks, said)) {
+      key = NOTASK;
+      taskId = NOTASK;
+      preReason = `el informe nombra la tarea "${said}", que no está registrada (las válidas son: ${ids}). Alternativa: empezá el informe con "Task: <id>" de una de esas tareas.`;
+    } else if (said === null && multi) {
+      // El SubagentStop posterior a un handback aceptado del mismo agente pasa aunque su mensaje no traiga la línea.
+      if (isStop && tasks.some((t) => { const p = readCounter(env, cwd, t.id); return p.accepted && p.acceptedAgentId === input.agent_id; })) return silent();
+      key = NOTASK;
+      taskId = NOTASK;
+      preReason = `hay ${tasks.length} tareas registradas (${ids}) y el informe no dice cuál es la suya. Alternativa: empezá el informe con "Task: <id>".`;
+    } else {
+      task = said !== null ? state.run.tasks[said] : tasks[0];
+      taskId = task.id;
+      // 6. Salto del SubagentStop posterior a un handback aceptado del mismo agente.
+      if (isStop) {
+        const prev = readCounter(env, cwd, task.id);
+        if (prev.accepted && prev.acceptedAgentId === input.agent_id) return silent();
+      }
+      // El cierre sin palabra cuenta en la tarea: lo reinician la aceptación y run.js task,
+      // y PostToolUse lo ve.
+      key = task.id;
+      if (!word) {
+        preReason = 'el mensaje no termina con una palabra de cierre. Alternativa: terminá con DONE, BLOCKED o NEEDS_CONTEXT en la última línea.';
+      } else if (multi && Array.isArray(task.agents) && task.agents.length && !task.agents.includes(input.agent_type)) {
+        preReason = `la tarea ${task.id} está registrada para ${task.agents.join(', ')}, no para ${input.agent_type}. Alternativa: cerrá solo la tarea que te asignaron (empezá el informe con "Task: <id>").`;
+      } else if (!require('node:fs').existsSync(task.worktree)) {
+        preReason = `la worktree de la tarea (${task.worktree}) no existe. Alternativa: respondé BLOCKED con este motivo; el orquestador tiene que registrar la tarea de nuevo (run.js task) o cerrar el flujo.`;
+      }
     }
   }
 

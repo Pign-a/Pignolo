@@ -1,34 +1,41 @@
 'use strict';
-// Ciclo de vida de <main>/.pignolo/run.json (spec §6): start | task | renew | status | end.
-// Salida JSON por stdout. Exit 0; 1 con el motivo en stderr; 2 por uso incorrecto.
+// Ciclo de vida de <main>/.pignolo/run.json (spec §6): start | task | task-end | renew | status | end.
+// Salida JSON por stdout. Exit 0; 1 con el motivo en stderr (y, si hay `kind`, también en stdout);
+// 2 por uso incorrecto.
 // Uso: node run.js <verbo> [opciones] [--cwd <dir>]  (start --flow plan exige --plan <slug>)
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { mainRoot } = require('../lib/disabled');
-const { readRun, validateRun } = require('../lib/project');
-const { readCounter, clearCounter } = require('../lib/handback-counter');
+const { readRun, validateRun, taskList } = require('../lib/project');
+const { readCounter, clearCounter, counterKey, NOTASK } = require('../lib/handback-counter');
+const { pignoloHome } = require('../lib/home');
 const { ensureIgnored, PIGNOLO_IGNORED: IGNORED } = require('../lib/pignolo-gitignore');
 const { repoIdFor } = require('../lib/seals');
 const { withDeadline } = require('../lib/git');
 const { readProjectConfig } = require('../lib/project-config');
 const { matchAny } = require('../lib/globs');
+const { ID_RE, PLAN_RE } = require('../lib/branches');
+const { readConfig } = require('../lib/profiles');
+const { PROFILE_PARAMS } = require('../lib/roles');
 
 const FLOWS = ['trivial', 'daily', 'review', 'plan'];
-const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 // Contador de los DONE rechazados con run.json ilegible (handback-gate).
 const MALFORMED = '_malformed';
 const WRITERS_NO_TESTS = ['pignolo:implementer', 'pignolo:fixer'];
 const VERBS = {
   start: { value: ['flow', 'plan', 'ttl-min', 'cwd'], bool: ['replace'] },
-  task: { value: ['id', 'worktree', 'base', 'test-ref', 'cwd'], multi: ['file', 'agent'], bool: ['test-authorization'] },
+  task: { value: ['id', 'worktree', 'base', 'test-ref', 'branch', 'plan', 'cwd'], multi: ['file', 'agent'], bool: ['test-authorization'] },
+  'task-end': { value: ['id', 'cwd'], bool: [] },
   renew: { value: ['ttl-min', 'cwd'], bool: [] },
   status: { value: ['cwd'], bool: [] },
   end: { value: ['cwd'], bool: [] },
 };
 
 class Usage extends Error {}
-class Fail extends Error {}
+class Fail extends Error {
+  constructor(msg, extra) { super(msg); Object.assign(this, extra || {}); }
+}
 
 function parse(verb, argv) {
   const spec = VERBS[verb];
@@ -54,19 +61,92 @@ function ttlMs(o) {
   return min * 60000;
 }
 
-// Escritura atómica (temp + rename).
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+// Lo que se escribe: siempre v2 (R-2) y sin el alias `task` (la lectura lo agrega).
+function toFile(run) {
+  const o = { v: 2, flow: run.flow, started: run.started, expires: run.expires };
+  if (run.plan) o.plan = run.plan;
+  o.tasks = run.tasks || {};
+  return o;
+}
+
+// Escritura atómica (temp + rename). El rename se reintenta: en Windows da EPERM si otro
+// proceso tiene el archivo abierto en ese instante (D-7-9, medido).
 function writeRun(file, run) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(3).toString('hex')}`;
   try {
     fs.writeFileSync(tmp, `${JSON.stringify(run, null, 2)}\n`);
-    fs.renameSync(tmp, file);
+    for (let i = 0; ; i += 1) {
+      try { fs.renameSync(tmp, file); break; } catch (e) {
+        if (!['EPERM', 'EBUSY', 'EACCES'].includes(e.code) || i >= 40) throw e;
+        sleep(25);
+      }
+    }
   } finally {
     fs.rmSync(tmp, { force: true });
   }
 }
 
+const LOCK_WAIT_MS = 60000;
+const LOCK_STALE_MS = 120000;
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+
+// Lock corto del archivo (D-7-9, C-07): un directorio creado con mkdir (atómico) en
+// ~/.pignolo/locks/<clave del repo>/ (fuera del repo, como los contadores). Reintento acotado.
+// Se toma uno cuyo dueño murió (comprobado dos veces, con una pausa) o que lleva más de
+// LOCK_STALE_MS; uno sin archivo de dueño solo tras 5 s viéndolo así (no se usa el mtime: en
+// Windows no es confiable). Todo leer-modificar-escribir de run.json ocurre dentro.
+function withRunLock(main, fn) {
+  const dir = path.join(pignoloHome(process.env), 'locks', counterKey(main), 'run.lock');
+  const ownerFile = path.join(dir, 'owner');
+  const readOwner = () => { try { return JSON.parse(fs.readFileSync(ownerFile, 'utf8')); } catch (_) { return null; } };
+  fs.mkdirSync(path.dirname(dir), { recursive: true });
+  const t0 = Date.now();
+  let noOwnerSince = null;
+  for (;;) {
+    try { fs.mkdirSync(dir); break; } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      const owner = readOwner();
+      let stale = false;
+      if (owner && Number.isInteger(owner.pid)) {
+        noOwnerSince = null;
+        if (Date.now() - owner.t > LOCK_STALE_MS) stale = true;
+        else if (!alive(owner.pid)) {
+          sleep(150);
+          const again = readOwner();
+          stale = Boolean(again) && again.pid === owner.pid && again.t === owner.t && !alive(owner.pid);
+        }
+      } else {
+        noOwnerSince = noOwnerSince || Date.now();
+        stale = Date.now() - noOwnerSince > 5000;
+      }
+      if (stale) {
+        try { fs.rmSync(ownerFile, { force: true }); fs.rmdirSync(dir); } catch (_) { /* otro lo tomó */ }
+        noOwnerSince = null;
+        continue;
+      }
+      if (Date.now() - t0 > LOCK_WAIT_MS) throw new Fail(`run.json está ocupado (lock ${dir}). Alternativa: reintentá en unos segundos`, { kind: 'busy' });
+      sleep(20 + Math.floor(Math.random() * 30));
+    }
+  }
+  try {
+    try { fs.writeFileSync(ownerFile, JSON.stringify({ pid: process.pid, t: Date.now() })); } catch (_) { /* sin dueño: vale la espera de 5 s */ }
+    return fn();
+  } finally {
+    try { fs.rmSync(ownerFile, { force: true }); fs.rmdirSync(dir); } catch (_) { /* queda para el vencimiento */ }
+  }
+}
+
 const out = (o) => process.stdout.write(`${JSON.stringify(o)}\n`);
+// Lo que se imprime: el run normalizado y, con una sola tarea, el alias `task` (R-2).
+const view = (run) => {
+  const v = { ...run };
+  const ts = taskList(run);
+  if (ts.length === 1) v.task = ts[0];
+  return v;
+};
 
 // Un run.json ilegible corta con el camino para limpiarlo.
 function current(main, { needRunning = true } = {}) {
@@ -82,19 +162,23 @@ function start(o, main, env) {
   if (o.plan !== undefined && o.flow !== 'plan') throw new Usage('--plan solo va con --flow plan');
   if (o.plan !== undefined && !ID_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${ID_RE}`);
   const ms = ttlMs(o);
-  const st = readRun(main);
-  if (!o.replace) {
-    if (st.malformed) throw new Fail(`${st.file} está ilegible; usá --replace para reemplazarlo o "run.js end" para borrarlo`);
-    if (st.running) throw new Fail(`ya hay un flujo en curso (${st.run.flow}) hasta ${st.run.expires}`);
-  }
-  if (st.run && st.run.task) clearCounter(env, main, st.run.task.id);
-  clearCounter(env, main, MALFORMED);
-  const now = Date.now();
-  const run = { v: 1, flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
-  if (o.plan) run.plan = o.plan;
-  ensureIgnored(main, IGNORED);
-  writeRun(st.file, run);
-  out({ ok: true, run });
+  withRunLock(main, () => {
+    const st = readRun(main);
+    if (!o.replace) {
+      if (st.malformed) throw new Fail(`${st.file} está ilegible; usá --replace para reemplazarlo o "run.js end" para borrarlo`);
+      if (st.running) throw new Fail(`ya hay un flujo en curso (${st.run.flow}) hasta ${st.run.expires}`);
+    }
+    if (st.run) for (const t of taskList(st.run)) clearCounter(env, main, t.id);
+    clearCounter(env, main, MALFORMED);
+    clearCounter(env, main, NOTASK);
+    const now = Date.now();
+    const run = { flow: o.flow, started: new Date(now).toISOString(), expires: new Date(now + ms).toISOString() };
+    if (o.plan) run.plan = o.plan;
+    ensureIgnored(main, IGNORED);
+    const file = toFile({ ...run, tasks: {} }); // siempre v2 (D-7-2)
+    writeRun(st.file, file);
+    out({ ok: true, run: file });
+  });
 }
 
 function commitOf(git, worktree, what, ref) {
@@ -130,10 +214,35 @@ function checkFiles(t, cfg) {
   }
 }
 
+// Máximo de tareas a la vez: el tope del perfil de ~/.pignolo/config.json (sin config, balanced).
+function taskCap(env) {
+  let profile = 'balanced';
+  try { profile = readConfig({ env }).profile; } catch (_) { /* config ilegible: balanced */ }
+  return { profile, cap: PROFILE_PARAMS[profile].parallel };
+}
+
 function task(o, main, env) {
   if (!o.id || !ID_RE.test(o.id)) throw new Usage(`--id debe cumplir ${ID_RE}`);
+  if (o.plan !== undefined && !PLAN_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${PLAN_RE}`);
+  if (o.branch !== undefined && (o.branch === '' || o.branch.startsWith('-'))) throw new Usage(`--branch inválido: ${o.branch}`);
+  withRunLock(main, () => taskLocked(o, main, env));
+}
+
+function taskLocked(o, main, env) {
   const st = current(main);
-  const prev = st.run.task && st.run.task.id === o.id ? st.run.task : null;
+  if (o.plan !== undefined && st.run.plan !== undefined && st.run.plan !== o.plan) {
+    throw new Fail(`--plan ${o.plan} no es el plan del flujo en curso (${st.run.plan})`);
+  }
+  const tasks = { ...st.run.tasks };
+  const prev = Object.prototype.hasOwnProperty.call(tasks, o.id) ? tasks[o.id] : null;
+  if (!prev) {
+    const { profile, cap } = taskCap(env);
+    if (Object.keys(tasks).length >= cap) {
+      const msg = `ya hay ${cap} tarea(s) registradas, el tope del perfil ${profile}. Alternativa: cerrá una tarea (run.js task-end) o bajá la ola`;
+      out({ ok: false, kind: 'too-many-tasks', limit: cap, profile, tasks: Object.keys(tasks) });
+      throw new Fail(msg, { kind: 'too-many-tasks', printed: true });
+    }
+  }
   const worktree = o.worktree !== undefined ? path.resolve(o.cwd || process.cwd(), o.worktree) : (prev && prev.worktree);
   const baseArg = o.base !== undefined ? o.base : (prev && prev.base);
   if (!worktree || !baseArg) throw new Usage('un id nuevo necesita --worktree y --base');
@@ -160,51 +269,80 @@ function task(o, main, env) {
   t.files = o.multi.file ? o.multi.file.map(normFile) : ((prev && prev.files) || []);
   t.agents = o.multi.agent || (prev && prev.agents) || [];
   if (o['test-authorization'] || (prev && prev.testAuthorization)) t.testAuthorization = true;
+  const branch = o.branch !== undefined ? o.branch : (prev && prev.branch);
+  if (branch) t.branch = branch;
   checkFiles(t, cfg);
-  const run = { ...st.run, task: t };
+  tasks[o.id] = t;
+  const run = toFile({ ...st.run, tasks });
   const errs = validateRun(run);
   if (errs.length) throw new Fail(`la tarea no valida: ${errs.join('; ')}`);
-  if (st.run.task && st.run.task.id !== o.id) clearCounter(env, main, st.run.task.id);
   writeRun(st.file, run);
   clearCounter(env, main, o.id);
   clearCounter(env, main, MALFORMED);
-  out({ ok: true, run });
+  clearCounter(env, main, NOTASK);
+  out({ ok: true, run: view(readRun(main).run) });
+}
+
+function taskEnd(o, main, env) {
+  if (!o.id || !ID_RE.test(o.id)) throw new Usage(`--id debe cumplir ${ID_RE}`);
+  withRunLock(main, () => {
+    const st = current(main, { needRunning: false });
+    if (!st.run) throw new Fail('no hay un flujo; corré "run.js start --flow <flujo>"');
+    if (!Object.prototype.hasOwnProperty.call(st.run.tasks, o.id)) {
+      out({ ok: false, kind: 'no-such-task', id: o.id, tasks: Object.keys(st.run.tasks) });
+      throw new Fail(`la tarea ${o.id} no está registrada. Alternativa: mirá "run.js status"`, { kind: 'no-such-task', printed: true });
+    }
+    const tasks = { ...st.run.tasks };
+    delete tasks[o.id];
+    writeRun(st.file, toFile({ ...st.run, tasks }));
+    clearCounter(env, main, o.id);
+    out({ ok: true, run: view(readRun(main).run) });
+  });
 }
 
 function renew(o, main) {
   const ms = ttlMs(o);
-  const st = current(main, { needRunning: false });
-  if (!st.run) throw new Fail('no hay un flujo; corré "run.js start --flow <flujo>"');
-  const run = { ...st.run, expires: new Date(Date.now() + ms).toISOString() };
-  writeRun(st.file, run);
-  out({ ok: true, run });
+  withRunLock(main, () => {
+    const st = current(main, { needRunning: false });
+    if (!st.run) throw new Fail('no hay un flujo; corré "run.js start --flow <flujo>"');
+    const run = toFile({ ...st.run, expires: new Date(Date.now() + ms).toISOString() });
+    writeRun(st.file, run);
+    out({ ok: true, run: view(readRun(main).run) });
+  });
 }
 
 function status(o, main, env) {
   const st = readRun(main);
   const run = st.run || null;
+  const tasks = {};
+  if (run) for (const t of taskList(run)) tasks[t.id] = { ...t, handback: readCounter(env, main, t.id) };
+  const single = run && taskList(run).length === 1 ? taskList(run)[0] : null;
   out({
-    running: st.running, malformed: Boolean(st.malformed), run,
-    handback: run && run.task ? readCounter(env, main, run.task.id) : null,
+    running: st.running, malformed: Boolean(st.malformed), run: run ? view(run) : null,
+    tasks,
+    handback: single ? readCounter(env, main, single.id) : null,
     malformedHandback: readCounter(env, main, MALFORMED),
   });
 }
 
 function end(o, main, env) {
-  const st = readRun(main);
-  if (st.run && st.run.task) clearCounter(env, main, st.run.task.id);
-  clearCounter(env, main, MALFORMED);
-  const existed = fs.existsSync(st.file);
-  fs.rmSync(st.file, { force: true });
-  out({ ok: true, ended: existed });
+  withRunLock(main, () => {
+    const st = readRun(main);
+    if (st.run) for (const t of taskList(st.run)) clearCounter(env, main, t.id);
+    clearCounter(env, main, MALFORMED);
+    clearCounter(env, main, NOTASK);
+    const existed = fs.existsSync(st.file);
+    fs.rmSync(st.file, { force: true });
+    out({ ok: true, ended: existed });
+  });
 }
 
 function cli(argv, env = process.env) {
   const verb = argv[0];
-  if (!VERBS[verb]) throw new Usage('uso: run.js start|task|renew|status|end [opciones]');
+  if (!VERBS[verb]) throw new Usage('uso: run.js start|task|task-end|renew|status|end [opciones]');
   const o = parse(verb, argv.slice(1));
   const main = mainRoot(o.cwd || process.cwd());
-  ({ start, task, renew, status, end })[verb](o, main, env);
+  ({ start, task, 'task-end': taskEnd, renew, status, end })[verb](o, main, env);
 }
 
 try {
