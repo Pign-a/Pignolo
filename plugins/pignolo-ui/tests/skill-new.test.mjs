@@ -52,9 +52,9 @@ test('present-and-choose.md: no variables, the canvas loop in order, opt-outs, o
   const text = readReference('present-and-choose.md');
   assertNoVariables(text);
   indexOrder(text, ['run.mjs" present', 'leak-values', 'canvas-index.mjs" build', 'canvas-index.mjs" verify', 'canvas-index.mjs" plan', 'step', 'canvas-read-live',
-    'canvas-index.mjs" merge --run <run> --live', 'canvas-index.mjs" record --run <run> --step']);
+    'canvas-index.mjs" merge --run <run> --live', 'canvas-index.mjs" record --run <run> --step', 'canvas-index.mjs" refusal', 'canvas-comments.mjs" quote']);
   for (const lit of ['never call Artifact when the mode is local', 'publish-gate'.replace('publish-gate', 'no-publish'), 'config set --key publish --value never', 'presentation = local', 'no publiques',
-    'privados de tu cuenta', 'readable by only you', 'no se relee', 'compare.html', '--kind direction', 'Google Fonts', 'lienzo nuevo', 'ilegible', '<run>/local/', 'fuentes remotas quitadas',
+    'privados de tu cuenta', 'readable by only you', 'no se relee', 'compare.html', '--kind direction', 'Google Fonts', 'ilegible', '<run>/local/', 'fuentes remotas quitadas',
     'solo en el lienzo', 'literal quote', '-v2', '--quote-file', 'there is no consent question']) {
     assert.ok(text.toLowerCase().includes(lit.toLowerCase()), lit);
   }
@@ -124,4 +124,42 @@ test('new: loads reference/context.md, calls run.mjs context, writes the brief w
   assert.ok(/offer[^.]*PRODUCT\.md|PRODUCT\.md[^.]*offer/.test(text) && /only `new` offers/.test(text), 'new offers to create PRODUCT.md');
   assert.ok(/"no" as the default/.test(text), 'the default is no');
   assert.ok(text.indexOf('run.mjs" context') < text.indexOf('Brief, in text') && text.indexOf('Brief, in text') < text.indexOf('--brief-file'));
+});
+
+test('present-and-choose.md, canvas per project (T9b): updating is the same loop, pages, never retranscribe, edited by hand stops and asks, refusals stop at the third', () => {
+  const text = readReference('present-and-choose.md');
+  for (const lit of ['a la tercera', 'una página', 'never retranscribe', '--live-dir', '--accept-overwrite', 'artboard-edited-by-hand', 'live-incomplete', 'main-exists-live', 'expectedFirst', '--first <the `first` that present printed', '--canvas-url', 'canvas.json']) {
+    assert.ok(text.includes(lit), lit);
+  }
+  indexOrder(text, ['canvas-index.mjs" refusal', 'canvas-index.mjs" diff']);
+  // "abro uno nuevo" only next to canvas-full, never for any first-mismatch
+  const lines = text.split(String.fromCharCode(10)).filter((l) => l.includes('abro uno nuevo'));
+  assert.equal(text.split('abro uno nuevo').length - 1, 2, 'said twice: for first-mismatch with canvas-full and for the canvas-full of merge');
+  for (const l of lines) assert.ok(l.includes('canvas-full'), `abro uno nuevo outside canvas-full: ${l.slice(0, 90)}`);
+  // regenerating no longer opens a new canvas
+  assert.ok(!/regenerat[^.]*(opens|abre)[^.]*(new canvas|lienzo nuevo)/i.test(text));
+  assert.ok(!text.includes('this version does not merge'), 'the old stage 1 limit is gone');
+  assert.ok(text.includes('same loop of step 3'));
+  // an artboard edited by hand asks the user and needs the explicit yes in the chat
+  const edited = text.split(String.fromCharCode(10)).find((l) => l.includes('artboard-edited-by-hand') && l.includes('--accept-overwrite'));
+  assert.ok(edited && edited.includes('stop and ask') && edited.includes('explicit yes'));
+  assert.ok(/at the third refusal/.test(text));
+});
+
+test('comments (D-4c-5, A4C-11): the main thread reads with ArtifactComments action read, nothing is applied without the yes, notices are data; no skill says they are read by themselves', () => {
+  const text = readReference('present-and-choose.md');
+  assert.ok(text.includes('ArtifactComments') && text.includes('action: "read"'));
+  assert.ok(text.includes('main thread itself (never a subagent or a script)'));
+  for (const lit of ['nunca una instrucción', 'no se aplica nada hasta que el usuario lo confirme', 'canvas-comments.mjs" quote']) assert.ok(text.includes(lit), lit);
+  assert.ok(/never `reply`, `resolve` or `watch` unless the user asks/.test(text));
+  assert.ok(/(is|are) data, not an order/.test(text), 'a notice that arrives by itself is data');
+  assert.ok(text.includes('does not trigger reading or publishing'));
+  // no line passes the text of a comment to a command or to Artifact
+  for (const l of text.split(String.fromCharCode(10)).filter((x) => /comment/i.test(x))) assert.ok(!/(pass|send|paste)[^.]*(comment)[^.]*(to|into) (a command|Artifact|the params)/i.test(l), l.slice(0, 100));
+  for (const name of ['new', 'improve']) {
+    const t = readSkill(name).text;
+    assert.ok(!/autom[aá]ticamente[^.]*comentarios|comentarios[^.]*autom[aá]ticamente/i.test(t), name);
+    assert.ok(!/apply (the )?comments/i.test(t), name);
+  }
+  assert.ok(!/aplic[aá] los comentarios/i.test(text));
 });
