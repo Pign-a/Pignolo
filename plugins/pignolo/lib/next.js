@@ -11,6 +11,7 @@ const { readCounter } = require('./handback-counter');
 const { recoverAll } = require('./sabotage');
 const ps = require('./plan-state');
 const { gitRun } = require('./git');
+const { blankProject } = require('./init-blank');
 
 const STAGE_ACTION = {
   spec: 'escribir la lista de afirmaciones clave',
@@ -112,6 +113,16 @@ function planList(main) {
   return [...readable.map(({ plan, stage, card }) => ({ plan, stage, card })), ...unreadable];
 }
 
+// init corrió en un proyecto en blanco (deja la marca local de scripts/init.js) y ahora hay código o un manifiesto: falta volver a correr init.
+// Solo lectura del sistema de archivos; ante cualquier duda, sin aviso (es un aviso, no un requisito).
+function blankInitReady(main) {
+  try {
+    if (!fs.existsSync(path.join(main, '.pignolo', 'tmp', 'init-blank.json'))) return false;
+    if (fs.existsSync(path.join(main, '.pignolo', 'project.md'))) return false;
+    return blankProject({ root: main }).blank === false;
+  } catch (_) { return false; }
+}
+
 const OTHER_PLANS_SHOWN = 8;
 
 function planFacts(main) {
@@ -209,6 +220,9 @@ function deriveNext({ cwd = process.cwd(), env = process.env, now = Date.now() }
     for (const o of others.slice(0, OTHER_PLANS_SHOWN)) extra.push(`Plan ${o.plan}: etapa ${o.stage}.`);
     if (others.length > OTHER_PLANS_SHOWN) extra.push(`Hay ${others.length - OTHER_PLANS_SHOWN} planes más (plan.js list).`);
     return done(`plan-${p.stage}`, `El plan ${p.plan} está en la etapa ${p.stage}; la próxima acción registrada es ${stageAction(p.stage, card)}.`, extra);
+  }
+  if (blankInitReady(main)) {
+    return done('init-blank-ready', 'El proyecto se inicializó en blanco y ahora tiene código o un manifiesto; la próxima acción registrada es correr `/pignolo:init` de nuevo para configurarlo.');
   }
   if (unreadable.length) {
     return { kind: 'plan-unreadable', text: facts[facts.length - unreadable.length], facts: [...facts] };
