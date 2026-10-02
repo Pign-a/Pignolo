@@ -137,3 +137,7 @@ Una fila por fase, al terminar la fase, con los datos que ya tiene el resultado 
 
    El resultado debe decir `0 con otro largo`.
 10. **Actualizar el resumen** de este archivo con la fila nueva del hito.
+
+## Columnas para experimentos
+
+`experimento`, `brazo` y `repeticion` (las tres últimas) se llenan en las filas que vienen de una prueba hecha con `docs/protocolo-de-pruebas.md`: el id de la ficha, el nombre del brazo y el número de corrida. En el trabajo normal quedan vacías; esas filas son observación (nivel E1 del protocolo). Los arreglos de 7a y 8d se anotan cuando sus pasadas terminen.
