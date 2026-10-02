@@ -12,7 +12,8 @@
 // recordStep({ run, project, data, step, url }) -> { ok, ... }
 // noteRefusal({ run, kind, named }) -> { count, stop, reason? }        diffRun({ run }) -> { changed, removed, sendIndex }
 // publish.json (v2): { v, canvasUrl, pageId, ownsMain, layoutSha256, files: { path: sha256 }, sizes: { path: bytes },
-//   boards: { name: { x, y, w, h, title } }, notes: { id: { x, y, text, maxW } }, deleted: [names], refusals }
+//   boards: { name: { x, y, w, h, title } }, notes: { id: { x, y, text, maxW } }, deleted: [names], refusals,
+//   mainTaken? (merge found a Main.dc.html of somebody else in a canvas that was just created: plan then takes first false) }
 //   It is ours only when its canvasUrl is the one registered in project.json (and there is no newCanvas):
 //   otherwise what it says was published to another canvas and it is ignored (R-16).
 import fs from 'node:fs';
@@ -72,6 +73,7 @@ function readPublished(run) {
   if (data.files !== undefined && !(isObj(data.files) && Object.values(data.files).every((h) => typeof h === 'string' && HEX.test(h)))) return { data: null, problem: 'bad-state' };
   for (const k of ['boards', 'notes', 'sizes']) if (data[k] !== undefined && !isObj(data[k])) return { data: null, problem: 'bad-state' };
   if (data.deleted !== undefined && !(Array.isArray(data.deleted) && data.deleted.every((n) => typeof n === 'string'))) return { data: null, problem: 'bad-state' };
+  if (data.mainTaken !== undefined && typeof data.mainTaken !== 'boolean') return { data: null, problem: 'bad-state' };
   if (data.refusals !== undefined && !(Number.isSafeInteger(data.refusals) && data.refusals >= 0)) return { data: null, problem: 'bad-state' };
   return { data, problem: null };
 }
@@ -200,7 +202,7 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   const stateFirst = !record || record.state === 'created' || record.pages === 0;
   let expectedFirst;
   let reason;
-  if (newCanvas) { expectedFirst = true; reason = 'canvas-full'; } else if (stateFirst) { expectedFirst = true; reason = 'state'; } else if (trusted?.ownsMain === true) { expectedFirst = true; reason = 'owns-main'; } else { expectedFirst = false; reason = 'state'; }
+  if (newCanvas) { expectedFirst = true; reason = 'canvas-full'; } else if (stateFirst && trusted?.mainTaken === true) { expectedFirst = false; reason = 'main-taken'; } else if (stateFirst) { expectedFirst = true; reason = 'state'; } else if (trusted?.ownsMain === true) { expectedFirst = true; reason = 'owns-main'; } else { expectedFirst = false; reason = 'state'; }
   if (manifest.first !== expectedFirst) return fail([{ code: 'first-mismatch', expectedFirst, reason }], full.length ? { full } : {});
 
   // (5) the step that the state asks for
@@ -373,7 +375,14 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
     changed: diff.changed, launchPage: record.launchPage ?? null, first: manifest.first === true, ownsMain: trusted?.ownsMain === true,
     acceptOverwrite,
   });
-  if (!result.ok) return { ok: false, problems: result.problems, kept: result.kept };
+  if (!result.ok) {
+    // the canvas that was just created already has a Main.dc.html that is not ours: plan must accept first false (RL2-03)
+    if (trusted && result.problems.some((p) => p.code === 'main-exists-live') && trusted.mainTaken !== true) {
+      writeAtomic(publishFile(run), `${JSON.stringify({ ...trusted, mainTaken: true }, null, 2)}
+`);
+    }
+    return { ok: false, problems: result.problems, kept: result.kept };
+  }
 
   const mergeDir = path.join(run, 'merge');
   if (linkProblem(path.join(canvas, 'project'))) return { ok: false, problems: [{ code: 'root-is-link' }] };
