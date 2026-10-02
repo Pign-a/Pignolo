@@ -13,7 +13,7 @@
 //   tasks set --file <tasks.json>
 //   runnable [--profile <p>]           (tareas ejecutables antes de la aprobación, D-5-3)
 //   advance --to <etapa> [--reopen] [--plan-file <ruta>]
-///   status
+//   status
 //   list [--text] [--cwd <dir>]        (todos los planes con su etapa; solo lectura; no pide --plan)
 const fs = require('node:fs');
 const path = require('node:path');

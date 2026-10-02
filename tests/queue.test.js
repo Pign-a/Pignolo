@@ -805,3 +805,63 @@ test('mergeIntoQueue: una tarea que quita contracts de project.md no los desacti
   assert.match(r.logic[0].why, /contrato/);
   clean(worktree);
 });
+
+// ================================================================ Fix pass 7a: menores de la cola
+test('M1: un deps-install que deja un archivo sin seguimiento corta con deps-dirty ANTES de gastar la suite', () => {
+  const q = qrepo({ yaml: 'deps-install: "node deps.js"\n' });
+  write(q.main, 'deps.js', "require('fs').writeFileSync('artefacto.txt', 'x');\n");
+  commitAll(q.main, 'deps que ensucia');
+  git(['branch', '-f', 'int/p', 'main'], q.main);
+  taskBranch(q.main, 'task/p/01-a', { 'src/a.txt': 'a\n' });
+  const e = kindOf(() => q.run('task/p/01-a'));
+  assert.ok(e && e.kind === 'deps-dirty', e && `${e.kind}: ${e.message}`);
+  assert.deepStrictEqual(e.files, ['artefacto.txt']);
+  assert.match(e.message, /Alternativa:/);
+  assert.ok(!q.log().includes('full'), 'la suite no corrió');
+});
+
+test('M2: la worktree de la cola registrada pero con la carpeta borrada da queue-worktree-missing, no un error crudo', () => {
+  const main = fixture();
+  const { worktree } = Q.syncQueue({ main, plan: 'p' });
+  fs.rmSync(worktree, { recursive: true, force: true });
+  const e = kindOf(() => Q.syncQueue({ main, plan: 'p' }));
+  assert.strictEqual(e.kind, 'queue-worktree-missing', e.message);
+  assert.match(e.message, /Alternativa:.*prune/);
+});
+
+test('M4: queue.js sync y merge toman el lock de la cola: con el lock tomado dan busy (exit 2); status no', () => {
+  const main = fixture();
+  taskBranch(main, 'task/p/01-a', { 'index.js': importIn("import a from 'b';") });
+  const lock = Q.acquireQueueLock({ main, plan: 'p' });
+  try {
+    for (const args of [['sync', '--plan', 'p'], ['merge', '--plan', 'p', '--task', '01']]) {
+      const r = cli(main, args);
+      assert.strictEqual(r.status, 2, `${args[0]}: ${r.stderr}`);
+      assert.strictEqual(r.out.kind, 'busy');
+    }
+    assert.strictEqual(cli(main, ['status', '--plan', 'p']).status, 0, 'status es de solo lectura');
+  } finally { lock.release(); }
+  assert.strictEqual(cli(main, ['sync', '--plan', 'p']).status, 0, 'sin lock, sync funciona');
+});
+
+test('M7: el precheck compara rutas sin distinguir mayúsculas (.pignolo/Project.md, .pignolo/STATE/x)', () => {
+  const main = fixture();
+  taskBranch(main, 'task/p/01-a', { '.pignolo/Project.md': 'x\n' });
+  taskBranch(main, 'task/p/02-b', { '.pignolo/STATE/x.md': 'x\n' });
+  assert.strictEqual(Q.precheck({ main, plan: 'p', task: 'task/p/01-a' }).kind, 'config-change');
+  assert.strictEqual(Q.precheck({ main, plan: 'p', task: 'task/p/02-b' }).kind, 'state-change');
+});
+
+test('M9: integrate informa mergeTree y una previsión que falla no aborta la entrada (la previsión es opcional)', () => {
+  const q = qrepo();
+  taskBranch(q.main, 'task/p/01-a', { 'src/a.txt': 'a\n' });
+  taskBranch(q.main, 'task/p/02-b', { 'src/b.txt': 'b\n' });
+  const ok = q.run('task/p/01-a');
+  assert.strictEqual(ok.ok, true);
+  assert.strictEqual(ok.mergeTree, 'clean');
+  const real = Q.defaultRun(q.main);
+  const noPreview = (args, o) => { if (args[0] === 'merge-tree') throw new Error('merge-tree no corre'); return real(args, o); };
+  const r = q.run('task/p/02-b', { opts: { run: noPreview } });
+  assert.strictEqual(r.ok, true, JSON.stringify(r));
+  assert.strictEqual(r.mergeTree, 'unavailable');
+});

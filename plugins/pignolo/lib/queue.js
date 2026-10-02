@@ -89,6 +89,9 @@ function syncQueue({ main, plan, opts } = {}) {
   const branch = B.queueBranch(plan);
   const registered = listWorktrees(git).some((w) => norm(w.worktree) === norm(wt));
   if (registered) {
+    if (!fs.existsSync(wt)) {
+      throw new QueueError('queue-worktree-missing', `la worktree de la cola (${wt}) figura en git pero su carpeta no existe. Alternativa: corré \`git worktree prune\` y repetí`, { worktree: wt });
+    }
     const dirty = git(['status', '--porcelain'], { cwd: wt });
     if (dirty !== '' || mergeInProgress(git, wt)) {
       throw new QueueError('queue-dirty', `la worktree de la cola (${wt}) tiene cambios sin commitear o un merge en curso; no se pisan. Alternativa: revisalos con \`git -C\` a mano o resolvelos y repetí`, { worktree: wt });
@@ -132,9 +135,10 @@ function precheck({ main, plan, task, opts } = {}) {
   // Tres puntos (desde el merge-base) y sin renombres: así un commit de estado hecho en int/ después de ramificar
   // no aparece como cambio de la tarea, y un renombrado lista sus dos rutas (A7-10).
   const changed = (git(['diff', '--name-only', '--no-renames', `${int}...${task}`]) || '').split('\n').filter(Boolean);
-  const state = changed.filter((f) => f.startsWith(STATE_PREFIX));
+  // Sin distinguir mayúsculas: en un checkout que no las distingue `.pignolo/Project.md` y `.pignolo/STATE/x` chocan con los reales (M7).
+  const state = changed.filter((f) => f.toLowerCase().startsWith(STATE_PREFIX));
   if (state.length) return { ok: false, kind: 'state-change', files: state, changed };
-  if (changed.includes(CONFIG_FILE)) return { ok: false, kind: 'config-change', files: [CONFIG_FILE], changed };
+  if (changed.some((f) => f.toLowerCase() === CONFIG_FILE)) return { ok: false, kind: 'config-change', files: [CONFIG_FILE], changed };
   return { ok: true, files: changed };
 }
 
@@ -196,6 +200,8 @@ function trivialLine(line, path_) {
 }
 
 // Bloques de la salida de `git merge-file -p --diff3`: { ours, base, theirs } y el texto fuera de bloques.
+// Un archivo con fin de línea CRLF nunca es trivial: sus marcadores terminan en \r y no casan con /^={7}$/, así que no se
+// reconocen bloques y el archivo vuelve como conflicto de lógica (falla cerrado; limitación conocida, M14).
 function parseConflictBlocks(text) {
   const lines = text.split('\n');
   const parts = []; // { text } | { ours, base, theirs }
@@ -271,7 +277,7 @@ function stageBlob(git, cwd, stage, file) {
   return r === null ? null : r;
 }
 
-/// La configuración que decide la cola sale de la punta de int/<plan>, nunca del árbol mergeado (R-12, A7-01).
+// La configuración que decide la cola sale de la punta de int/<plan>, nunca del árbol mergeado (R-12, A7-01).
 function readQueueConfig({ main, plan, opts }) {
   const git = runnerOf(main, opts);
   const cfg = readProjectConfig({ root: main, ref: `refs/heads/${B.intBranch(plan)}`, run: git });
@@ -547,7 +553,7 @@ function writeLast(main, plan, rec) {
 
 // Desde el paso 2 de §11.3: dependencias, compuerta sellada (configuración de la punta de int/), verificación del sello,
 // respaldo, avance y tag. Lo comparten integrate y revertOnInt.
-function pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind, trivial = [] }) {
+function pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind, trivial = [], mergeTree }) {
   const git = runnerOf(main, opts);
   const wt = sync.worktree;
   const sig = signalsOf(git, main, plan, task); // antes de avanzar: después, int..tarea queda vacío
@@ -555,6 +561,9 @@ function pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind, trivial 
   if (cfg.depsInstall) {
     const r = installDeps({ cwd: wt, command: cfg.depsInstall, env, timeoutMs });
     if (!r.ok) throw new QueueError('deps-failed', `deps-install salió ${r.code} en la worktree de la cola: ${r.logTail.split('\n').slice(-5).join(' | ')}. Alternativa: revisá el comando deps-install de project.md`);
+    // Un archivo sin seguimiento (o un lockfile tocado) deja la cola sucia: la suite se gastaría y el sello no coincidiría (M1).
+    const left = (tryRun(git, ['status', '--porcelain', '--untracked-files=all'], { cwd: wt }) || '').split('\n').filter(Boolean).map((l) => l.slice(3));
+    if (left.length) throw new QueueError('deps-dirty', `deps-install dejó archivos sin commitear en la worktree de la cola: ${left.join(', ')}. Alternativa: hacé que deps-install escriba solo en rutas ignoradas (.gitignore), limpiá la worktree de la cola a mano y repetí`, { files: left, worktree: wt });
   }
   let testAuthorization = false;
   if (task) {
@@ -601,7 +610,7 @@ function pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind, trivial 
     throw new QueueError('cp-missing', `${B.intBranch(plan)} avanzó a ${tip.slice(0, 8)} pero el tag ${cp} no se creó (${String(e.message).slice(0, 200)}): estado inconsistente. Alternativa: no reintentes; creá el tag a mano con \`git tag ${cp} ${tip}\` y avisá`, { exit: 3, sha: tip });
   }
   writeLast(main, plan, { status: 'integrated', task, conflicts: [] });
-  return { ok: true, status: 'integrated', kind, plan, task, merged: tip, cp, trivial, repeat: seal.repeat || null, ...sig, warnings };
+  return { ok: true, status: 'integrated', kind, plan, task, merged: tip, cp, trivial, repeat: seal.repeat || null, ...(mergeTree ? { mergeTree } : {}), ...sig, warnings };
 }
 
 // Entrada de una tarea a la cola (§11.3): lock → sincronizar → precheck → previsión → merge → pipeline.
@@ -612,12 +621,13 @@ function integrate({ main, plan, task: taskArg, resolveTrivial = false, env = pr
     const sync = syncQueue({ main, plan, opts });
     const pre = (opts.precheck || precheck)({ main, plan, task, opts });
     if (!pre.ok) throw new QueueError(pre.kind, `la tarea no pasa el precheck (${pre.kind}): ${(pre.files || []).join(', ')}`, { files: pre.files });
-    previewMerge({ main, plan, task, opts });
+    let mergeTree = 'unavailable';
+    try { mergeTree = previewMerge({ main, plan, task, opts }).mergeTree; } catch (e) { if (!(e instanceof QueueError)) throw e; } // la previsión es opcional: el merge real corre igual
     const merge = mergeIntoQueue({ main, plan, task, resolveTrivial, opts });
     writeLast(main, plan, { status: merge.status === 'merged' ? 'merged' : merge.status, task, conflicts: [...merge.logic, ...merge.trivial].map((x) => x.path) });
     if (merge.status === 'conflict') throw new QueueError('conflict', `conflicto en ${[...merge.logic, ...merge.trivial].map((x) => x.path).join(', ')}: la tarea vuelve a su rama (rebase en su worktree) y se registra como falla del plan`, { trivial: merge.trivial, logic: merge.logic });
     if (merge.status === 'already-merged') throw new QueueError('already-merged', `${task} ya está unida a ${B.queueBranch(plan)}. Alternativa: si se revirtió en int/, reintegrala revirtiendo el revert`);
-    return pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind: 'merge', trivial: merge.trivial });
+    return pipeline({ main, plan, task, sync, env, timeoutMs, opts, kind: 'merge', trivial: merge.trivial, mergeTree });
   } finally {
     lock.release();
   }

@@ -72,7 +72,13 @@ function main() {
   if (!o.plan) throw new Usage(`${verb} necesita --plan`);
   B.intBranch(o.plan); // valida el nombre
   const root = mainRoot(o.cwd ? path.resolve(o.cwd) : process.cwd());
-  if (verb === 'sync') { out({ ok: true, ...Q.syncQueue({ main: root, plan: o.plan }) }); return; }
+  // sync y merge reescriben la worktree de la cola: toman el mismo lock que `run` (R-8, un solo escritor; M4). `run` y `revert` lo
+  // toman por dentro.
+  const locked = (fn) => {
+    const lock = Q.acquireQueueLock({ main: root, plan: o.plan });
+    try { return fn(); } finally { lock.release(); }
+  };
+  if (verb === 'sync') { out({ ok: true, ...locked(() => Q.syncQueue({ main: root, plan: o.plan })) }); return; }
   if (verb === 'status') { out({ ok: true, ...Q.queueStatus({ main: root, plan: o.plan }) }); return; }
   if (verb === 'revert') {
     if (!o.commit) throw new Usage('revert necesita --commit');
@@ -88,8 +94,9 @@ function main() {
   const pre = Q.precheck({ main: root, plan: o.plan, task });
   if (!pre.ok) { fail(pre.kind, `la tarea no pasa el precheck (${pre.kind}): ${(pre.files || []).join(', ')}`, { files: pre.files }); return; }
   if (verb === 'preview') { out({ ok: true, task, ...Q.previewMerge({ main: root, plan: o.plan, task }) }); return; }
-  // merge no sincroniza: opera sobre lo que dejó `sync` (los merges se acumulan hasta que `run` los integra)
-  const r = Q.mergeIntoQueue({ main: root, plan: o.plan, task, resolveTrivial: o['resolve-trivial'] === true });
+  // merge no sincroniza: opera sobre lo que dejó `sync`. Ojo: `run` vuelve a sincronizar la cola desde int/ y descarta lo que `merge`
+  // dejó sin integrar (el merge suelto sirve para ver el conflicto y su resolución trivial, no para acumular).
+  const r = locked(() => Q.mergeIntoQueue({ main: root, plan: o.plan, task, resolveTrivial: o['resolve-trivial'] === true }));
   if (r.status === 'conflict') { fail('conflict', `conflicto en ${[...r.logic, ...r.trivial].map((x) => x.path).join(', ')}`, { trivial: r.trivial, logic: r.logic }); return; }
   if (r.status === 'already-merged') { fail('already-merged', `${task} ya está unida a ${B.queueBranch(o.plan)}`, {}); return; }
   out({ ok: true, task, ...r });
