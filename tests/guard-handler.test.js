@@ -17,8 +17,14 @@ test('blocks a destructive command through the launcher (exit 2, alternative in 
   assert.match(r.stderr, /pignolo bloqueó el comando: .*Alternativa:/);
 });
 
-test('asks for push through the launcher', () => {
+test('push passes through the launcher without asking (author decision, 2026-10-02)', () => {
   const r = runLauncher('guard', bash('git push origin x', makeRepo()));
+  assert.strictEqual(r.status, 0);
+  assert.ok(!r.stdout.includes('permissionDecision'), r.stdout);
+});
+
+test('remote branch deletion still asks through the launcher', () => {
+  const r = runLauncher('guard', bash('git push origin --delete x', makeRepo()));
   assert.strictEqual(r.status, 0);
   assert.strictEqual(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask');
 });
@@ -74,7 +80,7 @@ test('snapshot failure on an allowed command is reported with systemMessage, exi
   const r = guard.run(bash('git status', makeRepo()), { env: {}, snapshot: failing });
   assert.strictEqual(r.exit, 0);
   assert.match(JSON.parse(r.stdout).systemMessage, /instantánea WIP falló \(timeout simulado\)/);
-  const ask = guard.run(bash('git push', makeRepo()), { env: {}, snapshot: failing });
+  const ask = guard.run(bash('git push origin --delete x', makeRepo()), { env: {}, snapshot: failing });
   const out = JSON.parse(ask.stdout);
   assert.strictEqual(out.hookSpecificOutput.permissionDecision, 'ask');
   assert.match(out.systemMessage, /timeout simulado/);
@@ -107,16 +113,18 @@ test('missing, empty or non-string command exits 2 (H13)', () => {
   }
 });
 
-test('merge while on main asks (branch read from the repo)', () => {
+test('merge while on main passes without asking (author decision, 2026-10-02)', () => {
   const r = runLauncher('guard', bash('git merge feature', makeRepo()));
-  assert.strictEqual(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask');
+  assert.strictEqual(r.status, 0);
+  assert.ok(!r.stdout.includes('permissionDecision'), r.stdout);
 });
 
-test('merge asks when the branch cannot be read (detached HEAD), instead of failing open', () => {
+test('merge passes without asking when the branch cannot be read (detached HEAD)', () => {
   const repo = makeRepo();
   git(['checkout', '-q', '--detach'], repo);
   const r = runLauncher('guard', bash('git merge feature', repo));
-  assert.strictEqual(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, 'ask');
+  assert.strictEqual(r.status, 0);
+  assert.ok(!r.stdout.includes('permissionDecision'), r.stdout);
 });
 
 test('checkout of a file that exists in cwd is blocked (cwd reaches the evaluator)', () => {

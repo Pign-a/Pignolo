@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.14.1 — 2026-10-02
+
+Cambio de contrato de la guardia de git, por decisión del autor (2026-10-02): la confirmación en `git push` y en `git merge` sobre `main` frenaba demasiado la autonomía del agente y se quita.
+
+- **Ya no piden confirmación (pasan):** `git push` común, a cualquier remoto o rama y con `-u`, `--tags`, `--follow-tags` o `-n` (se retira la regla `push`); y `git merge`, sea cual sea la rama actual, incluida `main`, la que no se pudo leer y `git -C <dir> merge` (se retira la regla `merge-main`). El handler de la guardia ya no lee la rama actual antes de cada comando con `merge`.
+- **Siguen negando (deny):** `push --force`, `-f`, `+ref`, `--mirror`, `--prune`, `--force-with-lease` y `--force-if-includes` (`push-force`), `push --no-verify`, `git send-pack`, `reset --hard` y el resto de las reglas de pérdida de trabajo.
+- **Siguen pidiendo confirmación (ask):** borrar una rama remota (`push --delete`, `push -d`, `push origin :rama`; `push-delete`), borrar o pisar ramas locales y tags, `update-ref`, `checkout -B`/`switch -C`.
+- **Sin cambios para subagentes:** `pignolo-protected-refs` (un subagente no escribe `int/*`, `queue/*`, `cp/*` ni `contract/*` con push, merge, etc.) y las demás reglas por subagente.
+- **Fuera de este cambio:** la plantilla de permisos de `/pignolo:setup` (`templates/permissions.json`) sigue listando `git push *` y `git merge *` en `ask`; es la capa de permisos del usuario, no la guardia, y quien la haya aplicado seguirá viendo la pregunta.
+
 ## 0.14.0 — 2026-10-02
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Se une después del hito 8d (0.13.1); en su rama llevó los números 0.13.0 y 0.13.1 (brainstorming), así que esta es la versión menor libre siguiente.

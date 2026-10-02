@@ -168,8 +168,6 @@ const PS_BLOCK = [
 
 // Recuperables por reflog y respaldo de refs: confirmación (spec §11.6).
 const ASK = [
-  ['push', 'git push origin feature', 'push'],
-  ['push -u', 'git push -u origin feat', 'push'],
   ['branch d', 'git branch -d feature', 'branch-delete'],
   ['branch D', 'git branch -D feature', 'branch-delete'],
   ['branch -df', 'git branch -df x', 'branch-delete'],
@@ -181,6 +179,9 @@ const ASK = [
   ['tag force', 'git tag -f v1', 'tag-force'],
   ['push delete', 'git push origin --delete feature', 'push-delete'],
   ['push :ref', 'git push origin :feature', 'push-delete'],
+  ['push delete -d', 'git push -d origin feature', 'push-delete'],
+  ['push --delete after cd', 'cd ../x && git push origin --delete feature', 'push-delete'],
+  ['push -C delete', 'git -C ../x push origin :feature', 'push-delete'],
   ['update-ref -d branch', 'git update-ref -d refs/heads/main', 'ref-move'],
 ];
 
@@ -208,6 +209,23 @@ const BASH_ALLOW = [
   ['config user', 'git config user.name x'],
   ['git -c harmless', 'git -c color.ui=never log'],
   ['merge -n is --no-stat', 'git merge -n feature'],
+  // Decisión del autor, 2026-10-02: push y merge sobre main ya no piden confirmación.
+  ['push', 'git push origin feature'],
+  ['push main', 'git push origin main'],
+  ['push -u', 'git push -u origin feat'],
+  ['push bare', 'git push'],
+  ['push --tags', 'git push --tags'],
+  ['push --follow-tags', 'git push --follow-tags origin main'],
+  ['push -n dry run', 'git push -n origin x'],
+  ['push HEAD:main', 'git push origin HEAD:main'],
+  ['push with -C', 'git -C ../otro push origin feat'],
+  ['push after cd', 'cd ../otro && git push origin feat'],
+  ['push in a compound command', 'git add a.js && git commit -m x && git push -u origin feat'],
+  ['merge feature on a branch', 'git merge feature'],
+  ['merge with -C', 'git -C ../x merge feature'],
+  ['checkout main then merge', 'git checkout main && git merge feature'],
+  ['switch main then merge', 'git switch main; git merge --no-ff feature'],
+  ['cd then merge', 'cd ../x && git merge feature'],
   ['npm test', 'npm test'],
   ['quoted-commit-mention', 'git commit -m "no usar --no-verify ni git reset --hard"'],
   ['quoted-echo-mention', 'echo "git reset --hard es peligroso"'],
@@ -267,6 +285,14 @@ const PS_ALLOW = [
   ['ps assignment from status', '$s = git status --porcelain; if ($s) { Write-Host dirty }'],
   ['ps variable in read subcommand', 'git log -n $n --oneline'],
   ['ps redirect to $null', 'git status 2>$null'],
+  ['ps push', 'git push origin feat'],
+  ['ps push -u', 'git push -u origin main'],
+  ['ps push --tags', 'git push --tags'],
+  ['ps push after Set-Location', 'Set-Location ../otro; git push origin feat'],
+  ['ps push with -C', 'git -C ../otro push'],
+  ['ps push in a compound command', 'git add a.js; git commit -m "x"; git push'],
+  ['ps merge', 'git merge feature'],
+  ['ps checkout main then merge', 'git checkout main; git merge feature'],
 ];
 
 for (const [name, cmd, rule] of BASH_BLOCK) {
@@ -308,13 +334,30 @@ for (const [name, cmd] of PS_ALLOW) {
   });
 }
 
-test('merge while on main asks', () => {
-  assert.strictEqual(evaluate('git merge feature', { branch: 'main' }).decision, 'ask');
-  assert.strictEqual(evaluate('git merge feature', { branch: 'feature-x' }).decision, 'allow');
+test('merge over main is allowed, whatever the branch the handler read (author decision, 2026-10-02)', () => {
+  for (const branch of ['main', 'master', 'feature-x', null]) assert.strictEqual(evaluate('git merge feature', { branch }).decision, 'allow', String(branch));
 });
 
-test('checkout main then merge asks even without branch info', () => {
-  assert.strictEqual(evaluate('git checkout main && git merge feature').decision, 'ask');
+test('checkout main then merge is allowed', () => {
+  assert.strictEqual(evaluate('git checkout main && git merge feature').decision, 'allow');
+});
+
+test('plain push is allowed with no confirmation, in bash and powershell', () => {
+  for (const shell of ['bash', 'powershell']) {
+    const v = evaluate('git push origin main', { shell, psTimeoutMs: PS_T });
+    assert.deepStrictEqual([v.decision, v.rule], ['allow', null], shell);
+  }
+});
+
+test('force push stays denied and remote branch deletion still asks', () => {
+  for (const cmd of ['git push --force', 'git push -f origin main', 'git push --force-with-lease', 'git push origin +main', 'git push --mirror', 'git push --prune origin']) {
+    const v = evaluate(cmd, { shell: 'bash' });
+    assert.deepStrictEqual([v.decision, v.rule], ['block', 'push-force'], cmd);
+  }
+  for (const cmd of ['git push origin --delete feature', 'git push origin :feature']) {
+    const v = evaluate(cmd, { shell: 'bash' });
+    assert.deepStrictEqual([v.decision, v.rule], ['ask', 'push-delete'], cmd);
+  }
 });
 
 test('checkout of an existing file in cwd is blocked; a branch name is not', () => {

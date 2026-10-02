@@ -43,7 +43,7 @@ const RULES = {
   'gc-prune': ['deny', 'git gc --prune / git prune eliminan objetos inalcanzables', 'no hace falta podar; si es imprescindible, lo decide el humano'],
   'reflog-expire': ['deny', 'expirar o borrar el reflog elimina la red de seguridad de commits', 'no se toca el reflog; es la última capa de recuperación'],
   'push-force': ['deny', 'push forzado (--force, -f, +ref, --mirror, --prune) reescribe o borra historia remota', 'hacé un commit nuevo (revert o fix) y push normal'],
-  'send-pack': ['deny', 'git send-pack escribe refs remotas sin las comprobaciones de push', 'usá `git push` (pide confirmación)'],
+  'send-pack': ['deny', 'git send-pack escribe refs remotas sin las comprobaciones de push', 'usá `git push`'],
   'fetch-force-head': ['deny', 'git fetch --update-head-ok con un refspec forzado pisa la rama activa', 'usá `git fetch` sin forzar y después `git merge --ff-only`'],
   'config-write': ['deny', 'git config solo escribe claves de una lista corta (user.*, color.*, core.autocrlf, ...)', 'los cambios de configuración de git los hace el humano'],
   'git-config-override': ['deny', 'git -c con una clave que ejecuta programas o toca la protección (alias, hooks, editor, gc, ...)', 'escribí el comando sin -c'],
@@ -67,13 +67,11 @@ const RULES = {
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
-  push: ['ask', 'pignolo pide confirmación: push al remoto'],
   'push-delete': ['ask', 'pignolo pide confirmación: borrado de una rama remota'],
   'branch-delete': ['ask', 'pignolo pide confirmación: borrado de rama (recuperable por reflog)'],
   'branch-force': ['ask', 'pignolo pide confirmación: se pisa o renombra una rama existente (recuperable por reflog)'],
   'tag-delete': ['ask', 'pignolo pide confirmación: borrado de tag'],
   'tag-force': ['ask', 'pignolo pide confirmación: se pisa un tag existente'],
-  'merge-main': ['ask', 'pignolo pide confirmación: merge sobre main'],
   'ref-move': ['ask', 'pignolo pide confirmación: se mueve una ref a mano (update-ref, symbolic-ref, checkout -B, switch -C, fetch +ref; recuperable por reflog)'],
   // no verificables
   unparseable: ['unverifiable', 'el comando no se puede analizar (comillas, paréntesis, heredoc o `case` sin cerrar)', 'reescribilo en una forma simple'],
@@ -119,8 +117,6 @@ const GIT_ENV_NAME = /^GIT_(CONFIG_(COUNT|KEY_\d+|VALUE_\d+|PARAMETERS|GLOBAL|SY
 const GIT_EXEC_ENV = /^(GIT_EDITOR|EDITOR|VISUAL|GIT_SEQUENCE_EDITOR|GIT_EXTERNAL_DIFF|GIT_SSH_COMMAND|GIT_SSH|GIT_ASKPASS|SSH_ASKPASS|GIT_PAGER|PAGER|GIT_PROXY_COMMAND)$/i;
 const LAUNCHER_RE = /(^|\/)hooks\/launcher\.js$/i;
 const MAIN = /^(main|master)$/;
-// Rama que el handler no pudo leer: merge pide confirmación como si fuera main.
-const UNKNOWN_BRANCH = '(desconocida)';
 
 const PROTECTED_CONFIG = /^(alias\..+|core\.(hookspath|fsmonitor|sshcommand|pager|editor|askpass|gitproxy|logallrefupdates|worktree)|sequence\.editor|diff\.external|diff\..+\.(textconv|command)|merge\..+\.driver|pager\..+|filter\..+|credential(\..+)?\.helper|gpg(\..+)?\.program|uploadpack\.packobjectshook|protocol\..+\.allow|include\.path|includeif\..+\.path|gc\..+|clean\.requireforce|remote\..+\.(mirror|receivepack|uploadpack|vcs|push)|interactive\.difffilter|protocol\.allow|(difftool|mergetool|browser|man)\..+\.(cmd|path)|gpg\..+\.[a-z]*command)$/;
 const CONFIG_ALLOW = /^(user\.(name|email|signingkey)|color\..+|core\.(autocrlf|eol|filemode|ignorecase|quotepath|longpaths|safecrlf|whitespace|symlinks)|init\.defaultbranch|pull\.(rebase|ff)|push\.(default|autosetupremote)|fetch\.prune|merge\.conflictstyle|rerere\.enabled|diff\.(algorithm|renames|colormoved)|log\.[a-z]+|format\.[a-z]+|branch\.[^.]+\.(remote|merge|rebase|description)|remote\.[^.]+\.url|advice\..+|help\.autocorrect|safe\.directory|commit\.gpgsign|tag\.gpgsign)$/;
@@ -302,7 +298,6 @@ function evaluate(command, opts = {}) {
   const ctx = {
     shell: opts.shell === 'powershell' ? 'powershell' : 'bash',
     mode: typeof opts.mode === 'string' ? opts.mode : 'default',
-    branch: opts.branch || null,
     psExe: opts.psExe,
     psTimeoutMs: opts.psTimeoutMs, // solo tests: plazo holgado para el parseo con la máquina cargada
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
@@ -1231,11 +1226,9 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     });
   }
   // Con -C / --git-dir / --work-tree todo se evalúa con sus reglas; lo que depende
-  // del estado del otro directorio no se puede ver: `checkout <x>` (¿archivo o rama?)
-  // se niega y `merge` pide confirmación (no se sabe si la rama es main).
+  // del estado del otro directorio no se puede ver: `checkout <x>` (¿archivo o rama?) se niega.
   if (redirected) {
     if (sub === 'checkout' && o.positionals.length && !o.shorts.has('b') && !o.shorts.has('B')) out.push(hit('git-C'));
-    if (sub === 'merge') out.push(hit('merge-main'));
   }
   const inner = redirected ? { ...st, cwdReal: null, alts: null } : st;
   // Programas que git ejecuta por opción (G7): --upload-pack, --receive-pack, --exec, clone/ls-remote -u.
@@ -1317,7 +1310,7 @@ function gitRulesBase(sub, o, args, ctx, st) {
       return has('n') || long('no-verify') ? ['no-verify'] : r;
     case 'merge':
       if (long('no-verify')) return ['no-verify'];
-      return MAIN.test(ctx.branch || '') || ctx.branch === UNKNOWN_BRANCH || st.onMain ? ['merge-main'] : r;
+      return r;
     case 'rebase':
       if (long('no-verify')) return ['no-verify'];
       return has('x') || long('exec') ? ['git-shell'] : r;
@@ -1330,7 +1323,7 @@ function gitRulesBase(sub, o, args, ctx, st) {
       if (has('f') || long('force') || long('force-with-lease') || long('force-if-includes') || long('mirror') || long('prune')) return ['push-force'];
       if (pos.some((w) => w.value.startsWith('+'))) return ['push-force'];
       if (has('d') || long('delete') || pos.slice(1).some((w) => w.value.startsWith(':'))) return ['push-delete'];
-      return ['push'];
+      return r;
     case 'send-pack':
       return ['send-pack'];
     case 'fetch': {
@@ -1948,4 +1941,4 @@ if (require.main === module) {
   process.stdout.write(`${explain(argv[k + 1], { shell, mode, cwd })}\n`);
 }
 
-module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES, UNKNOWN_BRANCH };
+module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES };
