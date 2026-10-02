@@ -539,3 +539,24 @@ test('realpath al borrar: si la ruta de la worktree pasa a ser un enlace hacia a
   assert.strictEqual(fs.readFileSync(path.join(elsewhere, 'ajeno.txt'), 'utf8'), 'no lo toques\n');
   assert.ok(exists(main, 'refs/heads/task/p/01-a'));
 });
+
+test('I4 (A7-14): un ignorado (.env) que aparece en la worktree de la segunda rama tras el chequeo del lote no se borra: se recomprueba por rama', () => {
+  const main = fixture();
+  task(main, 'task/p/01-a', { date: daysAgo(3) });
+  mergeInto(main, 'task/p/01-a');
+  task(main, 'task/p/02-b', { date: daysAgo(3) });
+  mergeInto(main, 'task/p/02-b');
+  toMain(main);
+  const wa = worktree(main, 'task/p/01-a');
+  const wb = worktree(main, 'task/p/02-b');
+  const id = C.report({ main, now: NOW }).proposal.id;
+  const beforeDelete = (item) => { if (item.name === 'task/p/02-b') write(wb, '.env', 'SECRETO=1\n'); };
+  const r = C.apply({ main, proposalId: id, now: NOW, opts: { beforeDelete } });
+  assert.ok(r.removed.some((x) => x.branch === 'task/p/01-a'), JSON.stringify(r));
+  assert.ok(!r.removed.some((x) => x.branch === 'task/p/02-b'), `la segunda no se quita: ${JSON.stringify(r)}`);
+  assert.ok(!fs.existsSync(wa), 'la primera se quitó');
+  const refused = r.refused.find((x) => x.branch === 'task/p/02-b');
+  assert.ok(refused && /ignored-files/.test(refused.why), JSON.stringify(r));
+  assert.ok(fs.existsSync(path.join(wb, '.env')), 'el ignorado sigue en disco');
+  assert.ok(exists(main, 'refs/heads/task/p/02-b'), 'y la rama también');
+});

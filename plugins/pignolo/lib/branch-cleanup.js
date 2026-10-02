@@ -284,6 +284,10 @@ function applyItems({ main, items, env = process.env, now, opts = {} }) {
     if (f.worktree) {
       const real = realOrNull(f.worktree);
       if (!real || !rootReal || !inside(real, rootReal)) { result.refused.push({ branch: f.name, why: 'worktree-outside' }); continue; }
+      // `worktree remove` sin --force no se niega por un ignorado: se recomprueba aquí, por rama, justo antes (I4, A7-14).
+      // Lo sucio (sin seguimiento o modificado) lo sigue rechazando git mismo.
+      const again = statusOf(git, f.worktree);
+      if (!again.ok || again.ignored.length) { result.refused.push({ branch: f.name, why: again.ok ? 'ignored-files' : 'worktree-status-failed' }); continue; }
       try {
         git(['worktree', 'remove', f.worktree], { timeout: LONG_MS });
       } catch (e) {
