@@ -134,8 +134,10 @@ function deriveNext({ cwd = process.cwd(), env = process.env, now = Date.now() }
     return done('run-malformed', `El marcador del flujo (${st.file}) está ilegible; la próxima acción registrada es limpiarlo con \`run.js end\` o \`run.js start --replace\`.`);
   }
   const run = st.run || null;
-  const task = run && run.task;
   const tasks = run ? taskList(run) : [];
+  const task = tasks[0] || null;
+  const ids = tasks.map((t) => t.id).join(', ');
+  const taskWord = tasks.length > 1 ? `las tareas ${ids}` : `la tarea ${ids}`;
   for (const t of tasks) {
     const c = readCounter(env, main, t.id);
     if (c.blocked) {
@@ -160,15 +162,19 @@ function deriveNext({ cwd = process.cwd(), env = process.env, now = Date.now() }
   }
   if (task) {
     if (st.expired) {
-      return done('flow-expired-task', `El flujo ${run.flow} venció el ${run.expires} con la tarea ${task.id} sin cerrar; la próxima acción registrada es renovarlo (\`run.js renew\`) y revisar \`run.js status\`.`);
+      return done('flow-expired-task', `El flujo ${run.flow} venció el ${run.expires} con ${taskWord} sin cerrar; la próxima acción registrada es renovarlo (\`run.js renew\`) y revisar \`run.js status\`.`);
     }
     if (st.running) {
       const extra = [];
-      if (fs.existsSync(task.worktree)) {
+      for (const t of tasks) {
+        if (!fs.existsSync(t.worktree)) continue;
         try {
-          const dirty = gitRun(['--no-optional-locks', 'status', '--porcelain'], task.worktree, { timeout: 3000 }).split('\n').filter(Boolean).length;
-          extra.push(`La tarea ${task.id} tiene ${dirty} archivo(s) sin commitear en ${task.worktree}.`);
+          const dirty = gitRun(['--no-optional-locks', 'status', '--porcelain'], t.worktree, { timeout: 3000 }).split('\n').filter(Boolean).length;
+          extra.push(`La tarea ${t.id} tiene ${dirty} archivo(s) sin commitear en ${t.worktree}.`);
         } catch (_) { /* sin git: sin el dato */ }
+      }
+      if (tasks.length > 1) {
+        return done('task-in-progress', `Las tareas ${ids} del flujo ${run.flow} están en curso (${tasks.map((t) => t.worktree).join('; ')}); la próxima acción registrada es cerrarlas (DONE al handback-gate) o seguir con sus archivos.`, extra);
       }
       return done('task-in-progress', `La tarea ${task.id} del flujo ${run.flow} está en curso en ${task.worktree}; la próxima acción registrada es cerrarla (DONE al handback-gate) o seguir con sus archivos.`, extra);
     }

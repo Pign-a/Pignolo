@@ -2,7 +2,7 @@
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { readState, mainRoot } = require('../../lib/disabled');
-const { readRun } = require('../../lib/project');
+const { readRun, taskList } = require('../../lib/project');
 const { gitRun } = require('../../lib/git');
 const { KINDS, readEntries } = require('../../lib/state-store');
 const { buildHot, HOT_LIMIT } = require('../../lib/context-budget');
@@ -173,7 +173,7 @@ function mainBranch(main) {
 function hotContext({ cwd, nextText, limit }) {
   const main = mainRoot(cwd);
   const r = readRun(main);
-  const flow = r.running && r.run ? { flow: r.run.flow, task: r.run.task } : null;
+  const flow = r.running && r.run ? { flow: r.run.flow, tasks: taskList(r.run) } : null;
   const entries = [];
   let bad = 0;
   for (const kind of KINDS) {

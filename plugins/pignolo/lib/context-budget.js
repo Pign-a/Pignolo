@@ -44,10 +44,13 @@ const pointer = (e, short) => {
 
 function flowLine(flow) {
   if (!flow || typeof flow !== 'object') return '';
-  const t = flow.task && typeof flow.task === 'object' ? flow.task : null;
+  const list = Array.isArray(flow.tasks) ? flow.tasks : (flow.task && typeof flow.task === 'object' ? [flow.task] : []);
+  const withId = list.filter((x) => x && x.id);
   let s = `Flujo en curso: ${flow.flow || 'desconocido'}`;
-  if (t && t.id) s += `, tarea ${t.id}`;
-  if (t && t.worktree) s += ` en ${t.worktree}`;
+  if (withId.length === 1) {
+    s += `, tarea ${withId[0].id}`;
+    if (withId[0].worktree) s += ` en ${withId[0].worktree}`;
+  } else if (withId.length > 1) s += `, tareas ${withId.map((x) => x.id).join(', ')}`;
   return s;
 }
 
