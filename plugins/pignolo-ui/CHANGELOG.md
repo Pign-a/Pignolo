@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.6 — sin publicar
+
+Definición inicial antes de todo lo demás (decisión del autor, 2026-10-02, hito 4h, G49). **Cambia contratos:** `new`, `improve` y `audit` no trabajan sin `PRODUCT.md` y un `DESIGN.md` decidido; `PRODUCT.md` deja de ser opcional; `audit` ya no es "no bloquea nunca" (no bloquea por hallazgos, pero espera la definición) y puede dejar una línea en el `CLAUDE.md` del proyecto; `new` ya no genera direcciones de estilo ni crea `PRODUCT.md`.
+
+- **Skill nueva `/pignolo-ui:define`:** el setup completo de la UI. Primero el producto, con preguntas interactivas (a lo sumo dos tandas, sin preguntar lo que el proyecto ya dice) y `PRODUCT.md` creado con un diff confirmado. Después el diseño: una tanda en palabras (registro, temas, densidad) y un **tablero visual** con las direcciones de color, tipografía y estilo, cada una con la misma muestra, para elegir o combinar. Al elegir se crea `DESIGN.md`.
+- **El tablero va a un artifact privado** de tu cuenta de claude.ai cuando `publish-gate` lo permite y la herramienta está; lleva solo tokens y contenido de muestra y pasa el chequeo de fuga antes de publicarse. Con `publish: never`, `presentation = local` o sin herramienta es una página local.
+- **Proyecto que ya tiene pantallas:** los estilos del código entran al tablero como una dirección más, rotulada "lo que ya hay", al lado de las nuevas. Un `DESIGN.md` armado con tokens "extraídos, no decididos" no cuenta como definido hasta que lo elegís.
+- **Compuerta en el texto de las skills** (`reference/foundation.md`, sin script): si falta algo, la skill frena e insiste. Solo sigue si pedís explícitamente no definir, dos veces (un "ok" no cuenta), y deja el pendiente en la sección `## pignolo-ui: pendientes` del `CLAUDE.md` del proyecto, con un diff confirmado. **En `new` e `improve`, la falta de un `DESIGN.md` decidido no se puede saltear:** mandan a `define` y terminan (sin él no se puede registrar ni aplicar lo elegido); el salteo queda para `audit` y para cuando solo falta `PRODUCT.md`. Las corridas siguientes lo vuelven a recordar; `define` borra la línea al terminar.
+- **Una corrida sin definición lo dice:** la primera línea del informe suma `sin definición inicial` y, en `audit`, los hallazgos de juicio van aparte.
+- **Sale de `new`:** la ronda de direcciones con el proyecto vacío y la oferta de crear `PRODUCT.md`. **Sale de `prepare-run`:** proponer un `DESIGN.md` extraído sin que se pida.
+- Sin scripts ni subcomandos nuevos. Falta la prueba real con un modelo (checklist en `tests/manual/hito-4h.md`).
+
 ## 0.7.5 — sin publicar
 
 Contexto de producto, brief guardado y pase de veredicto (decisión del autor, 2026-10-01, hito 4f). **Cambia un contrato:** `approve.mjs save` exige `--brief-file`, salvo en el flujo `direction`.

@@ -185,7 +185,7 @@ test('no versioned file of the plugin carries a real artifact link or an absolut
 
 test('version 0.7.5: plugin.json and a CHANGELOG entry that says what comes and what is left for the next stages', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
-  assert.equal(manifest.version, '0.7.5');
+  assert.equal(manifest.version, '0.7.6');
   const changelog = fs.readFileSync(path.join(PLUGIN_ROOT, 'CHANGELOG.md'), 'utf8');
   const entry = changelog.slice(changelog.indexOf('## 0.7.0'), changelog.indexOf('## 0.6.2'));
   assert.ok(entry.length > 500);

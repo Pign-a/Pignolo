@@ -94,7 +94,7 @@ test('4f without PRODUCT.md: the line is printed, nothing is copied and everythi
 
 test('4f: version 0.7.5, a CHANGELOG entry with the breaking contract first, one line of impeccable in CREDITS', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8'));
-  assert.equal(manifest.version, '0.7.5');
+  assert.equal(manifest.version, '0.7.6');
   const changelog = fs.readFileSync(path.join(PLUGIN_ROOT, 'CHANGELOG.md'), 'utf8');
   const entry = changelog.slice(changelog.indexOf('## 0.7.5'), changelog.indexOf('## 0.7.4'));
   assert.ok(entry.length > 500);

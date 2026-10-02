@@ -146,4 +146,6 @@ Se frenaron todos los agentes porque el autor se quedaba sin cupo. Nada de lo de
 
 **Decisiones abiertas del autor:** clave `brief` en el núcleo; `test-paths` por defecto (commit `9d6f84f`); G44 (`code-untested`); si `subagent-main` se extiende a `commit`, `pull`, `rebase` y similares sobre `main`; `git branch -d` sin confirmar, `--force-with-lease`, `navigate`; un solo proceso por evento de hook.
 
+**Comentarios del autor tras usar pignolo-ui (2026-10-02, se van sumando en `docs/gaps.md` desde G49):** hito **4h, definición inicial** (plan `docs/plans/2026-10-02-pignolo-ui-hito-4h-definicion-inicial.md`; **construido en la rama `ui/hito-4h`, pignolo-ui 0.7.6, sin commitear**; falta revisión opus, checklist manual y reconciliar con la etapa 2 del lienzo al unir): skill nueva `/pignolo-ui:define`, compuerta escrita en las skills (sin script) que insiste y solo se saltea por pedido explícito, con el pendiente anotado en el `CLAUDE.md` del proyecto; `PRODUCT.md` obligatorio. El tablero de colores, tipografía y estilo va a un artifact privado (decisión del autor; reemplaza "HTML local" de D-4c para `define`).
+
 **Sin anotar todavía en `docs/ejecuciones.csv`:** ejecuciones y revisión de la etapa 2 del lienzo, `init` rápido, cambio de la guardia y su revisión, auditoría de reglas, plan de la guardia, preparación de las pruebas.

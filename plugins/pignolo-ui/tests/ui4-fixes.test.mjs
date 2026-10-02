@@ -136,7 +136,7 @@ test('I-3: improve checks "after" against the "before" reading; new does not hav
 });
 
 test('I-5: DESIGN.md is created from the template with patch --out, never with --write over the template', () => {
-  const { text } = readSkill('new');
+  const { text } = readSkill('define');
   for (const l of text.split('\n')) {
     if (/templates\/DESIGN\.md/.test(l)) assert.ok(!/patch[^`]*--file[^`]*templates\/DESIGN\.md[^`]*--write/.test(l), l.slice(0, 120));
   }
