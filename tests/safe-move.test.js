@@ -554,6 +554,17 @@ test('reescritos y deshacer: modified-since, restaurar en la ruta nueva y enlace
     assert.deepEqual(u.files, ['docs/specs/a.md']);
     assert.equal(hashTree(repo), h);
   });
+  await t.test('M-8: un respaldo alterado no se restaura: backup-modified y nada movido', () => {
+    const { repo, r } = setup();
+    const rcd = JSON.parse(fs.readFileSync(r.record, 'utf8'));
+    fs.writeFileSync(rcd.rewrites[0].backup, 'respaldo alterado\n');
+    const h = hashTree(repo);
+    const u = undoMoves({ record: r.record, main: repo });
+    assert.equal(u.ok, false);
+    assert.equal(u.refused, 'backup-modified');
+    assert.deepEqual(u.files, ['docs/specs/a.md']);
+    assert.equal(hashTree(repo), h);
+  });
   await t.test('el hash de después: se restaura desde el respaldo en la ruta nueva y se mueve', () => {
     const { repo, r, original } = setup();
     const h0 = hashTree(repo);
@@ -705,4 +716,23 @@ test('I-1: un fallo sin que nada se moviera en disco sigue siendo failed y deja 
   const r = apply(repo, [ITEM], { run: rec.run });
   assert.equal(r.kind, 'failed');
   assert.equal(JSON.parse(fs.readFileSync(r.record, 'utf8')).status, 'undone');
+});
+
+// ---------------------------------------------------------------- M-4: archivos de sistema no frenan el movimiento
+
+test('M-4: .DS_Store, Thumbs.db y desktop.ini dentro de la carpeta no cuentan como no-documento', () => {
+  const repo = base();
+  put(repo, 'doc/specs/.DS_Store', 'x');
+  put(repo, 'doc/specs/Thumbs.db', 'x');
+  put(repo, 'doc/specs/desktop.ini', 'x');
+  const p = plan(repo);
+  assert.equal(p.ok, true, JSON.stringify(p.items));
+  assert.equal(p.items[0].status, 'ok');
+});
+
+test('M-4: un archivo que no es documento ni de sistema sigue frenando', () => {
+  const repo = base();
+  put(repo, 'doc/specs/script.js', 'x');
+  const p = plan(repo);
+  assert.equal(p.items[0].reason, 'contains-non-doc');
 });

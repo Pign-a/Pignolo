@@ -16,7 +16,7 @@ const { readRun } = require('./project');
 const MAX_FILES = 2000;
 const MAX_DEPTH = 12;
 const DOC_EXT = Object.freeze(['md', 'mdx', 'txt', 'rst', 'adoc', 'pdf', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'csv', 'docx', 'xlsx', 'pptx', 'drawio', 'excalidraw']);
-const DOC_NAMES = Object.freeze(['.gitignore', '.gitkeep', 'readme', 'license', 'notice']);
+const DOC_NAMES = Object.freeze(['.gitignore', '.gitkeep', 'readme', 'license', 'notice', '.ds_store', 'thumbs.db', 'desktop.ini']);
 const PROTECTED_ROOTS = Object.freeze(['.git', '.pignolo', '.claude', 'node_modules', '.github']);
 const FRAMEWORK_ROOTS = Object.freeze(['src', 'app', 'pages', 'public', 'lib', 'test', 'tests', 'cmd', 'internal', 'packages', 'apps', 'bin', 'build', 'dist']);
 const RESERVED_SOURCES = Object.freeze([...PROTECTED_ROOTS, ...FRAMEWORK_ROOTS]);
@@ -552,14 +552,21 @@ function undoMoves({ record, main, env = process.env, run, fs = nodeFs } = {}) {
 
   const toRestore = [];
   const modified = [];
+  const badBackup = [];
   for (const r of rewrites) {
     const cur = fs.existsSync(abs(main, r.file)) ? abs(main, r.file) : (r.fileBefore ? abs(main, r.fileBefore) : null);
     const h = cur ? hashIfFile(fs, cur) : null;
     if (h === r.sha256Before) continue;
-    if (h === r.sha256After && cur === abs(main, r.file) && r.backup) { toRestore.push(r); continue; }
+    if (h === r.sha256After && cur === abs(main, r.file) && r.backup) {
+      // M-8: solo se restaura un respaldo que sigue siendo el original.
+      if (hashIfFile(fs, r.backup) !== r.sha256Before) { badBackup.push(r.file); continue; }
+      toRestore.push(r);
+      continue;
+    }
     modified.push(r.file);
   }
   if (modified.length) return refusal('modified-since', { files: modified });
+  if (badBackup.length) return refusal('backup-modified', { files: badBackup });
 
   const restored = [];
   const items = [];
