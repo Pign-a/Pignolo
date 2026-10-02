@@ -25,6 +25,7 @@ import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { findBrowser } from '../lib/browser-find.mjs';
 import { openBrowser, BrowserUnavailable } from '../lib/browser-session.mjs';
 import { shotPlan, planFromProject } from '../lib/shot-plan.mjs';
+import { validateDesign } from '../lib/design-doc.mjs';
 import { measurePage, capturePage, dumpDom } from '../lib/browser-run.mjs';
 
 class UsageError extends Error {}
@@ -66,6 +67,13 @@ function pageUrl(opts, project, cwd) {
   if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new UsageError(`--file no existe o no es un archivo: ${opts.file}`);
   if (!inside(project, file)) throw new UsageError(`--file está fuera del proyecto: ${opts.file}`);
   return pathToFileURL(file).href;
+}
+
+// The pignolo block of DESIGN.md (targets, register...), or null.
+function designPignolo(design) {
+  if (!design) return null;
+  const v = validateDesign(fs.readFileSync(design, 'utf8'));
+  return v.data && v.data.pignolo && typeof v.data.pignolo === 'object' ? v.data.pignolo : null;
 }
 
 function readBefore(file) {
@@ -158,7 +166,8 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     let summary;
     let exitCode = 0;
     if (opts.command === 'measure') {
-      const r = await measurePage({ url, plan, open, before, page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
+      const pig = designPignolo(design);
+      const r = await measurePage({ url, plan, open, before, targets: pig?.targets ?? null, page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
       out = path.join(run, 'browser.json');
       fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, plan, entries: r.entries }, null, 2)}\n`);
       const count = (s) => r.entries.filter((e) => e.status === s).length;

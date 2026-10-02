@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { serveRoutes, BROWSER_SKIP, browserPath } from './helpers.mjs';
 import { withBrowser } from '../lib/browser-session.mjs';
-import { parseComputedColor, contrastFindings, reflowFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
+import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
 
 const skip = BROWSER_SKIP;
 const HTML = { 'content-type': 'text/html; charset=utf-8' };
@@ -181,4 +181,83 @@ test('B4 in the browser: only text visible in the normal load is flagged under r
   const html = page('<div class="g"><span id="tip" class="tip">Ayuda al pasar el mouse</span></div><h1 class="fade" id="hero">Título</h1>',
     '.tip{opacity:0;transition:opacity .2s}.g:hover .tip{opacity:1}.fade{opacity:0;animation:in 1s forwards}@keyframes in{to{opacity:1}}@media (prefers-reduced-motion: reduce){.fade{animation:none}}');
   assert.deepEqual(ids(await checkPage(html, { reduced: true }), 'MOTION-07').map((x) => x.selector), ['#hero']);
+});
+
+// ---- Hito 4e, T2: TARGET-01 and FORM-01 ------------------------------------------------------------
+const box = (selector, left, top, width, height, extra = {}) => ({ selector, left, top, width, height, inline: false, ...extra });
+const phone = { width: 375 };
+
+test('TARGET-01 on measured boxes: under 24 px is alto only when the 24 px circle crosses another target', () => {
+  // Gaps are edge to edge: two 20 px boxes need 4 px between them for their circles to just touch.
+  const crossing = targetFindings([box('#a', 0, 0, 20, 20), box('#b', 22, 0, 20, 20)], { width: 1440 });
+  assert.deepEqual(crossing.map((f) => [f.id, f.status, f.key]), [['TARGET-01', 'fail', '#a'], ['TARGET-01', 'fail', '#b']]);
+  assert.deepEqual(crossing[0].measure, { widthPx: 20, heightPx: 20, minPx: 24 });
+  const touching = targetFindings([box('#a', 0, 0, 20, 20), box('#b', 24, 0, 20, 20)], { width: 1440 });
+  assert.deepEqual(touching.map((f) => f.status), ['pass'], 'circles that only touch do not cross');
+  const near = targetFindings([box('#a', 0, 0, 20, 20), box('#b', 30, 0, 20, 20)], { width: 1440 });
+  assert.deepEqual(near.map((f) => f.status), ['pass'], 'a 10 px gap is enough');
+  const alone = targetFindings([box('#a', 0, 0, 20, 20), box('#far', 80, 0, 100, 40)], { width: 1440 });
+  assert.deepEqual(alone.map((f) => [f.status, f.key]), [['pass', 'checked']], 'isolated 20 px at desktop: no alto');
+  const box30 = targetFindings([box('#a', 0, 0, 30, 30), box('#b', 40, 0, 100, 40)], { width: 1440 });
+  assert.deepEqual(box30.map((f) => f.status), ['pass'], '30 px is not undersized at desktop');
+});
+
+test('TARGET-01 on measured boxes: a big neighbor box counts as a target for the circle', () => {
+  const f = targetFindings([box('#icon', 0, 0, 20, 20), box('#row', 21, 0, 300, 44)], { width: 1440 });
+  assert.deepEqual(f.map((x) => [x.status, x.key]), [['fail', '#icon']]);
+});
+
+test('TARGET-01 at phone width: one medio entry per width with count, smallest and at most 5 selectors', () => {
+  const isolated = targetFindings([box('#a', 0, 0, 20, 20), box('#far', 200, 0, 100, 60)], phone);
+  assert.deepEqual(isolated.map((f) => [f.status, f.key, f.severity]), [['fail', 'phone-targets', 'medio']]);
+  assert.equal(isolated[0].measure.count, 1);
+  const thirty = targetFindings([box('#a', 0, 0, 30, 30), box('#b', 60, 0, 30, 30)], phone);
+  assert.deepEqual(thirty.map((f) => f.key), ['phone-targets']);
+  assert.deepEqual([thirty[0].measure.count, thirty[0].measure.smallestPx, thirty[0].measure.selectors.length], [2, 30, 2]);
+  const ok = targetFindings([box('#a', 0, 0, 44, 44)], phone);
+  assert.deepEqual(ok.map((f) => [f.status, f.key, f.measure.checked]), [['pass', 'checked', 1]]);
+  const many = targetFindings(Array.from({ length: 40 }, (_, i) => box(`#n${i}`, 0, i * 60, 40, 40)), phone);
+  assert.equal(many.length, 1, 'forty small links are one entry, not forty');
+  assert.deepEqual([many[0].key, many[0].measure.count, many[0].measure.selectors.length], ['phone-targets', 40, 5]);
+  // An element that is already alto is not counted again in the 44 px entry.
+  const both = targetFindings([box('#a', 0, 0, 20, 20), box('#b', 22, 0, 20, 20), box('#c', 0, 200, 40, 40)], phone);
+  assert.deepEqual(both.map((f) => f.key), ['#a', '#b', 'phone-targets']);
+  assert.equal(both[2].measure.count, 1);
+});
+
+test('TARGET-01: inline links are exempt, DESIGN.md can raise the minimum but never lower the floor', () => {
+  const inline = targetFindings([box('#link', 0, 0, 60, 18, { inline: true }), box('#b', 0, 100, 44, 44)], phone);
+  assert.deepEqual(inline.map((f) => f.status), ['pass']);
+  const raised = targetFindings([box('#a', 0, 0, 30, 30), box('#b', 31, 0, 30, 30)], { width: 1440, minPx: 32 });
+  assert.deepEqual(raised.map((f) => f.key), ['#a', '#b'], '30 px under a 32 px minimum with a neighbor 1 px away');
+  assert.equal(raised[0].measure.minPx, 32);
+  const lowered = targetFindings([box('#a', 0, 0, 20, 20), box('#b', 22, 0, 20, 20)], { width: 1440, minPx: 16 });
+  assert.equal(lowered.filter((f) => f.status === 'fail').length, 2, 'the floor stays at 24');
+  const rec = targetFindings([box('#a', 0, 0, 40, 40)], { width: 375, recommendedPx: 36 });
+  assert.deepEqual(rec.map((f) => f.status), ['pass'], 'recommendedPx replaces the 44');
+});
+
+test('FORM-01 on measured fields: under 16 px at phone width, never elsewhere', () => {
+  const field = (selector, fontSize) => ({ selector, fontSize });
+  const bad = fieldFindings([field('#email', 14), field('#ok', 16)], phone);
+  assert.deepEqual(bad.map((f) => [f.id, f.status, f.key, f.measure.fontSizePx]), [['FORM-01', 'fail', '#email', 14]]);
+  assert.deepEqual(fieldFindings([field('#ok', 16)], phone).map((f) => [f.status, f.measure.checked]), [['pass', 1]]);
+  assert.deepEqual(fieldFindings([field('#email', 14)], { width: 1440 }), [], 'not applicable above phone width');
+  assert.deepEqual(fieldFindings([field('#email', 14)], { width: 480 }).map((f) => f.status), ['fail'], '480 is still phone');
+});
+
+test('TARGET-01 and FORM-01 in the browser', { skip }, async () => {
+  const f = await checkPage(page(`
+    <button id="a" style="width:20px;height:20px;padding:0;margin:0 2px 0 0">x</button><button id="b" style="width:20px;height:20px;padding:0">y</button>
+    <p>Un texto con un <a id="inl" href="#x" style="font-size:12px">enlace en línea</a> adentro del párrafo.</p>
+    <button id="off" disabled style="width:20px;height:20px;padding:0;margin-top:80px;display:block">z</button>
+    <label id="lab" style="display:block;min-height:40px;line-height:40px;margin-top:20px"><input id="chk" type="checkbox" style="width:13px;height:13px;margin:0 8px"> Acepto</label>
+    <input id="mail" aria-label="mail" style="font-size:14px;height:44px;margin-top:20px">`), { width: 375, height: 700 });
+  assert.deepEqual(ids(f, 'TARGET-01').filter((x) => x.key !== 'phone-targets').map((x) => x.selector).sort(), ['#a', '#b'], 'only the two touching buttons are alto');
+  const agg = ids(f, 'TARGET-01').find((x) => x.key === 'phone-targets');
+  assert.ok(agg.measure.selectors.every((s) => !['#inl', '#off'].includes(s)), 'inline link and disabled button do not count');
+  assert.ok(agg.measure.count >= 1, 'the checkbox with its 40 px label is in the 44 px entry');
+  assert.deepEqual(ids(f, 'FORM-01').map((x) => x.selector), ['#mail']);
+  const desk = await checkPage(page('<input id="mail" aria-label="mail" style="font-size:14px">'), { width: 1440 });
+  assert.deepEqual(desk.filter((x) => x.id === 'FORM-01'), []);
 });

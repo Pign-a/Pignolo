@@ -185,6 +185,47 @@ function readFocus() {
   return { selector: selectorOf(el), style: [s.outlineStyle, s.outlineWidth, s.outlineColor, s.boxShadow, s.borderTopColor, s.borderBottomColor, s.borderTopWidth, s.backgroundColor, s.color, s.textDecorationLine].join('|') };
 }
 
+
+// T2: interactive targets with their boxes. Inline links inside running text are marked (exempt
+// from the size rule); a checkbox or radio with a label is measured with the union of both boxes.
+function collectTargets() {
+  const SEL = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="tab"], [role="menuitem"]';
+  const out = [];
+  for (const el of document.querySelectorAll(SEL)) {
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || s.visibility !== 'visible' || isDisabled(el) || isVisuallyHidden(el)) continue;
+    let box = { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+    if (el.matches('input[type="checkbox"], input[type="radio"]') && el.labels && el.labels.length) {
+      for (const label of el.labels) {
+        const l = label.getBoundingClientRect();
+        if (l.width > 0 && l.height > 0) box = { left: Math.min(box.left, l.left), top: Math.min(box.top, l.top), right: Math.max(box.right, l.right), bottom: Math.max(box.bottom, l.bottom) };
+      }
+    }
+    let inline = false;
+    if (s.display === 'inline' && el.parentElement) {
+      const own = (el.textContent || '').trim();
+      const around = (el.parentElement.textContent || '').trim();
+      inline = around.length > own.length && own.length > 0;
+    }
+    out.push({ selector: selectorOf(el), left: box.left, top: box.top, width: box.right - box.left, height: box.bottom - box.top, inline });
+  }
+  return out;
+}
+
+// T2: text fields with their computed font size (iOS zooms a page when the field is under 16 px).
+function collectFields() {
+  const out = [];
+  for (const el of document.querySelectorAll('input, select, textarea')) {
+    if (el.matches('input[type="checkbox"], input[type="radio"], input[type="range"], input[type="color"], input[type="file"], input[type="hidden"], input[type="button"], input[type="submit"], input[type="reset"], input[type="image"]')) continue;
+    const s = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0 || s.visibility !== 'visible' || isDisabled(el)) continue;
+    out.push({ selector: selectorOf(el), fontSize: parseFloat(s.fontSize) });
+  }
+  return out;
+}
+
 // ---- Node side --------------------------------------------------------------------------------
 
 // Computed colors come as rgb()/rgba(), lab(), oklch()... and color(srgb r g b / a) for
@@ -244,6 +285,75 @@ export function reflowFindings(data, { width }) {
   ].filter((p) => !out.some((f) => f.id === p.id)));
 }
 
+// ---- T2: TARGET-01 and FORM-01 ----------------------------------------------------------------
+
+export const PHONE_MAX_WIDTH = 480;
+export const MIN_TARGET_PX = 24;
+export const RECOMMENDED_TARGET_PX = 44;
+export const MIN_FIELD_FONT_PX = 16;
+const MAX_SELECTORS = 5;
+const round1 = (n) => Math.round(n * 10) / 10;
+
+// Distance from a point to a box (0 inside).
+const distToBox = (cx, cy, b) => Math.hypot(Math.max(b.left - cx, 0, cx - (b.left + b.width)), Math.max(b.top - cy, 0, cy - (b.top + b.height)));
+
+// WCAG 2.5.8 spacing exception: the circle of `diameter` px centered on the box of an undersized
+// target must not cross another target (touching is not crossing), nor the circle of another
+// undersized one.
+function circleCrosses(a, others, diameter) {
+  const r = diameter / 2;
+  const cx = a.left + a.width / 2;
+  const cy = a.top + a.height / 2;
+  return others.some((o) => {
+    if (distToBox(cx, cy, o) < r) return true;
+    if (Math.min(o.width, o.height) < diameter) {
+      return Math.hypot(cx - (o.left + o.width / 2), cy - (o.top + o.height / 2)) < diameter;
+    }
+    return false;
+  });
+}
+
+// items: collectTargets(). Under 24 px (or the DESIGN.md minimum, never lower) is alto per element
+// unless the spacing exception holds; under 44 px (or recommendedPx) at phone width is one
+// medio entry per width and theme. "Equivalent control" and "essential" are not measured.
+export function targetFindings(items, { width, minPx = MIN_TARGET_PX, recommendedPx = RECOMMENDED_TARGET_PX }) {
+  const min = Math.max(MIN_TARGET_PX, Number(minPx) || 0);
+  const out = [];
+  const small = [];
+  const alto = new Set();
+  const counted = items.filter((i) => !i.inline);
+  for (const it of counted) {
+    const side = Math.min(it.width, it.height);
+    if (side >= min) { if (side < recommendedPx) small.push(it); continue; }
+    const others = counted.filter((o) => o !== it);
+    if (circleCrosses(it, others, min)) {
+      alto.add(it);
+      out.push({ id: 'TARGET-01', status: 'fail', key: it.selector, selector: it.selector, measure: { widthPx: round1(it.width), heightPx: round1(it.height), minPx: min } });
+    } else {
+      small.push(it);
+    }
+  }
+  if (width <= PHONE_MAX_WIDTH) {
+    const under = small.filter((i) => Math.min(i.width, i.height) < recommendedPx).sort((a, b) => Math.min(a.width, a.height) - Math.min(b.width, b.height));
+    if (under.length) {
+      out.push({
+        id: 'TARGET-01', status: 'fail', key: 'phone-targets', severity: 'medio',
+        measure: { count: under.length, smallestPx: round1(Math.min(under[0].width, under[0].height)), recommendedPx, selectors: under.slice(0, MAX_SELECTORS).map((i) => i.selector) },
+      });
+    }
+  }
+  if (!out.length) out.push({ id: 'TARGET-01', status: 'pass', key: 'checked', measure: { checked: counted.length } });
+  return out;
+}
+
+// items: collectFields(). Only at phone width (≤ 480): elsewhere the rule does not apply.
+export function fieldFindings(items, { width }) {
+  if (width > PHONE_MAX_WIDTH) return [];
+  const bad = items.filter((i) => i.fontSize < MIN_FIELD_FONT_PX);
+  if (!bad.length) return [{ id: 'FORM-01', status: 'pass', key: 'checked', measure: { checked: items.length } }];
+  return bad.map((i) => ({ id: 'FORM-01', status: 'fail', key: i.selector, selector: i.selector, measure: { fontSizePx: i.fontSize, requiredPx: MIN_FIELD_FONT_PX } }));
+}
+
 // Walks the page with Tab: every expected element must be reached, and look different.
 export async function keyboardFindings(page, { maxSteps = 200 } = {}) {
   const expected = await page.evaluate(inPage(collectFocusables));
@@ -277,12 +387,14 @@ export async function keyboardFindings(page, { maxSteps = 200 } = {}) {
   return out;
 }
 
-export async function runChecks(page) {
+export async function runChecks(page, { targets } = {}) {
   const contrast = contrastFindings(await page.evaluate(inPage(collectContrast)));
   const findings = [...contrast.findings];
   if (!findings.some((f) => f.status === 'fail')) findings.push({ id: 'COLOR-03', status: 'pass', key: 'checked', measure: { checked: contrast.checked } });
   const width = await page.evaluate(() => innerWidth);
   findings.push(...reflowFindings(await page.evaluate(inPage(collectReflow)), { width }));
+  findings.push(...targetFindings(await page.evaluate(inPage(collectTargets)), { width, ...(targets ?? {}) }));
+  findings.push(...fieldFindings(await page.evaluate(inPage(collectFields)), { width }));
   findings.push(...await keyboardFindings(page));
   return findings;
 }
