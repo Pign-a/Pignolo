@@ -1,7 +1,7 @@
 {
   "name": "pignolo-ui",
   "displayName": "Pignolo UI",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Crear y mejorar interfaces web con decisiones de diseño explícitas y verificadas: DESIGN.md validado, checker por script y auditor con evidencia",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",
