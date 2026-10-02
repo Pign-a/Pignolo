@@ -123,3 +123,12 @@ test('ui-auditor: criteria apply only when their condition holds, cap of 3, Judg
   }
   assert.match(body, /data-sample[^.]*is not a finding/);
 });
+
+test('ui-auditor: the optional keep line is one line about what already works, with no note or severity', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['keep', 'one line', 'already works']) assert.ok(body.includes(needle), `missing: ${needle}`);
+  const rule = body.split('\n').find((l) => l.startsWith('- `keep`'));
+  assert.ok(rule, 'a rule line for keep');
+  assert.match(rule, /no severity, no evidence, no note/);
+  assert.ok(!/"keep":\s*\{/.test(body), 'keep is plain text, not an object with severity or note');
+});

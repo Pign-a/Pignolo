@@ -37,6 +37,7 @@ End your answer with exactly one fenced `json` block with this shape (the main t
   "notVerified": [
     { "what": "hover and pressed states", "reason": "the URL does not reach them" }
   ],
+  "keep": "The summary table reads well and keeps its column order",
   "independent": true
 }
 ```
@@ -45,6 +46,7 @@ End your answer with exactly one fenced `json` block with this shape (the main t
 - `evidence` is one of: `{ "kind": "ui-check" | "browser", "fingerprint": "<fingerprint of an entry in the run>" }`, `{ "kind": "file", "path": "<path inside the project>", "line": <n> }`, or `{ "kind": "capture", "path": "<path inside the run>", "sha256": "<sha256 of the file>" }`.
 - `why` says in plain words what the problem causes. `before` and `after` are optional short texts.
 - `independent` is `true` when you ran as a separate agent.
+- `keep` is optional: name one thing that already works and must not be diluted by the fixes, in one line (160 characters at most). It is not a finding: no severity, no evidence, no note.
 
 # Rules
 

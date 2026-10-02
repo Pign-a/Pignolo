@@ -329,3 +329,26 @@ test('an unknown option or subcommand exits 2 with a Spanish message and no stac
     assert.doesNotMatch(r.stderr, /\n\s+at /);
   }
 });
+
+test('auditor-check prints the keep line: its text when valid, null when absent, null and exit 1 when invalid', () => {
+  const withKeep = (keep) => {
+    const project = auditorRun(null);
+    const out = { findings: [finding()], notVerified: [], independent: true };
+    if (keep !== undefined) out.keep = keep;
+    writeTree(project, { [`${RUN_REL}/auditor.json`]: JSON.stringify(out) });
+    return project;
+  };
+  const ok = withKeep('la tabla se lee bien');
+  const r1 = run(['auditor-check', '--project', ok, '--run', runDir(ok)]);
+  assert.equal(r1.status, 0);
+  assert.equal(r1.json.keep, 'la tabla se lee bien');
+  const none = withKeep(undefined);
+  const r2 = run(['auditor-check', '--project', none, '--run', runDir(none)]);
+  assert.equal(r2.status, 0);
+  assert.equal(r2.json.keep, null);
+  const bad = withKeep('x'.repeat(161));
+  const r3 = run(['auditor-check', '--project', bad, '--run', runDir(bad)]);
+  assert.equal(r3.status, 1);
+  assert.ok(r3.json.problems.some((p) => p.problem === 'bad-keep'));
+  assert.equal(r3.json.keep, null);
+});
