@@ -2,7 +2,8 @@
 //
 // node <root>/scripts/browser.mjs <capture|measure|dom> --project <repo> --run <folder in .pignolo-ui/runs/>
 //   (--url <local URL> | --file <HTML file in the project>) [--design <DESIGN.md>]
-//   [--platform desktop|mobile|both] [--dark] [--before <browser.json>]
+//   [--platform desktop|mobile|both] [--dark] [--before <browser.json>] [--register brand|product]
+//   (--register: the register of this screen for TYPE-02; without it DESIGN.md pignolo.register rules)
 //
 // --url accepts only localhost, 127.0.0.0/8 and [::1] (nothing remote at run time, spec §0);
 // the browser is the installed Chrome or Edge (PIGNOLO_UI_BROWSER forces the path).
@@ -27,10 +28,11 @@ import { openBrowser, BrowserUnavailable } from '../lib/browser-session.mjs';
 import { shotPlan, planFromProject } from '../lib/shot-plan.mjs';
 import { validateDesign } from '../lib/design-doc.mjs';
 import { measurePage, capturePage, dumpDom } from '../lib/browser-run.mjs';
+import { effectiveRegister } from '../lib/browser-checks.mjs';
 
 class UsageError extends Error {}
 const COMMANDS = ['capture', 'measure', 'dom'];
-const VALUE_OPTS = new Set(['project', 'run', 'url', 'file', 'design', 'platform', 'before']);
+const VALUE_OPTS = new Set(['project', 'run', 'url', 'file', 'design', 'platform', 'before', 'register']);
 const FLAGS = new Set(['dark']);
 
 function parseArgs(argv) {
@@ -147,6 +149,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     const design = opts.design !== undefined ? path.resolve(cwd, opts.design) : null;
     if (design && !fs.existsSync(design)) throw new UsageError(`--design no existe: ${opts.design}`);
     if (opts.platform !== undefined && !['desktop', 'mobile', 'both'].includes(opts.platform)) throw new UsageError('--platform debe ser desktop, mobile o both');
+    if (opts.register !== undefined && !['brand', 'product'].includes(opts.register)) throw new UsageError('--register debe ser brand o product');
     const fromProject = planFromProject({ project, design });
     const plan = shotPlan({ platform: opts.platform ?? fromProject.platform, dark: opts.dark === true || fromProject.dark });
     const before = opts.before !== undefined ? readBefore(path.resolve(cwd, opts.before)) : null;
@@ -167,7 +170,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     let exitCode = 0;
     if (opts.command === 'measure') {
       const pig = designPignolo(design);
-      const r = await measurePage({ url, plan, open, before, targets: pig?.targets ?? null, page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
+      const r = await measurePage({ url, plan, open, before, targets: pig?.targets ?? null, register: effectiveRegister({ flag: opts.register, design: pig }), page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
       out = path.join(run, 'browser.json');
       fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, plan, entries: r.entries }, null, 2)}\n`);
       const count = (s) => r.entries.filter((e) => e.status === s).length;

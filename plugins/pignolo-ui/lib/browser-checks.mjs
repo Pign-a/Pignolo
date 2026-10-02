@@ -526,6 +526,20 @@ export function respFindings(byWidth, { wide, narrow } = {}) {
   }];
 }
 
+// ---- T11: register of one screen -------------------------------------------------------------------
+
+export const REGISTERS = ['brand', 'product'];
+
+// The register a measure uses: the --register flag (what the flow brief declares for the screen),
+// else pignolo.register of DESIGN.md (design = its pignolo block or null), else 'unset'.
+export function effectiveRegister({ flag, design } = {}) {
+  if (flag !== undefined && flag !== null) {
+    if (!REGISTERS.includes(flag)) throw new TypeError(`register must be one of ${REGISTERS.join(', ')}: ${flag}`);
+    return flag;
+  }
+  return design && REGISTERS.includes(design.register) ? design.register : 'unset';
+}
+
 // Walks the page with Tab: every expected element must be reached, and look different.
 export async function keyboardFindings(page, { maxSteps = 200 } = {}) {
   const expected = await page.evaluate(inPage(collectFocusables));

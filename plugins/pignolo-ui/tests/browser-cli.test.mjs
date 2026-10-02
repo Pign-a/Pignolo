@@ -47,6 +47,7 @@ test('usage errors exit 2 with a message and no stack', async () => {
     [['measure', '--project', root, '--run', run, '--file', path.join(root, '..', 'x.html')], /no existe|fuera del proyecto/],
     [['capture', '--project', root, '--run', run, '--url', 'http://127.0.0.1:9/', '--before', path.join(root, 'index.html')], /--before no es un browser.json/],
     [['measure', '--project', root, '--run', run, '--url', 'http://127.0.0.1:9/', '--platform', 'tv'], /--platform debe ser/],
+    [['measure', '--project', root, '--run', run, '--url', 'http://127.0.0.1:9/', '--register', 'airy'], /--register debe ser brand o product/],
   ];
   for (const [args, message] of CASES) {
     const r = await cli(args);
@@ -206,4 +207,29 @@ test('measure: a visible password field on the page asked for is "requires sessi
   } finally {
     await site.close();
   }
+});
+
+test('measure --register: the screen register changes the TYPE-02 threshold (28 px title over 24 px body)', { skip }, async () => {
+  const { root, run } = project();
+  const html = GOOD.replace('<h1>Inicio</h1><p>Texto</p>', '<h1 style="font-size:28px">Inicio</h1><p style="font-size:24px">Texto del cuerpo</p>');
+  const site = await serveRoutes({ '/': { headers: HTML, body: html } });
+  try {
+    const type02 = (reg) => readJson(path.join(run, 'browser.json')).entries.filter((e) => e.id === 'TYPE-02' && e.measure.width === 1440 && e.measure.theme === 'light' && e.status !== 'unverified').map((e) => [e.status, e.measure.register]);
+    const brand = await cli(['measure', '--project', root, '--run', run, '--url', `${site.base}/`, '--platform', 'desktop', '--register', 'brand']);
+    assert.equal(brand.status, 0, brand.stderr);
+    assert.deepEqual(type02(), [['fail', 'brand']]);
+    await cli(['measure', '--project', root, '--run', run, '--url', `${site.base}/`, '--platform', 'desktop', '--register', 'product']);
+    assert.deepEqual(type02(), [['pass', 'product']]);
+    await cli(['measure', '--project', root, '--run', run, '--url', `${site.base}/`, '--platform', 'desktop']);
+    assert.deepEqual(type02(), [['pass', 'unset']]);
+  } finally {
+    await site.close();
+  }
+});
+
+test('prepare-run.md: --register is added to measure only when the brief declares a register', () => {
+  const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'reference', 'prepare-run.md'), 'utf8');
+  assert.match(text, /--register <brand\|product>/);
+  assert.match(text, /only when the flow brief declares a `register`/);
+  assert.match(text, /otherwise omit it/);
 });

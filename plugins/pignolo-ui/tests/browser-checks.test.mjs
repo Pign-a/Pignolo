@@ -6,7 +6,7 @@ import { serveRoutes, BROWSER_SKIP, browserPath } from './helpers.mjs';
 import { withBrowser } from '../lib/browser-session.mjs';
 import { measurePage } from '../lib/browser-run.mjs';
 import { shotPlan } from '../lib/shot-plan.mjs';
-import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, typeFindings, respFindings, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
+import { parseComputedColor, contrastFindings, reflowFindings, targetFindings, fieldFindings, typeFindings, respFindings, effectiveRegister, runChecks, runReducedMotionCheck, visibleTextSelectors } from '../lib/browser-checks.mjs';
 
 const skip = BROWSER_SKIP;
 const HTML = { 'content-type': 'text/html; charset=utf-8' };
@@ -377,4 +377,13 @@ test('RESP-01 in the browser: hidden side nav fails, a collapsed menu with its b
 test('RESP-01 in the browser: a plan without a desktop width is unverified', { skip }, async () => {
   const f = await measureReal(page(NAV), 'mobile');
   assert.deepEqual(f.map((e) => e.status), ['unverified']);
+});
+
+// ---- Hito 4e, T11: register per screen ------------------------------------------------------------------
+test('effectiveRegister: the flag wins, then DESIGN.md, then unset; another value is an error', () => {
+  assert.equal(effectiveRegister({ flag: 'brand', design: { register: 'product' } }), 'brand');
+  assert.equal(effectiveRegister({ design: { register: 'product' } }), 'product');
+  assert.equal(effectiveRegister({}), 'unset');
+  assert.equal(effectiveRegister({ design: { platform: 'web' } }), 'unset');
+  assert.throws(() => effectiveRegister({ flag: 'airy' }), /register must be one of/);
 });
