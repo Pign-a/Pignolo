@@ -81,3 +81,5 @@ Mismo brief (4 pantallas HTML locales más la página de comparación), todos co
 **Lo que cuenta un script:** los cuatro brazos entregaron los 5 archivos (verificado mirando las carpetas), ninguno trae recursos remotos, y el costo es el mismo (76 a 79 mil tokens, 81 a 96 s): ni la carta candidata ni el contexto de producto ni los datos de muestra encarecen. La carta candidata escribe ≈ 40 % más HTML.
 
 **Lo que no cuenta un script:** cuál se ve mejor. Lo juzga el autor mirando las cuatro páginas de comparación; hasta entonces no se toca la carta en `main`, no se decide `PRODUCT.md` por esta medición ni la regla de los datos de muestra (D-IM-7). Una corrida por brazo: orden de magnitud.
+
+**Juicio del autor sobre la tercera medición (2026-10-01):** le gustaron mucho más el brazo con `PRODUCT.md` y el de la carta candidata, y prefiere los datos de muestra completos antes que ver solo un marcador como `[SALDO]`. Decisiones: la carta candidata de `ui-option` se adopta; las opciones llevan datos de muestra rotulados (`data-sample` y la línea "Datos de muestra") en lugar de marcadores; `PRODUCT.md` queda confirmado con evidencia (hito 4f).
