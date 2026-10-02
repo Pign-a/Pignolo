@@ -126,6 +126,20 @@ Un pedido real con verdad conocida (el lienzo "Design" de pignolo-ui y 10 decisi
 
 **Comparabilidad:** un solo pedido, un autor simulado y 3 corridas por brazo, con una dispersión mayor que la diferencia: orden de magnitud. El paso de hoy no se volvió a correr para la segunda medición. Conteo validado a mano. Gasto: 9,28 USD. Evidencia: [`RESULTS-brainstorm.md`](../tests/evals/RESULTS-brainstorm.md).
 
+## 2g. Dónde se va el tiempo del ciclo ejecutar → revisar → arreglar (2026-10-01)
+
+Validación de seis cambios de método con tres agentes opus (datos del repo, atacante, fuentes externas). No es un A/B. Detalle: `tests/evals/RESULTS-metodo.md`.
+
+| Qué | Medido |
+|---|---|
+| Parte del ciclo que es ejecutar (hitos grandes) | 51 a 65 % |
+| Parte del ciclo que es arreglar | 18 a 43 % |
+| Corridas de la suite completa por ciclo | 3 a 5, de 3,3 a 11,8 min bajo carga (1,7 a 1,8 min con la máquina tranquila): 10 a 20 % del ciclo |
+| Piso de una revisión opus | ≈ 150 a 160 mil tokens y 8 a 20 min, aunque el diff sea de ~400 líneas |
+| Tests en lo que agrega una pasada de arreglos | 60 a 89 % de las líneas |
+| Hallazgos graves que caen en clases repetidas | 12 de 48 (25 %) |
+
+Adoptado con resguardos: suite completa una vez por rama, hallazgos como tests que fallan, revisión por grupo de hitos chicos, lista de autochequeo. No adoptado: retomar al ejecutor para los arreglos (gasta más tokens) y un formato telegráfico (0,5 a 1,5 %). Ahorro estimado, sin medir: 15 a 25 % de pared en un hito grande y 25 a 40 % en un grupo de chicos. Costo de la validación: ≈ 415 mil tokens, 14 min de agentes.
 ## 3. Agentes que revisan código
 
 Defectos plantados en diffs chicos y sintéticos, 5 corridas por caso.
