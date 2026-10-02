@@ -104,7 +104,7 @@ export function mergeIndex({ ours, live = null, liveFiles = null, published = nu
   if (!Array.isArray(order) || new Set(order).size !== order.length || order.length !== boardNames.length || !order.every((n) => n in live.boards)) return failed([{ code: 'bad-order' }]);
 
   const ownedNames = new Set([...owned, ...Object.keys(published?.files ?? {}), ...Object.keys(published?.boards ?? {})].map(nameOf));
-  const ownsPage = (published && published.pageId === pageId) || ownedNames.size > 0;
+  const ownsPage = (published && published.pageId === pageId) || owned.length > 0;
   const pageInLive = pagesLive.some((p) => p.id === pageId);
   const problems = [];
   if (pageInLive && !ownsPage) problems.push({ code: 'page-collision', detail: pageId });

@@ -38,7 +38,7 @@ export const LIVE_MAX = 8 * MB;
 export const REFUSAL_STOP = { canvas: 3 };
 const FORBIDDEN_KEYS = new Set(['force', 'overwrite_unread', 'from_url', 'share', 'public', 'capabilities']);
 // no scheme other than the one of the host, no query, no fragment: the url that Artifact returned
-const ARTIFACT_URL = /^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9-]{8,64}$/;
+const ARTIFACT_URL = /^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+$/;
 const HEX = /^[0-9a-f]{64}$/;
 const INDEX = 'project/canvas.json';
 
@@ -288,8 +288,7 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
 
   const planFiles = {};
   if (toSend) for (const p of [...toSend, INDEX]) planFiles[p] = sha(fs.readFileSync(path.join(canvas, ...p.split('/'))));
-  if (step.id === 'canvas-publish') writeAtomic(plannedFile(run), `${JSON.stringify({ canvasUrl: record.url, paths: [...toSend], at: new Date().toISOString() }, null, 2)}
-`);
+  if (step.id === 'canvas-publish') writeAtomic(plannedFile(run), `${JSON.stringify({ canvasUrl: record.url, paths: [...toSend], at: new Date().toISOString() }, null, 2)}\n`);
   writeAtomic(path.join(run, 'plan.json'), `${JSON.stringify({ id: step.id, files: planFiles, changed: diff.changed, sendIndex: diff.sendIndex, at: new Date().toISOString() }, null, 2)}\n`);
   return { ok: true, problems: [], notes: noteList(manifest), done: false, step, ...(newCanvas ? { newCanvas: true } : {}) };
 }
@@ -369,6 +368,13 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
     try { st = fs.lstatSync(live); } catch { throw new PublishError('--live no existe', true); }
     if (st.isSymbolicLink() || !st.isFile()) throw new PublishError('--live es un enlace o no es un archivo: se rechaza', true);
     if (st.size > LIVE_MAX) throw new PublishError('--live pesa más de 8 MB', true);
+    // the live index is what the tool saved: never a file of this run's own canvas/ or merge/ (it would be read back as the user's)
+    const realRun = fs.realpathSync.native(run);
+    const realLive = fs.realpathSync.native(live);
+    for (const own of ['canvas', 'merge']) {
+      const rel = path.relative(path.join(realRun, own), realLive);
+      if (!(rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel))) throw new PublishError(`--live es un archivo de ${own}/ de esta corrida: se rechaza`, true);
+    }
     liveText = fs.readFileSync(live);
     try { liveIndex = JSON.parse(liveText.toString('utf8').replace(/^﻿/, '')); } catch { return { ok: false, problems: [{ code: 'bad-live' }] }; }
     // a frame that was deleted and is back in the live index is not exempt any more: it leaves publish.json.deleted, the next
@@ -376,8 +382,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
     const liveNames = isObj(liveIndex) && isObj(liveIndex.boards) ? Object.keys(liveIndex.boards).map((n) => n.toLowerCase()) : [];
     const back = deleted.filter((n) => liveNames.includes(n.toLowerCase()));
     if (back.length && trusted) {
-      writeAtomic(publishFile(run), `${JSON.stringify({ ...trusted, deleted: deleted.filter((n) => !back.includes(n)) }, null, 2)}
-`);
+      writeAtomic(publishFile(run), `${JSON.stringify({ ...trusted, deleted: deleted.filter((n) => !back.includes(n)) }, null, 2)}\n`);
       return { ok: false, problems: back.map((file) => ({ code: 'live-incomplete', file })), kept: emptyKept() };
     }
     if (liveDir === 'none') {
@@ -401,8 +406,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   if (!result.ok) {
     // the canvas that was just created already has a Main.dc.html that is not ours: plan must accept first false (RL2-03)
     if (trusted && result.problems.some((p) => p.code === 'main-exists-live') && trusted.mainTaken !== true) {
-      writeAtomic(publishFile(run), `${JSON.stringify({ ...trusted, mainTaken: true }, null, 2)}
-`);
+      writeAtomic(publishFile(run), `${JSON.stringify({ ...trusted, mainTaken: true }, null, 2)}\n`);
     }
     return { ok: false, problems: result.problems, kept: result.kept };
   }
