@@ -465,7 +465,13 @@ function applyMoves({ main, plan, config, rewrites = [], mapEdits = [], env = pr
   for (let k = 0; k < record.items.length; k += 1) {
     const it = record.items[k];
     const fail = (e) => {
-      const pending = record.items.slice(k).map((x) => x.from);
+      // R-12: decide por el disco. Un `git mv` puede renombrar y fallar después (índice bloqueado): si `to` existe y `from` no, el ítem se movió.
+      const onDisk = (rel) => { try { fs.lstatSync(abs(main, rel)); return true; } catch (_) { return false; } };
+      if (onDisk(it.to) && !onDisk(it.from)) {
+        done.push(it.from);
+        updateRecord(recFile, (r) => { r.items[k].status = 'done'; }, fs);
+      }
+      const pending = record.items.slice(done.length > k ? k + 1 : k).map((x) => x.from);
       if (!done.length) {
         removeEmptyDirs(fs, main, createdDirs);
         updateRecord(recFile, (r) => { r.status = 'undone'; r.items[k].status = 'pending'; }, fs);
@@ -511,7 +517,14 @@ function undoMoves({ record, main, env = process.env, run, fs = nodeFs } = {}) {
   let rec;
   try { rec = readRecord(record, fs); } catch (e) { return refusal('bad-record', { detail: e.message }); }
   if (!rec || rec.v !== 1 || !Array.isArray(rec.items)) return refusal('bad-record', { detail: 'moves.json no tiene la forma esperada' });
-  if (rec.status === 'undone') return { ok: true, already: 'undone', items: [], restored: [] };
+  if (rec.status === 'undone') {
+    // R-12: "undone" no basta; si algún ítem sigue movido en el disco (un fallo tardío de git mv), se sigue.
+    const movedOnDisk = rec.items.some((i) => {
+      try { fs.lstatSync(abs(main, i.to)); } catch (_) { return false; }
+      try { fs.lstatSync(abs(main, i.from)); return false; } catch (_) { return true; }
+    });
+    if (!movedOnDisk) return { ok: true, already: 'undone', items: [], restored: [] };
+  }
   let same = false;
   try { same = fold(realOf(fs, rec.main)) === fold(realOf(fs, main)); } catch (_) { same = false; }
   if (!same) return refusal('wrong-repo', { detail: `el registro es de ${rec.main}` });

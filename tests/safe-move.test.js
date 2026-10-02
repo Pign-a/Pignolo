@@ -653,3 +653,56 @@ test('ningún flujo ejecuta commit, add, push, reset, checkout, clean ni stash; 
   assert.equal(mvs.length, 4);
   for (const a of mvs) assert.equal(a.filter((x) => x !== 'mv' && x !== '--').length, 2, a.join(' '));
 });
+
+// ---------------------------------------------------------------- I-1: git mv que mueve el disco y falla después (índice bloqueado)
+
+function renamesThenThrows(main, { onCall = 1 } = {}) {
+  const real = makeRun(main);
+  let n = 0;
+  return (args, cwd, o) => {
+    if (verbOf(args) === 'mv') {
+      n += 1;
+      if (n === onCall) {
+        fs.renameSync(path.join(main, args[2]), path.join(main, args[3]));
+        const e = new Error('fatal: Unable to write new index file'); e.status = 128; throw e;
+      }
+    }
+    return real(args, cwd, o);
+  };
+}
+
+test('I-1: un mv que renombra el disco y falla después es partial (no failed) y el deshacer lo revierte', () => {
+  const repo = base();
+  const h = hashTree(repo);
+  const r = apply(repo, [ITEM], { run: renamesThenThrows(repo) });
+  assert.equal(r.ok, false);
+  assert.equal(r.kind, 'partial');
+  assert.deepEqual(r.done, ['doc/specs']);
+  assert.deepEqual(r.pending, []);
+  assert.equal(JSON.parse(fs.readFileSync(r.record, 'utf8')).status, 'partial');
+  assert.ok(fs.existsSync(path.join(repo, 'docs/specs/a.md')) && !fs.existsSync(path.join(repo, 'doc/specs')));
+  const u = undoMoves({ record: r.record, main: repo });
+  assert.equal(u.ok, true);
+  assert.notEqual(u.already, 'undone');
+  assert.equal(hashTree(repo), h);
+  assert.equal(status(repo), '');
+});
+
+test('I-1: un registro marcado undone con un ítem aún movido en el disco no se da por deshecho', () => {
+  const repo = base();
+  const h = hashTree(repo);
+  const r = apply(repo, [ITEM], { run: renamesThenThrows(repo) });
+  SM.updateRecord(r.record, (x) => { x.status = 'undone'; });
+  const u = undoMoves({ record: r.record, main: repo });
+  assert.equal(u.ok, true);
+  assert.notEqual(u.already, 'undone');
+  assert.equal(hashTree(repo), h);
+});
+
+test('I-1: un fallo sin que nada se moviera en disco sigue siendo failed y deja el registro undone', () => {
+  const repo = base();
+  const rec = recorder(repo, { failOn: (n) => n === 1 });
+  const r = apply(repo, [ITEM], { run: rec.run });
+  assert.equal(r.kind, 'failed');
+  assert.equal(JSON.parse(fs.readFileSync(r.record, 'utf8')).status, 'undone');
+});
