@@ -64,6 +64,8 @@ Las mismas 4 tareas reales (hito 4a, ola 1), misma base y mismas tarjetas, calif
 
 ## 2d. Costo por tipo de trabajo con el método liviano (2026-09-30 y 2026-10-01)
 
+Lo que costó cada hito, fase por fase, y con qué método se ejecutó está en [`ejecuciones.md`](ejecuciones.md) (datos en [`ejecuciones.csv`](ejecuciones.csv)).
+
 Tokens y tiempo que informa cada subagente al terminar, sobre trabajo real de pignolo. Son mediciones de una sola corrida, no A/B: sirven para presupuestar.
 
 | Trabajo | Modelo | Tokens | Tiempo | Herramientas |
