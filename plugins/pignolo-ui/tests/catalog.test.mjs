@@ -7,11 +7,12 @@ const SPEC_5_4 = ['A11Y-01', 'A11Y-02', 'A11Y-04', 'A11Y-05', 'A11Y-16', 'A11Y-2
   'STATE-04', 'MOTION-03', 'MOTION-04', 'COLOR-02', 'DEPTH-01', 'LAYOUT-04', 'DRIFT-01', 'THEME-01', 'THEME-02', 'COLOR-11',
   'COLOR-12', 'ICON-01', 'CONTENT-01', 'COPY-01', 'META-01'];
 const BROWSER = ['NAV-01', 'LAYOUT-10', 'LAYOUT-11', 'MOTION-07', 'TARGET-01', 'FORM-01', 'TYPE-01', 'TYPE-02', 'RESP-01'];
+const STATIC_4E = ['A11Y-41'];
 const SEO = ['SEO-01', 'SEO-02', 'SEO-04', 'SEO-05', 'SEO-06', 'SEO-09', 'SEO-18'];
 
 test('catalog ids cover the 25 rules of spec 5.4, THEME-03, the browser checks and the 7 SEO ids', () => {
   const ids = catalog.rules.map((r) => r.id);
-  assert.deepEqual([...ids].sort(), [...SPEC_5_4, 'THEME-03', ...BROWSER, ...SEO].sort());
+  assert.deepEqual([...ids].sort(), [...SPEC_5_4, 'THEME-03', ...BROWSER, ...STATIC_4E, ...SEO].sort());
   assert.equal(catalog.catalogVersion, '0.4.0');
 });
 
@@ -21,7 +22,7 @@ test('the real catalog has no problems', () => {
 
 test('checkers: 25 + 7 SEO ui-check, THEME-03 design-md, browser rules browser; COLOR-12 related to COLOR-03', () => {
   const by = (c) => catalog.rules.filter((r) => r.checker === c).map((r) => r.id).sort();
-  assert.deepEqual(by('ui-check'), [...SPEC_5_4, ...SEO].sort());
+  assert.deepEqual(by('ui-check'), [...SPEC_5_4, ...STATIC_4E, ...SEO].sort());
   assert.deepEqual(by('design-md'), ['THEME-03']);
   assert.deepEqual(by('browser'), [...BROWSER].sort());
   for (const id of BROWSER) assert.equal(catalog.rules.find((r) => r.id === id).class, 'browser', id);
@@ -80,7 +81,8 @@ test('SEO never blocks: document level, no floor, no bloquea; SEO-02 and SEO-09 
 });
 
 // Hito 4e: the new taste and measure rules never block and never join the floor.
-const NEW_4E = { 'TARGET-01': ['alto', false], 'FORM-01': ['medio', false], 'TYPE-01': ['medio', true], 'TYPE-02': ['medio', true], 'RESP-01': ['medio', true] };
+const NEW_4E = {
+  'A11Y-41': ['medio', false], 'TARGET-01': ['alto', false], 'FORM-01': ['medio', false], 'TYPE-01': ['medio', true], 'TYPE-02': ['medio', true], 'RESP-01': ['medio', true] };
 test('hito 4e rules: no floor, never bloquea, TARGET-01 and FORM-01 refuse intentional, the type rules accept it', () => {
   for (const [id, [severity, intentional]] of Object.entries(NEW_4E)) {
     const r = catalog.rules.find((x) => x.id === id);

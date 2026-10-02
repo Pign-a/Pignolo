@@ -1,4 +1,5 @@
-// Document rules (spec §5.4, level document): A11Y-01, A11Y-02, A11Y-05, A11Y-28, META-01.
+// Document rules (spec §5.4, level document): A11Y-01, A11Y-02, A11Y-05, A11Y-28, META-01 and
+// A11Y-41 (heading level skips, hito 4e).
 // The runner only calls checkFile on documents (ctx.isDocument); other files never reach here.
 import { pass, fail, unverified } from './api.mjs';
 import { staticText, ancestors } from '../markup.mjs';
@@ -139,6 +140,26 @@ function meta01(ctx) {
   return out;
 }
 
+// A11Y-41: a heading whose level is more than one below the previous one (h1 to h3, or h2 to h4
+// after an h3). Going back up is fine; starting at h2 without an h1 is not this rule. Headings
+// under aria-hidden are ignored. In JSX the levels are composed when rendered: unverified.
+function a11y41(ctx) {
+  const heads = ctx.markup.elements.filter((e) => /^h[1-6]$/.test(e.tag) && !e.component
+    && String(staticAttr(e, 'aria-hidden') ?? '').toLowerCase() !== 'true'
+    && !ancestors(ctx.markup, e).some((a) => String(staticAttr(a, 'aria-hidden') ?? '').toLowerCase() === 'true'));
+  if (ctx.syntax === 'jsx' && heads.length >= 2) return [unverified('heading levels are composed when the page renders: look at the rendered DOM')];
+  const out = [];
+  for (let i = 1; i < heads.length; i++) {
+    const from = Number(heads[i - 1].tag[1]);
+    const to = Number(heads[i].tag[1]);
+    if (to <= from + 1) continue;
+    const text = staticText(ctx.markup, heads[i]).text.replace(/s+/g, ' ').trim().slice(0, 40);
+    out.push(fail(`h${from}>h${to}|${text}`, { line: heads[i].line, selector: heads[i].tag, reason: `heading level skips from h${from} to h${to}`, measure: { from, to } }));
+  }
+  if (out.length === 0) out.push(pass(heads.length ? 'headings' : 'no headings'));
+  return out;
+}
+
 const forDocument = (fn) => (ctx) => (ctx.markup ? fn(ctx) : [unverified('not a document')]);
 
 export const RULES = [
@@ -147,4 +168,5 @@ export const RULES = [
   { id: 'A11Y-05', checkFile: forDocument(a11y05) },
   { id: 'A11Y-28', checkFile: forDocument(a11y28) },
   { id: 'META-01', checkFile: forDocument(meta01) },
+  { id: 'A11Y-41', checkFile: forDocument(a11y41) },
 ];
