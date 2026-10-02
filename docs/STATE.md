@@ -17,7 +17,6 @@ Versiones leídas de los `plugin.json`.
 | `core/hito-7a` | Hito 7a: ramas, worktrees por tarea, cola de integración, limpieza, `next` y `plan.js list` (0.13.0) | construido (dos ejecutores; el primero se cortó por límite); **revisión final opus en curso** |
 | `core/hito-8d` | Hito 8d: estructura de carpetas (mapa `places`, esqueleto con README, adaptar un proyecto existente, mover seguro con deshacer) (0.13.0) | construido; **revisión final opus en curso**; al unir el segundo de los dos se renumera a 0.14.0 |
 | `ui/option-candidata` | pignolo-ui 0.7.3: carta candidata de `ui-option` adoptada y datos de muestra rotulados en vez de marcadores | en construcción (sonnet) |
-| `plan/ui-impeccable` | Planes 4e ampliado, 4f (contexto de producto) y 4g (opciones de un elemento) | en escritura (sonnet) |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/` (los del 7a y de la etapa 1 del lienzo pueden seguir solo en el scratch de la sesión).
 
@@ -77,7 +76,7 @@ Mediciones aprobadas: tope de 14 USD para los hitos 4f y 4g (≈ 6,3 USD estimad
 | Borrar ramas unidas (D-7-7) | `docs/research/2026-10-01-borrar-ramas-unidas.md` |
 | Estructura de carpetas | `docs/plans/2026-10-01-hito-8d-estructura-de-carpetas.md`, `docs/research/2026-10-01-estructura-de-carpetas.md` |
 | Lienzo, Design System, modo explorar (D-4c-x) | `docs/plans/2026-10-01-pignolo-ui-hito-4c-lienzo.md`, `docs/research/2026-10-01-lienzo-design.md` |
-| Oficio y chequeos, impeccable (D-4e, D-UX, D-IM) | `docs/plans/2026-10-01-pignolo-ui-hito-4e-oficio-y-chequeos.md`, `docs/research/2026-10-01-skills-de-diseno.md`; planes 4f y 4g en la rama `plan/ui-impeccable` |
+| Oficio y chequeos, impeccable (D-4e, D-UX, D-IM) | `docs/plans/2026-10-01-pignolo-ui-hito-4e-oficio-y-chequeos.md`, `docs/research/2026-10-01-skills-de-diseno.md`; planes 4f y 4g en `docs/plans/` |
 | Banco final (D-B-1) | `docs/plans/2026-10-01-bench-pignolo-vs-base.md` |
 | Método liviano, serie contra paralelo | `CLAUDE.md`, `tests/evals/RESULTS-ejecucion.md` |
 | Validar planes | `tests/evals/RESULTS-planes.md` |
