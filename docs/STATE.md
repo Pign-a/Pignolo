@@ -6,7 +6,7 @@ _Última actualización: 2026-10-01, tarde._ Leer esto primero al retomar. Es co
 
 Versiones leídas de los `plugin.json`.
 
-- **Núcleo `pignolo` 0.12.1:** hitos 1 a 6, 8a y 8b. Guardia y respaldos (1), agentes, perfiles y `setup` (2), carriles, compuertas y revisión (3), tests, sabotaje y holdout (4), modo plan (5), continuidad (6), `/pignolo:init` (8a), evals del `debugger` y contrato con el banco (8b). Más las **reglas del brainstorming** en el paso 2 de la skill `plan` (sin skill nueva), `plan.js decision add`, el `spec-reviewer` con las decisiones del autor como segunda fuente y `CREDITS.md`. El agente `learning-validator` se borró.
+- **Núcleo `pignolo` 0.13.1:** hitos 1 a 6, 8a, 8b y 8d (estructura de carpetas: mapa `places`, esqueleto, adaptar un proyecto existente, mover con deshacer). Guardia y respaldos (1), agentes, perfiles y `setup` (2), carriles, compuertas y revisión (3), tests, sabotaje y holdout (4), modo plan (5), continuidad (6), `/pignolo:init` (8a), evals del `debugger` y contrato con el banco (8b). Más las **reglas del brainstorming** en el paso 2 de la skill `plan` (sin skill nueva), `plan.js decision add`, el `spec-reviewer` con las decisiones del autor como segunda fuente y `CREDITS.md`. El agente `learning-validator` se borró.
 - **`pignolo-ui` 0.7.2:** hitos 1 a 4 (flujos `new`, `improve`, `audit`), `ui-option` con reglas de oficio y modelo por perfil, **etapa 1 del lienzo "Design"** (conversor a artboards, índice, publicación con filtro de datos, clave `publish`, respaldo a HTML local) y el auditor con la gravedad de juicio acotada.
 - Suite completa: 2948 en verde con la máquina tranquila; bajo carga fallan entre 1 y 30 tests de tiempo que pasan corridos solos (G8).
 
@@ -15,7 +15,6 @@ Versiones leídas de los `plugin.json`.
 | Rama | Qué es | Estado |
 |---|---|---|
 | `core/hito-7a` | Hito 7a: ramas, worktrees por tarea, cola de integración, limpieza, `next` y `plan.js list` (0.13.0) | construido (dos ejecutores; el primero se cortó por límite); **revisión final opus en curso** |
-| `core/hito-8d` | Hito 8d: estructura de carpetas (0.13.1) | construido, revisado y arreglado; se une tras la suite completa |
 | `ui/option-candidata` | pignolo-ui 0.7.3: carta candidata de `ui-option` adoptada y datos de muestra rotulados en vez de marcadores | en construcción (sonnet) |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/` (los del 7a y de la etapa 1 del lienzo pueden seguir solo en el scratch de la sesión).
