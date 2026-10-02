@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import net from 'node:net';
 import { spawn } from 'node:child_process';
-import { makeTempDir, writeTree, runScript, serveRoutes, BROWSER_SKIP, PLUGIN_ROOT } from './helpers.mjs';
+import { makeTempDir, writeTree, runScript, serveRoutes, BROWSER_SKIP, PLUGIN_ROOT, BRIEF_TEXT } from './helpers.mjs';
 
 // async variant: the served page lives in this process, so the child must not block the event loop
 function runScriptAsync(script, args) {
@@ -134,7 +134,7 @@ test('approved: an extra heading is a difference, exit stays 0; same structure w
   const project = makeTempDir();
   const from = path.join(project, 'mock');
   writeTree(from, { 'inicio.html': mockup(), 'detalle.html': mockup({ n: 2 }) });
-  const saved = saveApproved({ projectRoot: project, flow: 'flujo', from, date: '2026-10-01' });
+  const saved = saveApproved({ projectRoot: project, flow: 'flujo', from, date: '2026-10-01', brief: BRIEF_TEXT });
   assert.equal(saved.ok, true, JSON.stringify(saved));
   writeTree(project, {
     'impl/inicio.html': mockup({ bg: '#fafafa', accent: '#be123c', font: 'serif', radius: 12, extraHeading: true }),
@@ -162,7 +162,7 @@ test('A-18 measurement: false differences over 6 approved/implementation pairs t
     pairs.push([`s${i}.html`, { n }, { n, bg: '#f4f4f5', accent: '#be123c', font: 'Georgia, serif', radius: i * 3 }]);
   }
   writeTree(from, Object.fromEntries(pairs.map(([f, a]) => [f, mockup(a)])));
-  const saved = saveApproved({ projectRoot: project, flow: 'seis', from, date: '2026-10-01' });
+  const saved = saveApproved({ projectRoot: project, flow: 'seis', from, date: '2026-10-01', brief: BRIEF_TEXT });
   assert.equal(saved.ok, true);
   writeTree(project, Object.fromEntries(pairs.map(([f, , b]) => [`impl/${f}`, mockup(b)])));
   const map = path.join(project, 'map.json');
@@ -178,7 +178,7 @@ test('approved against a served URL, and the exit code never depends on differen
   const project = makeTempDir();
   const from = path.join(project, 'mock');
   writeTree(from, { 'inicio.html': mockup() });
-  const saved = saveApproved({ projectRoot: project, flow: 'url', from, date: '2026-10-01' });
+  const saved = saveApproved({ projectRoot: project, flow: 'url', from, date: '2026-10-01', brief: BRIEF_TEXT });
   const srv = await serveRoutes({ '/': { headers: { 'content-type': 'text/html; charset=utf-8' }, body: mockup({ extraHeading: true }) } });
   try {
     const map = path.join(project, 'map.json');

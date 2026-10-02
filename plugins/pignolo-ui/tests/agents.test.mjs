@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PLUGIN_ROOT, makeTempDir, writeTree } from './helpers.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
-import { extractJsonBlock, validateFindings } from '../lib/auditor-output.mjs';
+import { extractJsonBlock, validateFindings, validateVerdicts } from '../lib/auditor-output.mjs';
 import { judgmentIds, loadNorms } from '../lib/norms.mjs';
 import { lintPlugin } from './support/lint-plugin.mjs';
 
@@ -65,13 +65,13 @@ test('tool lists: ui-option only Write; ui-auditor read-only', () => {
 test('ui-option: patterns, rules, output contract, size, no absolute paths, only real catalog ids', () => {
   const { body } = frontmatterOf(read('ui-option'));
   const low = body.toLowerCase();
-  assert.ok(body.length <= 6000, `${body.length} characters`);
+  assert.ok(body.length <= 7000, `${body.length} characters`);
   for (const needle of ['cream or off-white', 'italic', 'numbered', 'monospace', 'pill',
-    'do not invent content', 'no personal data', 'never overwrite', 'data-primary="true"', '--color-primary',
-    '--font-body', '--radius-sm', '<meta charset="utf-8">', 'datos de ejemplo', 'done:']) {
+    'sample values', 'data-sample', 'never use real people', 'no personal data', 'never overwrite', 'data-primary="true"', '--color-primary',
+    '--font-body', '--radius-sm', '<meta charset="utf-8">', 'datos de muestra', 'done:']) {
     assert.ok(low.includes(needle.toLowerCase()), `missing: ${needle}`);
   }
-  assert.ok(body.includes('‹'));
+  assert.ok(!body.includes('‹'), 'the bare placeholder is gone: sample values are labelled with data-sample');
   // a drive letter on its own (C:\ or D:/), never the "s:/" of an https:// URL
   assert.doesNotMatch(body, /(?<![A-Za-z])[A-Za-z]:[\\/]|\/Users\/|\/home\//);
   const ids = citedIds(body);
@@ -114,4 +114,47 @@ test('the JSON example of ui-auditor passes validateFindings against a synthetic
 
 test('the plugin linter stays green with the cards', () => {
   assert.deepEqual(lintPlugin(PLUGIN_ROOT), []);
+});
+
+test('ui-auditor: criteria apply only when their condition holds, cap of 3, Judgment: label, data-sample is not invented content', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['Applies when', 'at most 3', 'Judgment:', 'No self-grade', 'never `bloquea` without script or browser evidence', 'data-sample']) {
+    assert.ok(body.includes(needle) || body.toLowerCase().includes(needle.toLowerCase()), `missing: ${needle}`);
+  }
+  assert.match(body, /data-sample[^.]*is not a finding/);
+});
+
+test('ui-auditor: the optional keep line is one line about what already works, with no note or severity', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['keep', 'one line', 'already works']) assert.ok(body.includes(needle), `missing: ${needle}`);
+  const rule = body.split('\n').find((l) => l.startsWith('- `keep`'));
+  assert.ok(rule, 'a rule line for keep');
+  assert.match(rule, /no severity, no evidence, no note/);
+  assert.ok(!/"keep":\s*\{/.test(body), 'keep is plain text, not an object with severity or note');
+});
+
+test('ui-auditor: product context only decides whether a criterion applies; verdict mode answers only the ids asked (hito 4f)', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  for (const needle of ['product.md', 'brief.md', 'verdict-request.json', 'Verdict mode', 'never raises a severity', 'do not search for anything new', 'No self-grade', 'Applies when']) {
+    assert.ok(body.includes(needle), `missing: ${needle}`);
+  }
+  assert.ok(body.length <= 7000, `${body.length} characters`);
+});
+
+test('the one-line example of verdict mode passes validateVerdicts against a synthetic run (card and validator agree)', () => {
+  const { body } = frontmatterOf(read('ui-auditor'));
+  const m = /one-line example: `(\{ "verdicts".*?\})`\n/.exec(body);
+  assert.ok(m, 'the card has the one-line example');
+  const output = JSON.parse(m[1]);
+  const project = makeTempDir();
+  writeTree(project, { 'src/page.html': `${'<p>x</p>\n'.repeat(20)}` });
+  const run = path.join(project, '.pignolo-ui', 'runs', 'r1', 'after');
+  fs.mkdirSync(run, { recursive: true });
+  const request = { v: 1, ids: [output.verdicts[0].id], findings: [] };
+  assert.deepEqual(validateVerdicts({ output, request, run, project }), { ok: true, problems: [] });
+});
+
+test('ui-option: a product context block guides content and tone, DESIGN.md still wins (hito 4f)', () => {
+  const body = read('ui-option');
+  for (const needle of ['product context', 'DESIGN.md still wins']) assert.ok(body.includes(needle), `missing: ${needle}`);
 });

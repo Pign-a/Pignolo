@@ -10,7 +10,7 @@
 //   reasons, all that apply and in this order: presentation-local, data-unresolved (the data folder is not the real one, so the opt-out cannot be read), project-opt-out, legacy-consent-declined,
 //   style-tile-local, no-artifact-tool, no-design-type
 // gateDecision({ presentation, projectOptOut, runOptOut, dataUnresolved }) -> { allowed, reasons }   (run.mjs publish-gate)
-export const NOTICE = 'Publico en un lienzo y sus archivos, privados de tu cuenta de claude.ai: mockups con marcadores, nunca capturas ni código; las fuentes se piden a Google Fonts al abrir el lienzo. Para no publicar: decímelo o `config set --key publish --value never`.';
+export const NOTICE = 'Publico en un lienzo y sus archivos, privados de tu cuenta de claude.ai: mockups con datos de muestra rotulados, nunca capturas ni código; las fuentes se piden a Google Fonts al abrir el lienzo. Para no publicar: decímelo o `config set --key publish --value never`.';
 
 export function decidePresentation({ presentation, kind, artifact, designType, optOut = null, dataUnresolved = false }) {
   const reasons = [];

@@ -28,7 +28,7 @@ test('new: order of the steps of spec section 7, empty project goes through dire
   indexOrder(text, ['run.mjs" env', 'design-md.mjs', 'approve.mjs save --flow direction', 'templates/DESIGN.md', 'approve.mjs record', 'Brief, in text',
     'options.md', 'present-and-choose.md', 'apply.md', '<run>/after', 'compare.mjs" approved', 'ui-auditor', 'report-check.mjs"', 'run.mjs" verdict']);
   assert.ok(/no refinement round|sin ronda de afinado/.test(text));
-  assert.ok(text.includes('‹') && text.includes('data-sample'));
+  assert.ok(text.includes('data-sample') && text.includes('Datos de muestra') && !text.includes('‹'));
   assert.ok(text.includes('design/approved/direction'));
   for (const cap of ['one round of directions', 'one round of mockups', 'at most one regeneration', 'one implementation', 'one batch check', 'one batch of fixes', 'at most one confirmation']) {
     assert.ok(text.toLowerCase().includes(cap), cap);
@@ -115,4 +115,13 @@ test('the three skills reference only files that exist now (present-and-choose.m
   for (const name of SKILLS) {
     for (const ref of referencedFiles(readSkill(name).text)) assert.doesNotThrow(() => readReference(ref), `${name}: ${ref}`);
   }
+});
+
+test('new: loads reference/context.md, calls run.mjs context, writes the brief with its two mandatory sections, saves with --brief-file and copies the context to after/ (hito 4f)', () => {
+  const { text } = readSkill('new');
+  for (const lit of ['reference/context.md', 'run.mjs" context', '## First look', '## Do not touch', '--brief-file']) assert.ok(text.includes(lit), lit);
+  assert.ok(/<run>\/after\/[^\n]*product\.md|product\.md[^\n]*<run>\/after\//.test(text) && text.includes('brief.md'), 'product.md and brief.md go to <run>/after/');
+  assert.ok(/offer[^.]*PRODUCT\.md|PRODUCT\.md[^.]*offer/.test(text) && /only `new` offers/.test(text), 'new offers to create PRODUCT.md');
+  assert.ok(/"no" as the default/.test(text), 'the default is no');
+  assert.ok(text.indexOf('run.mjs" context') < text.indexOf('Brief, in text') && text.indexOf('Brief, in text') < text.indexOf('--brief-file'));
 });

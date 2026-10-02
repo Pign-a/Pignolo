@@ -58,3 +58,16 @@ test('extract caps the user body at 4000 chars and keeps tone and J criteria', (
   const ignoredText = extract({ base, user: { ok: false, warning: 'x' } });
   assert.ok(!ignoredText.includes('Author norms'));
 });
+
+test('every J criterion says when it applies, and the ids keep their order with the new format', () => {
+  const lines = base.split('\n').filter((l) => /^- J-\d{2}:/.test(l));
+  assert.equal(lines.length, 12);
+  for (const l of lines) assert.ok(l.includes('Applies when:'), `no "Applies when:" in: ${l}`);
+  assert.deepEqual(judgmentIds(base), Array.from({ length: 12 }, (_, i) => `J-${String(i + 1).padStart(2, '0')}`));
+});
+
+test('J-12 reads the register of the brief as well as the one of DESIGN.md (hito 4f)', () => {
+  const line = base.split('\n').find((l) => l.startsWith('- J-12:'));
+  assert.ok(line.includes('Applies when:'));
+  assert.ok(line.includes('brief'), line);
+});

@@ -14,6 +14,8 @@ Markers: `<root>` is the plugin root and `<data>` the plugin data folder, both r
 
 6. **Check.** `node "<root>/scripts/run.mjs" check --project <repo> --run <run> --files <source files of the screen> [--design <repo>/DESIGN.md]`. It builds one `--dom` argument per rendered file listed in `<run>/dom.json` and adds `browser.json` by itself: never pass a glob. Exit 1 is a finding, continue; exit 2 is "no verificado".
 
+**Product context.** `PRODUCT.md` and the brief of the screen are not part of this preparation: each skill calls `run.mjs context` right after it, as `reference/context.md` says.
+
 **Degraded flow.** If there is no browser, or the URL does not answer, the flow continues with the scripts over the source files only and says so in the first line of the report ("sin navegador"). Only then, and only from the main thread, you may use the browser MCP as a fallback: confirm every step by reading `location.href` and the page title, and whatever it cannot show stays "no verificado".
 
 **Login.** If the screen asks for a session (a redirect to another page or a visible password field), the script marks it "no verificado (requiere sesión)". Do not try to log in and do not ask for credentials; ask the user for a screen that does not need one.

@@ -131,3 +131,13 @@ export async function leftoverProcesses(profile, timeoutMs = 15000) {
     await new Promise((r) => setTimeout(r, 500));
   }
 }
+
+// A valid brief.md (hito 4f) for the tests that save an approval: `approve.mjs save` seals it.
+export const BRIEF_TEXT = '## Screen\nAccount page of a synthetic shop.\n\n## First look\nThe order summary and the pay button, without scrolling.\n\n## Do not touch\nnothing\n';
+
+// Writes BRIEF_TEXT in dir (a new temporary one by default) and returns the file path.
+export function writeBrief(dir = makeTempDir(), name = 'brief.md', text = BRIEF_TEXT) {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, text);
+  return file;
+}
