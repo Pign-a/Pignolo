@@ -119,7 +119,12 @@
       "mcp__*__*push*",
       "mcp__*__*create*",
       "mcp__*__*update*",
-      "mcp__*__*navigate*"
+      "mcp__*__*merge*",
+      "mcp__*__deploy*",
+      "mcp__*__*create_deployment*",
+      "mcp__*__publish*",
+      "mcp__*__*_publish_*",
+      "mcp__*__*delete*"
     ]
   }
 }

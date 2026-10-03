@@ -1185,6 +1185,7 @@ function checkRunScript(name, words, st, ctx, out) {
     if (!evalFlag && leading.some((v) => v === '--check' || v === '-c')) return;
     if (evalFlag && argv.some((w) => namesStateScript(w.value))) { out.push(hit('pignolo-plan')); return; }
     if (evalFlag && argv.some((w) => namesInitScript(w.value))) { out.push(hit('pignolo-init')); return; }
+    if (evalFlag && argv.some((w) => namesSetupScript(w.value)) && argv.some((w) => w.value === '--apply')) { out.push(hit('pignolo-init')); return; }
   }
   const executes = (w) => w === words[0] || INTERP.has(name);
   for (const w of words) {
@@ -1199,6 +1200,8 @@ function checkRunScript(name, words, st, ctx, out) {
     if (is) { out.push(hit('pignolo-run')); return; }
     if (isPlanScript(w, st, ctx)) { out.push(hit('pignolo-plan')); return; }
     if (isInitScript(w, st, ctx)) { out.push(hit('pignolo-init')); return; }
+    // setup.js cambia permisos solo con --apply (retired, permissions): sin él es de lectura y pasa.
+    if (isSetupScript(w, st, ctx) && argv.some((a) => !a.dyn && a.value === '--apply')) { out.push(hit('pignolo-init')); return; }
   }
 }
 
@@ -1245,6 +1248,21 @@ function isInitScript(w, st, ctx) {
   if (resolveAll(w.value, st, ctx).some(hits)) return true;
   // Sin candidatos (cd dinámico): la forma pelada que ejecuta el script de un cd a scripts/ se niega.
   return !st.alts && /^(?:\.[\/])?(?:init|places)(?:\.js)?$/.test(w.value);
+}
+
+// setup.js con --apply (retired, permissions) cambia settings.json: mismo freno que init.js, solo para esas formas.
+const SETUP_JS_LITERAL = /(?:^|\/)(?:plugins\/pignolo|\.claude\/plugins\/cache\/[^/]+\/pignolo\/[^/]+)\/scripts\/setup(?:\.js)?$/;
+const SETUP_JS_DYN = /^\$(?:\{(?:env:)?CLAUDE_PLUGIN_ROOT\}|(?:env:)?CLAUDE_PLUGIN_ROOT)[\\/]scripts[\\/]setup(?:\.js)?$/i;
+const SETUP_JS_OWN = new RegExp(`^${cleanPath(path.join(__dirname, '..')).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/scripts/setup(?:\\.js)?$`);
+const EVAL_SETUP_SCRIPT = new RegExp(`(?:pignolo/(?:[^/]+/)*|CLAUDE_PLUGIN_ROOT\\}?/|${OWN_PLUGIN_ROOT}/)scripts/setup(?![\\w-])`, 'i');
+const namesSetupScript = (value) => EVAL_SETUP_SCRIPT.test(value.replace(/\\+/g, '/').replace(/\/+/g, '/'));
+function isSetupScript(w, st, ctx) {
+  if (w.dyn) return SETUP_JS_DYN.test(w.value);
+  const hits = (c) => SETUP_JS_LITERAL.test(c) || SETUP_JS_OWN.test(c);
+  const p = resolveAt(w.value, st, ctx);
+  if (p !== null) return hits(p);
+  if (resolveAll(w.value, st, ctx).some(hits)) return true;
+  return !st.alts && /^(?:\.[\/])?setup(?:\.js)?$/.test(w.value);
 }
 
 // El holdout (scripts/holdout.js) lo ejecutan solo el hilo principal y el validator: el

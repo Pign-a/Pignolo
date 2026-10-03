@@ -24,7 +24,7 @@ for (const p of PLUGINS) {
   });
 }
 
-test('changelog: the wizard plan versions are the ones the plan names (core 0.20.0 keeps its entry; panel 0.3.0)', () => {
-  assert.ok(read(...PLUGINS[0].changelog).includes('## 0.20.0'), 'the 0.20.0 entry of the wizard stays in the changelog');
+test('changelog: the wizard plan versions are the ones the plan names (core 0.22.0, renumerable al unir; panel 0.3.0)', () => {
+  assert.strictEqual(JSON.parse(read(...PLUGINS[0].manifest)).version, '0.22.0');
   assert.strictEqual(JSON.parse(read(...PLUGINS[2].manifest)).version, '0.3.0');
 });

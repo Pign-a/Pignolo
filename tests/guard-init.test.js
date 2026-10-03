@@ -226,3 +226,13 @@ test('I-3: with an unknowable cd (dynamic target) the bare node places.js / init
   denied(call('cd $(pwd)/x\nnode ./init.js apply'), 'cd dinámico init');
   passes(call('cd "$SOMEWHERE"; node places.js undo', {}), 'main thread');
 });
+
+test('un subagente no corre setup.js con --apply (retired, permissions); sin --apply y en el hilo principal pasa', () => {
+  denied(call(`node "${P}/scripts/setup.js" retired --apply`), 'retired --apply');
+  denied(call(`node "${P}/scripts/setup.js" permissions --target user --apply`), 'permissions --apply');
+  denied(call('node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" retired --apply'), 'CLAUDE_PLUGIN_ROOT');
+  passes(call(`node "${P}/scripts/setup.js" retired`), 'retired sin --apply');
+  passes(call(`node "${P}/scripts/setup.js" check`), 'check');
+  passes(call(`node "${P}/scripts/setup.js" retired --apply`, {}), 'hilo principal');
+  passes(call('node "C:/otro/proyecto/scripts/setup.js" retired --apply'), 'setup.js ajeno');
+});

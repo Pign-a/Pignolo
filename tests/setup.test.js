@@ -402,3 +402,46 @@ test('the setup skill does not mention Engram (D-6-1)', () => {
   const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'setup', 'SKILL.md'), 'utf8');
   assert.doesNotMatch(text, /engram/i);
 });
+
+test('retired: ofrece quitar mcp__*__*navigate* de los tres settings, con respaldo, y no toca otra regla', () => {
+  const sb = sandbox();
+  const OLD = 'mcp__*__*navigate*';
+  const mk = (file, ask) => writeJson(file, { model: 'opus', permissions: { allow: ['mcp__playwright__browser_navigate'], deny: ['Bash(mio)'], ask } });
+  const files = [path.join(sb.cwd, '.claude', 'settings.json'), path.join(sb.cwd, '.claude', 'settings.local.json'), userSettings(sb)];
+  mk(files[0], ['Bash(mia)', OLD, 'mcp__*__*send*']);
+  mk(files[1], [OLD]);
+  mk(files[2], ['mcp__*__*send*']);
+  const before = files.map((f) => fs.readFileSync(f, 'utf8'));
+
+  const dry = run(['retired'], { env: sb.env, cwd: sb.cwd });
+  assert.equal(dry.status, 0, dry.stderr);
+  assert.equal(dry.json.total, 2);
+  assert.deepEqual(dry.json.files.map((f) => f.remove), [[OLD], [OLD], []]);
+  assert.deepEqual(files.map((f) => fs.readFileSync(f, 'utf8')), before, 'sin --apply no escribe');
+
+  const r = run(['retired', '--apply'], { env: sb.env, cwd: sb.cwd });
+  assert.equal(r.status, 0, r.stderr);
+  const [p, l, u] = r.json.files;
+  assert.ok(p.applied && l.applied && !u.applied);
+  assert.equal(u.backup, null);
+  assert.equal(fs.readFileSync(p.backup, 'utf8'), before[0], 'el respaldo es el original');
+  const after = JSON.parse(fs.readFileSync(files[0], 'utf8'));
+  assert.deepEqual(after.permissions.ask, ['Bash(mia)', 'mcp__*__*send*']);
+  assert.deepEqual(after.permissions.allow, ['mcp__playwright__browser_navigate']);
+  assert.deepEqual(after.permissions.deny, ['Bash(mio)']);
+  assert.equal(after.model, 'opus');
+  assert.deepEqual(JSON.parse(fs.readFileSync(files[1], 'utf8')).permissions.ask, []);
+  assert.equal(fs.readFileSync(files[2], 'utf8'), before[2]);
+  assert.equal(run(['retired'], { env: sb.env, cwd: sb.cwd }).json.total, 0);
+});
+
+test('retired: un settings inválido no se toca y se avisa', () => {
+  const sb = sandbox();
+  const f = path.join(sb.cwd, '.claude', 'settings.json');
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, '{ "permissions": { "ask": [ ');
+  const r = run(['retired', '--apply'], { env: sb.env, cwd: sb.cwd });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.json.files[0].error);
+  assert.equal(fs.readFileSync(f, 'utf8'), '{ "permissions": { "ask": [ ');
+});

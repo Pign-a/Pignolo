@@ -146,8 +146,10 @@ test('every Bash/PowerShell ask rule is asked (or blocked) by the guard on main'
   }
 });
 
-test('MCP tools that send data ask for confirmation (spec §8.1)', () => {
-  for (const verb of ['send', 'push', 'create', 'update', 'navigate']) {
+test('MCP tools that send data ask for confirmation (spec §8.1); navigate no longer does (ask beats allow)', () => {
+  for (const verb of ['send', 'push', 'create', 'update', 'merge', 'delete']) {
     assert.ok(tpl.ask.includes(`mcp__*__*${verb}*`), verb);
   }
+  for (const r of ['mcp__*__deploy*', 'mcp__*__*create_deployment*', 'mcp__*__publish*', 'mcp__*__*_publish_*']) assert.ok(tpl.ask.includes(r), r);
+  assert.ok(!tpl.ask.includes('mcp__*__*navigate*'));
 });
