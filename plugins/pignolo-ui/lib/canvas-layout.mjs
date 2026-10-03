@@ -6,7 +6,7 @@
 //   rowTitle (optional, 1 to 40 characters): names every row instead of "Opción <letter>" (the board of define says "Tablero"); a row of one
 //   screen has no note, so its frame takes it as its title.
 // layoutSha256(fragment) -> hex
-// verifyCanvas({ dir, userDeleted }) -> { ok, problems: [{ code, file?, detail? }] }
+// verifyCanvas({ dir, userDeleted, keptOnRequest }) -> { ok, problems: [{ code, file?, detail? }] }
 //   userDeleted: names of frames or notes of ours that the user deleted and merge did not put back (R-9): not "missing".
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -142,8 +142,9 @@ function checkArtboard(name, html, problems) {
   if (/<link\b/i.test(outside) || !parseFontLinks(helmet).ok) problems.push({ code: 'bad-font', file: name });
 }
 
-export function verifyCanvas({ dir, userDeleted = [] }) {
+export function verifyCanvas({ dir, userDeleted = [], keptOnRequest = [] }) {
   const deleted = new Set(userDeleted);
+  const keptByUser = new Set(keptOnRequest);
   const problems = [];
   const add = (code, file, detail) => problems.push({ code, ...(file ? { file } : {}), ...(detail ? { detail } : {}) });
   const fragment = readJson(path.join(dir, 'page.json'));
@@ -236,7 +237,7 @@ export function verifyCanvas({ dir, userDeleted = [] }) {
     for (const id of Object.keys(notes)) if (!(id in mn) && !deleted.has(id)) add('missing-own-entry', id);
     if (!Array.isArray(merged.pages) || !merged.pages.some((p) => p && p.id === pageId)) add('missing-own-entry', pageId ?? 'page');
     // the live index also holds frames of other runs and of the user: only the ones of this page need their file here
-    for (const [n, b] of Object.entries(mb)) if (b && b.page === pageId && !onDisk.includes(n) && !n.startsWith('ds/')) add('entry-without-file', n);
+    for (const [n, b] of Object.entries(mb)) if (b && b.page === pageId && !onDisk.includes(n) && !keptByUser.has(n) && !n.startsWith('ds/')) add('entry-without-file', n);
   }
   const seen = new Set();
   const unique = problems.filter((p) => { const k = `${p.code}|${p.file ?? ''}|${p.detail ?? ''}`; if (seen.has(k)) return false; seen.add(k); return true; });

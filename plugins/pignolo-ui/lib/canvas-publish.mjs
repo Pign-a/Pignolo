@@ -8,7 +8,7 @@
 //   false, step null, NO params): opt-out, root, canvas record, verifyCanvas, first, limits, scanBytes over
 //   the exact bytes (the merged index by difference against the live one) and every string of the params,
 //   limits per call. It writes <run>/plan.json; recordStep re-hashes against it.
-// mergeLive({ run, live, liveDir, acceptOverwrite, data, project, now }) -> { ok, ... }
+// mergeLive({ run, live, liveDir, acceptOverwrite, keep, data, project, now }) -> { ok, ... }
 // recordStep({ run, project, data, step, url }) -> { ok, ... }
 //   plan.json also carries `removed`: the paths that went out as null in files (4i; recordStep lowers the figures for them).
 // noteRefusal({ run, kind, named }) -> { count, stop, reason? }        diffRun({ run }) -> { changed, removed, sendIndex }
@@ -105,6 +105,7 @@ function readPublished(run) {
   if (data.files !== undefined && !(isObj(data.files) && Object.values(data.files).every((h) => typeof h === 'string' && HEX.test(h)))) return { data: null, problem: 'bad-state' };
   for (const k of ['boards', 'notes', 'sizes']) if (data[k] !== undefined && !isObj(data[k])) return { data: null, problem: 'bad-state' };
   if (data.deleted !== undefined && !(Array.isArray(data.deleted) && data.deleted.every((n) => typeof n === 'string'))) return { data: null, problem: 'bad-state' };
+  if (data.kept !== undefined && !(Array.isArray(data.kept) && data.kept.every((n) => typeof n === 'string'))) return { data: null, problem: 'bad-state' };
   if (data.mainTaken !== undefined && typeof data.mainTaken !== 'boolean') return { data: null, problem: 'bad-state' };
   if (data.refusals !== undefined && !(Number.isSafeInteger(data.refusals) && data.refusals >= 0)) return { data: null, problem: 'bad-state' };
   return { data, problem: null };
@@ -229,7 +230,8 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   // (3) what was written is valid (a frame of ours that the user deleted and merge left out is not missing)
   const mergeFile = readJson(path.join(run, 'merge', 'merge.json'));
   const deleted = isObj(mergeFile) && Array.isArray(mergeFile.userDeleted) ? mergeFile.userDeleted.filter((n) => typeof n === 'string') : [];
-  const verified = verifyCanvas({ dir: canvas, userDeleted: deleted });
+  const keptOnRequest = [...(isObj(mergeFile) && Array.isArray(mergeFile.keptOnRequest) ? mergeFile.keptOnRequest : []), ...(read.data?.kept ?? [])].filter((n) => typeof n === 'string');
+  const verified = verifyCanvas({ dir: canvas, userDeleted: deleted, keptOnRequest });
   if (!verified.ok) return fail(verified.problems);
   const manifest = readJson(path.join(canvas, 'manifest.json'));
   const fragment = readJson(path.join(canvas, 'page.json'));
@@ -368,7 +370,7 @@ function readLiveFiles({ liveDir, paths }) {
   return out;
 }
 
-export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, project, now }) {
+export function mergeLive({ run, live, liveDir, acceptOverwrite = [], keep = [], data, project, now }) {
   const canvas = path.join(run, 'canvas');
   // whatever this merge ends in, the merge of before is no longer current: a merge that stops leaves none behind (RL2-01)
   try { removeOwnDir(path.join(run, 'merge')); } catch { return { ok: false, problems: [{ code: 'root-is-link' }] }; }
@@ -436,7 +438,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   const result = mergeIndex({
     ours: fragment, live: liveIndex, liveFiles, published: publishedForMerge, owned, title: fragment.canvasTitle, now,
     changed: diff.changed, launchPage: record.launchPage ?? null, first: manifest.first === true, ownsMain: trusted?.ownsMain === true,
-    acceptOverwrite, removed: diff.removed,
+    acceptOverwrite, removed: diff.removed, keep,
   });
   if (!result.ok) {
     // the canvas that was just created already has a Main.dc.html that is not ours: plan must accept first false (RL2-03)
@@ -458,7 +460,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   const info = {
     canvasUrl: record.url, canvasSha256: sha(text), liveSha256: liveText ? sha(liveText) : null, changed: diff.changed,
     keptMoved: k.keptMoved, keptEdited: k.keptEdited, userDeleted: k.userDeleted, editedByHand: k.editedByHand,
-    overwritten: k.overwritten, restored: k.restored, dropped: k.dropped, dropKept: k.dropKept, droppedNotes: k.droppedNotes, warnings: k.warnings, launchWritten: k.launchWritten, pageAdded: k.pageAdded,
+    overwritten: k.overwritten, restored: k.restored, keptOnRequest: k.keptOnRequest, dropped: k.dropped, dropKept: k.dropKept, droppedNotes: k.droppedNotes, warnings: k.warnings, launchWritten: k.launchWritten, pageAdded: k.pageAdded,
   };
   writeAtomic(path.join(mergeDir, 'merge.json'), `${JSON.stringify(info, null, 2)}\n`);
   return { ok: true, out: indexFile, canvasSha256: sha(text), kept: k, warnings: k.warnings };
@@ -516,6 +518,8 @@ export function recordStep({ run, project, data, step, url }) {
   const pageIsNew = !(trusted && trusted.pageId === manifest.pageId);
   const deleted = [...new Set([...(trusted?.deleted ?? []), ...(isObj(info) && Array.isArray(info.userDeleted) ? info.userDeleted : []).filter((n) => String(n).endsWith('.dc.html'))])]
     .filter((n) => !sent.includes(`project/${n}`)).sort();
+  // unchosen frames the user asked to keep (merge --keep): they are theirs now, so they leave files but stay in the index without a file here
+  const kept = [...new Set([...(trusted?.kept ?? []), ...(isObj(info) && Array.isArray(info.keptOnRequest) ? info.keptOnRequest : [])].filter((n) => typeof n === 'string' && !built.has(`project/${n}`)))].sort();
   const next = {
     url, state: 'published', pages: record.pages + (pageIsNew ? 1 : 0), files: Math.max(0, record.files + sent.filter((p) => !(p in was)).length - sentNull.length),
     bytes: Math.max(0, record.bytes + Math.max(0, grown) - freed), notes: Math.max(0, record.notes + newNotes - droppedNotes),
@@ -529,7 +533,7 @@ export function recordStep({ run, project, data, step, url }) {
     layoutSha256: manifest.layoutSha256, files, sizes: sortedObj(sizes),
     boards: Object.fromEntries(Object.entries(fragment.boards).map(([n, b]) => [n, subset(b, ['x', 'y', 'w', 'h', 'title'])])),
     notes: Object.fromEntries(Object.entries(fragment.notes ?? {}).map(([id, n]) => [id, subset(n, ['x', 'y', 'text', 'maxW'])])),
-    deleted, refusals: 0,
+    deleted, kept, refusals: 0,
   }, null, 2)}\n`);
   try { removeOwnDir(mergeDir); } catch { /* a link there: plan does not take it as current */ }
   clearPlanned(run);

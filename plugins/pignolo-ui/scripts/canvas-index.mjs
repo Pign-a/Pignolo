@@ -10,7 +10,7 @@
 //   canvas-index.mjs plan --project <repo> --run <run> --values-file <json> --types-file <json> --data <dir> [--new-canvas]
 //   canvas-index.mjs diff --run <run>                                  (informative: it never prints params)
 //   canvas-index.mjs merge --run <run> --data <dir> --project <repo> --live <index file read-live saved | none>
-//                          --live-dir <folder read-live saved the .dc.html in | none> [--accept-overwrite <names,comma separated>] [--now <ISO>]
+//                          --live-dir <folder read-live saved the .dc.html in | none> [--accept-overwrite <names,comma separated>] [--keep <names,comma separated: unchosen frames the user keeps; they are not dropped and become the user's>] [--now <ISO>]
 //   canvas-index.mjs record --run <run> --step canvas-create|canvas-publish --url <url> --data <dir> --project <repo>
 //   canvas-index.mjs refusal --run <run> --kind canvas [--named <path the refusal names>]
 import fs from 'node:fs';
@@ -32,7 +32,7 @@ const SPECS = {
   verify: { value: ['run'], flags: [] },
   plan: { value: ['project', 'run', 'values-file', 'types-file', 'data'], flags: ['new-canvas'] },
   diff: { value: ['run'], flags: [] },
-  merge: { value: ['run', 'data', 'project', 'live', 'live-dir', 'accept-overwrite', 'now'], flags: [] },
+  merge: { value: ['run', 'data', 'project', 'live', 'live-dir', 'accept-overwrite', 'keep', 'now'], flags: [] },
   record: { value: ['run', 'step', 'url', 'data', 'project'], flags: [] },
   refusal: { value: ['run', 'kind', 'named'], flags: [] },
 };
@@ -212,7 +212,9 @@ function cmdVerify(opts, { cwd }) {
   // a frame of ours that the user deleted and merge left out is not missing
   const info = (() => { try { return JSON.parse(fs.readFileSync(path.join(run, 'merge', 'merge.json'), 'utf8')); } catch { return null; } })();
   const userDeleted = info && Array.isArray(info.userDeleted) ? info.userDeleted.filter((n) => typeof n === 'string') : [];
-  const r = verifyCanvas({ dir, userDeleted });
+  const pubKept = (() => { try { const p = JSON.parse(fs.readFileSync(path.join(run, 'publish.json'), 'utf8')); return Array.isArray(p.kept) ? p.kept : []; } catch { return []; } })();
+  const keptOnRequest = [...(info && Array.isArray(info.keptOnRequest) ? info.keptOnRequest : []), ...pubKept].filter((n) => typeof n === 'string');
+  const r = verifyCanvas({ dir, userDeleted, keptOnRequest });
   return { out: r, code: r.ok ? 0 : 1 };
 }
 
@@ -236,6 +238,8 @@ function cmdMerge(opts, { cwd }) {
   const { run } = resolveRun(cwd, opts);
   const acceptOverwrite = opts['accept-overwrite'] === undefined ? [] : list(opts['accept-overwrite']);
   for (const n of acceptOverwrite) if (n.length > 120 || n.replace(/^project\//, '').includes('/') || n.includes('\\')) throw new UsageError('--accept-overwrite lleva nombres de artboard (r-…-a-detalle.dc.html), separados por coma');
+  const keep = opts.keep === undefined ? [] : list(opts.keep);
+  for (const n of keep) if (n.length > 120 || n.replace(/^project\//, '').includes('/') || n.includes('\\')) throw new UsageError('--keep lleva nombres de artboard (r-…-c-inicio.dc.html), separados por coma');
   let now = new Date().toISOString();
   if (opts.now !== undefined) {
     if (Number.isNaN(new Date(opts.now).getTime())) throw new UsageError('--now debe ser una fecha ISO');
@@ -244,7 +248,7 @@ function cmdMerge(opts, { cwd }) {
   let r;
   try {
     r = mergeLive({
-    run, data: path.resolve(cwd, opts.data), project: path.resolve(cwd, opts.project), now, acceptOverwrite,
+    run, data: path.resolve(cwd, opts.data), project: path.resolve(cwd, opts.project), now, acceptOverwrite, keep,
     live: opts.live === 'none' ? 'none' : path.resolve(cwd, opts.live), liveDir: opts['live-dir'] === 'none' ? 'none' : path.resolve(cwd, opts['live-dir']),
     });
   } catch (e) {

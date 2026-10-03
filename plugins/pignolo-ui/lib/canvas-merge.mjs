@@ -34,7 +34,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const nameOf = (p) => String(p).replace(/^project\//, '');
 const rootOf = (n) => String(n).replace(/\.dc\.html$/, '').toLowerCase();
 
-export const emptyKept = () => ({ keptMoved: [], keptEdited: [], userDeleted: [], editedByHand: [], overwritten: [], restored: [], dropped: [], dropKept: [], droppedNotes: [], warnings: [], launchWritten: null, pageAdded: false });
+export const emptyKept = () => ({ keptOnRequest: [], keptMoved: [], keptEdited: [], userDeleted: [], editedByHand: [], overwritten: [], restored: [], dropped: [], dropKept: [], droppedNotes: [], warnings: [], launchWritten: null, pageAdded: false });
 const push = (list, v) => { if (!list.some((x) => same(x, v))) list.push(v); };
 
 export function diffPublished({ manifest, layoutSha256, pageId, published }) {
@@ -83,7 +83,7 @@ function fresh(ours, title, now, kept) {
   };
 }
 
-export function mergeIndex({ ours, live = null, liveFiles = null, published = null, owned = [], title, now, changed = [], launchPage = null, first = false, ownsMain = false, acceptOverwrite = [], removed = [] }) {
+export function mergeIndex({ ours, live = null, liveFiles = null, published = null, owned = [], title, now, changed = [], launchPage = null, first = false, ownsMain = false, acceptOverwrite = [], removed = [], keep = [] }) {
   const kept = emptyKept();
   const failed = (problems) => ({ ok: false, index: null, problems, kept });
   const pageId = ours.page.id;
@@ -131,7 +131,9 @@ export function mergeIndex({ ours, live = null, liveFiles = null, published = nu
   // ---- artboards of ours that were published before: edited by hand? deleted? (A4C2-01) ----
   const wasFiles = published && isObj(published.files) ? published.files : {};
   // the removed ones are only what publish.json lists, by the exact name and never a path that leaves project/ (4i)
-  const removedNames = new Set(removed.filter((p) => typeof p === 'string' && p in wasFiles).map(nameOf).filter((n) => n !== '' && !/[\\/]/.test(n)));
+  const keepNames = new Set(keep.map(nameOf));
+  const removedNames = new Set(removed.filter((p) => typeof p === 'string' && p in wasFiles && !keepNames.has(nameOf(p))).map(nameOf).filter((n) => n !== '' && !/[\\/]/.test(n)));
+  for (const p of removed) if (typeof p === 'string' && p in wasFiles && keepNames.has(nameOf(p))) push(kept.keptOnRequest, nameOf(p));
   const edited = [];
   if (liveFiles) {
     for (const p of Object.keys(wasFiles)) {
@@ -198,8 +200,6 @@ export function mergeIndex({ ours, live = null, liveFiles = null, published = nu
   }
 
   // ---- what the run no longer builds leaves the canvas: its artboards, and its row notes if the user did not rewrite them (4i) ----
-  for (const n of [...removedNames].sort()) {
-    if (!(n in boards) || n in ours.boards) continue;
   // The chosen first screen: Main.dc.html is the first screen of the first option, so the chosen option's first frame is now built under that
   // name and its old name looks removed. It is not: Main takes the place where the user left it (R4i-01). Only when one removed frame has its title.
   const mainOurs = ours.boards[main];
@@ -208,6 +208,8 @@ export function mergeIndex({ ours, live = null, liveFiles = null, published = nu
     const from = boards[heirs[0]];
     if (boards[main].x !== from.x || boards[main].y !== from.y) { boards[main].x = from.x; boards[main].y = from.y; push(kept.keptMoved, main); }
   }
+  for (const n of [...removedNames].sort()) {
+    if (!(n in boards) || n in ours.boards) continue;
     delete boards[n];
     const at = orderOut.indexOf(n);
     if (at >= 0) orderOut.splice(at, 1);
