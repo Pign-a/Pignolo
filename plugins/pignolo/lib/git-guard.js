@@ -65,6 +65,7 @@ const RULES = {
   'pignolo-worktree-tools': ['deny', 'solo el hilo principal crea worktrees de tarea, etiqueta contratos y aplica la limpieza (worktree.js create|tag-contract, cleanup.js apply)', 'pedile al hilo principal que lo haga; podés leer con worktree.js list o cleanup.js report'],
   'pignolo-protected-refs': ['deny', 'int/*, queue/*, cp/* y contract/* solo las escriben la cola y el hilo principal (git switch/checkout, tag, branch, update-ref, push, fetch o commit/merge sobre esas ramas)', 'trabajá en la rama de tu tarea y pedí la integración al hilo principal'],
   'subagent-main': ['deny', 'un subagente no hace push ni merge sobre main/master: lo hace solo el hilo principal', 'terminá tu tarea y respondé (handback); el hilo principal hace el push o el merge'],
+  'snapshot-required': ['deny', 'este comando sobrescribe trabajo sin commitear y solo pasa con una instantánea previa; la instantánea falló', 'reintentá, o commiteá el trabajo como WIP antes'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
@@ -309,6 +310,9 @@ function evaluate(command, opts = {}) {
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
     onlyCatastrophic: Boolean(opts.onlyCatastrophic),
     collect: Array.isArray(opts.collect) ? opts.collect : null, // solo gitCommands: una entrada por `git`
+    discard: false, // algún comando de la línea puede descartar trabajo (T2, D-G4)
+    discardDirs: new Set(), // directorios reales de esos puntos
+    discardUnknown: false, // alguno de esos puntos corre en un directorio que no se conoce
     statPath: typeof opts.statPath === 'function' ? opts.statPath : diskStat(), // costura de disco (T1): 'file' | 'dir' | null
     subagent: Boolean(opts.subagent), // el payload trae agent_id
     agentType: typeof opts.agentType === 'string' ? opts.agentType : null, // agent_type del payload
@@ -327,8 +331,28 @@ function evaluate(command, opts = {}) {
   }
   if (Array.isArray(opts.rules)) opts.rules.push(...found.map((v) => v.rule));
   const list = opts.onlyCatastrophic ? found.filter((v) => v.cls === 'catastrophic') : found;
-  return decide(list, ctx);
+  const v = decide(list, ctx);
+  // Lo que la guardia no puede clasificar (unverifiable, ask) lleva instantánea igual que lo que descarta.
+  const blind = found.some((f) => f.cls === 'unverifiable' || f.cls === 'ask');
+  v.snapshot = ctx.discard || blind ? 'before' : 'none';
+  v.snapshotDirs = [...ctx.discardDirs];
+  v.snapshotUnknown = ctx.discardUnknown || (blind && !ctx.discard);
+  return v;
 }
+
+// Lista cerrada de lo que puede descartar trabajo (D-G4, R-8): se marca en el punto donde ocurre, con el
+// directorio real de ese punto (H7). El indicador vive en ctx (compartido en la recursión), no en st (que se copia).
+function markDiscard(ctx, st) {
+  ctx.discard = true;
+  const dirs = realDirs(st);
+  if (dirs.length) for (const d of dirs) ctx.discardDirs.add(d);
+  else ctx.discardUnknown = true;
+}
+const DISCARD_PROGS = new Set([...DELETE_CMDS, 'cp', 'copy', 'copy-item', 'cpi', 'tee', 'install', 'truncate', 'ln', 'set-content', 'sc',
+  'out-file', 'clear-content', 'clc', 'tee-object', 'new-item', 'ni', 'dd', 'robocopy', 'xcopy', 'rsync', 'curl', 'wget', 'unzip', '7z', '7za', '7zr', 'patch']);
+const DISCARD_GIT = new Set(['checkout', 'switch', 'restore', 'reset', 'clean', 'stash', 'rm', 'read-tree', 'checkout-index', 'worktree', 'rebase',
+  'merge', 'pull', 'cherry-pick', 'revert', 'am', 'apply', 'mv', 'submodule', 'bisect', 'sparse-checkout', 'filter-branch']);
+const DISCARD_FIND = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir', '-fprint', '-fprint0', '-fprintf', '-fls']);
 
 // Costura de disco: 'file' | 'dir' | null para un valor resuelto contra los directorios reales del estado.
 function diskStat() {
@@ -458,7 +482,13 @@ function quotedSubstitution(words) {
 
 function analyze(cmd, shell, ctx, out, depth, st) {
   const ps = shell === 'powershell';
-  for (const r of cmd.redirects) if (r.op.includes('>') && !isDescriptorDup(r)) checkWriteTarget(subst(r.target, st, ps), st, ctx, out);
+  for (const r of cmd.redirects) {
+    if (!r.op.includes('>') || isDescriptorDup(r)) continue;
+    const target = subst(r.target, st, ps);
+    checkWriteTarget(target, st, ctx, out);
+    // `>>` agrega y `> /dev/null` no escribe: no descartan nada.
+    if (!r.op.includes('>>') && !/^(\/dev\/null|nul|\$null)$/i.test(target.value)) markDiscard(ctx, st);
+  }
   const words = cmd.words.map((w) => subst(w, st, ps));
   if (!ps) recordAssignments(words, st);
   runWords(words, cmd, shell, ctx, out, depth, st);
@@ -701,6 +731,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   const name = progName(words[0].value);
   const args = words.slice(1);
   if (CD_CMDS.has(name)) { if (inShell) changeDir(name, args, st, ctx, Boolean(cmd.negated)); return; }
+  if (DISCARD_PROGS.has(name)) markDiscard(ctx, st);
 
   if (DELETE_CMDS.has(name)) checkDeleteOperands(ps && cmd.pipedIn && !psPaths(args).length ? operands(args).concat(pipedPaths(cmd)) : operands(args), st, ctx, out);
   if (ps && cmd.pipedIn && (name === 'clear-content' || name === 'clc') && !psPaths(args).length) {
@@ -729,7 +760,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   if (SHELLS.has(name)) { analyzeShell(args, cmd, ctx, out, depth, st); return; }
   if (PWSH.has(name)) { analyzePwsh(args, cmd, ctx, out, depth, st); return; }
   if (INTERP.has(name)) { analyzeInterp(name, args, cmd, out, st, ctx); return; }
-  if (AWK.has(name)) { analyzeAwk(args, out); return; }
+  if (AWK.has(name)) { analyzeAwk(args, out, st, ctx); return; }
   if (name === 'sed') { analyzeSed(args, out, st, ctx); return; }
   if (name === 'dd') { // dd of=<archivo> escribe (G9)
     for (const w of args) if (/^of=./.test(w.value)) writeOperand(assignedValue(w, 3), st, ctx, out);
@@ -761,6 +792,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   if (ps && ['set-alias', 'new-alias', 'sal', 'nal'].includes(name)) { analyzeSetAlias(args, out); return; }
   if (ps && ['new-item', 'ni', 'set-item', 'si'].includes(name) && args.some((w) => /^alias:/i.test(w.value))) { out.push(hit('ps-sink')); return; }
   if (ps && cmd.pipedIn && ['foreach-object', '%', 'foreach'].includes(name) && /^(delete|moveto)$/i.test(psMemberName(args))) {
+    markDiscard(ctx, st);
     checkDeleteOperands(pipedPaths(cmd), st, ctx, out); // gci -Force | % Delete (M6)
     return;
   }
@@ -1338,6 +1370,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     if (sub === 'checkout' && o.positionals.length && !o.shorts.has('b') && !o.shorts.has('B')) out.push(hit('git-C'));
   }
   const inner = redirected ? { ...st, cwdReal: null, alts: null } : st;
+  if (DISCARD_GIT.has(sub) && !(sub === 'stash' && args[0] && ['list', 'show', 'create'].includes(args[0].value))) markDiscard(ctx, inner);
   // Programas que git ejecuta por opción (G7): --upload-pack, --receive-pack, --exec, clone/ls-remote -u.
   if (longIs(o, 'upload-pack') || longIs(o, 'receive-pack') || (['push', 'archive', 'send-pack'].includes(sub) && longIs(o, 'exec'))
     || (['clone', 'ls-remote'].includes(sub) && o.shorts.has('u'))) out.push(hit('git-shell'));
@@ -1637,6 +1670,7 @@ function analyzeFind(args, cmd, shell, ctx, out, depth, st) {
   }
   if (!starts.length) starts.push(word('.'));
   const expr = args.slice(k);
+  if (expr.some((w) => DISCARD_FIND.has(w.value))) markDiscard(ctx, st);
   if (expr.some((w) => w.value === '-delete')) checkDeleteOperands(starts, st, ctx, out);
   for (let i = 0; i < expr.length; i++) {
     if (!['-exec', '-execdir', '-ok', '-okdir'].includes(expr[i].value)) continue;
@@ -1850,7 +1884,9 @@ function analyzeInterp(name, args, cmd, out, st, ctx) {
     else files = args.slice(i);
     break;
   }
+  if (inPlace) markDiscard(ctx, st);
   if (inPlace) for (const w of files) writeOperand(w, st, ctx, out);
+  if (codes.length || (!program || stdin)) markDiscard(ctx, st); // todo código inline (H9)
   const check = inlineCheck(name, out, st, ctx);
   for (const c of codes) {
     if (!c || (c.dyn && c.dynAt === 0)) { out.push(hit('hidden-code')); return; }
@@ -1859,7 +1895,8 @@ function analyzeInterp(name, args, cmd, out, st, ctx) {
   if (!codes.length && (!program || stdin)) stdinCode(cmd, name, null, out, 0, null, check);
 }
 
-function analyzeAwk(args, out) {
+function analyzeAwk(args, out, st, ctx) {
+  if (args.some((w, i) => !w.dyn && /^-i/.test(w.value) && /^inplace/.test((w.value.length > 2 ? w.value.slice(2) : (args[i + 1] || {}).value) || ''))) markDiscard(ctx, st);
   for (let i = 0; i < args.length; i++) {
     const v = args[i].value;
     if (['-F', '-v', '-f', '--file'].includes(v)) { if (v === '-f' || v === '--file') return; i++; continue; }
@@ -1904,6 +1941,7 @@ function analyzeSed(args, out, st, ctx) {
     else files.push(w);
   }
   if (scripts.some((w) => !w.dyn && sedExecutes(w.value))) out.push(hit('inline-code'));
+  if (inPlace) markDiscard(ctx, st);
   if (inPlace) for (const w of files) writeOperand(w, st, ctx, out);
 }
 
@@ -1911,6 +1949,7 @@ function analyzeSed(args, out, st, ctx) {
 function analyzeTar(args, st, ctx, out) {
   const extract = args.some((w, i) => !w.dyn && (/^--(extract|get)$/.test(w.value) || /^-[a-zA-Z]*x/.test(w.value) || (i === 0 && /^[a-zA-Z]*x[a-zA-Z]*$/.test(w.value))));
   if (!extract) return;
+  markDiscard(ctx, st);
   for (let i = 0; i < args.length; i++) {
     const v = args[i].value;
     if ((v === '-C' || v === '--directory') && args[i + 1]) writeOperand(args[i + 1], st, ctx, out);
@@ -2113,6 +2152,8 @@ function psCommands(text, ctx, st) {
   if (r.errors.length) throw new ParseError(r.errors[0]);
   const extra = [];
   for (const m of r.members) {
+    if (PS_IO_TYPE.test(m.target) && !/^(read|exists|get|enum)/i.test(m.member || '')) markDiscard(ctx, st);
+    else if (m.member && /^(delete|moveto|copyto)/i.test(m.member)) markDiscard(ctx, st);
     if (m.member === null || PS_SINK_TARGET.test(m.target) || PS_SINK_MEMBER.test(m.member)) { extra.push(hit('ps-sink')); continue; }
     if (PS_IO_TYPE.test(m.target)) {
       if (/^(delete|move)/i.test(m.member)) checkDeleteOperands(m.args, st, ctx, extra);
@@ -2189,4 +2230,6 @@ if (require.main === module) {
   process.stdout.write(`${explain(argv[k + 1], { shell, mode, cwd })}\n`);
 }
 
-module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES };
+const DISCARD = { progs: DISCARD_PROGS, git: DISCARD_GIT, find: DISCARD_FIND };
+
+module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES, DISCARD };
