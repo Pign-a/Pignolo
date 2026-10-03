@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.9.0 — sin publicar
+
+Hito 4i: **todo en el lienzo y un brief corto**. Sube de 0.8.0 a 0.9.0 porque suma interfaz (`canvas-index.mjs build --row-title`, el `null` en `files` de `plan` y `reference/define-board.md`). La etapa 3 del lienzo (Design System) pasa a 0.10.0 y la etapa 4 (modo explorar) a 0.11.0.
+
+**Contratos que cambian:**
+- **El tablero de `define`** (D-4i-5): va al lienzo del proyecto cuando la cuenta tiene el tipo "Design" (como una opción de una pantalla, con la nota "Tablero"); sin ese tipo, a un artifact privado aparte, como hasta ahora; local con `publish: never`, `presentation = local` o "no publiques". Antes: siempre un artifact aparte. Tras elegir la dirección, el tablero se reescribe con solo la elegida y se republica en el lugar.
+- **El brief que `new` pide confirmar** (D-4i-6, G53): en el chat queda una línea `Armo:`, las pantallas, a lo sumo 4 supuestos de bajo riesgo con su fuente y a lo sumo 3 preguntas con la recomendada primero. El brief completo va a `<run>/brief.md` (con `## First look` y `## Do not touch` de `PRODUCT.md`, que se muestran solo si difieren) y no se repite en el chat. Se van la línea de versión de `new` y `define` (la versión sigue en la primera línea del informe), los avisos previos se juntan en una línea y `compare.mjs approved` solo se dice si encuentra diferencias.
+- **`new` agrega afinar y seguir** (D-4i-2, D-4i-3, G52): los cambios pedidos después de elegir se aplican a la opción elegida y se republican en el lienzo del proyecto (nunca solo en la copia local), sin tope fijo de rondas: tras cada una, una línea ofrece terminar. `approve.mjs save` corre después de la última ronda. Al cerrar, `new` pregunta si se arma otra pantalla o componente; con sí, corrida nueva en el mismo lienzo (una página más).
+
+**Cambios:**
+- **Quitar lo no elegido (D-4i-4).** Al confirmar la elección se rehace `build --options <X>` y el circuito de publicación: `merge` saca del índice vivo (`boards` y `order`) los marcos que esa corrida publicó y ya no construye, y las notas de fila que el usuario no reescribió; `plan` manda `null` en `files` solo para esos caminos (`assertParams` admite `null` únicamente ahí y solo para nombres de artboard propios) y `record` los saca de `publish.json` y baja las cifras del lienzo. Lo que el usuario movió o agregó no se toca; un marco no elegido que movió se quita igual; uno editado a mano frena con `artboard-edited-by-hand` y pregunta; nombres que solo difieren en mayúsculas no se quitan; lo que no figura en `publish.json` de la corrida no se toca jamás. Las carpetas locales `<run>/option-*` se conservan.
+- **`canvas-index.mjs build --row-title <1 a 40 caracteres, sin < ni >>`** nombra cada fila en lugar de "Opción A" (una fila de una sola pantalla no tiene nota: el marco toma el título).
+- **Supuesto sin puerta:** `files: { <camino>: null }` con `root` en la herramienta real no se verificó; si no borra el archivo pero el índice ya no lo lista, el marco desaparece del lienzo y el archivo queda huérfano e invisible.
+- **No cambia:** el aviso de publicación (D-4c-3), la línea de versión de `audit` y las salidas de `improve` y `audit` (G54).
+
 ## 0.8.0 — sin publicar
 
 Hito 4c, etapa 2: **un único lienzo por proyecto, que crece una página por corrida**. Sube de 0.7.5 a 0.8.0 porque suma interfaz (`canvas-index.mjs merge` con el índice vivo, `diff` y `refusal`, `canvas-comments.mjs`, `compare.mjs heights`, la clave de proyecto `canvas` y los campos `first` y `canvasPublished` de `present`).
@@ -24,7 +39,7 @@ Hito 4c, etapa 2: **un único lienzo por proyecto, que crece una página por cor
   - `compare.mjs heights` rechaza (exit 2) un `--run` que es un enlace y un `--out` cuya carpeta real sale de la corrida (junction o symlink), antes de abrir el navegador.
   - Menores: `merge` rechaza un `--live` que sea un archivo del propio `canvas/` o `merge/`; `page-collision` ya no se saltea por archivos de otra página en `publish.json`; la dirección del lienzo admite `_` y cualquier largo en todos los comandos; el texto del `refusal` dice cómo seguir tras el sí del usuario.
   - Tests: `tests/lienzo2-fixes.test.mjs` cubre los recorridos que los de la revisión no tocan y las guardas que sobrevivían a la mutación (tope de artboards, nota borrada, `--live none` y `--live-dir none` sobre un lienzo publicado, enlaces en `--live-dir`, `--out` enlace en `heights`, merge de otro lienzo, registro inválido en `merge`, `deleted`).
-- Lo que queda: Design System (0.9.0) y modo explorar (0.10.0). Sin evals en esta etapa.
+- Lo que queda: Design System (0.10.0) y modo explorar (0.11.0). Sin evals en esta etapa.
 
 ## 0.7.6 — sin publicar
 
