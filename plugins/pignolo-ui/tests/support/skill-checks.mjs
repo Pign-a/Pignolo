@@ -39,7 +39,9 @@ export const SUBCOMMANDS = {
   'files.mjs': ['save', 'verify', 'restore'],
   'approve.mjs': ['save', 'record', 'verify'],
   'product-md.mjs': ['validate', 'template', 'create'],
-  'compare.mjs': ['fingerprint', 'distance', 'options', 'approved'],
+  'compare.mjs': ['fingerprint', 'distance', 'options', 'approved', 'heights'],
+  'canvas-index.mjs': ['build', 'verify', 'plan', 'diff', 'merge', 'record', 'refusal'],
+  'canvas-comments.mjs': ['quote'],
   'browser.mjs': ['capture', 'measure', 'dom'],
 };
 

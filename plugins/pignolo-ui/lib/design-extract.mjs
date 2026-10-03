@@ -209,12 +209,16 @@ function fromFrequency(root, t) {
   r.forEach((v, i) => { t.rounded[names[i]] = v; });
 }
 
+export const UNDECIDED_MARK = 'Tokens extraídos, no decididos';
+
 function render(t, { name, date, extracted }) {
   const lines = ['---', 'version: alpha', `name: ${yamlScalar(name)}`];
   const intro = extracted.length
-    ? `Extracted from the project code on ${date}; the tokens listed in pignolo.extracted are extracted, not decided.`
+    ? `Extracted from the project code on ${date}; the tokens listed in pignolo.extracted are still to be decided.`
     : `Extracted from the project configuration on ${date}; review before accepting.`;
   lines.push(`description: ${yamlScalar(intro)}`);
+  // The mark the foundation gate reads (reference/foundation.md): always in the body, never in the front matter.
+  const mark = `${UNDECIDED_MARK} (extracted, not decided): these tokens come from the code and nobody chose them; /pignolo-ui:define decides them.`;
   const section = (key, map, fn = (v) => [`  ${yamlKey(v[0])}: ${yamlScalar(v[1])}`]) => {
     if (!Object.keys(map).length) return;
     lines.push(`${key}:`);
@@ -237,7 +241,7 @@ function render(t, { name, date, extracted }) {
     lines.push('  extracted:');
     for (const p of extracted) lines.push(`    - ${yamlScalar(p)}`);
   }
-  lines.push('---', '', `# ${name}`, '', '## Overview', '', intro, 'Platform, register, hierarchy and reading order are still to be decided.', '', '## Decisions', '');
+  lines.push('---', '', `# ${name}`, '', '## Overview', '', intro, mark, 'Platform, register, hierarchy and reading order are still to be decided.', '', '## Decisions', '');
   return lines.join('\n');
 }
 

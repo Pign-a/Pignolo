@@ -185,3 +185,5 @@ Decididas el 2026-10-01 (vigentes): opciones de un elemento **dentro del sistema
 4. `ambiguous-across-widths` (queda `ambiguous` en el ancho principal).
 
 **No se corta nunca:** la resolución sin ambigüedad silenciosa (T1), el escenario medido con una sola raíz y misma etiqueta, y solo tokens (T2 y T3): son los dos riesgos con nombre. Sin ellos no hay hito.
+
+> **Nota de renumeración (2026-10-02, hito 4i).** Con el hito 4i en 0.9.0, la etapa 3 del lienzo pasa a 0.10.0 y la etapa 4 a 0.11.0: este hito 4g sube a **0.12.0** (donde dice 0.10.0 para la etapa 4, léase 0.11.0; donde dice 0.11.0, léase 0.12.0).

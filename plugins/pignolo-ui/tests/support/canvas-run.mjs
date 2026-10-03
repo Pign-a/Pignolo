@@ -64,3 +64,18 @@ export const BUILD_ARGS = (r, extra = {}) => {
 };
 
 export const canvasIndex = (args, opts) => runScript('canvas-index.mjs', args, opts);
+
+// Another run of the SAME project (a second flow on a later day): same project folder, its own run folder and options.
+export function addRun(r, { runId = '2026-10-02-0900-improve-pantalla', options = ['A', 'B', 'C'], screens = ['inicio.html', 'detalle.html'] } = {}) {
+  const run = path.join(r.project, '.pignolo-ui', 'runs', runId);
+  fs.mkdirSync(run, { recursive: true });
+  for (const letter of options) {
+    const dir = path.join(run, `option-${letter}`);
+    fs.mkdirSync(dir, { recursive: true });
+    screens.forEach((file, i) => {
+      const next = screens.length > 1 ? screens[(i + 1) % screens.length] : null;
+      fs.writeFileSync(path.join(dir, file), screenHtml(`${letter} ${file.replace('.html', '')} ${runId}`, { link: next }));
+    });
+  }
+  return { project: r.project, run, runId, optionDir: (letter) => path.join(run, `option-${letter}`) };
+}

@@ -93,3 +93,9 @@ test('improve: context, the question of what must not be touched, --brief-file a
   assert.ok(/never changes what `run\.mjs verdict` says/.test(text) && /not a second confirmation/.test(text));
   assert.ok(!text.includes('product-md.mjs'), 'improve never creates PRODUCT.md');
 });
+
+test('improve: the choice follows step 4 of present-and-choose.md, which drops the options not chosen (hito 4i)', () => {
+  const { text } = readSkill('improve');
+  assert.ok(text.includes('drops the options not chosen'));
+  assert.ok(readReference('present-and-choose.md').includes('4c. **Drop the options not chosen'));
+});

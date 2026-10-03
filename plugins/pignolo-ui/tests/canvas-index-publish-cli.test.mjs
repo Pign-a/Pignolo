@@ -41,8 +41,8 @@ test('one step at a time, no markers: create -> read-live -> merge -> publish ->
   assert.ok('project/Main.dc.html' in params.files);
   assert.ok(!('type_url' in params), 'type_url only on canvas-create');
   assert.equal(kit.record('canvas-publish', url).status, 0);
-  const publish = JSON.parse(fs.readFileSync(path.join(r.run, 'publish.json'), 'utf8'));
-  assert.equal(publish.state, 'published');
+  assert.deepEqual([kit.canvas().state, kit.canvas().pages, kit.canvas().files, kit.canvas().notes], ['published', 1, 6, 3]);
+  assert.equal(kit.published().ownsMain, true);
   const done = kit.plan();
   assert.deepEqual([done.status, done.json.done, done.json.step], [0, true, null]);
   // no marker and no forbidden key in the whole tree of any params that was printed
@@ -126,7 +126,7 @@ test('a project folder named like the OS user does not leak into the title: plan
   assert.equal(stepOf(p).params.title, 'Proyecto');
 });
 
-test('regenerating an option after publishing: with a seeded leak plan refuses; without it, a NEW canvas is created', () => {
+test('regenerating an option after publishing: with a seeded leak plan refuses; without it, read-live and then publish with only the files of B on the SAME canvas (A4C-03)', () => {
   const { r, kit } = ready();
   const url = fakeUrl(2);
   kit.plan();
@@ -135,28 +135,44 @@ test('regenerating an option after publishing: with a seeded leak plan refuses; 
   kit.plan();
   kit.record('canvas-publish', url);
   assert.equal(kit.plan().json.done, true);
+  const live = path.join(kit.dir, 'live.json');
+  fs.writeFileSync(live, fs.readFileSync(path.join(r.run, 'canvas', 'project', 'canvas.json')));
+  const liveDir = path.join(kit.dir, 'live-files');
+  fs.cpSync(path.join(r.run, 'canvas', 'project'), path.join(liveDir, 'project'), { recursive: true });
   // regenerate B with a leak
   assert.equal(runScript('run.mjs', ['discard', '--run', r.run, '--option', 'B']).status, 0);
   fs.mkdirSync(r.optionDir('B'), { recursive: true });
-  for (const f of ['inicio.html', 'detalle.html']) fs.writeFileSync(path.join(r.optionDir('B'), f), screenHtml('b', { link: f === 'inicio.html' ? 'detalle.html' : 'inicio.html', extra: '<p>Persona Ejemplo</p>\n' }));
-  assert.equal(canvasIndex(BUILD_ARGS(r)).status, 0);
+  for (const f of ['inicio.html', 'detalle.html']) fs.writeFileSync(path.join(r.optionDir('B'), f), screenHtml('b', { link: f === 'inicio.html' ? 'detalle.html' : 'inicio.html', extra: '<p>Persona Ejemplo</p>' + String.fromCharCode(10) }));
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).status, 0);
   const leaked = kit.plan();
   assert.deepEqual([leaked.status, leaked.json.step], [1, null]);
-  // regenerate again, clean: never a canvas-publish straight on the old canvas
+  // regenerate again, clean: never a canvas-publish before reading the live canvas
   for (const f of ['inicio.html', 'detalle.html']) fs.writeFileSync(path.join(r.optionDir('B'), f), screenHtml('b2', { link: f === 'inicio.html' ? 'detalle.html' : 'inicio.html' }));
-  assert.equal(canvasIndex(BUILD_ARGS(r)).status, 0);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).status, 0);
   const again = kit.plan();
-  assert.equal(stepOf(again).id, 'canvas-create');
-  assert.equal(kit.record('canvas-create', fakeUrl(3)).status, 0);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(r.run, 'publish.json'), 'utf8')).canvasUrl, fakeUrl(3), 'the new address replaces the old one');
+  assert.equal(stepOf(again).id, 'canvas-read-live');
+  assert.equal(stepOf(again).params.url, url);
+  assert.ok(stepOf(again).params.paths.includes('project/canvas.json'));
+  const merged = kit.merge(['--live', live, '--live-dir', liveDir]);
+  assert.equal(merged.status, 0, merged.stdout);
+  const pub = kit.plan();
+  assert.equal(stepOf(pub).id, 'canvas-publish');
+  assert.equal(stepOf(pub).params.url, url);
+  assert.ok(!('type_url' in stepOf(pub).params), 'the same canvas: no type_url');
+  const sent = Object.keys(stepOf(pub).params.files).sort();
+  assert.equal(sent.length, 2);
+  assert.ok(sent.every((f) => f.startsWith('project/r-') && f.includes('-b-')), sent.join());
+  assert.equal(kit.record('canvas-publish', url).status, 0);
+  assert.equal(kit.canvas().url, url);
+  assert.equal(kit.canvas().pages, 1, 'regenerating does not add a page');
 });
 
-test('resumption: a created canvas in a new session goes on at read-live with first true; build --first no is first-mismatch; unchanged published is done', () => {
+test('resumption: a created canvas in a new session goes on at read-live with first true; build --first no is first-mismatch (state); unchanged published is done', () => {
   const { r, kit } = ready();
   kit.plan();
   kit.record('canvas-create', fakeUrl(4));
-  const publish = JSON.parse(fs.readFileSync(path.join(r.run, 'publish.json'), 'utf8'));
-  assert.deepEqual([publish.state, publish.canvasUrl], ['created', fakeUrl(4)]);
+  assert.deepEqual([kit.canvas().state, kit.canvas().url, kit.published().canvasUrl], ['created', fakeUrl(4), fakeUrl(4)]);
+  assert.equal(kit.canvas().pages, 0);
   assert.equal(kit.plan().json.step.id, 'canvas-read-live');
   kit.merge();
   const pub = kit.plan();
@@ -165,7 +181,7 @@ test('resumption: a created canvas in a new session goes on at read-live with fi
   assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).status, 0);
   const mismatch = kit.plan();
   assert.equal(mismatch.status, 1);
-  assert.deepEqual(mismatch.json.problems.map((p) => [p.code, p.expectedFirst]), [['first-mismatch', true]]);
+  assert.deepEqual(mismatch.json.problems.map((p) => [p.code, p.expectedFirst, p.reason]), [['first-mismatch', true, 'state']]);
 });
 
 test('the bytes are tied to the plan: a byte changed after plan is published-unplanned-bytes and the state stays (A4C-12)', () => {
@@ -179,7 +195,8 @@ test('the bytes are tied to the plan: a byte changed after plan is published-unp
   const bad = kit.record('canvas-publish', fakeUrl(5));
   assert.equal(bad.status, 1);
   assert.equal(bad.json.problems[0].code, 'published-unplanned-bytes');
-  assert.equal(JSON.parse(fs.readFileSync(path.join(r.run, 'publish.json'), 'utf8')).state, 'created');
+  assert.equal(kit.canvas().state, 'created');
+  assert.equal(kit.canvas().pages, 0, 'nothing is counted for a publication that was not planned');
 });
 
 test('record without a plan for that step is refused; the right step passes and leaves no *.tmp', () => {
@@ -257,9 +274,9 @@ test('leak-values run without git on the PATH reports git failed and writes leak
   assert.equal(kit.plan().json.problems[0].code, 'no-leak-values');
 });
 
-test('CLI merge: --live none writes canvas.json and merge.json; a live path is exit 2 unsupported-live; it needs a created canvas', () => {
+test('CLI merge: --live none writes canvas.json and merge.json and needs a created canvas; --live-dir is required; unknown options are exit 2', () => {
   const { r, kit } = ready();
-  assert.equal(kit.merge().status, 1, 'no created canvas yet');
+  assert.equal(kit.merge().status, 1, 'no canvas registered yet');
   kit.plan();
   kit.record('canvas-create', fakeUrl(8));
   const m = kit.merge();
@@ -268,10 +285,10 @@ test('CLI merge: --live none writes canvas.json and merge.json; a live path is e
   assert.deepEqual([index.v, index.launch.view, index.pages.length], [3, 'canvas', 1]);
   const info = JSON.parse(fs.readFileSync(path.join(r.run, 'merge', 'merge.json'), 'utf8'));
   assert.equal(typeof info.canvasSha256, 'string');
-  const live = kit.merge(['--live', path.join(kit.dir, 'live.json'), '--live-dir', 'none']);
-  assert.equal(live.status, 2);
-  assert.equal(live.json.error, 'unsupported-live');
+  assert.equal(info.liveSha256, null);
   assert.equal(kit.merge(['--live', 'none']).status, 2, '--live-dir is required');
+  assert.equal(kit.merge(['--live', 'none', '--live-dir', 'none', '--nope', 'x']).status, 2);
+  assert.equal(kit.merge(['--live', path.join(kit.dir, 'no-existe.json'), '--live-dir', 'none']).status, 2, 'a live file that does not exist');
 });
 
 test('CLI record: another domain is exit 2, --data and --project are required, outside the runs folder is exit 2', () => {
