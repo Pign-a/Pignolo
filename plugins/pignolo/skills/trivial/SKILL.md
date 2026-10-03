@@ -3,7 +3,10 @@ name: trivial
 description: Entered only through pignolo:entry, when it picked the trivial lane. Makes a one-line or mechanical change in the main checkout, seals the on-done gate, re-checks the risk floor on the real diff and commits. No review.
 ---
 
+
 You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill. Talk to the human as the entry skill says: two layers (`${CLAUDE_PLUGIN_ROOT}/templates/question.md`), one step per message, a category on every question, facts only from script output.
+
+NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pignolo-ui/ and .pignolo/local/ hold the author's private data (leak-values.json has the user name, home folder and email) and are ignored on purpose. For a backup or WIP commit, commit only code paths by name and leave the ignored folders out.
 
 ## Steps
 

@@ -14,7 +14,9 @@ You are the main conversation closing the session (spec §10.4). `<main>` is the
 - **No agents.** Accepting a learning is the mechanical floor (`scan`) plus the human's explicit yes (author decision, 2026-10-01): you dispatch no subagent in this skill.
 - **Files and messages through Write.** The commit message goes to `<main>/.pignolo/tmp/commit-msg.txt` with Write; commit with `git commit -F`. Stage by path; never `git add -A` or `git add .`.
 
-## Steps
+NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pignolo-ui/ and .pignolo/local/ hold the author's private data (leak-values.json has the user name, home folder and email) and are ignored on purpose. For a backup or WIP commit, commit only code paths by name and leave the ignored folders out.
+
+
 
 0. **Confirm (only if you chose this skill yourself).** If the turn carries a `<command-name>` tag for this skill, the user typed the command: go to step 1. Otherwise run nothing yet: read `${CLAUDE_PLUGIN_ROOT}/templates/activation-confirm.md`, section `close-session`, and ask with AskUserQuestion (never plain chat text) with the recommended option first, "Cerrar la sesión ahora (Recomendado)", and "No ahora". On "No ahora" end this skill and carry on with what the user was doing.
 
