@@ -15,7 +15,7 @@ Guide the human through activating pignolo in this project. Speak to them in the
 
 ## Start
 
-**Decline.** A message carrying `--decline` (the panel wizard's "no usar pignolo acá") skips step 0 and all below: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.js" decline` (it writes only a mark under `.git/pignolo/`), say in one plain line that the wizard will not offer itself again here and `/pignolo:init` still works, and stop.
+**Decline.** A message carrying `--decline`: read `${CLAUDE_PLUGIN_ROOT}/templates/init-choices.md`, section Decline, and follow it.
 
 0. **Confirm (only if you chose this skill yourself).** If the turn carries a `<command-name>` tag for this skill, the user typed the command: carry on below. Otherwise run nothing yet: read `${CLAUDE_PLUGIN_ROOT}/templates/activation-confirm.md`, section `init`, and ask with AskUserQuestion (never plain chat text) with the recommended option first, "Activar pignolo en este proyecto (Recomendado)", and "No ahora". On "No ahora" end this skill and carry on with what the user was doing.
 

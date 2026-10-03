@@ -188,7 +188,7 @@ test('2026-10-02: every subcommand, summary field, step id, refusal kind and att
 });
 
 test('2026-10-02: the skill is not longer than before by more than a small margin and carries no user paths', () => {
-  assert.ok(SKILL.text.length <= 12500, String(SKILL.text.length));
+  assert.ok(SKILL.text.length <= 12300, String(SKILL.text.length));
   assert.doesNotMatch(SKILL.text, /[A-Za-z]:[\\/]+Users|\/home\/|\/Users\//);
 });
 

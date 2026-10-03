@@ -166,11 +166,13 @@ test('wizard-detect: the project reached with another capitalization of its path
   if (process.platform !== 'win32' && process.platform !== 'darwin') { t.skip('el sistema distingue mayúsculas: no hay otra grafía de la misma ruta'); return; }
   const repo = nodeRepo();
   const other = repo.replace(/[a-z]/g, (c, i) => (i % 2 ? c.toUpperCase() : c));
-  const before = fs.readdirSync(path.dirname(repo)).sort();
+  // Solo las entradas con el mismo nombre que el repo, sin distinguir mayúsculas: el tmp lo comparten otros procesos.
+  const twins = () => fs.readdirSync(path.dirname(repo)).filter((n) => n.toLowerCase() === path.basename(repo).toLowerCase()).sort();
+  const before = twins();
   const r = W.writeFor(other);
   assert.ok(r.path, JSON.stringify(r));
   assert.ok(fs.existsSync(FILE(repo)));
-  assert.deepEqual(fs.readdirSync(path.dirname(repo)).sort(), before);
+  assert.deepEqual(twins(), before);
   assert.deepEqual(fs.readdirSync(repo).sort(), fs.readdirSync(repo).sort());
   assert.equal(fs.existsSync(path.join(repo, 'pignolo')), false);
   assert.equal(fs.existsSync(path.join(repo, '.pignolo')), false);
