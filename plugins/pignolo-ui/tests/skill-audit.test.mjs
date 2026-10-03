@@ -8,7 +8,7 @@ test('audit: frontmatter, size, scripts and referenced files exist, Values block
   const { frontmatter, text, body } = readSkill('audit');
   assert.equal(frontmatter.name, 'audit');
   assert.match(frontmatter.description, /^".*"$/);
-  assert.equal(frontmatter['disable-model-invocation'], 'true');
+  assert.equal(frontmatter['disable-model-invocation'], undefined); // lenguaje natural: la activa el modelo (skill-activation.test.mjs)
   assert.ok(text.length <= 12000, `${text.length} characters`);
   assertScriptsExist(scriptCalls(text));
   for (const ref of referencedFiles(text)) assert.doesNotThrow(() => readReference(ref), ref);
@@ -31,7 +31,7 @@ test('audit: first step is run.mjs env, the auditor goes with the prefix and opu
   for (const m of text.matchAll(/ui-auditor/g)) {
     assert.equal(text.slice(Math.max(0, m.index - 11), m.index), 'pignolo-ui:', 'ui-auditor always with the pignolo-ui: prefix');
   }
-  assert.ok(/does not block|no bloquea/.test(text));
+  assert.ok(/does not block on findings/.test(text));
   assert.ok(text.includes('auditoría no independiente'));
   assert.ok(!/Bash\(|fullPage/.test(text));
   assert.ok(!/!`/.test(text));
@@ -65,7 +65,7 @@ test('the plugin linter stays green with the skill and reference/', () => {
 
 test('audit: calls run.mjs context, says the line when PRODUCT.md is missing and never creates it (hito 4f)', () => {
   const { text } = readSkill('audit');
-  for (const lit of ['reference/context.md', 'run.mjs" context', 'sin PRODUCT.md']) assert.ok(text.includes(lit), lit);
+  for (const lit of ['reference/context.md', 'run.mjs" context', 'Audit never creates `PRODUCT.md`']) assert.ok(text.includes(lit), lit);
   assert.ok(!text.includes('product-md.mjs'));
   assert.ok(text.indexOf('prepare-run.md') < text.indexOf('run.mjs" context') && text.indexOf('run.mjs" context') < text.indexOf('pignolo-ui:ui-auditor'));
 });

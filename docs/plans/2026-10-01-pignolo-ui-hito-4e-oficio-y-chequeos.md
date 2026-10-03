@@ -462,3 +462,5 @@ Cuenta de casos de test (cada fixture y cada fila de tabla cuenta): **≈ 140 ca
 ## Apéndice: la carta candidata de `ui-option` ya está adoptada
 
 Las cinco reglas de oficio (9 a 13: mostrar estados, ritmo de espacios, escala de letra visible, énfasis en un solo lugar, movimiento solo para mostrar estado) que este plan traía como texto candidato quedaron **adoptadas y unidas en pignolo-ui 0.7.3** por el controlador, junto con los datos de muestra rotulados (el autor prefirió esos brazos en la tercera medición). El texto vigente vive en `plugins/pignolo-ui/agents/ui-option.md`; no se repite acá. `DESIGN.md` y sus `intentional` siguen ganando sobre esa carta.
+
+> **Nota de renumeración (2026-10-02, hito 4i).** El resto de 4e (olas 2 a 6) sube a **0.13.0** (antes 0.12.0), después del hito 4g en 0.12.0.

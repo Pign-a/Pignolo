@@ -1,7 +1,7 @@
 {
   "name": "pignolo-ui",
   "displayName": "Pignolo UI",
-  "version": "0.7.5",
+  "version": "0.10.0",
   "description": "Crear y mejorar interfaces web con decisiones de diseño explícitas y verificadas: DESIGN.md validado, checker por script y auditor con evidencia",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",
@@ -25,7 +25,7 @@
     "presentation": {
       "type": "string",
       "title": "Presentación",
-      "description": "auto: las opciones de mockup se publican en un lienzo privado de tu cuenta de claude.ai cuando la cuenta tiene el tipo Design (con un aviso de una línea cada vez); local: siempre en una página local y nunca se publica nada",
+      "description": "auto: las opciones de mockup se publican en un lienzo privado por proyecto (una página por corrida) de tu cuenta de claude.ai cuando la cuenta tiene el tipo Design (con un aviso de una línea cada vez); local: siempre en una página local y nunca se publica nada",
       "options": ["auto", "local"],
       "default": "auto"
     }

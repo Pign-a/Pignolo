@@ -91,3 +91,12 @@ test('push forzado y borrado remoto conservan su regla también para un subagent
   assert.strictEqual(sub('git push origin --delete feat', { cwd: onFeat }).rule, 'push-delete');
   assert.strictEqual(sub('git -C "$d" merge feat', { cwd: onFeat }).decision, 'block', 'merge con -C sin resolver: cerrado');
 });
+
+// R8: `git -C "$d" merge` lo niega antes pignolo-protected-refs; un push sin refspec con el directorio sin resolver solo
+// lo cierra subagent-main (headOnMain con dirs === null). Sin esta fila, romper ese cierre no hacía fallar ningún test.
+test('subagente: push con -C / --git-dir sin resolver lo cierra subagent-main', () => {
+  for (const cmd of ['git -C "$d" push', 'git --git-dir="$d" push']) {
+    assert.strictEqual(out(sub(cmd, { cwd: onFeat })), 'subagent-main', cmd);
+  }
+  assert.strictEqual(main('git -C "$d" push', { cwd: onFeat }).decision, 'allow', 'el hilo principal pasa');
+});

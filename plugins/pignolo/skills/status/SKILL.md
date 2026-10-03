@@ -1,7 +1,6 @@
 ---
 name: status
-description: Show whether pignolo is on, whether the git guard is active, the plugin version and the result of the guard canary.
-disable-model-invocation: true
+description: "Use when the user asks to know whether pignolo is active or which version is installed, in Spanish or English: '¿está prendido pignolo?', 'estado de pignolo', 'qué versión de pignolo tengo', 'is pignolo on?', 'pignolo status'. Shows whether pignolo is on, whether the git guard is active, the plugin version and the result of the guard canary. Only reads; changes nothing. Do not use to switch pignolo on or off: those commands are the human's."
 ---
 
 Report pignolo's status to the user in their language:

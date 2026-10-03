@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { makeTempDir, writeTree } from './helpers.mjs';
-import { scanBytes, decodeEntities } from '../lib/leak-scan.mjs';
+import { scanBytes, decodeEntities, indexDiffTexts } from '../lib/leak-scan.mjs';
 
 const VALUES = ['Pérez & Hijos', 'otro-valor-largo'];
 const dirWith = (tree) => writeTree(makeTempDir(), tree);
@@ -106,4 +106,20 @@ test('decodeEntities: the five basics, numeric forms and the Latin-1 names', () 
   assert.equal(decodeEntities('&#233;&#xe9;&eacute;&ntilde;&Eacute;'), 'éééñÉ');
   assert.equal(decodeEntities('&nbsp;'), '\u00a0');
   assert.equal(decodeEntities('&nombreraro;'), '&nombreraro;');
+});
+
+test('indexDiffTexts (R-8 e): only the strings that the live index did not have at the same place; labels never carry a key', () => {
+  const live = { title: 'Mi lienzo', notes: { 'nota-ajena': { text: 'Dicho por alguien' } }, pages: [{ id: 'r1', name: 'new · 1' }], order: ['a.dc.html'] };
+  const merged = { title: 'Mi lienzo', notes: { 'nota-ajena': { text: 'Dicho por alguien' }, 'r2-row-a': { text: 'Opción A' } }, pages: [{ id: 'r1', name: 'new · 1' }, { id: 'r2', name: 'improve · 2' }], order: ['a.dc.html', 'r2-a.dc.html'] };
+  const texts = indexDiffTexts(merged, live).map((t) => t.text);
+  // the keys of a new object are new too; nothing of the live part appears
+  assert.deepEqual(texts.sort(), ['Opción A', 'id', 'improve · 2', 'name', 'r2', 'r2-a.dc.html', 'r2-row-a', 'text'].sort());
+  assert.ok(indexDiffTexts(merged, live).every((t) => /^canvas\.json#\d+$/.test(t.label)));
+  // the same string at another place is new; a changed value is new; no live: everything
+  assert.deepEqual(indexDiffTexts({ title: 'x', notes: { n: { text: 'Mi lienzo' } } }, { title: 'Mi lienzo' }).map((t) => t.text).sort(), ['Mi lienzo', 'n', 'notes', 'text', 'x'].sort());
+  assert.ok(indexDiffTexts({ title: 'Otro' }, { title: 'Mi lienzo' }).some((t) => t.text === 'Otro'));
+  assert.ok(indexDiffTexts({ title: 'Mi lienzo' }, null).some((t) => t.text === 'Mi lienzo'));
+  // and scanBytes finds a value in them, by the same views as a file
+  const hit = scanBytes({ roots: [], texts: indexDiffTexts({ extra: { quien: 'Pérez &amp; Hijos' } }, {}), values: VALUES });
+  assert.deepEqual(hit.problems.map((p) => p.code), ['leak']);
 });

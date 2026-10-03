@@ -11,7 +11,7 @@ test('improve: frontmatter, size, Values block before the steps, scripts and fil
   const { frontmatter, text, body } = readSkill('improve');
   assert.equal(frontmatter.name, 'improve');
   assert.match(frontmatter.description, /^".*"$/);
-  assert.equal(frontmatter['disable-model-invocation'], 'true');
+  assert.equal(frontmatter['disable-model-invocation'], undefined); // lenguaje natural: la activa el modelo (skill-activation.test.mjs)
   assert.ok(text.length <= 12000, `${text.length} characters`);
   const values = body.indexOf('## Values');
   const steps = body.indexOf('## Steps');
@@ -92,4 +92,10 @@ test('improve: context, the question of what must not be touched, --brief-file a
   assert.ok(/only runs with a chosen `J-nn`/.test(text));
   assert.ok(/never changes what `run\.mjs verdict` says/.test(text) && /not a second confirmation/.test(text));
   assert.ok(!text.includes('product-md.mjs'), 'improve never creates PRODUCT.md');
+});
+
+test('improve: the choice follows step 4 of present-and-choose.md, which drops the options not chosen (hito 4i)', () => {
+  const { text } = readSkill('improve');
+  assert.ok(text.includes('drops the options not chosen'));
+  assert.ok(readReference('present-and-choose.md').includes('4c. **Drop the options not chosen'));
 });

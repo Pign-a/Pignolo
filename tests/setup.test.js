@@ -228,10 +228,10 @@ test('config --profile turbo: exit 1 y no escribe', () => {
   assert.equal(fs.existsSync(path.join(sb.env.PIGNOLO_HOME, 'config.json')), false);
 });
 
-test('SKILL.md: solo humano y nombra scripts/setup.js', () => {
+test('SKILL.md: invocable por lenguaje natural y nombra scripts/setup.js', () => {
   const text = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'setup', 'SKILL.md'), 'utf8');
   const front = text.match(/^---\n([\s\S]*?)\n---/)[1];
-  assert.match(front, /^disable-model-invocation: true$/m);
+  assert.doesNotMatch(front, /disable-model-invocation/);
   assert.match(front, /^description: .+$/m);
   assert.match(text, /scripts\/setup\.js/);
 });

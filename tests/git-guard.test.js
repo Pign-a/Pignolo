@@ -87,7 +87,8 @@ const BASH_BLOCK = [
   ['line continuation', 'git reset \\\n  --hard', 'reset-hard'],
   ['newline separator', 'npm test\ngit reset --hard', 'reset-hard'],
   ['chained', 'npm test && git reset --hard', 'reset-hard'],
-  ['brace expansion', 'git {reset,--hard}', 'dynamic-argument'],
+  ['brace expansion', 'git {reset,--hard}', 'reset-hard'], // la guardia expande las llaves en literal
+  ['brace expansion that cannot be expanded', 'git "re"{set,--hard}', 'dynamic-argument'],
   // H3: comillas mezcladas
   ['dq inside sq', `echo '"'; git reset --hard; echo '"'`, 'reset-hard'],
   ['sq inside dq', `echo "it's"; git clean -fd; echo "it's"`, 'clean'],
