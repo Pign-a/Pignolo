@@ -1403,8 +1403,11 @@ function touchesMain(sub, o, st, redir, cfg) {
 // que puede ser main) deja HEAD en main para lo que sigue. Una rama literal que no es main lo saca de main solo si lo que
 // sigue corre únicamente cuando el cambio anduvo (`&&`): `script` lee `offNext` y baja `onMain` entonces.
 function switchedTo(st, name) {
-  if (MAIN.test(name) || name === '-' || /^@\{-\d+\}$/.test(name)) st.onMain = true;
-  else st.offNext = true;
+  if (MAIN_REF.test(name) || name === '-' || /^@\{-\d+\}$/.test(name)) st.onMain = true;
+  // Solo un nombre simple (rama, etiqueta o commit) es un cambio real. HEAD, @, `main~0`, `@{0}`, `^` y todo lo que no se sabe
+  // interpretar pueden dejar HEAD donde estaba: se sigue considerando main (RR1).
+  else if (/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/.test(name) && !/^(?:head|fetch_head|orig_head|merge_head)$/i.test(name) && !name.includes('..')) st.offNext = true;
+  else st.onMain = true;
 }
 
 function gitRulesBase(sub, o, args, ctx, st) {
@@ -1897,9 +1900,19 @@ function writeOperand(w, st, ctx, out) {
 
 function analyzeCmd(args, ctx, out, depth, st) {
   // En Git Bash la forma que funciona es `cmd //c` (MSYS convierte `/c` en una ruta): una o dos barras (R3).
-  const k = args.findIndex((w) => /^\/{1,2}[ck]/i.test(w.value));
+  // Las opciones de cmd pueden ir pegadas (`/d/c`, `/q/d/c`, `//s//c`) y el comando pegado a /c (RR2): se pelan una por una;
+  // si una palabra de opciones esconde un /c o /k tras algo que no se reconoce, falla cerrado.
+  let k = -1;
+  let first = '';
+  for (let i = 0; i < args.length && k < 0; i++) {
+    let s = args[i].value;
+    if (!/^\/{1,2}/.test(s)) continue;
+    let m;
+    while ((m = /^\/{1,2}(?:[dqsaux]|[efvt]:[^/\s]*)(?=\/|$)/i.exec(s))) s = s.slice(m[0].length);
+    if ((m = /^\/{1,2}[ckr]/i.exec(s))) { k = i; first = s.slice(m[0].length); }
+    else if (/\/{1,2}[ckr]/i.test(s.slice(1))) { out.push(hit('hidden-code')); return; }
+  }
   if (k < 0) return;
-  const first = args[k].value.replace(/^\/{1,2}[ck]/i, '');
   // ^ escapa el carácter siguiente en cmd: g^it es git (G8).
   const rest = [first, ...args.slice(k + 1).map((w) => w.value)].filter((x) => x !== '' && x !== '--%').join(' ').replace(/\^([A-Za-z0-9])/g, '$1');
   if (args.slice(k).some((w) => w.dyn) || /%[^%\s]+%/.test(rest)) { out.push(hit('hidden-code')); return; }
