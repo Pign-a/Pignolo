@@ -286,7 +286,7 @@ async function submitAnswer($, decision, option) {
 // El UNICO `prompt.submit` del paquete. Solo texto de una linea y sin caracteres invisibles (control, formato, uso privado, sin
 // asignar): si no, no se envia nada. Lo llaman submitAnswer y submitUiRequest, y a esos dos solo un boton cada uno.
 async function submitText($, text) {
-  if (typeof text !== 'string' || text === '' || /[\r\n]/.test(text) || hasHiddenChars(text)) return false
+  if (typeof text !== 'string' || text === '' || /[\r\n\p{Zl}\p{Zp}]/u.test(text) || hasHiddenChars(text)) return false
   try {
     const res = await $.prompt.submit({ text, asUser: true })
     return Boolean(res) && res.drop === undefined

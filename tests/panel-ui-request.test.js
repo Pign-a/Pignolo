@@ -152,3 +152,17 @@ test('ui tab model: only define shows one row and no cost text', async () => {
   assert.strictEqual(m.rows[0].action, 'define');
   assert.strictEqual(m.right, '');
 });
+
+// Revisión (RU-03): la capa de respaldo de submitText rechaza también U+2028/U+2029 (todo \p{Zl}\p{Zp}).
+test('review: submitText rejects line and paragraph separators', async () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'plugins', 'pignolo-panel', 'hooks', 'register.js'), 'utf8');
+  const start = src.indexOf('async function submitText(');
+  const end = src.indexOf('\n}\n', start) + 3;
+  const { hasHiddenChars } = await load('state.js');
+  const submitText = new Function('hasHiddenChars', src.slice(start, end) + '; return submitText;')(hasHiddenChars);
+  const sent = [];
+  const $ = { prompt: { submit: async (m) => { sent.push(m.text); return {}; } } };
+  assert.strictEqual(await submitText($, 'Definí el producto y el diseño.'), true);
+  for (const bad of ['a\u2028b', 'a\u2029b', 'a\nb']) assert.strictEqual(await submitText($, bad), false);
+  assert.deepStrictEqual(sent, ['Definí el producto y el diseño.']);
+});

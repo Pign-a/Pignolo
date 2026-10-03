@@ -11,6 +11,7 @@ Pestaña **UI** (decisión del autor, 2026-10-03): con pignolo-ui instalado, una
 - Opción `uiRecommendations` (prendida por defecto): en `false` la pestaña usa solo reglas y nunca consulta al modelo.
 - Llamadas nuevas del mod: `model.complete`, `settings.read`, `command.list` y `fs.list` (solo para leer las carpetas de pignolo-ui). `model.fork` y `model.classify` no se usan.
 - En modo demo la pestaña usa un árbol de muestra (`sample/ui`) y solo reglas.
+- Revisión opus (RU-01 a RU-03): `DESIGN.md` con la marca `extraídos, no decididos` no cuenta como decidido (misma regla que la compuerta de pignolo-ui); en `new` el objetivo solo puede ser una pantalla leída del proyecto y sin versión aprobada (si no, la recomendación sale sin objetivo y el texto enviado tampoco lo lleva); `submitText` rechaza también U+2028/U+2029.
 
 ## 0.1.0 — sin publicar
 
