@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.16.0 — sin publicar
+
+Guardia sin tropiezos, etapa 1: la red y los dos mecanismos (decisiones del autor, 2026-10-02 y 2026-10-03; plan `docs/plans/2026-10-02-guardia-sin-tropiezos.md`). No cambia el veredicto de ninguna regla salvo el arreglo de `subagent-main` de abajo.
+
+- **Red (T1):** `tests/guard/medidos.json` versiona los 181 comandos que la guardia bloqueó en una sesión real (saneados, sin rutas ni nombres privados) y `tests/guard-medidos.test.js` los corre; costura `statPath` en `evaluate` para no depender del disco. Cierra G71.
+- **Instantánea solo cuando hace falta (T2, D-G4):** `evaluate` devuelve `snapshot` (`none`, `before`, `required`) y `snapshotDirs`; el hook `guard` toma la instantánea solo antes de lo que puede descartar trabajo o no se puede clasificar, en el directorio real de ese punto (tras `cd`, `env -C`, `Start-Process -WorkingDirectory`). Regla nueva `snapshot-required` (se usa en la etapa 3). Un script propio (`npm test`, `node x.js`) ya no lleva instantánea (D-G6).
+- **Plazo vencido: pasa lo de solo lectura (T3, D-G3):** al vencer el plazo interno de 3 s, un comando de solo lectura por estructura pasa con un aviso en `guard` y `scope-gate` (`lib/read-only.js`, lista cerrada; PowerShell por texto); `private-reads` y `plan-audit-gate` siguen negando; los caminos de error siguen negando. `PIGNOLO_DEADLINE_MS` solo baja el plazo.
+- **Arreglo, falso positivo de `subagent-main` (2026-10-03):** `cd <worktree-de-tarea> && git status | head; git merge main` lo negaba un subagente con cwd en main. La causa no era el pipe sino el `;`, que devolvía el directorio anterior como posible (el `cd` pudo fallar). Si cada `cd` de la cadena va a una carpeta literal que existe, el `;` ya no lo devuelve para decidir la rama de HEAD. Siguen negados el destino variable, inexistente, `~` o `-`, y `||`, `&`, pipe y `(cd X); merge`.
+- Tests: `tests/guard-cd-chain.test.js`, `tests/guard-deadline.test.js`, `tests/guard-snapshot-scope.test.js`, `tests/guard-medidos.test.js`.
+
 ## 0.15.0 — sin publicar
 
 Lenguaje natural (decisión del autor, 2026-10-03). Sobre 0.14.1 de `main`. Otra rama sin unir (`core/init-rapido`) también dice 0.15.0 y se renumera al unirse.
