@@ -67,6 +67,7 @@ function commitGate(collect, cwd, command) {
   if (!Array.isArray(collect) || !/commit/i.test(String(command || ''))) return null;
   const leaked = new Set();
   let unborn = false;
+  let unknownAdd = false;
   const dirOf = (c) => (c.dirs || []).reduce((d, x) => path.resolve(d, x), cwd);
   collect.forEach((c, idx) => {
     if (c.sub !== 'commit' || c.incomplete || c.dirsUnknown || longHas(c, 'dry-run', 3)) return; // --dry-run no registra nada
@@ -81,11 +82,14 @@ function commitGate(collect, cwd, command) {
     const adds = collect.slice(0, idx).filter((a) => a.sub === 'add' && !a.incomplete && !a.dirsUnknown);
     if (adds.length && (!paths.length || include)) {
       all = true;
-      for (const a of adds) for (const p of addedPrivate({ cwd: dirOf(a), args: a.args || [] })) leaked.add(p);
+      for (const a of adds) {
+        try { for (const p of addedPrivate({ cwd: dirOf(a), args: a.args || [], positionals: a.positionals || [] })) leaked.add(p); } catch (_) { unknownAdd = true; }
+      }
     }
     for (const p of stagedPrivate({ cwd: dir, all, amend, paths, include })) leaked.add(p);
     if (!hasHead(dir)) unborn = true;
   });
+  if (unknownAdd && !leaked.size) return { exit: 2, stderr: 'pignolo bloqueó el commit: no pude calcular qué indexaría el git add anterior de la misma línea. Alternativa: corré el git add en un comando aparte y commiteá después.\n' };
   if (!leaked.size) return null;
   const list = [...leaked];
   return { exit: 2, stderr: `pignolo bloqueó el commit: el índice tiene archivos privados de pignolo (${list.slice(0, 5).join(', ')}${list.length > 5 ? ', ...' : ''}). Alternativa: sacalos del índice con \`${exitCommand(list, { unborn })}\` en un comando aparte (no lo encadenes con && al commit) y commiteá de nuevo.\n` };

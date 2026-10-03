@@ -8,14 +8,20 @@ const { isPrivatePath } = require('./private-paths');
 
 const TIMEOUT_MS = 1000;
 
+// El hook nunca deja que git pida algo ni abra un editor: un hook que espera una ventana cuelga la sesion, y un editor que
+// acepta lo que le pasan (GIT_EDITOR=true) es el peor caso. Toda llamada a git de esta compuerta lleva este entorno, sin
+// stdin (lib/git.js) y con plazo.
+const HOOK_ENV = { ...process.env, GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' };
+const run = (args, cwd, opts = {}) => gitRun(args, cwd, { ...opts, env: HOOK_ENV, timeout: TIMEOUT_MS });
+
 function names(args, cwd) {
-  const out = gitRun(args, cwd, { timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+  const out = run(args, cwd, { maxBuffer: 8 * 1024 * 1024 });
   return out ? out.split('\0').filter(Boolean) : [];
 }
 
 // ¿hay un commit de partida? (un commit raíz o un repo sin commits no tiene HEAD / HEAD^)
 function exists(ref, cwd) {
-  try { gitRun(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], cwd, { timeout: TIMEOUT_MS }); return true; } catch (_) { return false; }
+  try { run(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], cwd); return true; } catch (_) { return false; }
 }
 
 // Rutas que el commit registraría (sin las que borra), según su forma:
@@ -42,22 +48,52 @@ function commitPaths({ cwd, all = false, amend = false, paths = [], include = fa
   return [...out];
 }
 
-// Archivos que un `git add <args>` indexaría, sin ejecutarlo (`git add --dry-run`, salida `add 'ruta'`). Si git falla o
-// el add es interactivo, falla cerrado: todo lo que hay sin rastrear (ignorado incluido) bajo las rutas del add.
-function addNames(args, cwd) {
-  const flags = args.filter((a) => a !== '--dry-run' && a !== '-n');
-  try {
-    const out = gitRun(['add', '--dry-run', ...flags], cwd, { timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
-    return String(out || '').split('\n').map((l) => /^(?:add|remove) '(.*)'$/.exec(l.trim())).filter(Boolean).map((m) => m[1]);
-  } catch (_) {
-    const dd = args.indexOf('--');
-    const specs = dd >= 0 ? args.slice(dd + 1) : args.filter((a) => !a.startsWith('-'));
-    return names(['ls-files', '-z', '--others', '--', ...specs], cwd);
+// Opciones de `git add` que la compuerta reconoce. Cualquier otra (-e, -p, -i, --pathspec-from-file, --chmod, -N, una
+// abreviatura...) puede abrir un editor o aplicar un parche aunque lleve --dry-run (git lo ignora con -e): con ella no se
+// corre git.
+const ADD_SHORT = new Set(['A', 'u', 'f', 'n', 'v']);
+const ADD_LONG = { '--all': '-A', '--update': '-u', '--force': '-f', '--dry-run': '', '--verbose': '', '--no-ignore-removal': '' };
+
+function parseAdd(args) {
+  const known = new Set();
+  let unknown = false;
+  let noSpecs = false;
+  for (const a of args) {
+    if (a === '--') break;
+    if (a.startsWith('--')) {
+      if (a in ADD_LONG) { if (ADD_LONG[a]) known.add(ADD_LONG[a]); } else {
+        unknown = true;
+        if (/^--pathspec-/.test(a)) noSpecs = true;
+      }
+    } else if (a.length > 1 && a.startsWith('-')) {
+      for (const ch of a.slice(1)) {
+        if (!ADD_SHORT.has(ch)) unknown = true;
+        else if (ch === 'A' || ch === 'u' || ch === 'f') known.add(`-${ch}`);
+      }
+    }
   }
+  return { known: [...known], unknown, noSpecs };
 }
 
-function addedPrivate({ cwd, args }) {
-  try { return addNames(args, cwd).filter(isPrivatePath); } catch (_) { return []; }
+// Archivos que un `git add <args>` indexaría, sin ejecutarlo. El hook no le pasa a git los argumentos del usuario: arma su
+// propia invocacion (`add --dry-run --ignore-missing` con las banderas reconocidas y las rutas ya separadas, tras `--`).
+// Con una opcion desconocida, o si git falla, cae al cierre: todo lo sin rastrear (el ignorado tambien si hay -f) bajo las
+// rutas. Si ni eso se puede calcular, lanza (la guardia niega).
+function addNames(args, cwd, specs) {
+  const p = parseAdd(args);
+  if (!p.unknown) {
+    try {
+      const out = run(['add', '--dry-run', '--ignore-missing', ...p.known, '--', ...specs], cwd, { maxBuffer: 8 * 1024 * 1024 });
+      return String(out || '').split('\n').map((l) => /^(?:add|remove) '(.*)'$/.exec(l.trim())).filter(Boolean).map((m) => m[1]);
+    } catch (_) { /* cae al cierre */ }
+  }
+  const ignored = p.known.includes('-f') ? [] : ['--exclude-standard'];
+  return names(['ls-files', '-z', '--others', ...ignored, '--', ...(p.noSpecs ? [] : specs)], cwd);
+}
+
+// Lanza si no se pudo calcular: la compuerta de commit lo trata como un commit que se niega.
+function addedPrivate({ cwd, args, positionals = [] }) {
+  return addNames(args, cwd, positionals).filter(isPrivatePath);
 }
 
 function hasHead(cwd) { return exists('HEAD', cwd); }
