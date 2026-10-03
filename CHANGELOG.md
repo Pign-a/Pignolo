@@ -12,6 +12,16 @@ Panel de pignolo (decisión del autor, 2026-10-03). Sobre 0.15.0 de `main`. Las 
 - **Aviso de tope de gasto:** al llegar al 80 % del tope aprobado de un hito (`panel.js budget`) aparece una decisión, una vez por hito.
 - Tests: `tests/panel-state.test.js`, `panel-script.test.js`, `panel-writers.test.js`, `panel-answer-hook.test.js`, `panel-decisions.test.js`, `next-steps.test.js`, `panel-plugin-layout.test.js`, `panel-trust.test.js`, `panel-plugin-cli.test.js` y `changelog-versions.test.js`.
 
+**Arreglos de la revisión del panel (RP-01 a RP-07), núcleo:**
+
+- **RP-02:** el hook `panel-answer` marca solo si el `id`, la pregunta citada y la opción coinciden exactamente con una decisión `open` (dentro del lock); si no, no marca (falla cerrado; ya no acepta `Otra.` ni una pospuesta). Un registro reconstruido no reinicia la numeración de los `Q-<n>` (la base sale del reloj).
+- **RP-03:** `panel.js ask` rechaza una pregunta u opción con saltos de línea, caracteres de control o de más de 300 (pregunta) y 80 (opción) caracteres; no escribe nada y responde `ok:false`.
+- **RP-04:** el siguiente paso de una decisión es la respuesta en el formato que reconoce el hook (`lib/next-steps.js` exporta `cleanQuestion`, `answerPrefix` y `answerText`, que usa también el hook); sin una recomendada que sea una opción, solo llena el comienzo.
+- **RP-07:** un paso que cuesta plata sin `costOk` se muestra igual con la nota «sin OK de costo»; `costOk.ok: false` sigue bloqueando.
+- **RP-05, las fuentes escriben el registro:** `panel.js ask` acepta `--question` y `--key` (idempotente: la misma clave sin responder devuelve la misma decisión) y `panel.js answer --key`. `plan.js scope-card save` deja «¿Aprobás la tarjeta?» en Te toca y `scope-card approve` la cierra y, con `--cap-usd`, guarda el tope de gasto del hito; `ledger.js save` deja la revisión que escala (`needs-review-batch`); `templates/question.md` y las skills `plan`, `daily`, `review`, `present` y `close-session` mandan escribir con `panel.js ask` toda pregunta que cierra el turno esperando y cerrarla con `panel.js answer` cuando el autor contesta por el chat. `panel.js budget` acepta `--spent` sin `--cap` si el hito ya tiene tope.
+- **RP-06:** `close-session.js panel --park` pasa a pospuesto lo que quedó abierto al cerrar y el `SessionStart` siguiente (`startup`, `resume`, `clear`) lo reabre; `queue.js` marca `waiting` en la rama que no pudo integrar (`conflict`, `gate-failed`, `flaky`) y lo quita al integrarla (`panel.js waiting --branch [--off]`).
+- Tests: `tests/panel-fixes.test.js` (14), `tests/review-panel.test.js` (del revisor, sin editar); se ajustaron cuatro expectativas que fijaban lo que cambió (formato del paso de decisión, nota de costo, `Otra` en el hook, numeración tras reconstruir). Menores en `docs/gaps.md` (G78 a G84).
+
 ## 0.15.0 — sin publicar
 
 Lenguaje natural (decisión del autor, 2026-10-03). Sobre 0.14.1 de `main`. Otra rama sin unir (`core/init-rapido`) también dice 0.15.0 y se renumera al unirse.

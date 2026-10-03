@@ -13,3 +13,6 @@ Las hace el autor cuando cierre la v1 (con `claude` real, en su terminal). Marca
 - [ ] **`/pignolo:status`** muestra el estado en texto.
 - [ ] **Con `autoOpen` apagado** el panel no se abre solo.
 - [ ] **Sin pignolo en el proyecto**: la banda dice una sola línea, "pignolo no está activo en este proyecto".
+- [ ] **El envío dispara el hook en una sesión real**: `prompt.submit` con `asUser` tiene que disparar `UserPromptSubmit` (sin eso, el hook `panel-answer` no marca la decisión y vuelve a aparecer). Apretar una letra en `Te toca` y comprobar con `panel.js show` que la decisión quedó `answered`. Pendiente de prueba del autor.
+- [ ] **Una sola vez**: con Claude trabajando, apretar dos letras seguidas en la misma decisión; llega un solo mensaje.
+- [ ] **Fuentes reales**: guardar una tarjeta de alcance (`plan`), cerrar una revisión escalada y dejar una cola con un conflicto; en el panel aparecen «Te toca» y la rama en espera. Al cerrar la sesión con una decisión abierta, la siguiente sesión la vuelve a mostrar.

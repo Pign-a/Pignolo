@@ -10,3 +10,9 @@ Primera versión (decisión del autor, 2026-10-03; sale del prototipo aprobado).
 - `c` copia la rama o la ruta del informe de la fila elegida y `h` su hash.
 - Se abre solo cuando aparece una decisión nueva (`autoOpen`, prendido por defecto): 144 columnas o más la primera vez, 110 después; una vez por decisión.
 - Un único `prompt.submit`, dentro de `submitAnswer`; lo verifica `tests/panel-trust.test.js` sobre `claude plugin validate`.
+
+**Arreglos de la revisión (RP-01, RP-03):**
+
+- Una respuesta se envía una sola vez: la decisión queda «enviando…» (sin botones) antes de `prompt.submit`, que espera a la sesión, y una segunda pulsación no encola otro envío. Antes de enviar relee el registro: si la decisión ya no está abierta o cambió su pregunta u opciones, no envía y avisa («La decisión cambió»).
+- El texto enviado es lo que se muestra, en una sola línea: los saltos de línea se aplanan; una pregunta u opción con caracteres de control o de más de 300 / 80 caracteres no se envía y avisa «Pregunta inválida».
+- Tests: `tests/review.test.ts` (del revisor, sin editar) y `tests/answer.test.ts` (7).
