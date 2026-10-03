@@ -4,7 +4,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
@@ -20,7 +19,8 @@ const dispatch = require(path.join(R, 'dispatch'));
 const evalCases = require(path.join(R, 'lentes-eval-cases'));
 
 const cases = lib.loadCases();
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-bench-rev-'));
+const { makeTempDir } = require('./helpers');
+const tmp = () => makeTempDir('pignolo-bench-rev-');
 
 // ---- cases.json and order ---------------------------------------------------------------------
 test('cases.json: 5 cases with defect (14 important defects) and 2 clean ones, as the lentes card says', () => {
@@ -117,7 +117,7 @@ test('snapshot: task sections are cut by heading level and picked by number or b
 });
 
 // ---- leak check -------------------------------------------------------------------------------
-const ROOT = path.join(os.tmpdir(), 'snaps', 'c1234567');
+const ROOT = path.join(path.parse(process.cwd()).root, 'snaps', 'c1234567');
 const LEAK = {
   hashes: ['bfb52ba0123456789abcdef0123456789abcdef0'],
   strings: [
