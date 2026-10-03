@@ -1,17 +1,27 @@
-// pignolo-panel: solo lee y dibuja. Lee UN archivo (.pignolo/panel-state.json, que escribe pignolo) y lo muestra.
-// Efectos permitidos: llenar o sugerir texto en el prompt (nunca lo envia), copiar al portapapeles (`ui.copy`) y UN solo
-// envio: la respuesta de una decision de "Te toca", desde el boton de una opcion (`submitAnswer`). No aprueba ni niega nada.
+// pignolo-panel: solo lee y dibuja. Lee UN archivo (.pignolo/panel-state.json, que escribe pignolo) y lo muestra; la pestaña UI
+// (solo con pignolo-ui) lee ademas PRODUCT.md, DESIGN.md y la carpeta .pignolo-ui del proyecto.
+// Efectos permitidos: llenar o sugerir texto en el prompt (nunca lo envia), copiar al portapapeles (`ui.copy`), UNA consulta a
+// haiku (`model.complete`, solo al abrir la pestaña UI, con un resumen sin contenido de archivos) y UN solo lugar que envia
+// (`submitText`), al que llegan solo dos botones: la respuesta de una decision de "Te toca" (`submitAnswer`) y el atajo de la
+// pestaña UI (`submitUiRequest`). No aprueba ni niega nada.
 import {
   SYMBOL, COLOR, shortModel, minutes, tokens, usd, plural,
   newRegistry, addAgent, addUsage, finish, reopen, running, elapsed, sorted,
   parseJson,
 } from './model.js'
 import {
-  readState, suggestionText, answerPrefix, answerText, answerInvalid, pickColor, progress, bar, stageLine, sparkText, sparkCells, MARK,
+  readState, suggestionText, answerPrefix, answerText, answerInvalid, hasHiddenChars, oneLine, pickColor, progress, bar, stageLine, sparkText, sparkCells, MARK,
 } from './state.js'
+import { readUiInput, hashInput, knownScreen } from './ui-input.js'
+import { createRecommender } from './ui-recs.js'
+import { detectUi } from './ui-detect.js'
+import { uiRequestText } from './ui-request.js'
+import { tabModel, SHORTCUTS } from './ui-tab.js'
+import { contextFor } from './ui-rules.js'
 
 const PANE = 'pignolo-panel'
-const TABS = [['now', '1', 'Ahora'], ['branches', '2', 'Ramas'], ['cost', '3', 'Costo']]
+const TABS_BASE = [['now', '1', 'Ahora'], ['branches', '2', 'Ramas'], ['cost', '3', 'Costo']]
+const UI_TAB = ['ui', '4', 'UI']
 const SPARK_N = 24
 const POLL_MS = 3000
 // Ancho minimo del terminal para abrir el panel solo (D-P5): 144 la primera vez, 110 despues.
@@ -38,6 +48,14 @@ let selected = null // fila elegida: { key, kind, copy, hash }
 const postponedLocal = new Set() // `z`: ocultas solo en esta sesion del mod (close-session las persiste)
 const answered = new Map() // id -> true: respondidas desde el panel (no se reenvian aunque el registro aun las traiga abiertas)
 const sending = new Set() // ids con un envio en curso: `prompt.submit` espera a que la sesion quede libre y una segunda pulsacion no puede encolar otro (RP-01)
+// pestaña UI
+let uiDetect = { installed: false, via: 'none' } // ¿esta pignolo-ui? se evalua al cargar y al abrir el panel
+let uiAsk = true // userConfig `uiRecommendations`: en false la pestaña usa solo reglas y nunca consulta al modelo
+let uiResult = null // lo ultimo que devolvio el recomendador (vale solo para las mismas entradas)
+let uiPending = false // hay una consulta en vuelo
+let uiSending = false // hay un pedido en envio: un atajo se envia una sola vez
+let uiCache = { at: 0, value: null } // lectura de los archivos de pignolo-ui (cache corta, como el registro)
+const recommender = createRecommender({})
 
 // ---- lectura (unico archivo: .pignolo/panel-state.json) ----
 
@@ -233,7 +251,7 @@ async function bandTree($, e, next) {
   }
   parts.push(sep(Text), Text({ dimColor: true, children: [usd(u.cost && u.cost.usd) + ' USD · ctx ' + (u.context && u.context.percent != null ? u.context.percent : '—') + ' %'] }))
   // Botón de la banda: con el prompt vacío, escribir 0 (y esperar) abre el panel.
-  const open = Button({ key: 'band-open', hotkey: '0', plain: true, dimColor: true, label: 'panel', onPress: () => openPane($) })
+  const open = Button({ key: 'band-open', hotkey: '0', plain: true, dimColor: true, label: 'panel', onPress: () => openPaneByUser($) })
   const lines = [Box({ flexDirection: 'row', columnGap: 2, children: [Text({ wrap: 'truncate-end', children: parts }), open] })]
   if (steps) {
     lines.push(
@@ -262,13 +280,27 @@ function stepButtons(Box, Button, $, step) {
 // del registro: pregunta recortada y limpia, opcion tal cual (R-P9). No vive en otro archivo porque `$` no cruza imports.
 // Devuelve true si el mensaje entro; false si no pudo enviarse (el llamador avisa y conserva la decision).
 async function submitAnswer($, decision, option) {
-  const text = answerText(decision, option)
+  return submitText($, answerText(decision, option))
+}
+
+// El UNICO `prompt.submit` del paquete. Solo texto de una linea y sin caracteres invisibles (control, formato, uso privado, sin
+// asignar): si no, no se envia nada. Lo llaman submitAnswer y submitUiRequest, y a esos dos solo un boton cada uno.
+async function submitText($, text) {
+  if (typeof text !== 'string' || text === '' || /[\r\n]/.test(text) || hasHiddenChars(text)) return false
   try {
     const res = await $.prompt.submit({ text, asUser: true })
     return Boolean(res) && res.drop === undefined
   } catch {
     return false
   }
+}
+
+// El pedido de un atajo de la pestaña UI. El texto sale de una plantilla fija (ui-request.js): el porque del modelo no entra.
+// Devuelve true si el mensaje entro; false si no era valido o no pudo enviarse.
+async function submitUiRequest($, action, target, context) {
+  const text = uiRequestText(action, target, context)
+  if (text === null) return false
+  return submitText($, text)
 }
 
 function sameOptions(a, b) {
@@ -631,6 +663,169 @@ async function costBody($, e, snap, cols, width) {
   return [block($, e, { key: 'blk-costo', title: 'COSTO', right: list.length ? plural(list.length, 'agente', 'agentes') : '', body, width })]
 }
 
+// ---- UI (solo con pignolo-ui) --------------------------------------------------------
+
+function slashes(p) {
+  return String(p).replace(/\\/g, '/').replace(/\/+$/, '')
+}
+
+// Raiz del proyecto: donde esta .pignolo/panel-state.json si lo hay; si no, el cwd. En demo, el arbol de muestra del plugin.
+async function uiRoot($) {
+  if (demoMode) return slashes($.plugin.root) + '/sample/ui'
+  const file = await findState($)
+  return file ? file.replace(/\/\.pignolo\/panel-state\.json$/, '') : slashes(await $.session.cwd())
+}
+
+// Lector de archivos para ui-input.js: funciones que cierran sobre `$.fs` (el motor no deja pasar `$` a otro archivo).
+function uiReader($) {
+  return {
+    exists: (p) => $.fs.exists(p),
+    list: (p) => $.fs.list(p),
+    read: async (p) => String(await $.fs.read(p)),
+  }
+}
+
+// Lo que hay de pignolo-ui en el proyecto, con cache corta. Nunca tira.
+async function readUiNow($, now) {
+  if (uiCache.value && now - uiCache.at < 1500) return uiCache.value
+  const root = await uiRoot($)
+  const { input } = await readUiInput(uiReader($), root)
+  uiCache = { at: now, value: { root, input } }
+  return uiCache.value
+}
+
+// ¿Esta pignolo-ui? (D-U5). Cada lectura va en try/catch dentro de detectUi.
+async function refreshUiDetect($) {
+  if (demoMode) {
+    uiDetect = { installed: true, via: 'folder' }
+    return
+  }
+  try {
+    uiDetect = await detectUi({
+      readSettings: () => $.settings.read(),
+      listCommands: () => $.command.list(),
+      hasFolder: async () => {
+        const root = await uiRoot($)
+        for (const name of ['.pignolo-ui', 'PRODUCT.md', 'DESIGN.md', 'design.md']) if (await $.fs.exists(root + '/' + name)) return true
+        return false
+      },
+    })
+  } catch {
+    uiDetect = { installed: false, via: 'none' }
+  }
+}
+
+// El UNICO lugar que consulta al modelo (por el recomendador). Se llama solo al abrir la pestaña UI, al volver a ella y con la
+// tecla `r`: nunca desde un temporizador, un turno, un agente ni el dibujo. Nunca tira; si falla, la vista usa las reglas.
+async function enterUiTab($, { retry = false } = {}) {
+  if (!uiDetect.installed) return
+  uiCache = { at: 0, value: null }
+  let data = null
+  try {
+    data = await readUiNow($, await $.clock.now())
+  } catch {
+    return
+  }
+  if (!uiAsk || demoMode) {
+    uiResult = null
+    $.ui.invalidate('ui.render')
+    return
+  }
+  if (uiPending) return
+  uiPending = true
+  $.ui.invalidate('ui.render')
+  try {
+    const io = { complete: (o) => $.model.complete(o), usage: () => $.session.usage() }
+    const res = await recommender.get(io, data.input, { retry })
+    uiResult = res
+    if (retry && res.reused) $.ui.toast('Ya está al día: las entradas no cambiaron')
+    else if (retry && res.reason === 'cap') $.ui.toast('Tope de consultas de la sesión')
+  } catch {
+    uiResult = null
+  } finally {
+    uiPending = false
+    $.ui.invalidate('ui.render')
+  }
+}
+
+// Abre el panel por una accion del usuario (comando o tecla 0): vuelve a mirar si esta pignolo-ui y, si la pestaña UI es la
+// que quedó abierta, la consulta. (El abrir solo por una decision nueva NO pasa por acá: no consulta al modelo.)
+async function openPaneByUser($) {
+  await refreshUiDetect($)
+  const res = await openPane($)
+  if (tab === 'ui' && uiDetect.installed) await enterUiTab($)
+  return res
+}
+
+// <press-handler:ui> el UNICO sitio desde el que se llama a submitUiRequest: el boton de una recomendacion o de un atajo.
+function uiButton($, Button, { key, letter, label, action, target, dim }) {
+  return Button({
+    key,
+    hotkey: letter,
+    label: letter + '  ' + label,
+    plain: true,
+    dimColor: dim,
+    onPress: async () => {
+      if (uiSending) return // un pedido se envia una sola vez: el envio espera a la sesion y otra pulsacion no encola otro
+      if (uiRequestText(action, target, '') === null) {
+        $.ui.toast('Pedido inválido: no se envía')
+        return
+      }
+      uiSending = true // antes de cualquier await
+      $.ui.invalidate('ui.render')
+      try {
+        // Relee los archivos: una pantalla que ya no existe no se envia, y el contexto sale de las reglas sobre lo recien leido.
+        uiCache = { at: 0, value: null }
+        const fresh = await readUiNow($, await $.clock.now())
+        if ((action === 'improve' || action === 'audit') && target && !knownScreen(fresh.input, target)) {
+          $.ui.toast('La pantalla cambió: mirá la pestaña y elegí de nuevo')
+          return
+        }
+        const ok = await submitUiRequest($, action, target, contextFor(action, target, fresh.input))
+        if (!ok) {
+          $.ui.toast('No pude enviar el pedido; escribilo en el prompt')
+          return
+        }
+        $.ui.toast('Enviado: ' + label)
+      } finally {
+        uiSending = false
+        $.ui.invalidate('ui.render')
+      }
+    },
+  })
+}
+// </press-handler:ui>
+
+async function uiBody($, e, width) {
+  const { Box, Text, Button } = $.ui.resolve(e)
+  const { root, input } = await readUiNow($, await $.clock.now())
+  const key = await hashInput(input)
+  const canAsk = uiAsk && !demoMode
+  const project = oneLine(root.split('/').filter(Boolean).pop() || 'proyecto').slice(0, 30)
+  const m = tabModel({ project, input, key, result: uiResult, pending: uiPending, canAsk, calls: recommender.stats().calls })
+  const body = [Text({ key: 'ui-h', bold: true, dimColor: true, children: [uiSending ? 'RECOMENDADO · enviando…' : 'RECOMENDADO'] })]
+  if (m.rows.length === 0) body.push(Text({ key: 'ui-none', dimColor: true, wrap: 'truncate-end', children: ['  Todavía no hay nada para recomendar: usá un atajo.'] }))
+  m.rows.forEach((r) => {
+    body.push(
+      uiButton($, Button, { key: 'ui-rec-' + r.letter, letter: r.letter, label: r.label, action: r.action, target: r.target }),
+      Text({ key: 'ui-why-' + r.letter, dimColor: true, wrap: 'truncate-end', children: ['     ' + r.why] }),
+    )
+  })
+  body.push(Text({ key: 'ui-g', children: [' '] }))
+  body.push(
+    Box({
+      key: 'ui-shortcuts',
+      flexDirection: 'row',
+      columnGap: 3,
+      children: [Text({ key: 'ui-sc-h', bold: true, dimColor: true, children: ['ATAJOS'] }), ...SHORTCUTS.map((s) => uiButton($, Button, { key: 'ui-sc-' + s.key, letter: s.key, label: s.label, action: s.action, target: '', dim: true }))],
+    }),
+  )
+  if (canAsk && m.mode === 'normal') {
+    body.push(Box({ key: 'ui-retry-row', flexDirection: 'row', paddingLeft: 7, children: [Button({ key: 'ui-retry', hotkey: 'r', label: 'r  reconsultar', plain: true, dimColor: true, onPress: () => enterUiTab($, { retry: true }) })] }))
+  }
+  return [block($, e, { key: 'blk-ui', title: m.title, right: m.right, body, foot: footer([['a–c, n, m, u, d', 'envía el pedido a Claude']]), width })]
+}
+
 async function paneTree($, e, next) {
   if (e.requestId !== PANE) return next(e)
   const { Box, Text, Button } = $.ui.resolve(e)
@@ -642,24 +837,27 @@ async function paneTree($, e, next) {
   const snap = await readSnapshot($, now)
   const redraw = () => $.ui.invalidate('ui.render')
 
+  if (tab === 'ui' && !uiDetect.installed) tab = 'now'
+  const TABS = uiDetect.installed ? [...TABS_BASE, UI_TAB] : TABS_BASE
   const tabs = Box({
     key: 'tabs',
     flexDirection: 'row',
     columnGap: 3,
     children: TABS.map(([id, key, label]) =>
-      Button({ key: 'tab-' + id, label, hotkey: key, plain: true, dimColor: tab !== id, onPress: () => { tab = id; redraw() } }),
+      Button({ key: 'tab-' + id, label, hotkey: key, plain: true, dimColor: tab !== id, onPress: () => { tab = id; redraw(); if (id === 'ui') enterUiTab($) } }),
     ),
   })
 
   let body
   if (tab === 'now') body = nowBody($, e, snap, now, cols, width)
   else if (tab === 'branches') body = branchesBody($, e, snap, cols, width)
+  else if (tab === 'ui') body = await uiBody($, e, width)
   else body = await costBody($, e, snap, cols, width)
 
   const demo = snap.demo ? [Text({ color: pickColor(e.theme, 'warning', 'claude'), children: ['MODO DEMO · datos de muestra (/pignolo-panel demo off para salir)'] })] : []
   return Box({
     flexDirection: 'column',
-    children: [tabs, ...demo, Text({ key: 'g0', children: [' '] }), ...body, Text({ key: 'g9', children: [' '] }), Text({ dimColor: true, wrap: 'truncate-end', children: [footer([['Esc', 'cerrar'], ['1', 'ahora'], ['2', 'ramas'], ['3', 'costo']])] })],
+    children: [tabs, ...demo, Text({ key: 'g0', children: [' '] }), ...body, Text({ key: 'g9', children: [' '] }), Text({ dimColor: true, wrap: 'truncate-end', children: [footer([['Esc', 'cerrar'], ['1', 'ahora'], ['2', 'ramas'], ['3', 'costo'], ...(uiDetect.installed ? [['4', 'UI']] : [])])] })],
   })
 }
 
@@ -668,6 +866,7 @@ async function paneTree($, e, next) {
 export function register(on, options) {
   if (options && options.demo === true) demoMode = 'idle'
   autoOpen = !(options && options.autoOpen === false)
+  uiAsk = !(options && options.uiRecommendations === false)
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -676,6 +875,7 @@ export function register(on, options) {
       immediate: true,
     })
     const res = await next(e)
+    await refreshUiDetect($)
     try {
       await checkNewDecisions($) // la primera lectura marca lo que ya existe como anunciado, sin abrir
     } catch {
@@ -703,13 +903,16 @@ export function register(on, options) {
       const rest = arg.slice(4).trim()
       demoMode = rest === 'off' ? null : rest === 'busy' ? 'busy' : 'idle'
       cache = { at: 0, value: null }
+      uiCache = { at: 0, value: null }
+      uiResult = null
       prevCards = new Map()
+      await refreshUiDetect($)
       $.ui.invalidate('ui.render')
       if (demoMode) await openPane($)
       await syncSuggest($)
       return { text: demoMode ? 'pignolo-panel: modo demo (' + demoMode + '). /pignolo-panel demo off para salir.' : 'pignolo-panel: modo demo apagado.' }
     }
-    await openPane($)
+    await openPaneByUser($)
     return {}
   })
 

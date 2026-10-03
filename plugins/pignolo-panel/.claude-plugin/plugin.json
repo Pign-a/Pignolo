@@ -1,7 +1,7 @@
 {
   "name": "pignolo-panel",
-  "version": "0.1.0",
-  "description": "Panel visual de solo lectura para pignolo: siguiente paso, decisiones tuyas, ramas y costo. Requiere Claude Code 2.1.287 o más nuevo.",
+  "version": "0.2.0",
+  "description": "Panel visual para pignolo: siguiente paso, decisiones tuyas, ramas, costo y, con pignolo-ui, una pestaña UI con recomendaciones. Requiere Claude Code 2.1.287 o más nuevo.",
   "author": {
     "name": "Ignacio"
   },
@@ -16,6 +16,12 @@
       "type": "boolean",
       "title": "Abrir el panel solo",
       "description": "Abre el panel una vez cuando aparece una decisión nueva tuya, si la terminal tiene 144 columnas o más (110 después de la primera vez). Apagalo para abrirlo vos con /pignolo-panel. Requiere Claude Code 2.1.287 o más nuevo.",
+      "default": true
+    },
+    "uiRecommendations": {
+      "type": "boolean",
+      "title": "Recomendaciones de UI con IA",
+      "description": "Con pignolo-ui instalado, la pestaña UI le pide a haiku (unos 0,01 USD) que ordene las 3 mejores acciones al abrirla. Solo le manda un resumen: nombres de pantallas, conteos e ids de reglas, nunca el contenido de tus archivos. Apagalo para usar solo reglas, sin ninguna consulta al modelo.",
       "default": true
     }
   },
