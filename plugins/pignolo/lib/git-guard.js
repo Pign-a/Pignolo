@@ -443,7 +443,8 @@ function scopeState(cmd, root, states) {
 }
 
 function forkState(p) {
-  return { ...p, vars: new Map(p.vars), alts: p.alts && [...p.alts], pending: p.pending && { list: p.pending.list && [...p.pending.list] } };
+  // El subshell hereda el directorio pero no la certeza del cd de afuera (cd-chain, conservador a propósito).
+  return { ...p, sureReal: null, vars: new Map(p.vars), alts: p.alts && [...p.alts], pending: p.pending && { list: p.pending.list && [...p.pending.list], sure: false } };
 }
 
 // Directorios posibles: [{ cwd, real }], o null si no se sabe nada.
@@ -458,6 +459,7 @@ function merge(a, b) {
 }
 
 function setPossible(st, list) {
+  st.sureReal = null;
   if (list && list.length === 1) { st.cwd = list[0].cwd; st.cwdReal = list[0].real; st.alts = null; return; }
   st.cwd = null;
   st.cwdReal = null;
@@ -467,8 +469,11 @@ function setPossible(st, list) {
 function settle(st, sep) {
   if (!st.pending || sep === null || sep === undefined || sep === '&&' || sep === '|') return;
   const all = merge(st.pending.list, possible(st));
+  const sure = sep === ';' ? st.pending.sure : null;
   st.pending = null;
   setPossible(st, all);
+  // Cada `cd` de la cadena iba a una carpeta literal que existe: no falla, y lo que sigue por `;` corre en la última (cd-chain).
+  if (sure) st.sureReal = sure;
 }
 
 // Argumento de -c/-e/-m/--message (también en grupos como -am, -lc, -ne) con una
@@ -1192,9 +1197,10 @@ const refspecWrites = (v) => {
 // Directorios donde se evalúa la rama de HEAD: el cwd real, o el de `-C <dir>` resuelto contra él. null: con -C /
 // --git-dir / --work-tree no se pudo resolver (variable, sin cwd conocido): un verbo que depende de HEAD se niega.
 function headDirs(st, redir) {
-  if (!redir) return realDirs(st);
+  const base = st.sureReal || realDirs(st);
+  if (!redir) return base;
   if (redir.unresolved) return null;
-  let dirs = realDirs(st);
+  let dirs = base;
   for (const d of redir.dirs) {
     if (path.isAbsolute(d)) dirs = [path.resolve(d)];
     else if (dirs.length) dirs = dirs.map((x) => path.resolve(x, d));
@@ -1283,14 +1289,19 @@ function changeDir(name, args, st, ctx, negated) {
   st.moved = true; // gitCommands: un comando git posterior corre en otro directorio
   const t = args.find((w) => w.kind !== 'param' && !(w.value.startsWith('-') && w.value.length > 1));
   const before = possible(st);
+  // Un `cd` a una carpeta literal que existe no falla (cd-chain): se mira antes de moverlo, contra el directorio real de ahora.
+  const prior = st.pending;
+  const sure = !negated && name !== 'popd' && name !== 'pop-location' && Boolean(t) && !t.dyn && !t.glob && t.value !== '-' && !/^~/.test(t.value)
+    && st.cwd !== null && Boolean(st.cwdReal) && ctx.statPath(t.value, st) === 'dir' && (!prior || Boolean(prior.sure));
   let next;
   if (name === 'popd' || name === 'pop-location' || (t && (t.dyn || t.glob || t.value === '-'))) next = null;
   else if (!t) next = [{ cwd: ctx.locs.home, real: null }];
   else next = dirsAfter(t, before, ctx);
   // Hasta el próximo `;`, el directorio de antes sigue siendo posible (el cd pudo fallar).
-  st.pending = { list: st.pending ? merge(st.pending.list, before) : before };
+  st.pending = { list: st.pending ? merge(st.pending.list, before) : before, sure: false };
   // `! cd x`: con `&&`, lo que sigue corre justo cuando el cd falló (M7). Queda desconocido.
   setPossible(st, negated ? merge(before, next) : next);
+  if (sure && next && next.length === 1 && next[0].real) st.pending.sure = [next[0].real];
 }
 
 // ------------------------------------------------------------ git
