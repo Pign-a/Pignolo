@@ -445,3 +445,21 @@ test('gitCommands: PowerShell gives the same result as Bash', () => {
   const p = gitCommands(cmd, { shell: 'powershell', psTimeoutMs: PS_T });
   assert.deepEqual(p.map((c) => [c.sub, c.onMain, c.cwdChanged, c.positionals]), b.map((c) => [c.sub, c.onMain, c.cwdChanged, c.positionals]));
 });
+
+test('add-force: a subagent is denied add -f/--force and update-index --add; the main thread and -n are not', () => {
+  const sub = (c) => evaluate(c, { shell: 'bash', mode: AUTO, subagent: true });
+  const main = (c) => evaluate(c, { shell: 'bash', mode: AUTO });
+  for (const c of ['git add -f .pignolo-ui/runs', 'git add --force .pignolo-ui/runs/r1/leak-values.json', 'git add -fA', 'git add -Af .', 'git add --force=1 x', 'git update-index --add --cacheinfo 100644,0123456789012345678901234567890123456789,x']) {
+    assert.deepStrictEqual([sub(c).decision, sub(c).rule], ['block', 'add-force'], c);
+    assert.strictEqual(main(c).decision, 'allow', `${c} (main)`);
+  }
+  for (const c of ['git add src/a.js', 'git add -n -f x', 'git add --dry-run -f x']) assert.strictEqual(sub(c).decision, 'allow', c);
+  assert.match(RULES['add-force'][2], /sin git add -f/);
+});
+
+test('gitCommands: every git carries its -C directories and whether one could not be resolved', () => {
+  const c = gitCommands('git -C a -C b commit -m x', { shell: 'bash' });
+  assert.deepStrictEqual([c[0].sub, c[0].dirs, c[0].dirsUnknown], ['commit', ['a', 'b'], false]);
+  assert.strictEqual(gitCommands('git --git-dir=x commit -m y', { shell: 'bash' })[0].dirsUnknown, true);
+  assert.deepStrictEqual(gitCommands('git log --grep commit', { shell: 'bash' }).map((x) => x.sub), ['log']);
+});

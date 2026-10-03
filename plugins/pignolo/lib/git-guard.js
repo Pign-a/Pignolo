@@ -40,6 +40,7 @@ const RULES = {
   'reset-hard': ['deny', 'git reset --hard / --merge descarta cambios sin commitear', 'usá `git reset --soft` o `git revert`; si hace falta, commiteá WIP antes'],
   clean: ['deny', 'git clean borra archivos sin seguimiento sin recuperación', 'revisá con `git clean -n` y borrá a mano lo que corresponda'],
   'worktree-remove-force': ['deny', 'git worktree remove --force descarta cambios sin commitear del worktree', 'commiteá o respaldá el worktree y usá `git worktree remove` sin --force'],
+  'add-force': ['deny', 'git add -f/--force (y update-index --add) agrega al índice archivos que el proyecto ignora a propósito (por ejemplo .pignolo-ui/ guarda datos personales del autor)', 'agregá solo código por ruta, sin git add -f; si querías resguardar trabajo, commiteá solo esas rutas de código, sin git add -f, y dejá lo ignorado fuera'],
   'no-verify': ['deny', '--no-verify / -n saltea los hooks del repo', 'arreglá lo que el hook rechaza; si hay que saltearlo, es decisión del humano'],
   'gc-prune': ['deny', 'git gc --prune / git prune eliminan objetos inalcanzables', 'no hace falta podar; si es imprescindible, lo decide el humano'],
   'reflog-expire': ['deny', 'expirar o borrar el reflog elimina la red de seguridad de commits', 'no se toca el reflog; es la última capa de recuperación'],
@@ -1580,6 +1581,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       sub, args: args.map((w) => w.value), positionals: o.positionals.map((w) => w.value),
       shorts: [...o.shorts], longs: [...o.longs],
       onMain: Boolean(st.onMain), cwdChanged: Boolean(st.moved || redirected),
+      dirs: redir.dirs.slice(), dirsUnknown: redir.unresolved, // los -C literales (en orden) y si hay otro directorio que no se pudo resolver
     });
   }
   // Con -C / --git-dir / --work-tree todo se evalúa con sus reglas; lo que depende
@@ -1607,12 +1609,21 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   done();
 }
 
+// Un subagente no tiene razón para forzar lo ignorado (D7): add -f/--force y update-index --add/--cacheinfo. -n/--dry-run no agrega nada.
+function forcesIgnored(sub, o) {
+  if (sub === 'update-index') return longIs(o, 'add') || longIs(o, 'cacheinfo');
+  if (sub !== 'add') return false;
+  if (o.shorts.has('n') || longIs(o, 'dry-run')) return false;
+  return o.shorts.has('f') || longIs(o, 'force');
+}
+
 function gitRules(sub, o, args, ctx, st, realSt, redir, cfg = []) {
   const base = gitRulesBase(sub, o, args, ctx, st);
   if (!ctx.subagent) return base;
   const extra = [];
   if (protectsRefs(sub, o, realSt || st, redir)) extra.push('pignolo-protected-refs');
   if (touchesMain(sub, o, realSt || st, redir, cfg)) extra.push('subagent-main');
+  if (forcesIgnored(sub, o)) extra.push('add-force');
   return extra.length ? [...base, ...extra] : base;
 }
 

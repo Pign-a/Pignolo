@@ -2188,5 +2188,54 @@
   "command": "python3 - <<'PY'\nimport subprocess\nsubprocess.run(['ls'])\nPY",
   "expect": "block",
   "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add -f .pignolo-ui/runs",
+  "expect": "block",
+  "rule": "add-force"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add --force .pignolo-ui/runs/r1/leak-values.json",
+  "expect": "block",
+  "rule": "add-force"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add -fA",
+  "expect": "block",
+  "rule": "add-force"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add -Af .",
+  "expect": "block",
+  "rule": "add-force"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add --force=1 x",
+  "expect": "block",
+  "rule": "add-force"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git update-index --add --cacheinfo 100644,0123456789012345678901234567890123456789,x",
+  "expect": "block",
+  "rule": "add-force"
+ },
+ {
+  "shell": "powershell",
+  "subagent": true,
+  "command": "git add -f '.pignolo-ui\runs'",
+  "expect": "block",
+  "rule": "add-force"
  }
 ]

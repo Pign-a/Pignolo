@@ -13,6 +13,8 @@ const { readState } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { snapshotWip } = require('../../lib/git-backup');
 const { gitRun } = require('../../lib/git');
+const path = require('node:path');
+const { stagedPrivate, exitCommand } = require('../../lib/private-index');
 
 const SNAPSHOT_DEADLINE_MS = 2000; // dentro del plazo de 3 s del launcher
 
@@ -56,6 +58,27 @@ function denySnapshot() {
   return { exit: 2, stderr: `pignolo bloqueó el comando: ${reason}. Alternativa: ${alternative}.\n` };
 }
 
+const longHas = (c, name, min) => c.longs.some((l) => l.length >= min && name.startsWith(l));
+
+// Un `git commit` del comando (con sus -C literales, -a, --amend y rutas) que llevaría archivos privados.
+// Los positionals y las opciones salen del mismo análisis que la guardia (`collect`), no de una regex.
+// Límites aceptados (docs/gaps.md): `cd x && git commit` mira el cwd del hook; --git-dir/--work-tree o un -C dinámico no se ven.
+function commitGate(collect, cwd, command) {
+  if (!Array.isArray(collect) || !/commit/i.test(String(command || ''))) return null;
+  const leaked = new Set();
+  for (const c of collect) {
+    if (c.sub !== 'commit' || c.incomplete || c.dirsUnknown) continue;
+    let dir = cwd;
+    for (const d of c.dirs || []) dir = path.resolve(dir, d);
+    const all = c.shorts.includes('a') || longHas(c, 'all', 3);
+    const amend = longHas(c, 'amend', 3);
+    for (const p of stagedPrivate({ cwd: dir, all, amend, paths: c.positionals || [] })) leaked.add(p);
+  }
+  if (!leaked.size) return null;
+  const list = [...leaked];
+  return { exit: 2, stderr: `pignolo bloqueó el commit: el índice tiene archivos privados de pignolo (${list.slice(0, 5).join(', ')}${list.length > 5 ? ', ...' : ''}). Alternativa: sacalos del índice con \`${exitCommand(list)}\` en un comando aparte (no lo encadenes con && al commit) y commiteá de nuevo.\n` };
+}
+
 exports.run = (input, ctx = {}) => {
   const env = ctx.env || process.env;
   const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : process.cwd();
@@ -63,13 +86,18 @@ exports.run = (input, ctx = {}) => {
 
   const command = input.tool_input ? input.tool_input.command : undefined;
   const shell = String(input.tool_name || '').toLowerCase() === 'powershell' ? 'powershell' : 'bash';
+  const collect = [];
   const v = (ctx.evaluate || evaluate)(command, {
     shell, cwd, mode: input.permission_mode, home: userHomes(env)[0], claudeDirs: claudeDirs(env), pignoloHome: pignoloHome(env), onlyCatastrophic: guardOff,
-    subagent: Boolean(input.agent_id), agentType: input.agent_type,
+    subagent: Boolean(input.agent_id), agentType: input.agent_type, collect,
   });
   if (v.decision === 'block') {
     return { exit: 2, stderr: `pignolo bloqueó el comando: ${v.reason}. Alternativa: ${v.alternative}.\n` };
   }
+  // Compuerta de commit (T2 del plan de la fuga de leak-values): rige con pignolo sin inicializar y también con
+  // /pignolo:off y PIGNOLO_DISABLED=1 (D8); solo salta si el commit lleva archivos privados.
+  const gate = commitGate(collect, cwd, command);
+  if (gate) return gate;
   if (guardOff) return { exit: 0 };
 
   let note = '';
