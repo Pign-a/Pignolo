@@ -2008,5 +2008,95 @@
   "command": "tee .pignolo/.dis* < /dev/null",
   "expect": "block",
   "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require('child_process').spawnSync('git',['reset','--hard'])\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"const {execSync}=require('child_process');execSync('git status')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python -c \"import os; os.system('git clean -fdx')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"const c=['git','reset','--hard'].join(' ');require('child_process').execSync(c)\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require('child_process').execSync('npm test && git stash drop')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"eval('require(\\\"child_process\\\").execSync(\\\"git reset --hard\\\")')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require('child_process')['execSync']('git reset --hard')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"const {execSync: run}=require('child_process'); run('git reset --hard')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -c \"exec('import os; os.system(\\\"git clean -fdx\\\")')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"console.log(\\`\\${require('child_process').execSync('git reset --hard')}\\`)\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "awk 'BEGIN{print \"x\" | \"git reset --hard\"}'",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"require(['child_','process'].join('')).execSync('git reset --hard')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -c \"__import__('o'+'s').system('git clean -fdx')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -c \"print(f'{__import__(\\\"os\\\").system(\\\"git clean -fdx\\\")}')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"import('child_process').then(m=>m.execSync('git reset --hard'))\"",
+  "expect": "block",
+  "rule": "inline-code"
  }
 ]

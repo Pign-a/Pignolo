@@ -20,6 +20,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { parseBash, ParseError, mentionsGit } = require('./shell-parse');
+const { inlineCallsGit, langOf } = require('./inline-calls');
 const { parsePsAst, PsUnavailable } = require('./ps-ast');
 const { cleanPath, resolveClean, isWithin, isProtectedWrite, FLAG_RE, GIT_DIR_RE } = require('./paths');
 const { lockedAt } = require('./sabotage');
@@ -225,7 +226,8 @@ const ENV_CHDIR_SHORT = /^-[iv0]*C(.*)$/s;
 
 const SPAWN_RE = /child_process|\bexec(Sync|FileSync|File)?\s*\(|\bspawn(Sync)?\s*\(|subprocess|os\.(system|popen|exec\w*|spawn\w*)|\bsystem\s*\(|\bpopen\b|Deno\.(run|Command)|Bun\.(spawn|\$)|shell_exec|passthru|proc_open|pcntl_exec/;
 const SPAWN_PERL_RUBY = /\b(system|exec|spawn)\b|`|\bqx\s*\W|%x\s*\W|IO\.popen|Open3|\bopen\s*\(?\s*["']?\s*\|/;
-const AWK_EXEC = /\bsystem\s*\(|\|\s*getline|\|&|print[^;}]*\|/;
+const AWK_EXEC = /\bsystem\s*\(|\|\s*getline|\|&/;
+const AWK_PRINT_PIPE = /print[^;}]*\|/; // se mira sin el contenido de las comillas: `print $2 "|" $3` no es un pipe
 
 // ------------------------------------------------------------ utilidades
 
@@ -1868,9 +1870,9 @@ function pwshScript(rest, cmd, ctx, out, depth, st) {
 }
 
 function inlineCheck(name, out, st, ctx) {
-  const perlish = name === 'perl' || name === 'ruby' || name === 'php';
+  const lang = langOf(name);
   return (text) => {
-    if (mentionsGit(text) || SPAWN_RE.test(text) || (perlish && SPAWN_PERL_RUBY.test(text))) out.push(hit('inline-code'));
+    if (inlineCallsGit(text, lang).deny) out.push(hit('inline-code')); // T7 (R-9): uso de procesos fuera de literales y git nombrado
     if (st && ctx) inlineDeletes(text, st, ctx, out);
   };
 }
@@ -1986,12 +1988,12 @@ function analyzeInterp(name, args, cmd, out, st, ctx) {
     } else if (name === 'deno') {
       if (i === 0 && v === 'eval') { codes.push(args[i + 1]); i++; continue; }
     } else if (name.startsWith('py')) {
-      const m = /^-[A-Za-z]*c(.*)$/s.exec(v);
+      const m = /^-[A-Za-z]*?c(.*)$/s.exec(v); // perezoso: en -cexec(…) el código empieza en la primera c
       if (m) { codes.push(m[1] ? { ...w, value: m[1] } : args[i + 1]); break; }
       if (v === '-m') { program = true; break; }
       if (['-X', '-W', '-Q'].includes(v)) { i++; continue; }
     } else if (name === 'ruby' || name === 'perl') {
-      const m = /^-[A-Za-z0-9]*[eE](.*)$/s.exec(v);
+      const m = /^-[A-Za-z0-9]*?[eE](.*)$/s.exec(v); // perezoso: -esystem(…) es -e + system(…)
       if (m) { codes.push(m[1] ? { ...w, value: m[1] } : args[i + 1]); if (!m[1]) i++; continue; }
     } else if (name === 'php') {
       if (v === '-r') { codes.push(args[i + 1]); i++; continue; }
@@ -2022,7 +2024,7 @@ function analyzeAwk(args, out, st, ctx) {
     if (['-F', '-v', '-f', '--file'].includes(v)) { if (v === '-f' || v === '--file') return; i++; continue; }
     if (v.startsWith('-')) continue;
     if (args[i].dyn) { out.push(hit('hidden-code')); return; }
-    if (AWK_EXEC.test(v)) out.push(hit('inline-code'));
+    if (AWK_EXEC.test(v) || AWK_PRINT_PIPE.test(v.replace(/"(?:\\.|[^"\\])*"/g, '""'))) out.push(hit('inline-code'));
     return;
   }
 }
