@@ -731,12 +731,42 @@ function code(w, shell, ctx, out, depth, st) {
   script(w.value, shell, ctx, out, depth + 1, { ...st, vars: new Map(st.vars) });
 }
 
+// D-G6 (2026-10-03, reemplaza la primera versión): solo correr tests va sin instantánea; cualquier otro script
+// (node x.js, npm run <otro>, make <otro>, python x.py, bash x.sh, ./x) la toma: un script propio puede borrar
+// trabajo sin commitear, los tests casi nunca. Tabla cerrada; lo que no está en ella toma instantánea.
+const TEST_CMDS = [
+  ['npm', 'test'], ['npm', 't'], ['npm', 'run', 'test'], ['npm', 'run-script', 'test'],
+  ['pnpm', 'test'], ['pnpm', 't'], ['pnpm', 'run', 'test'], ['yarn', 'test'], ['yarn', 'run', 'test'],
+  ['bun', 'test'], ['deno', 'test'], ['make', 'test'], ['pytest'], ['py.test'],
+  ['go', 'test'], ['cargo', 'test'], ['dotnet', 'test'], ['mvn', 'test'], ['gradle', 'test'], ['gradlew', 'test'],
+];
+// Gestores y constructores: fuera de la tabla corren un script del proyecto (o escriben), salvo estos subcomandos de solo lectura.
+const RUNNER_READS = new Set(['-v', '--version', 'version', 'help', '--help', 'ls', 'list', 'view', 'info', 'outdated', 'why', 'whoami', 'root', 'bin', 'prefix', 'env', 'doc', 'vet', 'fmt']);
+const RUNNERS = new Set(['npm', 'pnpm', 'yarn', 'npx', 'make', 'gmake', 'go', 'cargo', 'dotnet', 'mvn', 'gradle', 'gradlew', 'just', 'task', 'rake', 'ant', 'bun', 'deno']);
+const SCRIPT_FILE = /\.(sh|bash|zsh|py|js|mjs|cjs|ts|rb|pl|php|ps1|bat|cmd)$/i;
+function isTestRun(name, args) {
+  const a = args.map((w) => w.value);
+  if (TEST_CMDS.some((t) => t[0] === name && t.slice(1).every((x, i) => a[i] === x))) return true;
+  if (name === 'node' || name === 'nodejs') return a.includes('--test');
+  if (name === 'python' || name === 'python3' || name === 'py' || name === 'pypy') return a[0] === '-m' && ['pytest', 'unittest'].includes(a[1]);
+  return false;
+}
+function runsOwnScript(name, words) {
+  const args = words.slice(1);
+  if (isTestRun(name, args)) return false;
+  if (/^\.{1,2}[\\/]/.test(words[0].value) || (/[\\/]/.test(words[0].value) && SCRIPT_FILE.test(words[0].value))) return true;
+  if (INTERP.has(name)) return !args.length || !args.every((w) => /^(-v|-V|--version|-h|--help)$/.test(w.value));
+  if (SHELLS.has(name)) return !args.some((w) => /^-[a-zA-Z]*c/.test(w.value)) && args.some((w) => !w.value.startsWith('-'));
+  if (RUNNERS.has(name)) return !(args[0] && RUNNER_READS.has(args[0].value));
+  return false;
+}
+
 function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   const ps = shell === 'powershell';
   const name = progName(words[0].value);
   const args = words.slice(1);
   if (CD_CMDS.has(name)) { if (inShell) changeDir(name, args, st, ctx, Boolean(cmd.negated), cmd); return; }
-  if (DISCARD_PROGS.has(name)) markDiscard(ctx, st);
+  if (DISCARD_PROGS.has(name) || runsOwnScript(name, words)) markDiscard(ctx, st);
 
   if (DELETE_CMDS.has(name)) checkDeleteOperands(ps && cmd.pipedIn && !psPaths(args).length ? operands(args).concat(pipedPaths(cmd)) : operands(args), st, ctx, out);
   if (ps && cmd.pipedIn && (name === 'clear-content' || name === 'clc') && !psPaths(args).length) {
@@ -1915,7 +1945,7 @@ function analyzeInterp(name, args, cmd, out, st, ctx) {
   }
   if (inPlace) markDiscard(ctx, st);
   if (inPlace) for (const w of files) writeOperand(w, st, ctx, out);
-  if (codes.length || (!program || stdin)) markDiscard(ctx, st); // todo código inline (H9)
+  if (codes.length || ((!program || stdin) && !isTestRun(name, args))) markDiscard(ctx, st); // todo código inline (H9); `node --test` sin ruta no es código inline (D-G6)
   const check = inlineCheck(name, out, st, ctx);
   for (const c of codes) {
     if (!c || (c.dyn && c.dynAt === 0)) { out.push(hit('hidden-code')); return; }
@@ -2259,6 +2289,6 @@ if (require.main === module) {
   process.stdout.write(`${explain(argv[k + 1], { shell, mode, cwd })}\n`);
 }
 
-const DISCARD = { progs: DISCARD_PROGS, git: DISCARD_GIT, find: DISCARD_FIND };
+const DISCARD = { progs: DISCARD_PROGS, git: DISCARD_GIT, find: DISCARD_FIND, tests: TEST_CMDS };
 
 module.exports = { evaluate, explain, gitCommands, RULES, CANARIES, AUTO_MODES, DISCARD };

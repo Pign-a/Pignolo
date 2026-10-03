@@ -94,7 +94,7 @@ test('backup: a fallback snapshot while the seed is broken is announced with sys
   const shadow = path.join(home, 'shadow', `${repoIdForGitDir(path.join(repo, '.git'))}.git`);
   fs.mkdirSync(path.join(shadow, 'pignolo'), { recursive: true });
   fs.writeFileSync(path.join(shadow, 'pignolo', 'status.json'), JSON.stringify({ state: 'error', at: new Date().toISOString(), error: 'simulado' }));
-  const r = runGuard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' }, cwd: repo, session_id: SESSION }, { PIGNOLO_HOME: home });
+  const r = runGuard({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'node limpiar.js' }, cwd: repo, session_id: SESSION }, { PIGNOLO_HOME: home });
   assert.strictEqual(r.status, 0);
   assert.match(JSON.parse(r.stdout).systemMessage, /no se pudo sembrar \(simulado\)/);
 });

@@ -1,6 +1,6 @@
 'use strict';
 // D-G4: la instantánea WIP se toma solo antes de lo que puede descartar trabajo o de lo que la guardia no puede
-// clasificar; el resto corre sin ella (D-G6: tampoco los scripts propios).
+// clasificar; el resto corre sin ella. D-G6 (2026-10-03): solo correr tests va sin instantánea; todo otro script la toma.
 const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -15,7 +15,7 @@ const snap = (cmd, shell = 'bash', extra = {}) => evaluate(cmd, { shell, psTimeo
 const NONE = [
   'ls -la', 'git status', 'git log --oneline -5', 'git diff HEAD', 'git add a.txt', 'git commit -m "feat: x"',
   'git push origin task/x', 'git fetch origin', 'git branch task/x', 'git stash list', 'npm test', 'node --test tests/',
-  'node scripts/x.js', 'mkdir -p out/x', 'touch f.txt', 'echo hi >> log.txt', 'npm test > /dev/null 2>&1',
+  'mkdir -p out/x', 'touch f.txt', 'echo hi >> log.txt', 'npm test > /dev/null 2>&1',
 ];
 const BEFORE = [
   'rm a.txt', 'rm -rf build', 'mv a.txt b.txt', 'cp a.txt b.txt', 'echo x > a.txt', 'npm test > out.log 2>&1',
@@ -29,6 +29,16 @@ const BEFORE = [
   // lo que no se clasifica
   'eval "$X"', 'git lg', 'ls "unclosed',
 ];
+// D-G6: la tabla cerrada de comandos de test (sin instantánea) y los scripts propios (con ella).
+const TESTS = [
+  'npm test', 'npm t', 'npm run test', 'npm run-script test', 'npm test -- --grep x', 'pnpm test', 'pnpm run test', 'yarn test', 'yarn run test',
+  'node --test', 'node --test tests/', 'make test', 'pytest', 'pytest -q tests/', 'python -m pytest', 'python3 -m unittest', 'go test ./...', 'cargo test',
+  'bun test', 'deno test', 'dotnet test',
+];
+const SCRIPTS = [
+  'node x.js', 'node scripts/x.js', 'npm run build', 'npm run clean', 'pnpm build', 'yarn build', 'make deploy', 'make', 'make clean', 'python x.py', 'python3 scripts/x.py',
+  'bash x.sh', 'sh x.sh', './x.sh', './tools/desconocido', 'cargo build', 'go run main.go', 'npx rimraf dist',
+];
 const PS_NONE = ['Get-ChildItem src', 'git status'];
 const PS_BEFORE = ['Remove-Item a.txt', 'Set-Content a.txt x', 'Out-File a.txt', "[IO.File]::WriteAllText('a.txt','x')", 'New-Item -Force a.txt'];
 
@@ -40,6 +50,17 @@ test('sin instantánea: lo que no descarta trabajo (Bash)', () => {
 test('con instantánea previa: lo que puede descartar trabajo o no se clasifica (Bash)', () => {
   const bad = BEFORE.filter((c) => snap(c) !== 'before').map((c) => `${c} -> ${snap(c)}`);
   assert.deepStrictEqual(bad, []);
+});
+
+test('D-G6: los comandos de test no toman instantánea', () => {
+  assert.deepStrictEqual(TESTS.filter((c) => snap(c) !== 'none').map((c) => `${c} -> ${snap(c)}`), []);
+});
+
+test('D-G6: cualquier otro script (propio o desconocido) toma instantánea', () => {
+  assert.deepStrictEqual(SCRIPTS.filter((c) => snap(c) !== 'before').map((c) => `${c} -> ${snap(c)}`), []);
+  assert.strictEqual(snap('.\\x.ps1', 'powershell'), 'before');
+  assert.strictEqual(snap('npm run build', 'powershell'), 'before');
+  assert.strictEqual(snap('npm test', 'powershell'), 'none');
 });
 
 test('PowerShell: la misma separación', () => {
