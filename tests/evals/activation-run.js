@@ -3,9 +3,11 @@
 // Runner de la prueba de activación (tests/evals/RESULTS-activacion.md). NO se corrió: gastar es del autor.
 //   node tests/evals/activation-run.js --arm control|treatment [--reps 3] [--cap 20] [--model sonnet]
 //     [--max-turns 2] [--only P01,N03] [--probe] [--dry-run] [--out <dir>]
-// control = los plugins de `main` antes del cambio (git archive de CONTROL_COMMIT); treatment = este árbol.
+// control = los plugins de `main` antes del cambio (un `git worktree add --detach` de CONTROL_COMMIT, sin tar:
+// en Windows tar toma "C:" como host remoto); treatment = este árbol.
 // Cada corrida es un `claude -p` de una frase, con solo la herramienta Skill, sin cargar ajustes de usuario;
-// se mira qué skill se invocó (grade en activation-cases.js). El gasto ya hecho se lee de los metrics.jsonl de
+// se mira qué skills se invocaron, en orden (grade en activation-cases.js: entry -> la esperada cuenta como acierto).
+// La salida cruda de cada corrida queda en <out>/raw/<brazo>-<caso>-r<n>.jsonl para poder recalificar. El gasto ya hecho se lee de los metrics.jsonl de
 // --out, así el tope vale entre invocaciones. --probe corre solo P01 (una corrida) para validar el montaje.
 const fs = require('node:fs');
 const os = require('node:os');
@@ -35,14 +37,24 @@ function parseArgs(argv) {
   return o;
 }
 
-// Raíz de plugins del brazo: el árbol actual, o una copia limpia del commit de control.
+// Raíz de plugins del brazo: el árbol actual, o un checkout limpio del commit de control.
 function pluginsRoot(arm, tmp) {
   if (arm === 'treatment') return path.join(REPO_ROOT, 'plugins');
   const dir = path.join(tmp, 'control');
-  fs.mkdirSync(dir, { recursive: true });
-  execFileSync('git', ['archive', '--format=tar', '-o', path.join(tmp, 'control.tar'), CONTROL_COMMIT, 'plugins'], { cwd: REPO_ROOT, stdio: 'ignore' });
-  execFileSync('tar', ['-xf', path.join(tmp, 'control.tar'), '-C', dir], { stdio: 'ignore' });
+  execFileSync('git', ['worktree', 'add', '--detach', '-f', dir, CONTROL_COMMIT], { cwd: REPO_ROOT, stdio: 'ignore' });
   return path.join(dir, 'plugins');
+}
+
+function cleanupControl(tmp) {
+  const dir = path.join(tmp, 'control');
+  if (!fs.existsSync(dir)) return;
+  try { execFileSync('git', ['worktree', 'remove', '--force', dir], { cwd: REPO_ROOT, stdio: 'ignore' }); } catch (_) { /* se limpia abajo */ }
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  try { execFileSync('git', ['worktree', 'prune'], { cwd: REPO_ROOT, stdio: 'ignore' }); } catch (_) { /* nada */ }
+}
+
+function rawPath(out, arm, id, rep) {
+  return path.join(out, 'raw', `${arm}-${id}-r${rep}.jsonl`);
 }
 
 function claudeArgs(o, plugins) {
@@ -86,6 +98,8 @@ function main(argv) {
       if (spentSoFar(o.out) >= o.cap) { process.stderr.write(`tope de ${o.cap} USD alcanzado: se corta\n`); return 3; }
       const r = spawnSync('claude', claudeArgs(o, plugins), { cwd, input: c.prompt, encoding: 'utf8', timeout: 180000, maxBuffer: 64 * 1024 * 1024, windowsHide: true });
       const stream = String(r.stdout || '');
+      fs.mkdirSync(path.join(o.out, 'raw'), { recursive: true });
+      fs.writeFileSync(rawPath(o.out, o.arm, c.id, c.rep), stream);
       const invoked = invokedSkill(stream);
       let cost = 0;
       for (const l of stream.split('\n')) { try { const e = JSON.parse(l); if (e.type === 'result') cost = Number(e.total_cost_usd) || 0; } catch (_) { /* no es JSON */ } }
@@ -93,6 +107,7 @@ function main(argv) {
       fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
     }
   } finally {
+    cleanupControl(tmp);
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
   return 0;
@@ -102,4 +117,4 @@ if (require.main === module) {
   try { process.exitCode = main(process.argv.slice(2)); } catch (e) { process.stderr.write(`${e.message}\n`); process.exitCode = 2; }
 }
 
-module.exports = { parseArgs, claudeArgs };
+module.exports = { parseArgs, claudeArgs, pluginsRoot, cleanupControl, rawPath, CONTROL_COMMIT };

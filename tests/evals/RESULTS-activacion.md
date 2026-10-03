@@ -1,6 +1,6 @@
 # Resultados: activación de las skills con lenguaje normal
 
-Estado: **ficha escrita, sin correr** (2026-10-03). Correrla gasta, y gastar es decisión del autor. Esta ficha se commitea antes de la primera corrida, como pide `docs/protocolo-de-pruebas.md`; los resultados se agregan abajo sin tocar la ficha.
+Estado: **ficha escrita, sin correr** (2026-10-03; criterio de calificación y runner ajustados tras la revisión, antes de la corrida). Correrla gasta, y gastar es decisión del autor. Esta ficha se commitea antes de la primera corrida, como pide `docs/protocolo-de-pruebas.md`; los resultados se agregan abajo sin tocar la ficha.
 
 ## Pregunta e hipótesis
 
@@ -10,7 +10,7 @@ Hipótesis (sentido esperado): con el cambio, el modelo invoca la skill esperada
 
 ## Variable y lo fijo
 
-- **Variable que cambia:** los plugins. Control = `main` en `3882ded` (antes del cambio). Tratamiento = la rama `feat/skills-lenguaje-natural`.
+- **Variable que cambia:** los plugins. Control = `main` en `3882ded` (antes del cambio; es el tip de `main` y el merge-base de la rama, verificado el 2026-10-03; se extrae con `git worktree add --detach`, sin tar). Tratamiento = la rama `feat/skills-lenguaje-natural`.
 - **Fijo:** las 30 frases (`tests/evals/activation-cases.js`), el modelo (sonnet por defecto del runner; el autor puede pedir opus, que es el que usa a diario), `--max-turns 2`, una carpeta de proyecto vacía con `git init`, solo la herramienta Skill, sin ajustes de usuario (`--setting-sources project`), máquina.
 
 ## Brazos
@@ -24,10 +24,10 @@ Casos: 20 frases que deben activar una skill concreta (incluida "quiero que haga
 
 ## Métricas
 
-Todas salen de `tests/evals/activation-run.js` (una fila por corrida en `<out>/<brazo>.metrics.jsonl`) sin intervención manual:
+Todas salen de `tests/evals/activation-run.js` (una fila por corrida en `<out>/<brazo>.metrics.jsonl`; la salida cruda de cada corrida queda en `<out>/raw/<brazo>-<caso>-r<n>.jsonl` para recalificar sin volver a gastar) sin intervención manual:
 
-- **Acierto en positivas:** de las 20 frases, cuántas invocaron exactamente la skill esperada, por repetición (tres rondas de 20 en el tratamiento).
-- **Falsa activación en negativas:** de las 10 frases, cuántas invocaron una de las ocho, por repetición.
+- **Acierto en positivas:** de las 20 frases, cuántas invocaron la skill esperada, por repetición (tres rondas de 20 en el tratamiento). Se miran **todas** las skills invocadas, en orden (no solo la primera): cuenta como acierto que la esperada se haya invocado y que antes de ella solo haya estado `pignolo:entry`. Con pignolo activo `entry` ("Use first for any request") manda un pedido de UI a pignolo-ui, así que `pignolo:entry` → `pignolo-ui:new` es el camino correcto; cualquier otra skill antes de la esperada, o ninguna, es fallo. Criterio fijado antes de la corrida (revisión RNL-05).
+- **Falsa activación en negativas:** de las 10 frases, cuántas invocaron una de las ocho en cualquier punto de la lista (`pignolo:entry` no cuenta), por repetición.
 - **Confusión entre skills:** en las positivas fallidas, cuál se invocó en su lugar (o ninguna), para ajustar las `description`.
 - **Costo:** `total_cost_usd` de cada corrida; suma por brazo.
 
@@ -49,7 +49,7 @@ node tests/evals/activation-run.js --arm control --reps 1 --cap 20
 node tests/evals/activation-run.js --arm treatment --reps 3 --cap 20
 ```
 
-`--dry-run` cuenta las corridas sin gastar. Los temporales se borran al terminar.
+`--dry-run` cuenta las corridas sin gastar. Los temporales (incluido el worktree del control) se borran al terminar.
 
 ## Amenazas a la validez
 
@@ -58,6 +58,10 @@ node tests/evals/activation-run.js --arm treatment --reps 3 --cap 20
 - Frases escritas por quien escribió las descriptions: favorece al tratamiento. Las 10 negativas se escribieron adrede cerca del límite (pantalla, texto, bug) para compensarlo.
 - El control es una cota de 0 por construcción, no un competidor.
 - No probado todavía: que `--tools Skill` y `--allowedTools Skill` dejen invocar skills de un plugin cargado con `--plugin-dir` en `claude -p`. Por eso existe `--probe`.
+
+## Corrida descartada (antes de los arreglos de la revisión)
+
+Hubo una primera corrida parcial, descartada: 19 corridas del brazo de tratamiento sobre el árbol anterior a estos arreglos (descriptions y paso 0 sin los arreglos RNL-01 a RNL-04, calificación de la primera skill), 0,82 USD, 19 de 19 correctas, sin salida cruda guardada. El control no llegó a correr: `tar` falló en Windows al tomar `C:` como host remoto. No cuenta como dato de la prueba. Archivo: `%TEMP%/claude-eval-activation/treatment-v1-parcial.metrics.jsonl` (suma 0,82 USD al gasto que lee el runner si se corre con el `--out` por defecto).
 
 ## Resultados
 

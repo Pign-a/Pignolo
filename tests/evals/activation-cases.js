@@ -47,24 +47,33 @@ const CASES = [
   ...NEGATIVE.map((prompt, i) => ({ id: `N${String(i + 1).padStart(2, '0')}`, prompt, expect: null })),
 ];
 
-// Qué skill invocó la corrida: el primer tool_use `Skill` del stream-json de `claude -p`.
+// Qué skills invocó la corrida: todos los tool_use `Skill` del stream-json de `claude -p`, en orden.
 function invokedSkill(streamText) {
+  const out = [];
   for (const line of streamText.split('\n')) {
     if (!line.trim().startsWith('{')) continue;
     let ev;
     try { ev = JSON.parse(line); } catch (_) { continue; }
     if (ev.type !== 'assistant' || !ev.message || !Array.isArray(ev.message.content)) continue;
     for (const part of ev.message.content) {
-      if (part.type === 'tool_use' && part.name === 'Skill' && part.input && part.input.skill) return String(part.input.skill);
+      if (part.type === 'tool_use' && part.name === 'Skill' && part.input && part.input.skill) out.push(String(part.input.skill));
     }
   }
-  return null;
+  return out;
 }
 
-// Acierto: la invocada es la esperada; en los negativos, ninguna de las ocho.
+// Con pignolo activo, `pignolo:entry` va primero y manda la UI a pignolo-ui: ese camino es correcto.
+const ENTRY = 'pignolo:entry';
+
+// Acierto en una positiva: la esperada se invocó y antes de ella solo hubo `pignolo:entry`.
+// En una negativa: ninguna de las ocho en toda la lista (entry no cuenta).
 function grade(expect, invoked) {
-  if (expect) return invoked === expect;
-  return invoked === null || !EIGHT.includes(invoked);
+  const list = Array.isArray(invoked) ? invoked : (invoked ? [invoked] : []);
+  if (expect) {
+    const i = list.indexOf(expect);
+    return i >= 0 && list.slice(0, i).every((s) => s === ENTRY);
+  }
+  return !list.some((s) => EIGHT.includes(s));
 }
 
 module.exports = { EIGHT, CASES, invokedSkill, grade };

@@ -31,18 +31,49 @@ test('every expected skill is one of the eight and has a SKILL.md without disabl
   assert.deepEqual([...new Set(CASES.filter((c) => c.expect).map((c) => c.expect))].sort(), [...EIGHT].sort());
 });
 
-test('invokedSkill reads the first Skill tool_use of a stream-json; grade scores positives and negatives', () => {
+test('invokedSkill lists every Skill tool_use in order; grade accepts the pignolo:entry detour and nothing else before the expected skill', () => {
   const ev = (content) => JSON.stringify({ type: 'assistant', message: { content } });
-  const stream = [JSON.stringify({ type: 'system' }), ev([{ type: 'text', text: 'ok' }]), ev([{ type: 'tool_use', name: 'Skill', input: { skill: 'pignolo-ui:new' } }])].join('\n');
-  assert.equal(invokedSkill(stream), 'pignolo-ui:new');
-  assert.equal(invokedSkill(ev([{ type: 'text', text: 'hola' }])), null);
-  assert.equal(invokedSkill('no es json\n{roto'), null);
-  assert.equal(grade('pignolo-ui:new', 'pignolo-ui:new'), true);
-  assert.equal(grade('pignolo-ui:new', 'pignolo-ui:improve'), false);
-  assert.equal(grade('pignolo-ui:new', null), false);
-  assert.equal(grade(null, null), true);
-  assert.equal(grade(null, 'pignolo:status'), false);
-  assert.equal(grade(null, 'pignolo:entry'), true);
+  const sk = (skill) => ev([{ type: 'tool_use', name: 'Skill', input: { skill } }]);
+  const stream = [JSON.stringify({ type: 'system' }), ev([{ type: 'text', text: 'ok' }]), sk('pignolo:entry'), sk('pignolo-ui:new')].join('\n');
+  assert.deepEqual(invokedSkill(stream), ['pignolo:entry', 'pignolo-ui:new']);
+  assert.deepEqual(invokedSkill(ev([{ type: 'text', text: 'hola' }])), []);
+  assert.deepEqual(invokedSkill('no es json\n{roto'), []);
+  // positivas: la esperada sola, o precedida solo por pignolo:entry
+  assert.equal(grade('pignolo-ui:new', ['pignolo-ui:new']), true);
+  assert.equal(grade('pignolo-ui:new', ['pignolo:entry', 'pignolo-ui:new']), true);
+  assert.equal(grade('pignolo-ui:new', ['pignolo:entry', 'pignolo-ui:new', 'pignolo-ui:audit']), true);
+  assert.equal(grade('pignolo-ui:new', ['pignolo-ui:improve']), false);
+  assert.equal(grade('pignolo-ui:new', ['pignolo-ui:improve', 'pignolo-ui:new']), false);
+  assert.equal(grade('pignolo-ui:new', ['pignolo:entry', 'pignolo-ui:improve', 'pignolo-ui:new']), false);
+  assert.equal(grade('pignolo-ui:new', ['pignolo:entry']), false);
+  assert.equal(grade('pignolo-ui:new', []), false);
+  // negativas: ninguna de las ocho en toda la lista
+  assert.equal(grade(null, []), true);
+  assert.equal(grade(null, ['pignolo:entry']), true);
+  assert.equal(grade(null, ['pignolo:entry', 'pignolo:status']), false);
+  assert.equal(grade(null, ['pignolo:status']), false);
+});
+
+test('the control arm extracts the plugins of the control commit without tar (works on Windows paths)', () => {
+  const { pluginsRoot, cleanupControl, CONTROL_COMMIT } = require('./evals/activation-run');
+  const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'act-ctl-'));
+  try {
+    const root = pluginsRoot('control', tmp);
+    assert.ok(fs.existsSync(path.join(root, 'pignolo-ui', 'skills', 'new', 'SKILL.md')));
+    // el control es main antes del cambio: las skills de pignolo-ui eran solo humanas
+    assert.match(fs.readFileSync(path.join(root, 'pignolo-ui', 'skills', 'new', 'SKILL.md'), 'utf8'), /disable-model-invocation: true/);
+    assert.equal(CONTROL_COMMIT, '3882ded');
+    cleanupControl(tmp);
+    assert.equal(fs.existsSync(root), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('the runner keeps the raw stream of every run, one file per run, so it can be regraded', () => {
+  const { rawPath } = require('./evals/activation-run');
+  assert.equal(path.basename(rawPath('/x/out', 'control', 'P01', 2)), 'control-P01-r2.jsonl');
+  assert.equal(path.basename(path.dirname(rawPath('/x/out', 'control', 'P01', 2))), 'raw');
 });
 
 test('the runner in --dry-run spends nothing and reports the number of runs; it needs an arm', () => {
