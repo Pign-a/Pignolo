@@ -409,6 +409,7 @@ function script(text, shell, ctx, out, depth, st) {
     return;
   }
   out.push(...extra);
+  markPipeTails(cmds, shell);
   const states = new Map();
   let offFrom = null; // estado del comando anterior si cambió a una rama literal que no es main (switchedTo)
   cmds.forEach((cmd, k) => {
@@ -774,7 +775,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   if (ps && cmd.pipedIn && (name === 'clear-content' || name === 'clc') && !psPaths(args).length) {
     for (const w of pipedPaths(cmd)) checkWriteTarget(w, st, ctx, out);
   }
-  checkLauncher(name, words, st, ctx, out);
+  checkLauncher(name, words, st, ctx, out, cmd);
   checkRunScript(name, words, st, ctx, out);
   checkHoldoutScript(name, words, st, ctx, out);
   checkToolScripts(name, words, st, ctx, out);
@@ -1114,7 +1115,32 @@ function launcherReadOk(name, words, w) {
   }
   return false;
 }
-function checkLauncher(name, words, st, ctx, out) {
+// Un lector del launcher pasa solo si su salida va a la terminal (M3): sin redirección de salida y sin tubería hacia
+// algo que no sea otro lector de la lista blanca; si no, `cat launcher > copia.js` o `| tee copia.js` lo copiarían.
+const LAUNCHER_TAIL_EXTRA = new Set(['cut', 'tr', 'nl', 'select-object', 'measure-object', 'out-host', 'out-string', 'format-table', 'ft', 'format-list', 'fl']);
+function markPipeTails(cmds, shell) {
+  cmds.forEach((c, k) => {
+    const tail = [];
+    if (shell === 'powershell') {
+      let cur = c;
+      for (let nxt = cmds.find((x) => x.prev === cur); nxt && !tail.includes(nxt); nxt = cmds.find((x) => x.prev === cur)) { tail.push(nxt); cur = nxt; }
+    } else {
+      for (let j = k + 1; j < cmds.length && cmds[j].pipedIn && cmds[j - 1].pipeOut; j++) tail.push(cmds[j]);
+    }
+    c.tail = tail;
+  });
+}
+function launcherOutToTerminal(cmd) {
+  if (!cmd) return true;
+  const outputs = (r) => r.op.includes('>') && !isDescriptorDup(r) && !(!r.target.dyn && /^(\/dev\/null|nul|\$null)$/i.test(r.target.value));
+  if ((cmd.lredirs || cmd.redirects || []).some(outputs)) return false;
+  return (cmd.tail || []).every((t) => {
+    if (!t.words.length || t.redirects.some(outputs)) return false;
+    const n = progName(t.words[0].value);
+    return !t.words[0].dyn && (LAUNCHER_TAIL_EXTRA.has(n) || (n !== 'for' && n !== 'case' && launcherReadOk(n, t.words, null)));
+  });
+}
+function checkLauncher(name, words, st, ctx, out, cmd) {
   const isLauncher = (w) => {
     if (globReachesLauncher(w)) return true;
     const p = w.dyn ? null : resolveAt(w.value, st, ctx);
@@ -1123,7 +1149,7 @@ function checkLauncher(name, words, st, ctx, out) {
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
     if (!isLauncher(w)) continue;
-    if (i > 0 && launcherReadOk(name, words, w)) return;
+    if (i > 0 && launcherReadOk(name, words, w) && launcherOutToTerminal(cmd)) return;
     const statusForm = name === 'node' && words.length === 3 && w === words[1] && words[2].value === 'session-start' && !words[2].dyn;
     // node --check <launcher>: sin otra opción (un -r precargaría código) y con el launcher como último operando.
     const checkForm = (name === 'node' || name === 'nodejs') && i > 1 && i === words.length - 1 &&
@@ -1873,7 +1899,7 @@ function analyzeFind(args, cmd, shell, ctx, out, depth, st) {
       const inner = expr.slice(i + 1, j).map((w) => (w.value.includes('{}')
         ? { ...w, value: `${s.value.replace(/\/+$/, '')}/${w.value}`, dyn: true, dynAt: s.dyn ? 0 : s.value.replace(/\/+$/, '').length + 1 }
         : w));
-      if (inner.length) runWords(inner, { ...cmd, redirects: [], pipedIn: false, stdinBody: undefined, noCd: true }, 'bash', ctx, out, depth + 1, st);
+      if (inner.length) runWords(inner, { ...cmd, lredirs: cmd.lredirs || cmd.redirects, redirects: [], pipedIn: false, stdinBody: undefined, noCd: true }, 'bash', ctx, out, depth + 1, st);
     }
     i = j;
   }
@@ -2305,7 +2331,7 @@ function analyzeStartProcess(args, cmd, shell, ctx, out, depth, st) {
     if (a.dyn) words.push(a);
     else words.push(...a.value.split(/\s+/).filter(Boolean).map((v) => word(v)));
   }
-  runWords(words, { ...cmd, redirects: [], pipedIn: false, stdinBody: undefined, noCd: true }, shell, ctx, out, depth + 1, workDir ? stateIn(st, ctx, workDir) : st);
+  runWords(words, { ...cmd, lredirs: cmd.lredirs || cmd.redirects, redirects: [], pipedIn: false, stdinBody: undefined, noCd: true }, shell, ctx, out, depth + 1, workDir ? stateIn(st, ctx, workDir) : st);
 }
 
 // ------------------------------------------------------------ PowerShell

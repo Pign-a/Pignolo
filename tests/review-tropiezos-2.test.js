@@ -94,3 +94,41 @@ test('RT2-07: the launcher run through an unlisted wrapper is still execution', 
     'corepack node plugins/pignolo/hooks/launcher.js toggle',
   ]);
 });
+
+// M3: un lector del launcher cuya salida se redirige o se canaliza a algo que escribe copia el launcher (y la copia
+// ya no lleva el nombre que la guardia mira). Solo pasa con la salida en la terminal.
+const L = 'plugins/pignolo/hooks/launcher.js';
+test('M3: a launcher reader whose output is redirected or piped to a writer is not allowed', () => {
+  blocked([
+    `cat "${L}" > copia.js`,
+    `cat "${L}" >> copia.js`,
+    `cat "${L}" 2>&1 > copia.js`,
+    `cat "${L}" &> copia.js`,
+    `cat "${L}" >| copia.js`,
+    `cat "${L}" 1> copia.js`,
+    `cat "${L}" > copia.js && node copia.js toggle`,
+    `cat "${L}" | tee copia.js`,
+    `cat "${L}" | sh`,
+    `cat "${L}" | node`,
+    `cat "${L}" | grep x | tee copia.js`,
+    `git show HEAD:${L} > copia.js`,
+    `git cat-file -p HEAD:${L} > copia.js`,
+    `cp "${L}" copia.js`,
+    `grep -n panel "${L}" > copia.js`,
+  ]);
+  blocked([
+    `Get-Content ${L} | Out-File copia.js`,
+    `Get-Content ${L} | Set-Content copia.js`,
+    `Get-Content ${L} > copia.js`,
+    `gc ${L} | Select-String x | Set-Content copia.js`,
+    `Copy-Item ${L} copia.js`,
+  ], { shell: 'powershell' });
+});
+
+test('M3: reading the launcher with the output on the terminal still passes', () => {
+  for (const cmd of [`cat ${L}`, `grep -n panel ${L}`, `git diff -- ${L}`, `cat ${L} | grep x`, `cat ${L} 2>&1`, `cat ${L} 2>/dev/null | head -5`,
+    `git show HEAD:${L}`]) {
+    assert.strictEqual(evaluate(cmd, MODE).decision, 'allow', `se niega y debería pasar: ${cmd}`);
+  }
+  assert.strictEqual(evaluate(`Get-Content ${L} | Select-String x`, { ...MODE, shell: 'powershell' }).decision, 'allow');
+});

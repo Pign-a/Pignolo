@@ -1116,7 +1116,7 @@
   "cmd": "cd /tmp/x/wt-p6 && git show core/hito-5:plugins/pignolo/hooks/launcher.js > ../h5/lch.js; git show core/hito-5:plugins/pignolo/lib/git-guard.js > ../h5/gg.js; cat ../h5/lch.js | cut -c1-220; grep -n 'pignolo-plan' ../h5/gg.js | head; sed -n 200,310p ../h5/shadow.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "allow"
+  "expect": "block:pignolo-launcher"
  },
  {
   "id": "ev-123",
@@ -1125,7 +1125,7 @@
   "cmd": "cd /tmp/x/wt-p6 && git show core/hito-5:plugins/pignolo/hooks/launcher.js > ../h5/lnc.js; git show core/hito-5:plugins/pignolo/lib/git-guard.js > ../h5/gg.js; cut -c1-220 ../h5/lnc.js; grep -n 'pignolo-plan' ../h5/gg.js | head; sed -n 200,310p ../h5/shadow.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "allow"
+  "expect": "block:pignolo-launcher"
  },
  {
   "id": "ev-124",
