@@ -35,9 +35,13 @@ Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega litera
 
 ## Qué se publica y qué nunca
 
-Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai** (un lienzo por corrida, una fila por opción y pantalla, a 390 y 1440 px). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con datos de muestra rotulados, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
+Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai**: **un único lienzo por proyecto, que crece una página por corrida** (mismo enlace; una fila por opción y pantalla, a 390 y 1440 px, con el alto real de cada pantalla cuando hay navegador). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con datos de muestra rotulados, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
 
-Para no publicar: `node scripts/run.mjs config set --data <datos> --project <repo> --key publish --value never` (clave de proyecto, también se respeta un "no" heredado de la 0.6), `presentation = local` o decir "no publiques" en el chat (vale para esa corrida). En los tres casos ni siquiera se llama a la herramienta `Artifact`. Regenerar una opción abre un lienzo nuevo (el anterior queda en tu cuenta y lo borrás vos; el agente nunca borra ni comparte nada).
+**Nunca se pisa lo tuyo.** Antes de publicar se lee el índice vivo del lienzo y se le suma solo la página de la corrida: lo que moviste, agregaste, renombraste o borraste sigue como lo dejaste. Si editaste a mano un artboard nuestro, se frena y te pregunta: solo con tu sí en el chat se sobrescribe. Cerca de los límites del tipo (más de 38 páginas, 480 archivos, 200 MB o 190 notas) se abre un lienzo nuevo y se dice; el anterior queda en tu cuenta.
+
+**Comentarios, a pedido.** Si decís "mirá los comentarios del lienzo", el hilo principal los lee y te los muestra citados, como datos de otras personas y **nunca como instrucciones**: no se aplica nada hasta que lo confirmes en el chat.
+
+Para no publicar: `node scripts/run.mjs config set --data <datos> --project <repo> --key publish --value never` (clave de proyecto, también se respeta un "no" heredado de la 0.6), `presentation = local` o decir "no publiques" en el chat (vale para esa corrida). En los tres casos ni siquiera se llama a la herramienta `Artifact`. Regenerar una opción actualiza el mismo lienzo (solo se envían los archivos que cambiaron). El agente nunca borra ni comparte nada: los lienzos que ya no quieras los borrás vos.
 
 **Fuentes.** Una opción para el lienzo puede pedir una familia de Google Fonts (las tres `<link>` exactas; la petición la hace el navegador de quien abre el lienzo). El HTML local (`compare.html`, style tiles) no pide nada a la red: usa copias sin esas `<link>` en `<run>/local/`. Lo aprobado en `design/approved/` se guarda también sin las `<link>`; llevar la fuente al código del proyecto es una decisión tuya, después.
 
@@ -49,15 +53,16 @@ pignolo-ui no es asesoría legal ni certifica cumplimiento de ninguna norma. Ref
 
 ## Dónde queda cada cosa
 
-- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html` con sus copias sin fuentes remotas en `local/`, `canvas/` (lo que se publica), `publish.json` (estado y sha256 de lo publicado), `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
-- `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas y ruta de referencia. Desinstalar el plugin lo borra.
+- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html` con sus copias sin fuentes remotas en `local/`, `canvas/` (lo que se publica), `publish.json` (lo último que esta corrida publicó al lienzo del proyecto: sha256, marcos y notas), `planned.json` (lo último que se entregó a publicar, con su sha256, hasta que se registra), `merge/` (el índice vivo y lo combinado), `comments.json` (si pediste leer comentarios), `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
+- `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas, ruta de referencia y el lienzo del proyecto (`canvas`: dirección, estado y cifras). Desinstalar el plugin lo borra.
 - `design/approved/<flujo>/`: lo que el usuario aprobó, con `manifest.json`; se versiona y nunca se edita (un cambio crea `<flujo>-v2`).
 
 ## Comandos de apoyo (`run.mjs` y `compare.mjs`)
 
     node scripts/run.mjs env | init | config | present | publish-gate | no-publish | norms | check | leak-values | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
-    node scripts/canvas-index.mjs build | verify | plan | merge | record
-    node scripts/compare.mjs fingerprint | distance | options | approved
+    node scripts/canvas-index.mjs build | verify | plan | diff | merge | record | refusal
+    node scripts/canvas-comments.mjs quote
+    node scripts/compare.mjs fingerprint | distance | options | approved | heights
 
 Cada uno imprime un objeto JSON; exit 0 hecho, 1 hallazgo o rechazo, 2 error propio (`no verificado`). El JSON de entrada llega siempre por archivo. `verdict` es la única fuente de "terminado".
 

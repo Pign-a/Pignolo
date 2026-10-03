@@ -29,6 +29,7 @@ Versiones leídas de los `plugin.json`.
 |---|---|---|
 | `core/hito-7a` | Hito 7a: ramas, worktrees por tarea, cola de integración, limpieza, `next` y `plan.js list` (0.13.0) | construido (dos ejecutores; el primero se cortó por límite); **revisión final opus en curso** |
 | `ui/option-candidata` | pignolo-ui 0.7.3: carta candidata de `ui-option` adoptada y datos de muestra rotulados en vez de marcadores | en construcción (sonnet) |
+| `exp/lienzo2-x` | pignolo-ui 0.8.0: etapa 2 del lienzo (un lienzo por proyecto, `merge` con el índice vivo sin pisar al usuario, límites, comentarios a pedido, alto real) | construido en serie (sonnet) sin la puerta T6b (decisión del autor); falta la revisión final opus y la unión (T11b) |
 
 Antes de retomar una rama, mirar su último commit y el informe por tarea en `docs/reports/` (los del 7a y de la etapa 1 del lienzo pueden seguir solo en el scratch de la sesión).
 

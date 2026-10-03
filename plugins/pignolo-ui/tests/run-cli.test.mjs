@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { makeTempDir, writeTree, runScript, writeBrief, FIXTURES, PLUGIN_ROOT } from './helpers.mjs';
-import { repoIdFor } from '../lib/project-config.mjs';
+import { repoIdFor, readConfig, writeConfig } from '../lib/project-config.mjs';
 
 const RUN_REL = '.pignolo-ui/runs/r1';
 const run = (args, opts) => runScript('run.mjs', args, opts);
@@ -493,4 +493,36 @@ test('verdict (the word "terminado") is the same with and without verdicts.json 
   fs.writeFileSync(path.join(after, 'verdicts.json'), JSON.stringify({ verdicts: [{ id: 'J-05', status: 'unresolved', why: 'x', evidence: { kind: 'file', path: 'src/a.css', line: 1 } }], independent: true }));
   const withVerdicts = run(['verdict', '--project', project, '--run', after]);
   assert.deepEqual([withVerdicts.status, withVerdicts.json], [before.status, before.json]);
+});
+
+test('present (T4b): canvasPublished and first by state only: none or created or pages 0 is first, published with pages is not', () => {
+  const project = makeRepo();
+  const data = makeTempDir();
+  const url = ['https://claude.ai', 'artifact', 'aaaa1111-bbbb-4ccc-8ddd-000000000002'].join('/');
+  const present = () => run(PRESENT(project, data, ['--presentation', 'auto']));
+  const none = present();
+  assert.deepEqual([none.json.first, none.json.canvasPublished], [true, null]);
+  const put = (c) => writeConfig({ data, project, key: 'canvas', value: c });
+  put({ url, state: 'published', pages: 1, files: 4, bytes: 10, notes: 2 });
+  const pub = present();
+  assert.deepEqual([pub.json.first, pub.json.canvasPublished.url, pub.json.canvasPublished.pages], [false, url, 1]);
+  put({ url, state: 'created', pages: 0, files: 0, bytes: 0, notes: 0 });
+  assert.equal(present().json.first, true, 'created: it never published, so the run opens it (A4C-10)');
+  put({ url, state: 'published', pages: 0, files: 0, bytes: 0, notes: 0 });
+  assert.equal(present().json.first, true, 'pages 0');
+  // the fields are there in every mode: a local decision still says them
+  const local = run(PRESENT(project, data, ['--presentation', 'local']));
+  assert.equal(local.json.mode, 'local');
+  assert.equal(local.json.first, true);
+});
+
+test('present (T4b): a hand-edited bad canvas record is not a canvas: first true, canvasPublished null, canvasInvalid true', () => {
+  const project = makeRepo();
+  const data = makeTempDir();
+  const { file } = readConfig({ data, project });
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ canvas: { url: 'https://example.com/x', state: 'published', pages: 3, files: 1, bytes: 1, notes: 1 } }));
+  const r = run(PRESENT(project, data, ['--presentation', 'auto']));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual([r.json.first, r.json.canvasPublished, r.json.canvasInvalid], [true, null, true]);
 });

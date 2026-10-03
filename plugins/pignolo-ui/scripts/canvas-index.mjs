@@ -4,11 +4,14 @@
 //
 //   canvas-index.mjs build --project <repo> --run <run> --options <A,B,C> --screens <inicio.html,detalle.html>
 //                          --platform desktop|mobile|both --page-name <text> --design <DESIGN.md|none> --first yes|no
-//                          [--now <ISO>] [--heights <json file>]
+//                          [--canvas-url <the url of canvasPublished that `run.mjs present` printed>] [--now <ISO>] [--heights <json file>]
 //   canvas-index.mjs verify --run <run>
-//   canvas-index.mjs plan --project <repo> --run <run> --values-file <json> --types-file <json> --data <dir>
-//   canvas-index.mjs merge --run <run> --live none --live-dir none [--now <ISO>]
+//   canvas-index.mjs plan --project <repo> --run <run> --values-file <json> --types-file <json> --data <dir> [--new-canvas]
+//   canvas-index.mjs diff --run <run>                                  (informative: it never prints params)
+//   canvas-index.mjs merge --run <run> --data <dir> --project <repo> --live <index file read-live saved | none>
+//                          --live-dir <folder read-live saved the .dc.html in | none> [--accept-overwrite <names,comma separated>] [--now <ISO>]
 //   canvas-index.mjs record --run <run> --step canvas-create|canvas-publish --url <url> --data <dir> --project <repo>
+//   canvas-index.mjs refusal --run <run> --kind canvas [--named <path the refusal names>]
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -19,16 +22,18 @@ import { splitFrontmatter } from '../lib/design-doc.mjs';
 import { parseYaml } from '../lib/yaml-subset.mjs';
 import { RUN_ROOT } from '../lib/run-folder.mjs';
 import { linkProblem, removeOwnDir, runLinkProblem, samePath } from '../lib/link-guard.mjs';
-import { planNext, mergeLive, recordStep, PublishError } from '../lib/canvas-publish.mjs';
+import { planNext, mergeLive, recordStep, noteRefusal, diffRun, PublishError } from '../lib/canvas-publish.mjs';
 
 class UsageError extends Error {}
 
 const SPECS = {
-  build: { value: ['project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first', 'now', 'heights'], flags: [] },
+  build: { value: ['project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first', 'canvas-url', 'now', 'heights'], flags: [] },
   verify: { value: ['run'], flags: [] },
-  plan: { value: ['project', 'run', 'values-file', 'types-file', 'data'], flags: [] },
-  merge: { value: ['run', 'live', 'live-dir', 'now'], flags: [] },
+  plan: { value: ['project', 'run', 'values-file', 'types-file', 'data'], flags: ['new-canvas'] },
+  diff: { value: ['run'], flags: [] },
+  merge: { value: ['run', 'data', 'project', 'live', 'live-dir', 'accept-overwrite', 'now'], flags: [] },
   record: { value: ['run', 'step', 'url', 'data', 'project'], flags: [] },
+  refusal: { value: ['run', 'kind', 'named'], flags: [] },
 };
 
 function parse(argv, spec, name) {
@@ -37,7 +42,12 @@ function parse(argv, spec, name) {
     const a = argv[i];
     if (!a.startsWith('--')) throw new UsageError(`argumento inesperado: ${a}`);
     const key = a.slice(2);
-    if (!spec.value.includes(key)) throw new UsageError(`opción desconocida ${a} para ${name}; opciones válidas: ${spec.value.map((k) => `--${k}`).join(', ')}`);
+    if (spec.flags.includes(key)) {
+      if (opts[key] !== undefined) throw new UsageError(`--${key} se indicó más de una vez`);
+      opts[key] = true;
+      continue;
+    }
+    if (!spec.value.includes(key)) throw new UsageError(`opción desconocida ${a} para ${name}; opciones válidas: ${[...spec.value, ...spec.flags].map((k) => `--${k}`).join(', ')}`);
     const next = argv[i + 1];
     if (next === undefined || next.startsWith('--')) throw new UsageError(`--${key} necesita un valor`);
     if (opts[key] !== undefined) throw new UsageError(`--${key} se indicó más de una vez`);
@@ -86,6 +96,22 @@ export function canvasTitleFrom(designFile) {
   }
 }
 
+// ownsMain of <run>/publish.json. A file that is there and cannot be read is not "false": it would
+// rename the first screen of a run that already published it, so it stops the build (exit 2).
+// With canvasUrl (the canvas that project.json registers) a publish.json that says it published to another
+// canvas does not count: that Main.dc.html is not in this one.
+function readOwnsMain(run, canvasUrl) {
+  const file = path.join(run, 'publish.json');
+  let st = null;
+  try { st = fs.lstatSync(file); } catch { /* none yet */ }
+  if (!st) return false;
+  if (st.isSymbolicLink() || !st.isFile()) throw new UsageError('publish.json es un enlace o no es un archivo: se rechaza');
+  const data = readJsonFile(file, 'publish.json');
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new UsageError('publish.json no tiene la forma esperada');
+  if (canvasUrl !== undefined && data.canvasUrl !== canvasUrl) return false;
+  return data.ownsMain === true;
+}
+
 function cmdBuild(opts, { cwd }) {
   need(opts, 'project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first');
   const { run, project } = resolveRun(cwd, opts);
@@ -107,6 +133,9 @@ function cmdBuild(opts, { cwd }) {
     if (Number.isNaN(new Date(opts.now).getTime())) throw new UsageError('--now debe ser una fecha ISO');
     now = new Date(opts.now).toISOString();
   }
+  // first is of THIS run's page (A4C2-02): --first yes, or the run already published its own Main.dc.html (ownsMain)
+  if (opts['canvas-url'] !== undefined && !/^https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+$/.test(opts['canvas-url'])) throw new UsageError('--canvas-url debe ser la dirección de un artifact de claude.ai, sin query ni fragmento');
+  const first = opts.first === 'yes' || readOwnsMain(run, opts['canvas-url']);
   const heights = opts.heights !== undefined ? readJsonFile(path.resolve(cwd, opts.heights), '--heights') : null;
   const designFile = opts.design === 'none' ? null : path.resolve(cwd, opts.design);
   const options = letters.map((id) => {
@@ -142,7 +171,7 @@ function cmdBuild(opts, { cwd }) {
   let built = null;
   if (!problems.length) {
     try {
-      built = buildCanvas({ options, platform: opts.platform, pageId, pageName, canvasTitle: canvasTitleFrom(designFile), first: opts.first === 'yes', now, heights });
+      built = buildCanvas({ options, platform: opts.platform, pageId, pageName, canvasTitle: canvasTitleFrom(designFile), first, now, heights });
     } catch (e) {
       if (!(e instanceof CanvasError)) throw e;
       for (const p of e.problems ?? [{ code: e.code }]) problems.push({ file: e.file ?? '', code: p.code ?? e.code, ...(e.detail ? { detail: e.detail } : {}) });
@@ -166,9 +195,9 @@ function cmdBuild(opts, { cwd }) {
   }
   const layout = layoutSha256(built.fragment);
   fs.writeFileSync(path.join(tmp, 'page.json'), `${JSON.stringify(built.fragment, null, 2)}\n`);
-  fs.writeFileSync(path.join(tmp, 'manifest.json'), `${JSON.stringify({ files: manifestFiles, layoutSha256: layout, pageId, bytes, first: opts.first === 'yes', warnings }, null, 2)}\n`);
+  fs.writeFileSync(path.join(tmp, 'manifest.json'), `${JSON.stringify({ files: manifestFiles, layoutSha256: layout, pageId, bytes, first, warnings }, null, 2)}\n`);
   fs.renameSync(tmp, canvasDir);
-  return { out: { out: canvasDir, files: manifestFiles.map((f) => f.path), count: manifestFiles.length, layoutSha256: layout, pageId, warnings }, code: 0 };
+  return { out: { out: canvasDir, files: manifestFiles.map((f) => f.path), count: manifestFiles.length, layoutSha256: layout, pageId, first, warnings }, code: 0 };
 }
 
 function cmdVerify(opts, { cwd }) {
@@ -177,7 +206,10 @@ function cmdVerify(opts, { cwd }) {
   if (linkProblem(dir)) return { out: { ok: false, problems: [{ code: 'root-is-link' }] }, code: 1 };
   if (!isDir(dir)) return { out: { ok: false, problems: [{ code: 'no-canvas' }] }, code: 1 };
   if (linkProblem(path.join(dir, 'project'))) return { out: { ok: false, problems: [{ code: 'link-in-output', file: 'project' }] }, code: 1 };
-  const r = verifyCanvas({ dir });
+  // a frame of ours that the user deleted and merge left out is not missing
+  const info = (() => { try { return JSON.parse(fs.readFileSync(path.join(run, 'merge', 'merge.json'), 'utf8')); } catch { return null; } })();
+  const userDeleted = info && Array.isArray(info.userDeleted) ? info.userDeleted.filter((n) => typeof n === 'string') : [];
+  const r = verifyCanvas({ dir, userDeleted });
   return { out: r, code: r.ok ? 0 : 1 };
 }
 
@@ -186,28 +218,45 @@ function cmdPlan(opts, { cwd }) {
   const { run, project } = resolveRun(cwd, opts);
   const valuesFile = path.resolve(cwd, opts['values-file']);
   const types = readJsonFile(path.resolve(cwd, opts['types-file']), '--types-file');
-  const r = planNext({ run, project, data: path.resolve(cwd, opts.data), types: { design: typeof types.design === 'string' ? types.design : null }, valuesFile });
+  const r = planNext({ run, project, data: path.resolve(cwd, opts.data), types: { design: typeof types.design === 'string' ? types.design : null }, valuesFile, newCanvas: opts['new-canvas'] === true });
+  return { out: r, code: r.ok ? 0 : 1 };
+}
+
+function cmdDiff(opts, { cwd }) {
+  const { run } = resolveRun(cwd, opts);
+  const r = diffRun({ run });
   return { out: r, code: r.ok ? 0 : 1 };
 }
 
 function cmdMerge(opts, { cwd }) {
-  need(opts, 'run', 'live', 'live-dir');
+  need(opts, 'run', 'data', 'project', 'live', 'live-dir');
   const { run } = resolveRun(cwd, opts);
+  const acceptOverwrite = opts['accept-overwrite'] === undefined ? [] : list(opts['accept-overwrite']);
+  for (const n of acceptOverwrite) if (n.length > 120 || n.replace(/^project\//, '').includes('/') || n.includes('\\')) throw new UsageError('--accept-overwrite lleva nombres de artboard (r-…-a-detalle.dc.html), separados por coma');
   let now = new Date().toISOString();
   if (opts.now !== undefined) {
     if (Number.isNaN(new Date(opts.now).getTime())) throw new UsageError('--now debe ser una fecha ISO');
     now = new Date(opts.now).toISOString();
   }
-  const r = mergeLive({ run, live: opts.live, liveDir: opts['live-dir'], now });
+  let r;
+  try {
+    r = mergeLive({
+    run, data: path.resolve(cwd, opts.data), project: path.resolve(cwd, opts.project), now, acceptOverwrite,
+    live: opts.live === 'none' ? 'none' : path.resolve(cwd, opts.live), liveDir: opts['live-dir'] === 'none' ? 'none' : path.resolve(cwd, opts['live-dir']),
+    });
+  } catch (e) {
+    if (e instanceof PublishError && e.usage) throw new UsageError(e.message);
+    throw e;
+  }
   return { out: r, code: r.ok ? 0 : (r.usage ? 2 : 1) };
 }
 
 function cmdRecord(opts, { cwd }) {
   need(opts, 'run', 'step', 'url', 'data', 'project');
-  const { run } = resolveRun(cwd, opts);
+  const { run, project } = resolveRun(cwd, opts);
   if (!['canvas-create', 'canvas-publish'].includes(opts.step)) throw new UsageError('--step debe ser canvas-create o canvas-publish');
   try {
-    const r = recordStep({ run, step: opts.step, url: opts.url });
+    const r = recordStep({ run, project, data: path.resolve(cwd, opts.data), step: opts.step, url: opts.url });
     return { out: r, code: r.ok ? 0 : 1 };
   } catch (e) {
     if (e instanceof PublishError && e.usage) throw new UsageError(e.message);
@@ -215,7 +264,19 @@ function cmdRecord(opts, { cwd }) {
   }
 }
 
-const COMMANDS = { build: cmdBuild, verify: cmdVerify, plan: cmdPlan, merge: cmdMerge, record: cmdRecord };
+function cmdRefusal(opts, { cwd }) {
+  need(opts, 'run', 'kind');
+  const { run } = resolveRun(cwd, opts);
+  try {
+    const r = noteRefusal({ run, kind: opts.kind, named: opts.named });
+    return { out: r, code: r.stop ? 1 : 0 };
+  } catch (e) {
+    if (e instanceof PublishError && e.usage) throw new UsageError(e.message);
+    throw e;
+  }
+}
+
+const COMMANDS = { build: cmdBuild, verify: cmdVerify, plan: cmdPlan, diff: cmdDiff, merge: cmdMerge, record: cmdRecord, refusal: cmdRefusal };
 
 export function main(argv, { cwd = process.cwd(), stdout = process.stdout } = {}) {
   try {
