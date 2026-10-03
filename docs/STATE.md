@@ -1,8 +1,16 @@
 # Estado de pignolo
 
-_Última actualización: 2026-10-02._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
+_Última actualización: 2026-10-03._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
 
-## Estado al 2026-10-03 (manda sobre todo lo de abajo)
+## Cierre del 2026-10-03 (manda sobre todo lo de abajo)
+
+- **En `main` y en GitHub (`db38704`):** núcleo **0.22.0**, pignolo-ui **0.11.0**, `pignolo-panel` **0.3.0**. Todo lo de las ramas listadas abajo como "falta revisión" ya está revisado, arreglado y unido: guardia sin confirmar push/merge (0.14.1), lenguaje natural (0.15.0), guardia sin tropiezos etapas 1 y 2 (0.16.0, 0.19.0), init rápido (0.17.0), panel (0.18.0, panel 0.1.0), pestaña UI (panel 0.2.0), asistente de inicio (0.20.0, panel 0.3.0), fuga de `leak-values.json` (0.21.0, ui 0.11.0) y reglas MCP de setup (0.22.0).
+- **Sigue (en orden):** etapa 3 de "guardia sin tropiezos" (T8 a T13; plan `docs/plans/2026-10-02-guardia-sin-tropiezos.md`) → mensajes llanos de la guardia (plan auditado en la rama `plan/guardia-mensajes-llanos`, a regenerar sobre el main nuevo; medición hasta 6 USD aprobada) → `ui/hito-4e-chequeos` (revisión opus) → etapas 3 y 4 del lienzo, 4g.
+- **Para el autor:** probar en su terminal el panel y el asistente (`plugins/pignolo-panel/tests/manual/panel.md` y `wizard.md`; lo clave: que una respuesta de "Te toca" cierre la decisión); en el proyecto del incidente, limpiar el commit local `0c0a8af` (sacar `.pignolo-ui/` entero) y correr `/pignolo:setup` para quitar la regla vieja de navegar.
+- **Decisiones abiertas del autor:** clave `brief` en el núcleo; G99 (heredocs que mencionan `spawn` vuelven a frenarse); G105 (`*create*` atrapa `tabs_create_mcp` de Chrome); `test-paths` por defecto; G44.
+- **Limpieza pendiente (con OK del autor):** quedan muchos worktrees de esta sesión bajo `~/.claude/jobs/17b1dadf/tmp/` (ramas ya unidas) y uno de prueba (`redcheck-ui`) con cambios sin commitear.
+
+## Estado al 2026-10-03, mitad del día
 
 - **En `main` y en GitHub (`071892e`):** núcleo **0.15.0** (guardia sin confirmar push ni merge, `subagent-main` con R6; skills en lenguaje natural con confirmación por `AskUserQuestion`) y pignolo-ui **0.10.0** (4h definición inicial, etapa 2 del lienzo 0.8.0, 4i todo en el lienzo 0.9.0, lenguaje natural 0.10.0). Prueba de activación: `tests/evals/RESULTS-activacion.md`.
 - **Fuga de `leak-values.json` (rama `fix/fuga-leak-values`, plan `docs/plans/2026-10-03-fuga-leak-values.md`):** pignolo-ui **0.11.0** (los valores viven en `<PIGNOLO_HOME>/ui-leaks/`, fuera del proyecto; `leak-migrate`) y núcleo **0.21.0** (renumerables al unir: regla `add-force` para subagentes, compuerta de commit con privados, `ui-leaks` fuera de lectura, textos `NO-RUNS-COMMIT`; guía `docs/fuga-leak-values.md`). Ejecutada en serie (T1 a T5) con los cambios de la auditoría opus; falta la revisión opus propia (guardia, borrados y privacidad), la pasada de arreglos y la suite completa. Gaps G100 a G102.
