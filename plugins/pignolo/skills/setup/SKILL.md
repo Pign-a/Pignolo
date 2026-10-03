@@ -1,7 +1,6 @@
 ---
 name: setup
-description: Check the environment, choose the model profile, add pignolo's permission rules and review rule conflicts, on one screen with the recommended setup or point by point. Human-only.
-disable-model-invocation: true
+description: "Use when the user asks to configure pignolo itself, in Spanish or English: 'configurá pignolo', 'cambiá el perfil a economy', 'elegí el perfil de modelos', 'agregá los permisos de pignolo', 'set up pignolo', 'change the pignolo profile'. Checks the environment, chooses the model profile, adds pignolo's permission rules and reviews rule conflicts. Do not use to activate pignolo in a project (that is init)."
 ---
 
 Guide the human through pignolo's setup. Speak to them in their language. Never edit any user rule file.
@@ -14,6 +13,8 @@ Guide the human through pignolo's setup. Speak to them in their language. Never 
 - **Explicit yes.** Nothing is written without the human's explicit yes in their own turn. An option chosen in the selector counts as that yes only for the exact setup shown on that screen.
 
 ## Fast flow
+
+0. **Confirm (only if you chose this skill yourself).** If the turn carries a `<command-name>` tag for this skill, the user typed the command: carry on below. Otherwise run nothing yet: read `${CLAUDE_PLUGIN_ROOT}/templates/activation-confirm.md`, section `setup`, and ask with AskUserQuestion (never plain chat text) with the recommended option first, "Configurar pignolo ahora (Recomendado)", and "No ahora". On "No ahora" end this skill and carry on with what the user was doing.
 
 1. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" check`. Plain: "your machine is ready" or the one or two things that matter. Warnings: git older than 2.31 (no backups); no `powershell.exe` (PowerShell commands cannot be verified); superpowers present (it overlaps with pignolo; suggest uninstalling it after trying pignolo); agent teams on (not supported); `subagentModelForce` true, or an `availableModels` list that excludes `opus` or `sonnet` (the profile will not apply: name `CLAUDE_CODE_SUBAGENT_MODEL_FORCE` or `availableModels`).
 2. Without writing anything, run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" permissions --target user` and, with the Write tool, collect the rule conflicts as in step 4 of the review (compare `~/.claude/CLAUDE.md`, the project `CLAUDE.md` and `.claude/rules/*.md` with `${CLAUDE_PLUGIN_ROOT}/rules/core.md`; `conflicts --check` returns only the unresolved ones). The recommended resolution: on safety the human's rule wins; on process pignolo's wins.

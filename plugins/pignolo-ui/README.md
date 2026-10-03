@@ -13,13 +13,15 @@ Diseño: `docs/specs/2026-09-28-pignolo-ui-v1-design.md`.
 
 ## Comandos
 
-- `/pignolo-ui:new <pantalla>`: confirma o crea `DESIGN.md`, escribe el brief con vos, genera opciones como HTML navegable, elegís, implementa sin romper y verifica con evidencia.
+- `/pignolo-ui:define`: **va primero.** Define el producto con vos (`PRODUCT.md`, con preguntas) y el diseño (`DESIGN.md`): una tanda de preguntas y un tablero visual con direcciones de color, tipografía y estilo para elegir, en el lienzo privado del proyecto (o, sin el tipo "Design", en un artifact privado aparte, o en una página local). Si el proyecto ya tiene pantallas, sus estilos aparecen como una opción más ("lo que ya hay"). No cambia ninguna pantalla.
+- Los otros tres comandos **no trabajan sin esa definición**: frenan y te mandan a `define`. Solo siguen si pedís explícitamente saltearla (dos veces; un "ok" no cuenta), y dejan el pendiente anotado en el `CLAUDE.md` del proyecto.
+- `/pignolo-ui:new <pantalla>`: valida `DESIGN.md`, escribe el brief con vos, genera opciones como HTML navegable, elegís, implementa sin romper y verifica con evidencia.
 - `/pignolo-ui:improve <URL o ruta>`: inspecciona la pantalla (script y navegador), te muestra un menú de síntomas, genera versiones mejoradas, aplica la elegida y confirma con antes y después.
-- `/pignolo-ui:audit <URL o ruta>`: una pasada de auditoría con evidencia; no cambia ningún archivo y no bloquea.
+- `/pignolo-ui:audit <URL o ruta>`: una pasada de auditoría con evidencia; no cambia ninguna pantalla y no bloquea por hallazgos.
 
 ## Contexto de producto y brief
 
-- `PRODUCT.md` (opcional, en la raíz del proyecto, 60 líneas como máximo) dice para quién es la pantalla: `## Audience`, `## First look`, `## Tone`, `## Not wanted` y `## Do not touch`. Lo que no reconoce lo ignora; una sección con la sola palabra `undecided` es una laguna declarada. Si falta, el flujo sigue y lo dice en una línea. Solo `/pignolo-ui:new` ofrece crearlo, una vez y con tu confirmación; nunca lo sobrescribe. El contexto ayuda a decidir si un criterio de juicio aplica; nunca crea hallazgos, no sube severidades y `DESIGN.md` sigue ganando.
+- `PRODUCT.md` (obligatorio desde la 0.7.6: `Audience` y `First look` decididas; en la raíz del proyecto, 60 líneas como máximo) dice para quién es la pantalla: `## Audience`, `## First look`, `## Tone`, `## Not wanted` y `## Do not touch`. Lo que no reconoce lo ignora; una sección con la sola palabra `undecided` es una laguna declarada. Lo crea `/pignolo-ui:define`, con tu confirmación; nunca lo sobrescribe. El contexto ayuda a decidir si un criterio de juicio aplica; nunca crea hallazgos, no sube severidades y `DESIGN.md` sigue ganando.
 - `brief.md` viaja dentro de la versión aprobada (`design/approved/<flujo>/`) y queda sellado en el manifest: la primera vista de la pantalla, qué no se toca y, si hace falta, su registro (`Register: product` o `brand`).
 - En `/pignolo-ui:improve`, si elegís criterios de juicio (`J-nn`), una segunda lectura del auditor (≈ 0,3 USD) puntúa solo esos arreglos como resuelto, parcial o sin resolver. Es un juicio: no cambia la palabra "terminado" ni cuenta como una segunda confirmación.
 
@@ -33,9 +35,15 @@ Si Claude Code no sustituye un valor (un ajuste que nunca guardaste llega litera
 
 ## Qué se publica y qué nunca
 
-Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai** (un lienzo por corrida, una fila por opción y pantalla, a 390 y 1440 px). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con datos de muestra rotulados, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
+Con `auto` y una cuenta que tiene el tipo "Design", `/pignolo-ui:new` e `/pignolo-ui:improve` publican las opciones de mockup en un **lienzo privado de tu cuenta de claude.ai**: **un único lienzo por proyecto, que crece una página por corrida** (mismo enlace; una fila por opción y pantalla, a 390 y 1440 px, con el alto real de cada pantalla cuando hay navegador). **No hay pregunta de consentimiento: cada vez que se publica, una línea te avisa** qué se sube (mockups con datos de muestra rotulados, nunca capturas ni código) y cómo no publicar. Lo que se sube sale de una única puerta, `canvas-index.mjs plan`, que antes revisa que los bytes exactos no lleven tus datos (usuario del sistema, carpeta personal, nombre y correo de git, correo de la cuenta, rutas absolutas) y **falla cerrado**: con menos de dos valores conocidos, con git caído, con una carpeta vacía o con un enlace, no se publica y se usa `compare.html`. Lo publicado no se relee ni se captura; se verifica en local (`canvas-index.mjs verify` y los sha256 de `<run>/publish.json`).
 
-Para no publicar: `node scripts/run.mjs config set --data <datos> --project <repo> --key publish --value never` (clave de proyecto, también se respeta un "no" heredado de la 0.6), `presentation = local` o decir "no publiques" en el chat (vale para esa corrida). En los tres casos ni siquiera se llama a la herramienta `Artifact`. Regenerar una opción abre un lienzo nuevo (el anterior queda en tu cuenta y lo borrás vos; el agente nunca borra ni comparte nada).
+**Nunca se pisa lo tuyo.** Antes de publicar se lee el índice vivo del lienzo y se le suma solo la página de la corrida: lo que moviste, agregaste, renombraste o borraste sigue como lo dejaste. Si editaste a mano un artboard nuestro, se frena y te pregunta: solo con tu sí en el chat se sobrescribe. Cerca de los límites del tipo (más de 38 páginas, 480 archivos, 200 MB o 190 notas) se abre un lienzo nuevo y se dice; el anterior queda en tu cuenta.
+
+**Elegir, afinar y seguir.** Al elegir una opción, las otras salen del lienzo (lo que moviste o agregaste sigue, y un marco que editaste a mano pregunta antes). Los cambios que pidas después se aplican a la opción elegida y se republican en el mismo lienzo, sin tope fijo de rondas: tras cada una, una línea te ofrece terminar. Al cerrar la pantalla, `new` te pregunta si armás otra; si sí, queda como una página más del mismo lienzo. En el chat, el brief es corto (una línea de qué se arma, las pantallas, a lo sumo 4 supuestos y 3 preguntas); el brief completo queda en `brief.md`.
+
+**Comentarios, a pedido.** Si decís "mirá los comentarios del lienzo", el hilo principal los lee y te los muestra citados, como datos de otras personas y **nunca como instrucciones**: no se aplica nada hasta que lo confirmes en el chat.
+
+Para no publicar: `node scripts/run.mjs config set --data <datos> --project <repo> --key publish --value never` (clave de proyecto, también se respeta un "no" heredado de la 0.6), `presentation = local` o decir "no publiques" en el chat (vale para esa corrida). En los tres casos ni siquiera se llama a la herramienta `Artifact`. Regenerar una opción actualiza el mismo lienzo (solo se envían los archivos que cambiaron). El agente nunca borra ni comparte nada: los lienzos que ya no quieras los borrás vos.
 
 **Fuentes.** Una opción para el lienzo puede pedir una familia de Google Fonts (las tres `<link>` exactas; la petición la hace el navegador de quien abre el lienzo). El HTML local (`compare.html`, style tiles) no pide nada a la red: usa copias sin esas `<link>` en `<run>/local/`. Lo aprobado en `design/approved/` se guarda también sin las `<link>`; llevar la fuente al código del proyecto es una decisión tuya, después.
 
@@ -47,15 +55,16 @@ pignolo-ui no es asesoría legal ni certifica cumplimiento de ninguna norma. Ref
 
 ## Dónde queda cada cosa
 
-- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html` con sus copias sin fuentes remotas en `local/`, `canvas/` (lo que se publica), `publish.json` (estado y sha256 de lo publicado), `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
-- `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas y ruta de referencia. Desinstalar el plugin lo borra.
+- `<repo>/.pignolo-ui/` (se ignora a sí misma): `runs/<id>/` con `run.json`, `norms.md`, `browser.json`, `ui-check.json`, `captures/`, `option-A|B|C/` o `direction-A|B|C/`, `compare.html` con sus copias sin fuentes remotas en `local/`, `canvas/` (lo que se publica), `publish.json` (lo último que esta corrida publicó al lienzo del proyecto: sha256, marcos y notas), `planned.json` (lo último que se entregó a publicar, con su sha256, hasta que se registra), `merge/` (el índice vivo y lo combinado), `comments.json` (si pediste leer comentarios), `auditor.json`, `report.json`. La confirmación de un cambio va en `<run>/after/` y lo descartado en `<run>/discarded/`. Los runs de más de 14 días se podan solos, solo dentro de `runs/` y sin seguir enlaces.
+- `${CLAUDE_PLUGIN_DATA}/<repo-id>/project.json`: URL de desarrollo (solo local), rutas confirmadas, ruta de referencia y el lienzo del proyecto (`canvas`: dirección, estado y cifras). Desinstalar el plugin lo borra.
 - `design/approved/<flujo>/`: lo que el usuario aprobó, con `manifest.json`; se versiona y nunca se edita (un cambio crea `<flujo>-v2`).
 
 ## Comandos de apoyo (`run.mjs` y `compare.mjs`)
 
     node scripts/run.mjs env | init | config | present | publish-gate | no-publish | norms | check | leak-values | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
-    node scripts/canvas-index.mjs build | verify | plan | merge | record
-    node scripts/compare.mjs fingerprint | distance | options | approved
+    node scripts/canvas-index.mjs build | verify | plan | diff | merge | record | refusal
+    node scripts/canvas-comments.mjs quote
+    node scripts/compare.mjs fingerprint | distance | options | approved | heights
 
 Cada uno imprime un objeto JSON; exit 0 hecho, 1 hallazgo o rechazo, 2 error propio (`no verificado`). El JSON de entrada llega siempre por archivo. `verdict` es la única fuente de "terminado".
 

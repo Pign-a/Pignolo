@@ -84,7 +84,7 @@ Vive en `plugins/pignolo-ui/` del mismo repo y se registra en el `marketplace.js
 ```
 plugins/pignolo-ui/
   .claude-plugin/plugin.json   nombre, versión (semver), userConfig (§3.1)
-  skills/new|improve|audit/SKILL.md   los tres comandos (disable-model-invocation: true)
+  skills/new|improve|audit/SKILL.md   los comandos; desde el 2026-10-03 se activan también con lenguaje natural (sin disable-model-invocation) y confirman con AskUserQuestion si arrancaron solas
   skills/<cmd>/reference/      texto de apoyo que carga el hilo principal
   agents/ui-option.md          generador de una opción (§7.4)
   agents/ui-auditor.md         auditor (§10)

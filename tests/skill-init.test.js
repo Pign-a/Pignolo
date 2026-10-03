@@ -10,15 +10,15 @@ const { readSkill, brokenReferences } = require('./skill-forms');
 const SKILL = readSkill('init');
 const ROOT = path.join(__dirname, '..');
 
-test('frontmatter: human-only, name init, real script references and verbs', () => {
+test('frontmatter: model-invocable (natural language), name init, real script references and verbs', () => {
   assert.equal(SKILL.data.name, 'init');
-  assert.equal(SKILL.data['disable-model-invocation'], true);
+  assert.equal(SKILL.data['disable-model-invocation'], undefined);
   assert.ok(SKILL.data.description.length > 40);
   assert.deepEqual(brokenReferences(SKILL.text), []);
   assert.ok(fs.existsSync(path.join(PLUGIN_ROOT, 'skills', 'init', 'SKILL.md')));
 });
 
-test('the fourteen steps of the review come in order: detect before preview, preview before apply, apply before verify', () => {
+test('step 0 confirms before everything, then the fourteen steps of the review come in order: detect before preview, preview before apply, apply before verify', () => {
   const t = SKILL.text;
   const review = t.slice(t.indexOf('## Review point by point'), t.indexOf('## Rules'));
   const steps = [...review.matchAll(/^(\d+)\. \*\*/gm)].map((m) => Number(m[1]));
@@ -27,6 +27,9 @@ test('the fourteen steps of the review come in order: detect before preview, pre
   assert.ok(at(/init\.js"? detect/) < at(/init\.js"? preview/));
   assert.ok(at(/init\.js"? preview/) < at(/init\.js"? apply/));
   assert.ok(at(/init\.js"? apply/) < at(/init\.js"? verify/));
+  const s0 = t.indexOf('0. **Confirm');
+  assert.ok(s0 > 0 && s0 < t.search(/init.js"? detect/) && s0 < t.indexOf('## Blank project'));
+  assert.match(t, /activation-confirm.md/);
   assert.match(t, /init does not migrate any memory/);
   assert.match(t, /autoMemoryEnabled/);
 });
@@ -185,15 +188,15 @@ test('2026-10-02: every subcommand, summary field, step id, refusal kind and att
 });
 
 test('2026-10-02: the skill is not longer than before by more than a small margin and carries no user paths', () => {
-  assert.ok(SKILL.text.length <= 11500, String(SKILL.text.length));
+  assert.ok(SKILL.text.length <= 12300, String(SKILL.text.length));
   assert.doesNotMatch(SKILL.text, /[A-Za-z]:[\\/]+Users|\/home\/|\/Users\//);
 });
 
-test('2026-10-02: docs and version: CHANGELOG entry 0.15.0, plugin.json at the CHANGELOG head, spec and README name the decision, the manual checklist covers the blank repo', () => {
+test('2026-10-02: docs and version: CHANGELOG entry 0.19.0, plugin.json at the CHANGELOG head, spec and README name the decision, the manual checklist covers the blank repo', () => {
   const version = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version;
   const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
   assert.equal(changelog.match(/^## (\d+\.\d+\.\d+)/m)[1], version);
-  assert.match(changelog, /^## 0\.15\.0 — 2026-10-02$/m);
+  assert.match(changelog, /^## 0.19.0 — 2026-10-03$/m);
   const spec = fs.readFileSync(path.join(ROOT, 'docs', 'specs', '2026-09-26-pignolo-v1-design.md'), 'utf8');
   assert.match(spec, /Decisión del autor, 2026-10-02: `init` y `setup` rápidos, y el repo en blanco/);
   const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');

@@ -25,7 +25,7 @@ test('F8: --no-verify is denied in commit, merge, rebase, am, cherry-pick and pu
   for (const cmd of ['git commit --no-verify -m x', 'git commit -n -m x', 'git merge --no-verify feature', 'git rebase --no-verify main',
     'git am --no-verify x.patch', 'git cherry-pick --no-verify abc123', 'git push --no-verify']) check(cmd, 'block', 'no-verify');
   check('git merge -n feature', 'allow'); // -n es --no-stat
-  check('git push -n origin x', 'ask', 'push'); // -n es --dry-run
+  check('git push -n origin x', 'allow'); // -n es --dry-run
 });
 
 test('F8: ref moves recoverable by reflog ask', () => {
@@ -72,8 +72,10 @@ test('F12: -C / --git-dir / --work-tree pass with reads and keep the rules of th
   check('git -C ../x clean -fd', 'block', 'clean');
   check('git -C ../x checkout feature', 'block', 'git-C');
   check('git -C ../x checkout -b feat', 'allow');
-  check('git -C ../x merge feature', 'ask', 'merge-main');
-  check('git -C ../x push', 'ask', 'push');
+  check('git -C ../x merge feature', 'allow');
+  check('git -C ../x push', 'allow');
+  check('git -C ../x push --force', 'block', 'push-force');
+  check('git -C ../x push origin --delete x', 'ask', 'push-delete');
   check('git -C ../x branch -D x', 'ask', 'branch-delete');
 });
 

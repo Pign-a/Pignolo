@@ -13,7 +13,7 @@ const SETUP_SRC = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'setup.js'),
 
 test('setup: frontmatter human-only, scripts y verbos reales, sin rutas de usuario', () => {
   assert.equal(SKILL.data.name, 'setup');
-  assert.equal(SKILL.data['disable-model-invocation'], true);
+  assert.equal(SKILL.data['disable-model-invocation'], undefined);
   assert.deepEqual(brokenReferences(SKILL.text), []);
   assert.doesNotMatch(SKILL.text, /[A-Za-z]:[\\/]+Users|\/home\/|\/Users\//);
 });
@@ -57,5 +57,5 @@ test('setup: toda opción y subcomando que nombra existe en setup.js; permission
 });
 
 test('setup: no es más larga que antes por más de un margen chico', () => {
-  assert.ok(SKILL.text.length <= 6500, String(SKILL.text.length));
+  assert.ok(SKILL.text.length <= 7300, String(SKILL.text.length));
 });

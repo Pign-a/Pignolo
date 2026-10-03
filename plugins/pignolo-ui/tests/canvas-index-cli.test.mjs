@@ -135,3 +135,79 @@ test('build refuses a run folder that is a link (no writes through it)', (t) => 
   assert.equal(b.status, 2);
   assert.deepEqual(fs.readdirSync(target), []);
 });
+
+test('build: first is the effective one, --first yes or ownsMain of publish.json; the manifest keeps it and build prints it (T2b, A4C2-02)', () => {
+  const r = makeRun();
+  const paths = () => JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'manifest.json'), 'utf8'));
+  const b1 = canvasIndex(BUILD_ARGS(r, { first: 'yes' }));
+  assert.equal(b1.status, 0, b1.stdout);
+  assert.equal(b1.json.first, true);
+  const firstPaths = paths().files.map((f) => f.path);
+  assert.ok(firstPaths.includes('project/Main.dc.html'));
+  // the run published its Main.dc.html (record writes ownsMain) and the state now says "published": --first no
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 2, state: 'published', ownsMain: true }));
+  const b2 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
+  assert.equal(b2.status, 0, b2.stdout);
+  assert.equal(b2.json.first, true);
+  assert.equal(paths().first, true);
+  assert.deepEqual(paths().files.map((f) => f.path), firstPaths, 'no name changes when regenerating');
+  // another run (no ownsMain) and --first no: no Main.dc.html at all
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 2, state: 'published', ownsMain: false }));
+  const b3 = canvasIndex(BUILD_ARGS(r, { first: 'no' }));
+  assert.equal(b3.json.first, false);
+  assert.ok(!paths().files.some((f) => f.path === 'project/Main.dc.html'));
+  // with --canvas-url (the canvas that project.json registers) a publish.json of another canvas does not count
+  const url = ['https://claude.ai', 'artifact', 'aaaa1111-bbbb-4ccc-8ddd-000000000009'].join('/');
+  fs.writeFileSync(path.join(r.run, 'publish.json'), JSON.stringify({ v: 2, canvasUrl: url, ownsMain: true }));
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': url })).json.first, true);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': `${url}9` })).json.first, false);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': 'https://example.com/artifact/aaaa' })).status, 2);
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no', 'canvas-url': `${url}?x=1` })).status, 2);
+  // a publish.json that cannot be read does not silently mean "not mine": exit 2
+  fs.writeFileSync(path.join(r.run, 'publish.json'), '{ no es json');
+  assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).status, 2);
+});
+
+// ---- hito 4i, T4: the board of define as one option of one screen, with its own row title ----
+
+const boardRun = () => {
+  const r = makeRun({ options: ['A'], screens: ['board.html'] });
+  fs.copyFileSync(new URL('./fixtures/define-board.html', import.meta.url), path.join(r.optionDir('A'), 'board.html'));
+  return r;
+};
+const BOARD_ARGS = (r, extra = {}) => BUILD_ARGS(r, { options: 'A', screens: 'board.html', 'page-name': 'Definición · 2026-10-02', ...extra });
+
+test('canvas-index build: the define board sample builds as one option with the row title Tablero', () => {
+  const r = boardRun();
+  const b = canvasIndex(BOARD_ARGS(r, { 'row-title': 'Tablero' }));
+  assert.equal(b.status, 0, b.stdout + b.stderr);
+  assert.equal(b.json.count, 1);
+  assert.ok(b.json.warnings.every((w) => ['body-rule', 'css-close-braces'].includes(w.code)), JSON.stringify(b.json.warnings));
+  const page = JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'page.json'), 'utf8'));
+  const titles = [...Object.values(page.boards).map((x) => x.title), ...Object.values(page.notes).map((x) => x.text)];
+  assert.ok(titles.includes('Tablero'), JSON.stringify(titles));
+  assert.ok(!titles.some((t) => /Opción A|A · board/.test(t)));
+  assert.equal(canvasIndex(['verify', '--run', r.run]).status, 0);
+});
+
+test('canvas-index build: --row-title longer than 40 characters or with < is refused (exit 2)', () => {
+  const r = boardRun();
+  for (const bad of ['x'.repeat(41), 'Tab<lero', 'Tab>lero', '']) {
+    const b = canvasIndex(BOARD_ARGS(r, { 'row-title': bad }));
+    assert.equal(b.status, 2, `${JSON.stringify(bad)}: ${b.stdout}${b.stderr}`);
+  }
+});
+
+test('canvas-index build: without --row-title the note says Opción A', () => {
+  const r = makeRun({ options: ['A'] });
+  assert.equal(canvasIndex(BUILD_ARGS(r, { options: 'A' })).status, 0);
+  const page = JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'page.json'), 'utf8'));
+  assert.deepEqual(Object.values(page.notes).map((n) => n.text), ['Opción A']);
+});
+
+test('canvas-index build: with --row-title every row note takes it instead of the letter', () => {
+  const r = makeRun({ options: ['A', 'B'] });
+  assert.equal(canvasIndex(BUILD_ARGS(r, { options: 'A,B', 'row-title': 'Tablero' })).status, 0);
+  const page = JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'page.json'), 'utf8'));
+  assert.deepEqual(Object.values(page.notes).map((n) => n.text).sort(), ['Tablero', 'Tablero']);
+});

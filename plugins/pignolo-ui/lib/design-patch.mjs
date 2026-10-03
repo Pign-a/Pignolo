@@ -6,6 +6,7 @@
 // ops: { op: 'set', path, value }            scalar on its own line; creates missing keys under a block map
 //      { op: 'append', path, value }         list item (scalar or map); creates the list when missing
 //      { op: 'remove-item', path, value }    removes a scalar item; the last one leaves "key: []"
+//                                            (emptying pignolo.extracted also drops the "extraídos, no decididos" lines of the body)
 //      { op: 'section-append', heading, text }  appends lines at the end of "## <heading>" (created at the end if missing)
 import { parseYaml, locate, stripComment } from './yaml-subset.mjs';
 
@@ -229,6 +230,17 @@ function opSectionAppend(doc, { heading, text }) {
   doc.splice(last + 1, 0, add);
 }
 
+// The only removal in the body: once pignolo.extracted is empty, every token was decided, so the
+// lines of the mark that the foundation gate reads ("extraídos, no decididos") go away with it.
+function dropUndecidedMark(doc) {
+  const { parsed, end } = doc.yaml();
+  const left = getAt(parsed.value, ['pignolo', 'extracted']);
+  if (Array.isArray(left) && left.length) return;
+  for (let i = doc.lines.length - 1; i > end; i--) {
+    if (/extraídos, no decididos|extracted, not decided/.test(doc.lines[i])) doc.splice(i, 1, []);
+  }
+}
+
 const OPS = { set: opSet, append: opAppend, 'remove-item': opRemoveItem, 'section-append': opSectionAppend };
 
 export function formatDiff(hunks, file = 'DESIGN.md') {
@@ -247,6 +259,7 @@ export function patchDesign(text, ops) {
       if (!run) throw new PatchError('unknown-op');
       const errorsBefore = op.op === 'section-append' ? 0 : doc.yaml().parsed.errors.length;
       run(doc, op);
+      if (op.op === 'remove-item' && same(op.path, ['pignolo', 'extracted'])) dropUndecidedMark(doc);
       if (op.op === 'set' || op.op === 'append') {
         // evidence of effect: the new text parses to the requested value, with no new YAML errors
         const { parsed } = doc.yaml();

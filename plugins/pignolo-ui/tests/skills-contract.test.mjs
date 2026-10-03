@@ -6,13 +6,23 @@ import path from 'node:path';
 import { PLUGIN_ROOT } from './helpers.mjs';
 import { readSkill, readReference, assertNoVariables, scriptCalls, assertScriptsExist } from './support/skill-checks.mjs';
 
-const SKILLS = ['new', 'improve', 'audit'];
+const SKILLS = ['new', 'improve', 'audit', 'define'];
 const REFERENCES = fs.readdirSync(path.join(PLUGIN_ROOT, 'reference')).filter((n) => n.endsWith('.md'));
 const texts = () => [...SKILLS.map((n) => [`skills/${n}`, readSkill(n).text]), ...REFERENCES.map((n) => [`reference/${n}`, readReference(n)])];
 
 test('no skill and no reference file calls Artifact to publish without naming canvas-index.mjs plan; none writes the publish action by hand', () => {
   for (const [name, text] of texts()) {
     if (!/Artifact/.test(text)) continue;
+    if (name === 'skills/define') {
+      // the board of define is one plain private page, not a canvas: gate and leak check before the call (hito 4h)
+      // the page is shown by reference/define-board.md (hito 4i): the SKILL and that file are read together
+      const both = `${text}
+${readReference('define-board.md')}`;
+      const call = both.indexOf('then call Artifact');
+      assert.ok(call >= 0 && both.indexOf('publish-gate') < call && both.lastIndexOf('leak-check.mjs" --dir <run>/option-A', call) >= 0, 'define: publish-gate and the leak check of the board come before Artifact');
+      assert.ok(!/action: "publish"/.test(both));
+      continue;
+    }
     assert.ok(text.includes('canvas-index.mjs'), `${name} mentions Artifact but not canvas-index.mjs`);
     assert.ok(/canvas-index\.mjs"? plan/.test(text) || /canvas-index\.mjs plan/.test(text), `${name}: Artifact without canvas-index.mjs plan`);
     assert.ok(!/action: "publish"/.test(text), `${name}: the publish call must come from the printed step, not from the text`);

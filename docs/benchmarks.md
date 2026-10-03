@@ -167,6 +167,19 @@ Fixtures sintéticos, 5 corridas por caso; `ui-auditor` en opus y `ui-option` en
 
 **Comparabilidad:** mide si cumplen su contrato, no si mejoran a Claude Code. Falta la corrida completa de un caso de defecto (`state-04`). Gasto: 21,85 USD de 22. Evidencia: [`RESULTS-ui-hito-4.md`](../plugins/pignolo-ui/tests/evals/RESULTS-ui-hito-4.md).
 
+## 3c. Activación de las skills con lenguaje normal (2026-10-03)
+
+30 frases (20 que deben activar una de las ocho skills de pignolo y pignolo-ui, 10 que no), sonnet, `claude -p` con solo la herramienta Skill, 3 repeticiones por frase y por brazo. Control: el plugin antes del cambio de `description` (las skills no eran invocables por el modelo); tratamiento: las `description` nuevas.
+
+| Brazo | Positivas por ronda (de 20) | Falsas activaciones por ronda (de 10) | USD |
+|---|---|---|---|
+| Control | 0 / 0 / 0 | 0 / 0 / 0 | 2,00 |
+| Tratamiento | **20 / 20 / 20** | 0 / 0 / 0 | 2,64 |
+
+Mediana 20 y rango 20 a 20 contra 0 a 0: la regla de decisión se cumple y se adopta el texto. Los `exit 1` (24 en el control, 15 en el tratamiento) son `error_max_turns` por el límite de 2 turnos, después de invocar la skill, y no afectan la calificación. Gasto total con sondas y una corrida parcial descartada: 5,59 USD.
+
+**Comparabilidad:** E3 para la diferencia entre brazos (una sola variable, 3 repeticiones, criterio fijado antes). No dice nada de opus, de un proyecto con contexto propio ni de frases ajenas: las escribió quien escribió las descriptions. Evidencia: [`RESULTS-activacion.md`](../tests/evals/RESULTS-activacion.md).
+
 ## 4. Guardia de comandos destructivos
 
 | Medida | Resultado |

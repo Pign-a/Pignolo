@@ -20,8 +20,8 @@ El hito se construye en **cuatro etapas**. Cada una es **usable sola**, tiene su
 |---|---|---|---|---|
 | 1. Lienzo básico | T0, T1, T2, T4, T5, T7, T9, T10; después T6 (puerta con el autor) y T11 | ≈ 183 | 0.7.0 | 3 casos de `ui-option`, ≈ 3 USD |
 | 2. Lienzo por proyecto | T6b (puerta), T2b, T4b, T7d, T7b, T8, T9b, T10b; después T11b | ≈ 85 | 0.8.0 | ninguna |
-| 3. Design System | T3, T6c (puerta), T4c, T7e, T9c, T10c; después T11c | ≈ 48 | 0.9.0 | ninguna |
-| 4. Modo explorar | T5b, T7c, T9d, T10d; después T11d | ≈ 65 | 0.10.0 | `explore-blind`, ≈ 1 USD |
+| 3. Design System | T3, T6c (puerta), T4c, T7e, T9c, T10c; después T11c | ≈ 48 | 0.10.0 (renumerada, ver nota) | ninguna |
+| 4. Modo explorar | T5b, T7c, T9d, T10d; después T11d | ≈ 65 | 0.11.0 (renumerada, ver nota) | `explore-blind`, ≈ 1 USD |
 
 Total ≈ 381 tests nuevos. **Versiones: propuesta del agente (ruling técnico):** cada etapa suma interfaz, por eso minor; si el autor prefiere 0.7.x, solo cambia el número. Cada versión sube `version` en `plugin.json` y suma su entrada al CHANGELOG (sin eso `/plugin update` no la toma).
 
@@ -1052,3 +1052,5 @@ Línea base: `npm run test:ui` = 931 tests (928 pasan, 2 saltados, 1 falla por c
 - El formato real de los artboards de las tres pruebas (`canvas-spike`, `ab-canvas`) usa `height: 844px` fijo en la raíz; el plan manda `min-height` (R-4) y la puerta T6 lo confirma.
 
 **Registro de la reestructuración en etapas (2026-10-01, por decisión del autor):** el plan se reagrupó en cuatro etapas sin cambiar el comportamiento ya fijado por las dos vueltas de auditoría, salvo lo que decidió el autor (D-4c-14 a D-4c-22). Lo que cada etapa construye de forma recortada se declara en su tarjeta: etapa 1, un lienzo por corrida con estado en `<run>/publish.json` y regeneración que abre un lienzo nuevo; `present` sin `first`, `canvasPublished` ni `designSystemPublished`; `plan` sin pasos del sistema; `merge` solo con `--live none`. Las tarjetas partidas (`T2b`, `T4b`, `T4c`, `T5b`, `T6b`, `T6c`, `T7d`, `T7e`, `T9b` a `T9d`, `T10b` a `T10d`, `T11b` a `T11d`) llevan, textuales, los tests y las interfaces que salieron de la tarjeta original.
+
+> **Nota de renumeración (2026-10-02, hito 4i).** El hito 4i (todo en el lienzo y un brief corto) tomó la versión 0.9.0. Desde acá: etapa 3 (Design System) = **0.10.0**, etapa 4 (modo explorar) = **0.11.0**, hito 4g = **0.12.0** y el resto de 4e = **0.13.0**. Donde este plan dice 0.9.0 o 0.10.0 para esas etapas, léase con ese corrimiento.

@@ -15,7 +15,7 @@ Correr en una sesión INTERACTIVA de Claude Code, en Windows nativo, con el plug
 
 Un `dead-defense` que llega a `int/` es un hallazgo (gap de `docs/gaps.md`), no un fallo del plan.
 
-## Init rápido y repo en blanco (plan 2026-10-02, núcleo 0.15.0)
+## Init rápido y repo en blanco (plan 2026-10-02, núcleo 0.19.0)
 
 11. [ ] **Repo en blanco real:** en un `git init` vacío (y otro con solo README, `.gitignore` y `.claude/settings.local.json`), `/pignolo:init` dice en dos o tres líneas que no hay nada que configurar, hace una sola pregunta sí/no (en el selector, no escribiendo), crea solo las carpetas con su README y lo oculto de pignolo, no escribe `project.md`, y pide volver a correrlo cuando haya código. No instala nada. Anotar los mensajes que sobren o falten.
 12. [ ] **Aviso al sumar código:** después del punto 11, agregar un `package.json` y abrir una sesión nueva: el contexto trae la línea `init-blank-ready` y Claude se lo dice al humano; correr `/pignolo:init` de nuevo propone la configuración completa y conserva las carpetas.
