@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Tablero de dirección</title>
+<style>
+:root{--bg:#ffffff;--fg:#1b1f24;--muted:#5b6470;--line:#d9dee5}
+@media (prefers-color-scheme: dark){:root{--bg:#14171b;--fg:#f1f3f5;--muted:#a3acb8;--line:#2c333b}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;padding:32px}
+.band{border:1px solid var(--line);border-radius:8px;padding:24px}
+.band h2{margin:0 0 4px;font-size:20px}
+.band p{margin:0 0 16px;color:var(--muted)}
+.swatches{display:flex;gap:8px;margin:0 0 16px;padding:0;list-style:none}
+.swatches li{width:56px;font-size:11px}
+.swatches span{display:block;height:40px;border-radius:4px;margin-bottom:4px}
+.a .primary{background:#1a56db}.b .primary{background:#0e7c66}.c .primary{background:#9a3412}
+.btn{display:inline-block;padding:10px 16px;border-radius:6px;border:1px solid transparent;color:#fff;font:inherit;cursor:pointer}
+.btn:hover{filter:brightness(1.1)}
+.btn:focus{outline:3px solid #f59e0b;outline-offset:2px}
+.btn.secondary{background:transparent;color:var(--fg);border-color:var(--line)}
+label{display:block;font-size:13px;margin:16px 0 4px}
+input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+.card{margin-top:16px;padding:16px;border:1px solid var(--line);border-radius:8px}
+</style>
+</head>
+<body>
+<main class="board">
+<section class="band a">
+<h2>Dirección A</h2>
+<p>Sobria, para trabajar muchas horas seguidas.</p>
+<ul class="swatches"><li><span class="primary"></span>#1a56db</li><li><span style="background:#1b1f24"></span>#1b1f24</li><li><span style="background:#d9dee5"></span>#d9dee5</li></ul>
+<button class="btn primary" type="button">Guardar</button> <button class="btn secondary" type="button">Cancelar</button>
+<label for="a-in">Nombre del proyecto</label><input id="a-in" type="text" value="Proyecto de ejemplo">
+<div class="card"><strong>Resumen</strong><p>Datos de muestra: 12 tareas, 3 vencidas.</p></div>
+</section>
+<section class="band b">
+<h2>Dirección B</h2>
+<p>Más cálida, con aire entre los bloques.</p>
+<ul class="swatches"><li><span class="primary"></span>#0e7c66</li><li><span style="background:#1b1f24"></span>#1b1f24</li><li><span style="background:#d9dee5"></span>#d9dee5</li></ul>
+<button class="btn primary" type="button">Guardar</button> <button class="btn secondary" type="button">Cancelar</button>
+<label for="b-in">Nombre del proyecto</label><input id="b-in" type="text" value="Proyecto de ejemplo">
+<div class="card"><strong>Resumen</strong><p>Datos de muestra: 12 tareas, 3 vencidas.</p></div>
+</section>
+<section class="band c">
+<h2>Dirección C</h2>
+<p>Con carácter, para una página que presenta algo.</p>
+<ul class="swatches"><li><span class="primary"></span>#9a3412</li><li><span style="background:#1b1f24"></span>#1b1f24</li><li><span style="background:#d9dee5"></span>#d9dee5</li></ul>
+<button class="btn primary" type="button">Guardar</button> <button class="btn secondary" type="button">Cancelar</button>
+<label for="c-in">Nombre del proyecto</label><input id="c-in" type="text" value="Proyecto de ejemplo">
+<div class="card"><strong>Resumen</strong><p>Datos de muestra: 12 tareas, 3 vencidas.</p></div>
+</section>
+</main>
+</body>
+</html>

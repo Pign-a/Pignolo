@@ -15,9 +15,12 @@ test('no skill and no reference file calls Artifact to publish without naming ca
     if (!/Artifact/.test(text)) continue;
     if (name === 'skills/define') {
       // the board of define is one plain private page, not a canvas: gate and leak check before the call (hito 4h)
-      const call = text.indexOf('then call Artifact');
-      assert.ok(call >= 0 && text.indexOf('publish-gate') < call && text.lastIndexOf('leak-check.mjs" --dir <run>/board', call) >= 0, 'define: publish-gate and the leak check of the board come before Artifact');
-      assert.ok(!/action: "publish"/.test(text));
+      // the page is shown by reference/define-board.md (hito 4i): the SKILL and that file are read together
+      const both = `${text}
+${readReference('define-board.md')}`;
+      const call = both.indexOf('then call Artifact');
+      assert.ok(call >= 0 && both.indexOf('publish-gate') < call && both.lastIndexOf('leak-check.mjs" --dir <run>/option-A', call) >= 0, 'define: publish-gate and the leak check of the board come before Artifact');
+      assert.ok(!/action: "publish"/.test(both));
       continue;
     }
     assert.ok(text.includes('canvas-index.mjs'), `${name} mentions Artifact but not canvas-index.mjs`);

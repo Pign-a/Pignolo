@@ -167,3 +167,47 @@ test('build: first is the effective one, --first yes or ownsMain of publish.json
   fs.writeFileSync(path.join(r.run, 'publish.json'), '{ no es json');
   assert.equal(canvasIndex(BUILD_ARGS(r, { first: 'no' })).status, 2);
 });
+
+// ---- hito 4i, T4: the board of define as one option of one screen, with its own row title ----
+
+const boardRun = () => {
+  const r = makeRun({ options: ['A'], screens: ['board.html'] });
+  fs.copyFileSync(new URL('./fixtures/define-board.html', import.meta.url), path.join(r.optionDir('A'), 'board.html'));
+  return r;
+};
+const BOARD_ARGS = (r, extra = {}) => BUILD_ARGS(r, { options: 'A', screens: 'board.html', 'page-name': 'Definición · 2026-10-02', ...extra });
+
+test('canvas-index build: the define board sample builds as one option with the row title Tablero', () => {
+  const r = boardRun();
+  const b = canvasIndex(BOARD_ARGS(r, { 'row-title': 'Tablero' }));
+  assert.equal(b.status, 0, b.stdout + b.stderr);
+  assert.equal(b.json.count, 1);
+  assert.ok(b.json.warnings.every((w) => ['body-rule', 'css-close-braces'].includes(w.code)), JSON.stringify(b.json.warnings));
+  const page = JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'page.json'), 'utf8'));
+  const titles = [...Object.values(page.boards).map((x) => x.title), ...Object.values(page.notes).map((x) => x.text)];
+  assert.ok(titles.includes('Tablero'), JSON.stringify(titles));
+  assert.ok(!titles.some((t) => /Opción A|A · board/.test(t)));
+  assert.equal(canvasIndex(['verify', '--run', r.run]).status, 0);
+});
+
+test('canvas-index build: --row-title longer than 40 characters or with < is refused (exit 2)', () => {
+  const r = boardRun();
+  for (const bad of ['x'.repeat(41), 'Tab<lero', 'Tab>lero', '']) {
+    const b = canvasIndex(BOARD_ARGS(r, { 'row-title': bad }));
+    assert.equal(b.status, 2, `${JSON.stringify(bad)}: ${b.stdout}${b.stderr}`);
+  }
+});
+
+test('canvas-index build: without --row-title the note says Opción A', () => {
+  const r = makeRun({ options: ['A'] });
+  assert.equal(canvasIndex(BUILD_ARGS(r, { options: 'A' })).status, 0);
+  const page = JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'page.json'), 'utf8'));
+  assert.deepEqual(Object.values(page.notes).map((n) => n.text), ['Opción A']);
+});
+
+test('canvas-index build: with --row-title every row note takes it instead of the letter', () => {
+  const r = makeRun({ options: ['A', 'B'] });
+  assert.equal(canvasIndex(BUILD_ARGS(r, { options: 'A,B', 'row-title': 'Tablero' })).status, 0);
+  const page = JSON.parse(fs.readFileSync(path.join(r.run, 'canvas', 'page.json'), 'utf8'));
+  assert.deepEqual(Object.values(page.notes).map((n) => n.text).sort(), ['Tablero', 'Tablero']);
+});

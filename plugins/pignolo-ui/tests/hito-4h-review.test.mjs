@@ -56,7 +56,8 @@ test('I-3: el camino que define nombra para un DESIGN.md con la marca la puede q
 
 // I-4. Causa: define corre publish-gate antes de crear la corrida y sin --run; un "no publiques" de esa corrida no se consulta.
 test('I-4: define vuelve a pasar la compuerta de publicación con la corrida antes de Artifact', () => {
-  const text = read('skills', 'define', 'SKILL.md');
+  const text = `${read('skills', 'define', 'SKILL.md')}
+${read('reference', 'define-board.md')}`;
   const call = text.indexOf('then call Artifact');
   const before = text.slice(0, call);
   assert.ok(/publish-gate[^`]*--run <run>/.test(before), 'ningún publish-gate con --run <run> antes de la llamada a Artifact');
