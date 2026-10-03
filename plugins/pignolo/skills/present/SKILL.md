@@ -21,7 +21,7 @@ You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PL
 
 ## Rules
 
-- **The panel mirrors what you ask.** When you ask the human something that ends your turn waiting (a question of `<P>/templates/question.md`, as text or as an artifact), also write it for their optional panel, one line: `node "<P>/scripts/panel.js" ask --key "present:<short name>" --question "<the question, one line>" --option "<label 1>" --option "<label 2>" --recommended "<label 1>" --cwd "<main>"` (one line each, at most 300 characters the question and 80 each option, at most 4 options; the script refuses anything else and never fails the step). When they answer in the chat, close it: `node "<P>/scripts/panel.js" answer --key "present:<same short name>" --answer "<the label they chose, or Otra>" --cwd "<main>"`.
+- **Panel.** A question that ends your turn also goes to the panel: `node "<P>/scripts/panel.js" ask --key "present:<name>" …`, and `panel.js answer` when they reply. Command, limits and notes: `<P>/templates/question.md`.
 - Never publish without a `check` exit 0 for that exact file.
 - Never add or drop an option between the text and the artifact.
 - Fall back to text, with a one-line notice, when there is no Artifact tool, when the form has no approved template, or when the canvas has no consent.
