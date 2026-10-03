@@ -758,13 +758,13 @@ async function openPaneByUser($) {
 }
 
 // <press-handler:ui> el UNICO sitio desde el que se llama a submitUiRequest: el boton de una recomendacion o de un atajo.
-function uiButton($, Button, { key, letter, label, action, target, dim }) {
-  return Button({
+function uiButton($, { Box, Text, Button }, { key, letter, label, action, target, bold }) {
+  const press = Button({
     key,
     hotkey: letter,
-    label: letter + '  ' + label,
+    label: bold ? letter : letter + '  ' + label,
     plain: true,
-    dimColor: dim,
+    dimColor: !bold,
     onPress: async () => {
       if (uiSending) return // un pedido se envia una sola vez: el envio espera a la sesion y otra pulsacion no encola otro
       if (uiRequestText(action, target, '') === null) {
@@ -793,11 +793,15 @@ function uiButton($, Button, { key, letter, label, action, target, dim }) {
       }
     },
   })
+  // la recomendacion va en negrita al lado de su letra; el atajo fijo es un solo boton atenuado
+  if (!bold) return press
+  return Box({ key: key + '-row', flexDirection: 'row', columnGap: 2, children: [press, Text({ key: key + '-title', bold: true, wrap: 'truncate-end', children: [label] })] })
 }
 // </press-handler:ui>
 
 async function uiBody($, e, width) {
-  const { Box, Text, Button } = $.ui.resolve(e)
+  const ui = $.ui.resolve(e)
+  const { Box, Text, Button } = ui
   const { root, input } = await readUiNow($, await $.clock.now())
   const key = await hashInput(input)
   const canAsk = uiAsk && !demoMode
@@ -807,7 +811,7 @@ async function uiBody($, e, width) {
   if (m.rows.length === 0) body.push(Text({ key: 'ui-none', dimColor: true, wrap: 'truncate-end', children: ['  Todavía no hay nada para recomendar: usá un atajo.'] }))
   m.rows.forEach((r) => {
     body.push(
-      uiButton($, Button, { key: 'ui-rec-' + r.letter, letter: r.letter, label: r.label, action: r.action, target: r.target }),
+      uiButton($, ui, { key: 'ui-rec-' + r.letter, letter: r.letter, label: r.label, action: r.action, target: r.target, bold: true }),
       Text({ key: 'ui-why-' + r.letter, dimColor: true, wrap: 'truncate-end', children: ['     ' + r.why] }),
     )
   })
@@ -817,7 +821,7 @@ async function uiBody($, e, width) {
       key: 'ui-shortcuts',
       flexDirection: 'row',
       columnGap: 3,
-      children: [Text({ key: 'ui-sc-h', bold: true, dimColor: true, children: ['ATAJOS'] }), ...SHORTCUTS.map((s) => uiButton($, Button, { key: 'ui-sc-' + s.key, letter: s.key, label: s.label, action: s.action, target: '', dim: true }))],
+      children: [Text({ key: 'ui-sc-h', bold: true, dimColor: true, children: ['ATAJOS'] }), ...SHORTCUTS.map((s) => uiButton($, ui, { key: 'ui-sc-' + s.key, letter: s.key, label: s.label, action: s.action, target: '', bold: false }))],
     }),
   )
   if (canAsk && m.mode === 'normal') {
