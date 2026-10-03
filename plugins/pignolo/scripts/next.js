@@ -26,5 +26,8 @@ if (textOnly) {
   // `plans`: todos los planes con su etapa (el mismo contenido que `plan.js list`).
   let plans = [];
   try { plans = planList(mainRoot(cwd)); } catch (_) { plans = []; }
-  process.stdout.write(`${JSON.stringify({ ...n, plans })}\n`);
+  // `suggest`: el siguiente paso del panel (lib/next-steps.js), calculado sin escribir el registro.
+  let suggest = { none: 'nothing' };
+  try { suggest = require('../lib/panel-state').compute(mainRoot(cwd), { now: Date.now() }).next; } catch (_) { /* sin sugerencia */ }
+  process.stdout.write(`${JSON.stringify({ ...n, plans, suggest })}\n`);
 }
