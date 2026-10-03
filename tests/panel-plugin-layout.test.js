@@ -15,10 +15,12 @@ const modFiles = () => fs.readdirSync(path.join(PANEL, 'hooks')).filter((f) => f
 // El código sin comentarios de línea ni de bloque (las notas pueden nombrar lo que el mod NO hace).
 const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|\s)\/\/.*$/, '$1')).join('\n');
 
-test('layout: plugin.json has name, version 0.1.0 and no settings hooks', () => {
+test('layout: plugin.json has name, version 0.2.0 and no settings hooks', () => {
   const pj = json(path.join(PANEL, '.claude-plugin', 'plugin.json'));
   assert.strictEqual(pj.name, 'pignolo-panel');
-  assert.strictEqual(pj.version, '0.1.0');
+  assert.strictEqual(pj.version, '0.2.0');
+  assert.strictEqual(pj.userConfig.uiRecommendations.default, true);
+  assert.strictEqual(pj.userConfig.uiRecommendations.type, 'boolean');
   assert.strictEqual(pj.license, 'MIT');
   assert.strictEqual(pj.hooks, undefined);
   assert.strictEqual(pj.dependencies, undefined);
@@ -42,19 +44,22 @@ test('layout: the core hooks.json has no modules key', () => {
   assert.ok(!fs.existsSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'types')));
 });
 
-test('layout: the mod reads only panel-state.json', () => {
+test('layout: the mod reads panel-state.json and, for the UI tab, only the files of pignolo-ui through one reader', () => {
   for (const f of modFiles()) {
     const c = code(read(f));
     assert.doesNotMatch(c, /\.git\b/, `${path.basename(f)} lee .git`);
     assert.doesNotMatch(c, /run\.json/, `${path.basename(f)} lee run.json`);
     assert.doesNotMatch(c, /plan\.json/, `${path.basename(f)} lee plan.json`);
     assert.doesNotMatch(c, /state\/plans/, `${path.basename(f)} lee los planes`);
-    assert.doesNotMatch(c, /fs\.list/, `${path.basename(f)} recorre carpetas`);
+    // recorrer carpetas solo lo hace el lector de la pestaña UI (uiReader en register.js; el resto de ui-input.js usa el lector que le pasan)
+    if (path.basename(f) !== 'register.js') assert.doesNotMatch(c, /\$?\.?fs\.list/, `${path.basename(f)} recorre carpetas`);
   }
   const reg = code(read(path.join(PANEL, 'hooks', 'register.js')));
   const reads = [...reg.matchAll(/\$\.fs\.(?:read|exists)\(([^)]*)\)/g)].map((m) => m[1]);
   assert.ok(reads.length >= 2);
-  for (const r of reads) assert.match(r, /panel-state\.json|\$\.plugin\.root \+ '\/sample\/panel-state\.json'|file/, r);
+  for (const r of reads) assert.match(r, /panel-state\.json|\$\.plugin\.root \+ '\/sample\/panel-state\.json'|file|^p$|root \+ '\/' \+ name/, r);
+  assert.strictEqual((reg.match(/\$\.fs\.list\(/g) || []).length, 1, 'un solo lugar recorre carpetas');
+  assert.match(reg, /function uiReader\(\$\) \{[\s\S]*?list: \(p\) => \$\.fs\.list\(p\)/);
 });
 
 test('layout: the mod has no rule of its own for the next step', () => {

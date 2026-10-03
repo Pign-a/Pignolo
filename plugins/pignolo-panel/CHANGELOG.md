@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 — sin publicar
+
+Pestaña **UI** (decisión del autor, 2026-10-03): con pignolo-ui instalado, una cuarta pestaña (tecla `4`) con las 3 mejores acciones para tu interfaz y atajos que envían el pedido.
+
+- **Aparece sola** si pignolo-ui está habilitado (`enabledPlugins` de la configuración; si no se puede leer, los comandos registrados o la carpeta `.pignolo-ui/`). Sin pignolo-ui no hay pestaña ni consulta.
+- **Recomendaciones**: haiku ordena y redacta las 3 mejores acciones (`model.complete`, ≈ 0,01 USD) **solo al abrir la pestaña**, al volver a ella o con `r`; nunca en un temporizador, un turno o un refresco. Tope de 6 consultas por sesión y una por cada estado del proyecto; sin caché entre sesiones. Si falla, el modelo está bloqueado o la salida no valida, se muestran las de reglas (marca "por reglas") sin error a la vista. Sin producto o diseño definidos, la única recomendación es definir y no se llama al modelo.
+- **Qué sale al modelo**: un resumen sin contenido de archivos: secciones de PRODUCT.md sin decidir (por nombre), si DESIGN.md existe, nombres de pantallas (filtrados a `[a-z0-9._-]`), comando y fecha de las últimas corridas y de la última auditoría el conteo por severidad y hasta 5 ids de regla. Nunca texto de tus archivos. Sin herramientas ni historial.
+- **Atajos que envían**: `a`/`b`/`c` (las recomendaciones) y `n` nueva, `m` mejorar, `u` auditar, `d` definir envían el pedido como mensaje tuyo con una frase fija (`Mejorá la pantalla <nombre>.`, `Auditá…`, `Hagamos…`, `Definí el producto y el diseño.`) y, si hay, una línea de contexto calculada por reglas. El texto no lo escribe el modelo. Una sola vez, releyendo antes; una sola línea y sin caracteres invisibles. Sigue habiendo un único `prompt.submit` en el paquete (`submitText`).
+- Opción `uiRecommendations` (prendida por defecto): en `false` la pestaña usa solo reglas y nunca consulta al modelo.
+- Llamadas nuevas del mod: `model.complete`, `settings.read`, `command.list` y `fs.list` (solo para leer las carpetas de pignolo-ui). `model.fork` y `model.classify` no se usan.
+- En modo demo la pestaña usa un árbol de muestra (`sample/ui`) y solo reglas.
+- Revisión opus (RU-01 a RU-03): `DESIGN.md` con la marca `extraídos, no decididos` no cuenta como decidido (misma regla que la compuerta de pignolo-ui); en `new` el objetivo solo puede ser una pantalla leída del proyecto y sin versión aprobada (si no, la recomendación sale sin objetivo y el texto enviado tampoco lo lleva); `submitText` rechaza también U+2028/U+2029.
+
 ## 0.1.0 — sin publicar
 
 Primera versión (decisión del autor, 2026-10-03; sale del prototipo aprobado). Plugin aparte del núcleo `pignolo`: la guardia no comparte archivo con el mod. Requiere Claude Code 2.1.287 o más nuevo.

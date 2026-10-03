@@ -18,7 +18,7 @@
     {
       "name": "pignolo-panel",
       "source": "./plugins/pignolo-panel",
-      "description": "Panel visual opcional y de solo lectura: siguiente paso, decisiones tuyas, ramas y costo (Claude Code 2.1.287 o más nuevo)"
+      "description": "Panel visual opcional: siguiente paso, decisiones tuyas, ramas, costo y, con pignolo-ui, una pestaña UI con recomendaciones (Claude Code 2.1.287 o más nuevo)"
     }
   ]
 }
