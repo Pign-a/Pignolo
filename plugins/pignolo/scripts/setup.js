@@ -161,7 +161,9 @@ function permissions(args, env, cwd) {
       else add[list].push(rule);
     }
   }
-  const result = { file, add, already, applied: false, backup: null };
+  // Las reglas `ask` amplias de MCP (mcp__*__*send*...) valen para toda herramienta MCP: la pantalla rápida de la skill las cuenta en una línea llana.
+  const mcpAsk = new Set((wanted.ask ?? []).filter((r) => r.startsWith('mcp__'))).size;
+  const result = { file, add, already, mcpAsk, applied: false, backup: null };
   if (!args.apply || (!add.deny.length && !add.ask.length)) return result;
 
   if (exists) {
