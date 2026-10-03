@@ -200,6 +200,14 @@ export function mergeIndex({ ours, live = null, liveFiles = null, published = nu
   // ---- what the run no longer builds leaves the canvas: its artboards, and its row notes if the user did not rewrite them (4i) ----
   for (const n of [...removedNames].sort()) {
     if (!(n in boards) || n in ours.boards) continue;
+  // The chosen first screen: Main.dc.html is the first screen of the first option, so the chosen option's first frame is now built under that
+  // name and its old name looks removed. It is not: Main takes the place where the user left it (R4i-01). Only when one removed frame has its title.
+  const mainOurs = ours.boards[main];
+  const heirs = mainOurs ? [...removedNames].filter((n) => n !== main && n in boards && published?.boards?.[n]?.title === mainOurs.title && published.boards[n].w === mainOurs.w) : [];
+  if (heirs.length === 1 && main in boards) {
+    const from = boards[heirs[0]];
+    if (boards[main].x !== from.x || boards[main].y !== from.y) { boards[main].x = from.x; boards[main].y = from.y; push(kept.keptMoved, main); }
+  }
     delete boards[n];
     const at = orderOut.indexOf(n);
     if (at >= 0) orderOut.splice(at, 1);
