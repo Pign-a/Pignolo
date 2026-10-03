@@ -316,6 +316,7 @@ function evaluate(command, opts = {}) {
     statPath: typeof opts.statPath === 'function' ? opts.statPath : diskStat(), // costura de disco (T1): 'file' | 'dir' | null
     subagent: Boolean(opts.subagent), // el payload trae agent_id
     agentType: typeof opts.agentType === 'string' ? opts.agentType : null, // agent_type del payload
+    namesLauncher: LAUNCHER_TEXT.test(String(command)), // la línea nombra el launcher (T4, H4)
     trace: [],
   };
   const found = [];
@@ -996,14 +997,33 @@ function copyDest(args) {
   return ops.length > 1 ? ops[ops.length - 1] : null;
 }
 
+// Solo cuenta ejecutar el launcher, no leerlo (T4): el programa mismo es el launcher, o un programa que ejecuta
+// sus operandos (intérprete, shell, source, Start-Process...) lo recibe como operando. cat, sed, grep, git diff,
+// cp, wc o un for no lo ejecutan. `node --check` solo mira la sintaxis (R-18).
+const LAUNCHER_EXEC = new Set([...INTERP, ...SHELLS, ...PWSH, 'source', '.', 'tsx', 'ts-node', 'nodemon', 'electron',
+  'start-process', 'saps', 'start', 'invoke-item', 'ii', 'invoke-command', 'icm']);
+const LAUNCHER_TEXT = /launcher\.js/i;
 function checkLauncher(name, words, st, ctx, out) {
-  for (const w of words) {
+  const isLauncher = (w) => {
     const p = w.dyn ? null : resolveAt(w.value, st, ctx);
-    const isLauncher = p === null ? /(^|[\\/])launcher\.js$/i.test(w.value) : LAUNCHER_RE.test(p);
-    if (!isLauncher) continue;
+    return p === null ? /(^|[\\/])launcher\.js$/i.test(w.value) : LAUNCHER_RE.test(p);
+  };
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (!isLauncher(w) || !(i === 0 || LAUNCHER_EXEC.has(name))) continue;
     const statusForm = name === 'node' && words.length === 3 && w === words[1] && words[2].value === 'session-start' && !words[2].dyn;
-    if (!statusForm) out.push(hit('pignolo-launcher'));
+    // node --check <launcher>: sin otra opción (un -r precargaría código) y con el launcher como último operando.
+    const checkForm = (name === 'node' || name === 'nodejs') && i > 1 && i === words.length - 1 &&
+      words.slice(1, i).every((x) => !x.dyn && (x.value === '--check' || x.value === '-c'));
+    if (!statusForm && !checkForm) out.push(hit('pignolo-launcher'));
     return;
+  }
+  // H4: la línea nombra el launcher y un intérprete o una shell corre un script que no se ve (palabra dinámica,
+  // `-` o stdin): `node "$(echo …/launcher.js)" toggle` apagaría la guardia.
+  if (ctx.namesLauncher && (INTERP.has(name) || SHELLS.has(name) || PWSH.has(name))) {
+    const args = words.slice(1);
+    const script = args.find((w) => w.dyn || w.value === '-' || !w.value.startsWith('-'));
+    if (!script || script.dyn || script.value === '-') out.push(hit('pignolo-launcher'));
   }
 }
 

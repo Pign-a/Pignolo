@@ -90,7 +90,7 @@
   "cmd": "cd \"/tmp/x/wt-fix\" && grep -n \"function deadlineFor\" -A12 plugins/pignolo/hooks/launcher.js; grep -n \"session-start\\|SessionStart\" -A3 plugins/pignolo/hooks/hooks.json | grep -i \"timeout\\|launcher\" | head",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-010",
@@ -108,7 +108,7 @@
   "cmd": "cd repo/plugins/pignolo && wc -l hooks/handlers/session-start.js; grep -n \"timeout\\|Ms\\|deadline\\|backupRefs\\|readState\\|disabled\" hooks/handlers/session-start.js | head -30; grep -n \"session-start\\|SessionStart\" hooks/hooks.json hooks/launcher.js 2>/dev/null | head",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-012",
@@ -144,7 +144,7 @@
   "cmd": "cd /tmp/x/wt-p5a/plugins/pignolo && cat hooks/hooks.json && cat -n hooks/launcher.js && cat -n hooks/handlers/handback-gate.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-016",
@@ -300,7 +300,7 @@
   "cmd": "cd /tmp/x/wt-p6 && sed -n 1,60p plugins/pignolo/lib/project-config.js | cut -c1-200; grep -n 'researcher\\|WebFetch' plugins/pignolo/lib/roles.js plugins/pignolo/hooks/handlers/*.js | head; grep -n 'agent_type\\|agent_id\\|session_X' plugins/pignolo/hooks/handlers/protect-paths.js | head -8; cat plugins/pignolo/hooks/launcher.js | grep -n 'handlers\\|HANDLERS\\|require' | head -20",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-033",
@@ -336,7 +336,7 @@
   "cmd": "cd /tmp/x/wt-h6 && echo \"=== disabled.js\" && cat plugins/pignolo/lib/disabled.js && echo \"=== yaml-lite.js\" && cat plugins/pignolo/lib/yaml-lite.js && echo \"=== helpers.js\" && cat tests/helpers.js && echo \"=== hook-fastpath.js\" && cat plugins/pignolo/lib/hook-fastpath.js && echo \"=== hooks.json\" && cat plugins/pignolo/hooks/hooks.json && echo \"=== launcher.js\" && cat plugins/pignolo/hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-037",
@@ -363,7 +363,7 @@
   "cmd": "cd /tmp/x/wt-h5/plugins/pignolo && cat lib/plan-audit.js hooks/handlers/protect-paths.js hooks/handlers/handback-gate.js hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-040",
@@ -372,7 +372,7 @@
   "cmd": "cd /tmp/x/wt-h5 && cat >> tests/hooks-smoke-hito-5.test.js <<'XEOF'\n\n// Prueba de que el atajo corre antes de cargar el handler: en una copia del launcher sin\n// handlers, un payload que se saltea sale con 0 y uno que no, falla porque no puede cargarlo.\ntest('the launcher skips before creating the Worker (no handler is loaded)', () => {\n  const { spawnSync } = require('node:child_process');\n  const copy = makeTempDir('pignolo-launcher-');\n  fs.mkdirSync(path.join(copy, 'hooks', 'handlers'), { recursive: true });\n  fs.mkdirSync(path.join(copy, 'lib'));\n  fs.copyFileSync(path.join(PLUGIN_ROOT, 'hooks', 'launcher.js'), path.join(copy, 'hooks', 'launcher.js'));\n  for (const f of ['hook-fastpath.js', 'plan-agents.js']) fs.copyFileSync(path.join(PLUGIN_ROOT, 'lib', f), path.join(copy, 'lib', f));\n  const go = (name, payload) => spawnSync(process.execPath, [path.join(copy, 'hooks', 'launcher.js'), name], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 20000 });\n  const skipped = go('plan-audit-gate', { tool_name: 'Bash', tool_input: { command: 'ls' } });\n  assert.equal(skipped.status, 0, skipped.stderr);\n  assert.equal(skipped.stdout + skipped.stderr, '');\n  const merge = go('scope-gate', { tool_name: 'Bash', tool_input: { command: 'git merge x' } });\n  assert.equal(merge.status, 2, 'a gated payload does reach the Worker and fails to load the handler');\n  assert.equal(go('scope-gate', { tool_name: 'Bash', tool_input: { command: 'git status' } }).status, 0);\n});\nXEOF\nnode --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"\nP=plugins/pignolo; cp $P/hooks/launcher.js /tmp/l.bak; sed -i \"s/if (require('..\\/lib\\/hook-fastpath').skips(name, input))/if (false)/\" $P/hooks/launcher.js; node --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"; cp /tmp/l.bak $P/hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-041",
@@ -381,7 +381,7 @@
   "cmd": "cd /tmp/x/wt-h5 && node --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"\nP=plugins/pignolo; L=launcher; cp $P/hooks/$L.js /tmp/l.bak; sed -i \"s/if (require('..\\/lib\\/hook-fastpath').skips(name, input))/if (false)/\" $P/hooks/$L.js; node --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"; cp /tmp/l.bak $P/hooks/$L.js; git diff --stat $P/hooks/$L.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-042",
@@ -426,7 +426,7 @@
   "cmd": "git show core/hito-5:docs/plans/2026-09-30-hito-5-modo-plan.md | sed -n 353,392p; cat -n plugins/pignolo/hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-047",
@@ -489,7 +489,7 @@
   "cmd": "grep -c \"\" plugins/pignolo/hooks/launcher.js; grep -n \"Worker\\|FAIL_OPEN\\|DEADLINE\\|3000\\|fastpath\" plugins/pignolo/hooks/launcher.js | head -20; wc -c plugins/pignolo/rules/core.md; wc -c plugins/pignolo/skills/*/SKILL.md; grep -c \"\" docs/plans/2026-09-30-hito-5-modo-plan.md; grep -n \"maxTurns\\|memory:\" plugins/pignolo/agents/*.md | head; ls tests/evals/agents | head -40; git log --oneline | wc -l; git log --since=2026-09-26 --format=%ad --date=short | sort | uniq -c",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-054",
@@ -498,7 +498,7 @@
   "cmd": "S=/tmp/x/exp-6; cat $S/h5/plugins/pignolo/hooks/launcher.js; cat $S/h5/plugins/pignolo/hooks/handlers/_echo.js; grep -rn \"function runLauncher\" -A15 $S/h5/tests | head -30; cat $S/h5/package.json",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-055",
@@ -525,7 +525,7 @@
   "cmd": "cd /tmp/x/ab-ser && sed -n 280,305p plugins/pignolo/lib/git-guard.js; sed -n 598,615p plugins/pignolo/lib/git-guard.js; ls tests/guard; head -c 600 tests/guard/must-allow.json; grep -n \"pignolo-run\\|run.js\" tests/guard-*.test.js tests/protect-run.test.js | head; cat tests/hooks-json.test.js | head -60; sed -n 1,40p plugins/pignolo/hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-058",
@@ -534,7 +534,7 @@
   "cmd": "cd /tmp/x/ab-ser && sed -n 1,70p plugins/pignolo/hooks/handlers/agent-gate.js; sed -n 40,120p plugins/pignolo/hooks/launcher.js; grep -n \"repoIdForGitDir\" -B2 -A12 plugins/pignolo/lib/shadow.js | head -40",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-059",
@@ -687,7 +687,7 @@
   "cmd": "cd /tmp/x/wt-p5a && ls && ls lib hooks hooks/handlers tests | head -80 && sed -n 1,120p hooks/launcher.js 2>/dev/null | head -5; find . -name launcher.js -not -path './node_modules/*'",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-076",
@@ -696,7 +696,7 @@
   "cmd": "cd /tmp/x/wt-p5a/plugins/pignolo/hooks && sed -n 1,100p launcher.js; cat handlers/_echo.js | head -20; cat ../../../package.json",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-077",
@@ -714,7 +714,7 @@
   "cmd": "cd /tmp/x/wt-05 && cat plugins/pignolo/hooks/launcher.js | head -80; cat tests/hooks-json.test.js | head -80; head -c 600 tests/guard/must-allow.json; echo; ls tests/guard; sed -n 90,126p plugins/pignolo/lib/project-config.js; grep -n \"hooksOff\\|function readState\" -A6 plugins/pignolo/lib/disabled.js | head -40",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-079",
@@ -750,7 +750,7 @@
   "cmd": "cd /tmp/x/ab-par-05/plugins/pignolo && sed -n 20,110p lib/git-guard.js; sed -n 285,305p lib/git-guard.js; sed -n 600,615p lib/git-guard.js; cat hooks/launcher.js; cat lib/project-config.js | head -80; grep -n \"projectState\\|exports\" lib/*.js | grep -i \"projectState\\|module.exports\" | head -30; cat lib/disabled.js | head -80",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-083",
@@ -786,7 +786,7 @@
   "cmd": "cd /tmp/x/wt-p5a && grep -n \"Auditoría de esta versión\" -A12 docs/plans/2026-09-30-hito-5-modo-plan.md; grep -n \"D-5-1\\|D-5-2\\|D-5-3\" docs/plans/2026-09-30-hito-5-modo-plan.md | cut -c1-220; cat plugins/pignolo/hooks/launcher.js | sed -n 1,110p; grep -n \"countExperiment\\|readMode\" docs/plans/2026-09-30-hito-5-modo-plan.md | cut -c1-120",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-087",
@@ -795,7 +795,7 @@
   "cmd": "cd /tmp/x/wt-p5a && sed -n 476,496p docs/plans/2026-09-30-hito-5-modo-plan.md; sed -n 355,362p docs/plans/2026-09-30-hito-5-modo-plan.md | cut -c1-900; sed -n 60,100p plugins/pignolo/hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-088",
@@ -831,7 +831,7 @@
   "cmd": "cd /tmp/x/wt-h5/plugins/pignolo && cat -n lib/scope-gate.js hooks/handlers/scope-gate.js lib/hook-fastpath.js lib/plan-agents.js; git diff 912406c..HEAD -- lib/git-guard.js hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-092",
@@ -891,7 +891,7 @@
   "cmd": "cd /tmp/x/wt-fix && cat -n plugins/pignolo/hooks/handlers/guard.js && cat -n plugins/pignolo/hooks/launcher.js && grep -n \"^function\\|^const\\|exports\\|subcommand\\|'commit'\\|'add'\" plugins/pignolo/lib/git-guard.js | head -120",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-098",
@@ -945,7 +945,7 @@
   "cmd": "cd /tmp/x/rev6 && git diff main...core/hito-6 -- plugins/pignolo/lib/git-guard.js plugins/pignolo/lib/hook-fastpath.js plugins/pignolo/hooks/launcher.js plugins/pignolo/hooks/hooks.json plugins/pignolo/lib/profiles.js tests/guard-pignolo-plan.test.js; grep -n \"isPlanScript\\|PLAN_SCRIPT\" -B2 -A15 plugins/pignolo/lib/git-guard.js | head -80",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-104",
@@ -981,7 +981,7 @@
   "cmd": "cd /tmp/x/guard-audit && B=core/guard-sin-confirmar-push; for f in hooks/launcher.js hooks/handlers/guard.js lib/hook-fastpath.js; do echo \"=================== $f\"; git -C repo show $B:plugins/pignolo/$f; done; for f in $(git -C repo ls-tree --name-only $B plugins/pignolo/hooks/handlers/); do echo \"$f $(git -C repo show $B:$f | wc -l)\"; done",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-108",
@@ -990,7 +990,7 @@
   "cmd": "cd /tmp/x/guard-audit && node -e \"\nconst O=require('~/.claude/plugins/cache/pignolo/pignolo/0.2.1/lib/git-guard.js').RULES, N=require('./src/plugins/pignolo/lib/git-guard.js').RULES;\nconsole.log('old',Object.keys(O).length,'new',Object.keys(N).length);\nconsole.log('only old',Object.keys(O).filter(k=>!(k in N)).join(','));\nconsole.log('only new',Object.keys(N).filter(k=>!(k in O)).join(','));\nconsole.log('class changed',Object.keys(O).filter(k=>k in N&&O[k][0]!==N[k][0]).map(k=>k+':'+O[k][0]+'->'+N[k][0]).join(','));\n\"; ls ~/.claude/plugins/cache/pignolo/pignolo/0.2.1/hooks/handlers/ ~/.claude/plugins/cache/pignolo/pignolo/0.2.1/lib | tr '\\n' ' '; grep -c \"launcher.js\" ~/.claude/plugins/cache/pignolo/pignolo/0.2.1/hooks/hooks.json; node -e \"\nconst ev=require('./events.json');\nconst c=ev.filter(e=>/catastrophic/.test(e.rule));console.log('find -delete among catastrophic',c.filter(e=>/find .*-delete/.test(e.cmd)).length);\nconst m=ev.filter(e=>!e.sub);console.log('main-thread blocks',m.map(e=>e.rule).join(', '));\nconst per={};ev.forEach(e=>per[e.file]=(per[e.file]||0)+1);const v=Object.values(per).sort((a,b)=>b-a);console.log('per transcript max',v[0],'median',v[Math.floor(v.length/2)]);\n\"",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-109",
@@ -1035,7 +1035,7 @@
   "cmd": "cd /tmp/x/wt-p5/plugins/pignolo && sed -n 1,80p hooks/handlers/handback-gate.js; cat hooks/launcher.js | head -60; sed -n 241,322p lib/plan-check.js; cat templates/task-card.md templates/question.md; ls ../../tests/fixtures | head -30",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-114",
@@ -1044,7 +1044,7 @@
   "cmd": "cd /tmp/x/wt-p5/plugins/pignolo && grep -n -i \"budget\\|presupuesto\" lib/*.js scripts/*.js | head; sed -n 1,50p lib/roles.js | head -60; grep -n \"PROFILE_PARAMS\" -A25 lib/roles.js | head -50; sed -n 1,30p hooks/launcher.js; sed -n 60,110p ../../tests/helpers.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-115",
@@ -1098,7 +1098,7 @@
   "cmd": "cd /tmp/x/wt-p6 && f=docs/plans/2026-09-30-hito-6-continuidad.md; grep -n 'readRun\\|task\\.agent\\|MERGE_HEAD\\|sin-sesion\\|hook-fastpath' $f | cut -c1-220; echo; sed -n 87,106p $f | cut -c1-400; sed -n 129,149p $f | cut -c1-500; git show core/hito-5:plugins/pignolo/hooks/launcher.js | sed -n 1,100p; git show core/hito-5:plugins/pignolo/lib/shadow.js | grep -n 'exports\\|^function\\|acquireLock\\|SEED_STALE' | head -60; git ls-tree -r core/hito-5 --name-only | grep -i 'fastpath\\|git-guard'",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-121",
@@ -1107,7 +1107,7 @@
   "cmd": "cd /tmp/x/wt-p6 && git show core/hito-5:plugins/pignolo/lib/hook-fastpath.js; git show core/hito-5:plugins/pignolo/hooks/launcher.js | cut -c1-200; git show core/hito-5:plugins/pignolo/hooks/handlers/session-start.js | sed -n 90,140p; git show core/hito-5:plugins/pignolo/lib/shadow.js | sed -n 30,60p; git show core/hito-5:plugins/pignolo/lib/shadow.js | grep -n 'function prune\\|function retentionPrune\\|gc --auto\\|acquireLock\\|SEED_STALE\\|lock' | head -30",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-122",
@@ -1116,7 +1116,7 @@
   "cmd": "cd /tmp/x/wt-p6 && git show core/hito-5:plugins/pignolo/hooks/launcher.js > ../h5/lch.js; git show core/hito-5:plugins/pignolo/lib/git-guard.js > ../h5/gg.js; cat ../h5/lch.js | cut -c1-220; grep -n 'pignolo-plan' ../h5/gg.js | head; sed -n 200,310p ../h5/shadow.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-123",
@@ -1125,7 +1125,7 @@
   "cmd": "cd /tmp/x/wt-p6 && git show core/hito-5:plugins/pignolo/hooks/launcher.js > ../h5/lnc.js; git show core/hito-5:plugins/pignolo/lib/git-guard.js > ../h5/gg.js; cut -c1-220 ../h5/lnc.js; grep -n 'pignolo-plan' ../h5/gg.js | head; sed -n 200,310p ../h5/shadow.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-124",
@@ -1134,7 +1134,7 @@
   "cmd": "cd /tmp/x/wt-flaky && git status && git log --oneline -3 && grep -n \"recoverable from refs/pignolo/wip\" -n tests/guard-handler.test.js && wc -l plugins/pignolo/hooks/handlers/guard.js plugins/pignolo/lib/git-backup.js plugins/pignolo/hooks/launcher.js tests/helpers.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-125",
@@ -1224,7 +1224,7 @@
   "cmd": "cd /tmp/x/wt-int; grep -n \"3000\\|plazo\\|bloqueó\\|deadline\" plugins/pignolo/hooks/launcher.js | head -20",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-135",
@@ -1371,7 +1371,7 @@
   "cmd": "cd /tmp/x/wt-h6/plugins/pignolo && cat hooks/launcher.js lib/hook-fastpath.js hooks/handlers/session-start.js; sed -n 840,920p lib/git-guard.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-151",
@@ -1515,7 +1515,7 @@
   "cmd": "cd /tmp/x/wt-h6 && cat plugins/pignolo/hooks/handlers/agent-gate.js && echo =====PR && cat plugins/pignolo/hooks/handlers/private-reads.js && echo =====FP && cat plugins/pignolo/lib/hook-fastpath.js && echo =====LAUNCHER && cat plugins/pignolo/hooks/launcher.js && echo =====HOOKS && cat plugins/pignolo/hooks/hooks.json",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "block:pignolo-launcher"
+  "expect": "allow"
  },
  {
   "id": "ev-167",

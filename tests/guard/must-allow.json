@@ -318,5 +318,45 @@
  {
   "shell": "powershell",
   "command": "Select-String -Path plugins/pignolo/scripts/places.js -Pattern undo"
+ },
+ {
+  "shell": "bash",
+  "command": "cat -n plugins/pignolo/hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,60p hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "grep -n \"deadlineFor\" -A12 plugins/pignolo/hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "git diff main..HEAD -- plugins/pignolo/hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "git show HEAD:plugins/pignolo/hooks/launcher.js | head"
+ },
+ {
+  "shell": "bash",
+  "command": "wc -l hooks/launcher.js; head -5 hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "for f in hooks/launcher.js hooks/handlers/guard.js; do wc -l $f; done"
+ },
+ {
+  "shell": "bash",
+  "command": "cp hooks/launcher.js /tmp/l.bak"
+ },
+ {
+  "shell": "bash",
+  "command": "node --check hooks/launcher.js"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-Content plugins\\pignolo\\hooks\\launcher.js | Select-String deadline"
  }
 ]

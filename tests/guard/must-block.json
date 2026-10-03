@@ -1708,5 +1708,107 @@
   "command": "[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('.git', 'OnlyErrorDialogs', 'SendToRecycleBin')",
   "expect": "block",
   "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "node hooks/launcher.js guard",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "echo '{}' | node plugins/pignolo/hooks/launcher.js toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "bash hooks/launcher.js",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "python hooks/launcher.js",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "./hooks/launcher.js guard",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "timeout 5 node hooks/launcher.js toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "powershell",
+  "command": "node plugins\\pignolo\\hooks\\launcher.js toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "node \"$(echo plugins/pignolo/hooks/launcher.js)\" toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-ChildItem plugins\\pignolo\\hooks\\launcher.js | ForEach-Object { node $_.FullName toggle }",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "echo hooks/launcher.js | xargs node",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "cat hooks/launcher.js | node -",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "cat hooks/launcher.js | bash",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "cat hooks/launcher.js; node \"$X\" toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "node --check -r hooks/launcher.js x.js",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "source hooks/launcher.js",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "tsx hooks/launcher.js toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "powershell",
+  "command": "Start-Process node -ArgumentList hooks\\launcher.js",
+  "expect": "block",
+  "rule": "pignolo-launcher"
  }
 ]

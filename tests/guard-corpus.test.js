@@ -41,7 +41,7 @@ test('the residual-risk register names every audit command that still passes', (
     "[IO.File]::WriteAllText(('.pig'+'nolo\\.disabled'),'')", "[IO.File]::WriteAllText(('.pig'+'nolo/.dis'+'abled'),'')",
     'npx --yes git-reset-hard', 'git clean -f -n', `echo '{"env":{"PIGNOLO_DISABLED":"1"}}' > .claude/settings.local.json`, 'git stash -m x', 'git stash push -m x --keep-index',
     // ronda 3
-    `echo '{}' | node "$(find . -name launcher.js)" toggle`, `echo '{}' | node plugins/pignolo/hooks/launch*.js toggle`, 'git mv -f a.txt b.txt',
+    'node $(ls plugins/pignolo/hooks/launch*) toggle', `echo '{}' | node plugins/pignolo/hooks/launch*.js toggle`, 'git mv -f a.txt b.txt',
     "vim -es -c '!git reset --hard' -c q", "sqlite3 :memory: '.shell git reset --hard'", "script --command='git reset --hard' /dev/null",
     "flock --command='git reset --hard' /tmp/l", "su -c 'git reset --hard'", "sg staff -c 'git reset --hard'", "busybox sh -c 'git reset --hard'",
     'busybox rm -rf .git', 'rsync -a --delete vacio/ .git/',
