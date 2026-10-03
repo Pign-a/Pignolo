@@ -5,6 +5,7 @@
 //   canvas-index.mjs build --project <repo> --run <run> --options <A,B,C> --screens <inicio.html,detalle.html>
 //                          --platform desktop|mobile|both --page-name <text> --design <DESIGN.md|none> --first yes|no
 //                          [--canvas-url <the url of canvasPublished that `run.mjs present` printed>] [--now <ISO>] [--heights <json file>]
+//                          [--row-title <1 to 40 characters, no < or >: names every row instead of "Opción A"; the board of define says Tablero>]
 //   canvas-index.mjs verify --run <run>
 //   canvas-index.mjs plan --project <repo> --run <run> --values-file <json> --types-file <json> --data <dir> [--new-canvas]
 //   canvas-index.mjs diff --run <run>                                  (informative: it never prints params)
@@ -27,7 +28,7 @@ import { planNext, mergeLive, recordStep, noteRefusal, diffRun, PublishError } f
 class UsageError extends Error {}
 
 const SPECS = {
-  build: { value: ['project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first', 'canvas-url', 'now', 'heights'], flags: [] },
+  build: { value: ['project', 'run', 'options', 'screens', 'platform', 'page-name', 'design', 'first', 'canvas-url', 'now', 'heights', 'row-title'], flags: [] },
   verify: { value: ['run'], flags: [] },
   plan: { value: ['project', 'run', 'values-file', 'types-file', 'data'], flags: ['new-canvas'] },
   diff: { value: ['run'], flags: [] },
@@ -128,6 +129,8 @@ function cmdBuild(opts, { cwd }) {
   for (const s of screens) if (!/^[a-z0-9][a-z0-9-]*\.html$/.test(s) || s.replace(/\.html$/, '').length > 32) throw new UsageError(`pantalla inválida: ${s.slice(0, 40)}`);
   const pageName = opts['page-name'].trim();
   if (!pageName || pageName.length > 120) throw new UsageError('--page-name debe tener entre 1 y 120 caracteres');
+  const rowTitle = opts['row-title'] === undefined ? null : opts['row-title'].trim();
+  if (rowTitle !== null && (rowTitle.length < 1 || rowTitle.length > 40 || /[<>\r\n]/.test(rowTitle))) throw new UsageError('--row-title debe tener entre 1 y 40 caracteres, sin < ni >');
   let now = new Date().toISOString();
   if (opts.now !== undefined) {
     if (Number.isNaN(new Date(opts.now).getTime())) throw new UsageError('--now debe ser una fecha ISO');
@@ -171,7 +174,7 @@ function cmdBuild(opts, { cwd }) {
   let built = null;
   if (!problems.length) {
     try {
-      built = buildCanvas({ options, platform: opts.platform, pageId, pageName, canvasTitle: canvasTitleFrom(designFile), first, now, heights });
+      built = buildCanvas({ options, platform: opts.platform, pageId, pageName, canvasTitle: canvasTitleFrom(designFile), first, now, heights, rowTitle });
     } catch (e) {
       if (!(e instanceof CanvasError)) throw e;
       for (const p of e.problems ?? [{ code: e.code }]) problems.push({ file: e.file ?? '', code: p.code ?? e.code, ...(e.detail ? { detail: e.detail } : {}) });

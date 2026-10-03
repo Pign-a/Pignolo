@@ -2,7 +2,9 @@
 // canvas-index writes, and the verification of what was written.
 //
 // pageIdFor(runId) -> 'r-YYYYMMDDHHMM-<6 hex>'           (21 characters, unique per run)
-// buildCanvas({ options, platform, pageId, pageName, canvasTitle, first, now, heights }) -> { files, fragment }
+// buildCanvas({ options, platform, pageId, pageName, canvasTitle, first, now, heights, rowTitle }) -> { files, fragment }
+//   rowTitle (optional, 1 to 40 characters): names every row instead of "Opción <letter>" (the board of define says "Tablero"); a row of one
+//   screen has no note, so its frame takes it as its title.
 // layoutSha256(fragment) -> hex
 // verifyCanvas({ dir, userDeleted }) -> { ok, problems: [{ code, file?, detail? }] }
 //   userDeleted: names of frames or notes of ours that the user deleted and merge did not put back (R-9): not "missing".
@@ -35,7 +37,7 @@ function heightOf(heights, option, file, w, fallback) {
   return typeof v === 'number' && Number.isFinite(v) ? clamp(Math.round(v)) : fallback;
 }
 
-export function buildCanvas({ options, platform, pageId, pageName, canvasTitle, first = true, heights = null }) {
+export function buildCanvas({ options, platform, pageId, pageName, canvasTitle, first = true, heights = null, rowTitle = null }) {
   const sizes = sizesFor(platform);
   const files = {};
   const boards = {};
@@ -71,7 +73,7 @@ export function buildCanvas({ options, platform, pageId, pageName, canvasTitle, 
           if (e instanceof CanvasError) e.file = `option-${opt.id}/${s.file}`;
           throw e;
         }
-        const board = { x, y, w: size.w, h: s.h, title: `${opt.id} · ${stem}${platform === 'both' ? ` · ${size.w}` : ''}`, page: pageId };
+        const board = { x, y, w: size.w, h: s.h, title: rowTitle !== null && opt.screens.length === 1 ? `${rowTitle}${platform === 'both' ? ` · ${size.w}` : ''}` : `${opt.id} · ${stem}${platform === 'both' ? ` · ${size.w}` : ''}`, page: pageId };
         if (isInteractive(s.html)) board.is_interactive = true;
         boards[name] = board;
         order.push(name);
@@ -81,7 +83,7 @@ export function buildCanvas({ options, platform, pageId, pageName, canvasTitle, 
       // title1 is for several artboards ("never for one"): a row with a single frame is named by the title of the frame
       if (opt.screens.length > 1) {
         notes[rowId] = {
-          x: 0, y: y - ROW_GAP, text: `Opción ${opt.id}${platform === 'both' ? ` · ${size.w}` : ''}`, kind: 'title1',
+          x: 0, y: y - ROW_GAP, text: `${rowTitle ?? `Opción ${opt.id}`}${platform === 'both' ? ` · ${size.w}` : ''}`, kind: 'title1',
           maxW: opt.screens.length * size.w + (opt.screens.length - 1) * FRAME_GAP, page: pageId,
         };
       }
