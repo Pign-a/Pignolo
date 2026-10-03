@@ -120,8 +120,10 @@
       "mcp__*__*create*",
       "mcp__*__*update*",
       "mcp__*__*merge*",
-      "mcp__*__*deploy*",
-      "mcp__*__*publish*",
+      "mcp__*__deploy*",
+      "mcp__*__*create_deployment*",
+      "mcp__*__publish*",
+      "mcp__*__*_publish_*",
       "mcp__*__*delete*"
     ]
   }

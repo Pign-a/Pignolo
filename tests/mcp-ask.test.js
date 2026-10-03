@@ -29,3 +29,12 @@ test('las reglas MCP "ask" siguen atrapando lo que publica, envía o cambia algo
     assert.ok(caught(t).length > 0, t);
   }
 });
+
+test('RM-01: deploy y publish atrapan acciones (verbo al inicio) y no lecturas con esas palabras', () => {
+  for (const t of ['list_deployments', 'get_deployment', 'list_deployment_files', 'get_deployment_file_contents', 'list_deployment_events', 'get_git_deployment_context', 'get_publishable_keys']) {
+    assert.deepStrictEqual(caught(`mcp__claude_ai_X__${t}`), [], t);
+  }
+  for (const t of ['create_deployment', 'deploy_edge_function', 'deploy_project', 'publish_post', 'publish_site', 'site_publish_now']) {
+    assert.ok(caught(`mcp__claude_ai_X__${t}`).length > 0, t);
+  }
+});
