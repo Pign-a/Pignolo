@@ -1,7 +1,7 @@
 // Pestaña UI: recomendaciones de haiku con respaldo por reglas (D-U4, D-U6, D-U7, D-U8).
 // Este archivo NO llama al modelo por sí mismo: register.js le pasa `io = { complete, usage }`, funciones que cierran sobre
 // `$.model.complete` y `$.session.usage` (el motor no deja pasar `$` a otro archivo). `get` nunca tira ni devuelve un error.
-import { hashInput, knownScreen, safeName } from './ui-input.js'
+import { hashInput, knownScreen, pendingScreen, safeName } from './ui-input.js'
 import { rulesFor, contextFor } from './ui-rules.js'
 import { UI_SYSTEM, buildPrompt } from './ui-prompt.js'
 import { hasHiddenChars } from './state.js'
@@ -39,7 +39,8 @@ export function parseRecs(text, input) {
       continue
     }
     seen.add(r.priority)
-    const target = typeof r.target === 'string' ? r.target : ''
+    let target = typeof r.target === 'string' ? r.target : ''
+    if (r.action === 'new' && !pendingScreen(input, target)) target = '' // el nombre lo escribió el modelo: no llega al mensaje
     recs.push({ action: r.action, target, why: r.why.trim(), priority: r.priority, context: contextFor(r.action, target, input) })
   }
   recs.sort((x, y) => x.priority - y.priority)
@@ -55,7 +56,7 @@ function validRec(r, input) {
   const target = r.target === undefined || r.target === null ? '' : r.target
   if (typeof target !== 'string') return false
   if (r.action === 'define') return target === ''
-  if (r.action === 'new') return target === '' || (target === safeName(target, TARGET_MAX) && target.length > 0)
+  if (r.action === 'new') return true // un objetivo que no es una pantalla leída del proyecto se descarta en parseRecs
   return target !== '' && target === safeName(target, TARGET_MAX) && knownScreen(input, target)
 }
 

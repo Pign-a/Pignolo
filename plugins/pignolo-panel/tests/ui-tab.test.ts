@@ -20,6 +20,7 @@ const FILES = (): Record<string, string> => ({
   'design/approved/login/index.html': 'x',
   'design/approved/ventas/index.html': 'x',
   '.pignolo-ui/runs/2026-10-01-1030-audit-login/auditor.json': AUDIT,
+  '.pignolo-ui/runs/2026-10-02-0800-new-detalle/run.json': '{}', // pantalla nombrada, sin versión aprobada: único objetivo válido de `new`
 })
 const GOOD = [
   { action: 'improve', target: 'login', why: 'contraste bajo en la tabla', priority: 1 },
