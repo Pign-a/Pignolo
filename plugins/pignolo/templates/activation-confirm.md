@@ -7,6 +7,7 @@ Loaded by step 0 of `close-session`, `init` and `setup`. `status` only reads and
 - The user typed the command (the turn carries a `<command-name>` tag for this skill): they already chose it. Do not ask; go to step 1.
 - The skill started because a normal sentence matched its description (no such tag): ask once, before step 1, and run nothing before the answer.
 - If the harness does not tell which of the two it was, treat it as started by itself and ask.
+- If the AskUserQuestion tool is not available (`claude -p`, a subagent without it), do not go on by yourself: say in one line that this needs the human's confirmation and end the skill without doing anything else. The exception is when the user typed the command (first bullet).
 
 ## How to ask
 
