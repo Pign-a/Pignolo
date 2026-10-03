@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { runGuard, makeRepo, git } = require('./helpers');
+const { runGuard, makeRepo, git, makeTempDir } = require('./helpers');
 const { evaluate } = require('../plugins/pignolo/lib/git-guard');
 
 const bash = (command, cwd, extra = {}) => ({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command }, cwd, ...extra });
@@ -41,7 +41,7 @@ test('RL-04: git commit -i/--include <ruta> lleva también lo que ya está en el
 });
 
 test('RL-05: en un repo sin commits la salida que sugiere la compuerta funciona y después el commit pasa', () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-unborn-'));
+  const repo = makeTempDir('pignolo-unborn-');
   git(['init', '-q', '-b', 'main'], repo);
   put(repo, LEAK);
   put(repo, 'a.txt', 'a\n');
