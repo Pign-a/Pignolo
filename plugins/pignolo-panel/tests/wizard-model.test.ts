@@ -107,7 +107,10 @@ test('wizard-model: picking a letter that does not exist changes nothing', async
   const d = read(detect())
   const s: any = initialState(stepsFor({ data: d, uiInstalled: false }), d)
   expect(move(s, 'pick', 'z', d)).toBe(s)
-  expect(move(s, 'pick', 'c', d)).toBe(s) // el paso 1 solo tiene a y b
+  expect(move(s, 'pick', 'd', d)).toBe(s) // el paso 1 solo tiene a, b y c
+  expect((move(s, 'pick', 'c', d) as any).closed).toBe('decline') // RW-02: c es "no usar pignolo aca", solo en el paso 1
+  const prof: any = move(s, 'next', undefined, d)
+  expect((move(prof, 'pick', 'c', d) as any).closed).toBe(null) // en el paso 2 c es el tercer perfil
   expect(move(s, 'pick', undefined, d)).toBe(s)
   expect(move(s, 'pick', 'ab', d)).toBe(s)
   const p: any = move(move(s, 'next', undefined, d), 'next', undefined, d)
@@ -214,7 +217,11 @@ test('wizard-model: a blank detection gives the single blank step and the blank 
   const later: any = move(s, 'pick', 'b', d)
   expect(later.closed).toBe('later')
   expect(later.done).toBe(false)
-  expect(move(s, 'pick', 'c', d)).toBe(s)
+  // c: no usar pignolo aca (cierra con `decline`; el panel manda el mensaje fijo)
+  const no: any = move(s, 'pick', 'c', d)
+  expect(no.closed).toBe('decline')
+  expect(no.done).toBe(false)
+  expect(move(s, 'pick', 'd', d)).toBe(s)
   expect(move(s, 'next', undefined, d).done).toBe(true)
   expect(move(s, 'back', undefined, d).closed).toBe('dismiss')
 })

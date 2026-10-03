@@ -91,12 +91,20 @@ function enclosing(text, at) {
 }
 const sitesOf = (text, re) => [...code(text).matchAll(re)].map((m) => m.index);
 
-test('trust: submitText is called only by submitAnswer, submitUiRequest and submitWizard', () => {
+test('trust: submitText is called only by submitAnswer, submitUiRequest, submitWizard and declineWizard', () => {
   const c = code(REGISTER);
   const callers = sitesOf(REGISTER, /submitText\(/g)
     .filter((i) => c.slice(i - 15, i) !== 'async function ')
     .map((i) => enclosing(c, i));
-  assert.deepStrictEqual(callers.sort(), ['submitAnswer', 'submitUiRequest', 'submitWizard']);
+  assert.deepStrictEqual(callers.sort(), ['declineWizard', 'submitAnswer', 'submitUiRequest', 'submitWizard']);
+});
+
+test('RW-02 trust: declineWizard is called only from the wizard press handler and sends the fixed message', () => {
+  const c = code(REGISTER);
+  const sites = [...c.matchAll(/declineWizard\(/g)].map((m) => m.index).filter((i) => c.slice(i - 15, i) !== 'async function ');
+  assert.strictEqual(sites.length, 1);
+  assert.strictEqual(enclosing(c, sites[0]), 'wizardPress');
+  assert.match(REGISTER, /submitText\(\$, DECLINE_MESSAGE\)/);
 });
 
 test('trust: submitUiRequest is referenced only inside the press handler of a UI tab button', () => {

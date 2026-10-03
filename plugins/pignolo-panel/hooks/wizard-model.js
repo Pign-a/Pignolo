@@ -12,6 +12,8 @@ export const MAX_FILE_CHARS = 64 * 1024
 // `prompt.submit` rechaza un texto que empieza con `/` (sonda W1, 2026-10-03): el mensaje no es el comando sino la frase fija que activa
 // la skill `init` por lenguaje natural (su paso 0 pregunta confirmacion).
 export const MESSAGE_PREFIX = 'Activá pignolo en este proyecto con estas elecciones: --choices '
+// "No usar pignolo acá" (RW-02): frase fija, sin datos; `init` la reconoce por `--decline` y solo escribe una marca bajo `.git/pignolo/`.
+export const DECLINE_MESSAGE = 'No quiero usar pignolo en este proyecto: --decline'
 
 const PROFILES = ['balanced', 'economy', 'max']
 const PERMS = ['user', 'project', 'none']
@@ -144,6 +146,8 @@ export function move(state, what, arg, data) {
   if (what === 'next') return state.i >= state.steps.length - 1 ? { ...state, done: true } : { ...state, i: state.i + 1 }
   if (what === 'back') return state.i === 0 ? { ...state, closed: 'dismiss' } : { ...state, i: state.i - 1 }
   if (what !== 'pick') return state
+  // paso 1 (el de proyecto o el de repo en blanco): "no usar pignolo acá" cierra con `decline` y el panel manda el mensaje fijo de abajo
+  if (what === 'pick' && state.i === 0 && LETTER(arg) === 'c' && (step === 'project' || step === 'blank')) return { ...state, closed: 'decline' }
   if (step === 'blank') {
     const l = LETTER(arg)
     if (l === 'a') return { ...state, done: true }

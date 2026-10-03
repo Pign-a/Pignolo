@@ -281,9 +281,10 @@ test('wizard-view: the blank screen says the project is blank and offers the fol
   expect(flat.includes('Este proyecto está en blanco')).toBe(true)
   expect(flat.includes('No hay código ni configuración todavía')).toBe(true)
   expect(flat.includes('Solo puedo crear la estructura de carpetas')).toBe(true)
-  expect(optionLines(v).length).toBe(2)
+  expect(optionLines(v).length).toBe(3)
   expect(/ a {2}estructura/.test(text)).toBe(true)
   expect(/ b {2}más tarde/.test(text)).toBe(true)
+  expect(/ c {2}no usar pignolo acá/.test(text)).toBe(true)
   expect(text.includes('paso')).toBe(false) // sin contador ni barra: es una sola pantalla
   expect(v.lines[v.lines.length - 2].includes('Enter crear →')).toBe(true)
 })

@@ -19,7 +19,7 @@ import { detectUi } from './ui-detect.js'
 import { uiRequestText } from './ui-request.js'
 import { tabModel, SHORTCUTS } from './ui-tab.js'
 import { contextFor } from './ui-rules.js'
-import { readWizardDetect, stepsFor, initialState, move, choicesOf, choicesMessage } from './wizard-model.js'
+import { readWizardDetect, stepsFor, initialState, move, choicesOf, choicesMessage, DECLINE_MESSAGE } from './wizard-model.js'
 import { WIDTH as WIZARD_WIDTH, stepView, wizardTree } from './wizard-view.js'
 
 const PANE = 'pignolo-panel'
@@ -964,11 +964,43 @@ async function submitWizard($) {
   }
 }
 
+// "No usar pignolo aca" (RW-02): UN mensaje fijo por `submitText` (el mismo guardian de una sola vez que submitWizard). Lo unico que `init`
+// escribe al recibirlo es la marca de rechazo bajo `.git/pignolo/`. En el demo solo llena el prompt.
+async function declineWizard($) {
+  if (wizard.sending || wizard.sent) return
+  wizard.sending = true
+  $.ui.invalidate('ui.render')
+  const retry = () => { wizard.state = { ...wizard.state, closed: null } }
+  try {
+    if (wizard.demo) {
+      await fillPrompt($, DECLINE_MESSAGE)
+      retry()
+      return
+    }
+    const ok = await submitText($, DECLINE_MESSAGE)
+    if (!ok) {
+      $.ui.toast('No pude enviar; corré /pignolo:init')
+      retry()
+      return
+    }
+    wizard.sent = true
+    closeWizard($)
+    $.ui.toast('Enviado: no te lo vuelvo a ofrecer acá · /pignolo:init sigue disponible')
+  } finally {
+    wizard.sending = false
+    $.ui.invalidate('ui.render')
+  }
+}
+
 // <press-handler:wizard> el UNICO sitio desde el que se llama a submitWizard: los botones del asistente (seguir en el ultimo paso, o crear en el
 // de un repo en blanco). Ni un evento, ni un temporizador, ni el refresco.
 async function wizardPress($, what, arg) {
   if (!wizard.open || wizard.sending || wizard.sent) return
   wizard.state = move(wizard.state, what, arg, wizard.data)
+  if (wizard.state.closed === 'decline') {
+    await declineWizard($)
+    return
+  }
   if (wizard.state.closed) {
     closeWizard($, wizard.state.closed)
     return

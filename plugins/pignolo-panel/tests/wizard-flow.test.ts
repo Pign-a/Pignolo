@@ -334,6 +334,49 @@ test('wizard-flow: the later option of a blank project sends nothing and goes ba
   expect(spy.opened).toEqual(['pignolo-panel'])
 })
 
+const DECLINE = 'No quiero usar pignolo en este proyecto: --decline'
+
+test('RW-02 wizard-flow: "no usar pignolo aca" in step 1 sends the fixed decline message exactly once and closes the wizard', async ($, on) => {
+  const { spy, clock } = await setup($, on)
+  await openIt($, clock)
+  const ui = await $.ui.mount({ ...PANE })
+  expect(await ui.find({ type: 'Button', key: 'wz-opt-c' })).toBeDefined()
+  await ui.press({ key: 'wz-opt-c' })
+  expect(spy.submit.length).toBe(1)
+  expect(spy.submit[0].text).toBe(DECLINE)
+  expect(spy.writes).toEqual([])
+  expect(await ui.find({ type: 'Button', key: 'tab-now' })).toBeDefined()
+  await ui.unmount()
+  for (let i = 0; i < 3; i++) await clock.advance(3000)
+  await terminal($, 150)
+  await clock.advance(3000)
+  expect(spy.submit.length).toBe(1)
+  expect(spy.opened).toEqual(['pignolo-panel'])
+})
+
+test('RW-02 wizard-flow: the decline option is only in step 1 and in the blank screen; a failed send keeps the wizard open', async ($, on) => {
+  const { spy, clock } = await setup($, on, { submitOk: false })
+  await openIt($, clock)
+  const ui = await $.ui.mount({ ...PANE })
+  await ui.press({ key: 'wz-opt-c' })
+  expect(spy.submit.length).toBe(1)
+  expect(await ui.find({ type: 'Text', text: '¿Es así tu proyecto?' })).toBeDefined()
+  await ui.press({ key: 'wz-next' })
+  expect(await ui.find({ type: 'Button', key: 'wz-opt-c' })).toBeDefined() // en el paso de perfil c es el tercer perfil, no el rechazo
+  await ui.press({ key: 'wz-opt-c' })
+  expect(spy.submit.length).toBe(1)
+  await ui.unmount()
+})
+
+test('RW-02 wizard-flow: the blank screen also offers "no usar pignolo aca" and sends the same message', async ($, on) => {
+  const { spy, clock } = await setup($, on, { files: { [WIZ]: JSON.stringify(BLANK) } })
+  await openIt($, clock)
+  const ui = await $.ui.mount({ ...PANE })
+  await ui.press({ key: 'wz-opt-c' })
+  expect(spy.submit.map((s: any) => s.text)).toEqual([DECLINE])
+  await ui.unmount()
+})
+
 test('wizard-flow: a missing detection file does not open the wizard and shows nothing', async ($, on) => {
   const { spy, clock } = await setup($, on, { files: {} })
   await openIt($, clock)

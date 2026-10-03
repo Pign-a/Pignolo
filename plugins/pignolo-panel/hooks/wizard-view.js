@@ -110,6 +110,7 @@ function projectStep(data, st) {
       gap(), ...detail('Lenguaje', lang), ...detail('Tests', tests), ...detail('Rama principal', p.main || 'sin detectar'), gap(),
       optionRow('a', 'sí, es así', 'lo dejo como está detectado', true, st.picks.project === 'confirm'),
       optionRow('b', 'quiero corregir algo', 'te lo pregunto en el chat', false, st.picks.project === 'review'),
+      optionRow('c', 'no usar pignolo acá', 'no te lo vuelvo a ofrecer en este proyecto', false, false),
     ],
   }
 }
@@ -174,6 +175,7 @@ function blankStep() {
       gap(), ...wrap('No hay código ni configuración todavía. Solo puedo crear la estructura de carpetas.', INNER).map((t) => text(t)), gap(),
       optionRow('a', 'estructura', 'crea solo las carpetas de pignolo', true, true),
       optionRow('b', 'más tarde', 'cuando haya código, /pignolo:init', false, false),
+      optionRow('c', 'no usar pignolo acá', 'no te lo vuelvo a ofrecer en este proyecto', false, false),
     ],
   }
 }
