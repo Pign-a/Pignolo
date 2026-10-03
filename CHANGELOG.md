@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.21.0 — sin publicar
+
+**Privacidad, fuga de `leak-values.json` al historial** (incidente del 2026-10-03; plan `docs/plans/2026-10-03-fuga-leak-values.md`; pignolo-ui 0.11.0 es la primera capa, esta es la segunda). **El número se renumera al unir.**
+
+- Guardia: regla `add-force`: un subagente no hace `git add -f/--force` ni `git update-index --add/--cacheinfo` (`-n`/`--dry-run` pasan).
+- Compuerta de commit (`hooks/handlers/guard.js`, `lib/private-index.js`, `lib/private-paths.js`): un `git commit` cuyo contenido (índice, `-a`, rutas o `--amend`, sin contar lo que borra) incluye archivos privados de pignolo sale con exit 2 y el comando para sacarlos. Rige sin pignolo inicializado y también con `/pignolo:off` y `PIGNOLO_DISABLED=1`. Sacar del índice (`restore --staged`, `rm --cached`, `reset --`) y leer nunca se frenan.
+- `private-reads`: un subagente no lee `<PIGNOLO_HOME>/ui-leaks` (mensaje propio).
+- Textos: las skills `daily`, `trivial`, `entry` y `close-session` suman la línea `NO-RUNS-COMMIT:`; las alternativas de la guardia que dicen "commiteá" suman "solo código, por ruta, sin git add -f".
+- Guía para quien ya los tiene en git: `docs/fuga-leak-values.md`.
+
 ## 0.20.0 — sin publicar
 
 Asistente de inicio del panel, lado del núcleo (decisión del autor, 2026-10-03; plan `docs/plans/2026-10-03-panel-asistente-de-inicio.md`). **El número se renumera al unir**: es "el siguiente libre" (0.19.0 queda para la etapa 2 de la guardia); cambian solo `plugin.json`, este encabezado y el plan.
