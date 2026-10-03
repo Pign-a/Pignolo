@@ -10,6 +10,7 @@
 //   limits per call. It writes <run>/plan.json; recordStep re-hashes against it.
 // mergeLive({ run, live, liveDir, acceptOverwrite, data, project, now }) -> { ok, ... }
 // recordStep({ run, project, data, step, url }) -> { ok, ... }
+//   plan.json also carries `removed`: the paths that went out as null in files (4i; recordStep lowers the figures for them).
 // noteRefusal({ run, kind, named }) -> { count, stop, reason? }        diffRun({ run }) -> { changed, removed, sendIndex }
 // publish.json (v2): { v, canvasUrl, pageId, ownsMain, layoutSha256, files: { path: sha256 }, sizes: { path: bytes },
 //   boards: { name: { x, y, w, h, title } }, notes: { id: { x, y, text, maxW } }, deleted: [names], refusals,
@@ -126,18 +127,32 @@ function allStrings(value, out = []) {
   return out;
 }
 
-export function assertParams(params) {
-  const walk = (v, where) => {
+// null is admitted in one place only (4i, R-4i-3): as the value of a path of params.files that plan lists as removed, and only for an
+// artboard name of our own shape. Anywhere else it is a bad param.
+const REMOVABLE = /^project\/[A-Za-z0-9_][A-Za-z0-9_.-]*\.dc\.html$/;
+
+export function assertParams(params, { removed = [] } = {}) {
+  const walk = (v, where, top = false) => {
+    if (v === null) throw new PublishError(`null no admitido en params (${where})`);
     if (typeof v === 'string') { if (/[<>]/.test(v)) throw new PublishError(`marcador sin resolver en params (${where})`); return; }
     if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${where}[${i}]`)); return; }
     if (v && typeof v === 'object') {
       for (const [k, x] of Object.entries(v)) {
         if (FORBIDDEN_KEYS.has(k)) throw new PublishError(`params no admite ${k}`);
+        if (top && k === 'files' && isObj(x)) {
+          for (const [p, target] of Object.entries(x)) {
+            if (target === null) {
+              if (!removed.includes(p) || !REMOVABLE.test(p)) throw new PublishError(`null no admitido en params (ruta ${p.slice(0, 60)})`);
+              if (/[<>]/.test(p)) throw new PublishError(`marcador sin resolver en params (${where}.files)`);
+            } else walk(target, `${where}.files.${p}`);
+          }
+          continue;
+        }
         walk(x, `${where}.${k}`);
       }
     }
   };
-  walk(params, 'params');
+  walk(params, 'params', true);
 }
 
 // Limits of one Artifact call (R-16, A4C2-18): 254 entries in files, 16 MB per file and 16 MB per call.
@@ -245,11 +260,12 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   const indexFile = path.join(canvas, ...INDEX.split('/'));
   let step;
   let toSend = null;
+  let removedSent = [];
   let merged = null;
   if (!record || newCanvas) {
     if (typeof types.design !== 'string' || !types.design) return fail([{ code: 'no-design-type' }]);
     step = { id: 'canvas-create', params: { action: 'publish', type_url: types.design, title: fragment.canvasTitle, auto_open: 'after_first_write' } };
-  } else if (record.state === 'published' && trusted && trusted.pageId === manifest.pageId && !diff.changed.length && !diff.sendIndex) {
+  } else if (record.state === 'published' && trusted && trusted.pageId === manifest.pageId && !diff.changed.length && !diff.sendIndex && !diff.removed.length) {
     return { ok: true, problems: [], notes: noteList(manifest), done: true, step: null, removed: diff.removed };
   } else {
     merged = currentMerge({ run, canvas, record, diff });
@@ -259,7 +275,10 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
       step = { id: 'canvas-read-live', params: { action: 'read', url: record.url, paths } };
     } else {
       toSend = diff.changed;
-      const files = Object.fromEntries(toSend.map((p) => [p, p]));
+      // what merge took out of the live index goes out of the canvas too: `null` in files, only for those (4i)
+      const dropped = Array.isArray(merged.info.dropped) ? merged.info.dropped.filter((n) => typeof n === 'string') : [];
+      removedSent = diff.removed.filter((p) => dropped.includes(nameOf(p)));
+      const files = { ...Object.fromEntries(toSend.map((p) => [p, p])), ...Object.fromEntries(removedSent.map((p) => [p, null])) };
       step = { id: 'canvas-publish', params: { action: 'publish', url: record.url, root: canvas, file_path: indexFile, files } };
     }
   }
@@ -267,7 +286,7 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   // (6, before the scan: it costs a stat) limits per call
   if (toSend) {
     const sized = [...toSend, INDEX].map((p) => ({ path: p, size: sizeOf(canvas, p) }));
-    const over = callLimitProblems({ entries: toSend.length, sizes: sized });
+    const over = callLimitProblems({ entries: toSend.length + removedSent.length, sizes: sized });
     if (over.length) return fail(over);
   }
 
@@ -278,7 +297,7 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   const origins = readJson(originsFile);
   // leak-values always writes this file: missing, unreadable or with git failed means the user name and email are unknown
   if (!origins || typeof origins !== 'object' || Array.isArray(origins) || !['ok', 'unset'].includes(origins.git)) return fail([{ code: 'no-leak-values', detail: 'leak-origins.json is missing, unreadable or says that git failed' }]);
-  const localPaths = new Set([step.params.root, step.params.file_path, ...Object.values(step.params.files ?? {})].filter(Boolean));
+  const localPaths = new Set([step.params.root, step.params.file_path, ...Object.values(step.params.files ?? {}), ...removedSent].filter(Boolean));
   const texts = [
     { label: 'canvasTitle', text: fragment.canvasTitle },
     { label: 'pageName', text: fragment.page.name },
@@ -297,12 +316,12 @@ export function planNext({ run, project, data, types = {}, valuesFile, newCanvas
   const scan = scanBytes({ roots: [{ dir: canvas, expect: path.join(fs.realpathSync.native(run), 'canvas') }], texts, values, skipFiles });
   if (!scan.ok) return fail(scan.problems);
 
-  try { assertParams(step.params); } catch (e) { return fail([{ code: 'bad-params', detail: e.message }]); }
+  try { assertParams(step.params, { removed: removedSent }); } catch (e) { return fail([{ code: 'bad-params', detail: e.message }]); }
 
   const planFiles = {};
   if (toSend) for (const p of [...toSend, INDEX]) planFiles[p] = sha(fs.readFileSync(path.join(canvas, ...p.split('/'))));
   if (step.id === 'canvas-publish') writeAtomic(plannedFile(run), `${JSON.stringify({ canvasUrl: record.url, paths: [...toSend], files: Object.fromEntries(toSend.map((p) => [p, planFiles[p]])), at: new Date().toISOString() }, null, 2)}\n`);
-  writeAtomic(path.join(run, 'plan.json'), `${JSON.stringify({ id: step.id, files: planFiles, changed: diff.changed, sendIndex: diff.sendIndex, at: new Date().toISOString() }, null, 2)}\n`);
+  writeAtomic(path.join(run, 'plan.json'), `${JSON.stringify({ id: step.id, files: planFiles, changed: diff.changed, sendIndex: diff.sendIndex, removed: removedSent, at: new Date().toISOString() }, null, 2)}\n`);
   return { ok: true, problems: [], notes: noteList(manifest), done: false, step, ...(newCanvas ? { newCanvas: true } : {}) };
 }
 
@@ -417,7 +436,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   const result = mergeIndex({
     ours: fragment, live: liveIndex, liveFiles, published: publishedForMerge, owned, title: fragment.canvasTitle, now,
     changed: diff.changed, launchPage: record.launchPage ?? null, first: manifest.first === true, ownsMain: trusted?.ownsMain === true,
-    acceptOverwrite,
+    acceptOverwrite, removed: diff.removed,
   });
   if (!result.ok) {
     // the canvas that was just created already has a Main.dc.html that is not ours: plan must accept first false (RL2-03)
@@ -439,7 +458,7 @@ export function mergeLive({ run, live, liveDir, acceptOverwrite = [], data, proj
   const info = {
     canvasUrl: record.url, canvasSha256: sha(text), liveSha256: liveText ? sha(liveText) : null, changed: diff.changed,
     keptMoved: k.keptMoved, keptEdited: k.keptEdited, userDeleted: k.userDeleted, editedByHand: k.editedByHand,
-    overwritten: k.overwritten, restored: k.restored, warnings: k.warnings, launchWritten: k.launchWritten, pageAdded: k.pageAdded,
+    overwritten: k.overwritten, restored: k.restored, dropped: k.dropped, dropKept: k.dropKept, droppedNotes: k.droppedNotes, warnings: k.warnings, launchWritten: k.launchWritten, pageAdded: k.pageAdded,
   };
   writeAtomic(path.join(mergeDir, 'merge.json'), `${JSON.stringify(info, null, 2)}\n`);
   return { ok: true, out: indexFile, canvasSha256: sha(text), kept: k, warnings: k.warnings };
@@ -481,8 +500,16 @@ export function recordStep({ run, project, data, step, url }) {
   const info = readJson(path.join(mergeDir, 'merge.json'));
   const was = trusted?.files ?? {};
   const sent = Object.keys(plan.files).filter((p) => p !== INDEX);
-  const files = sortedObj({ ...was, ...Object.fromEntries(sent.map((p) => [p, manifest.files.find((f) => f.path === p)?.sha256])) });
-  const sizes = { ...(trusted?.sizes ?? {}) };
+  const sameRun = !!trusted && trusted.pageId === manifest.pageId;
+  const built = new Set(manifest.files.map((f) => f.path));
+  // what the run no longer builds leaves publish.json whether or not the null went out (otherwise plan would never be done); the figures
+  // go down only for what the plan sent as null (4i)
+  const gone = sameRun ? Object.keys(was).filter((p) => !built.has(p)) : [];
+  const sentNull = Array.isArray(plan.removed) ? plan.removed.filter((p) => gone.includes(p)) : [];
+  const files = sortedObj({ ...Object.fromEntries(Object.entries(was).filter(([p]) => !gone.includes(p))), ...Object.fromEntries(sent.map((p) => [p, manifest.files.find((f) => f.path === p)?.sha256])) });
+  const sizes = Object.fromEntries(Object.entries(trusted?.sizes ?? {}).filter(([p]) => !gone.includes(p)));
+  const freed = sentNull.reduce((a, p) => a + (trusted?.sizes?.[p] ?? 0), 0);
+  const droppedNotes = isObj(info) && Array.isArray(info.droppedNotes) ? info.droppedNotes.filter((id) => trusted?.notes && id in trusted.notes && !(id in (fragment.notes ?? {}))).length : 0;
   let grown = 0;
   for (const p of sent) { const size = sizeOf(canvas, p); grown += size - (sizes[p] ?? 0); sizes[p] = size; }
   const newNotes = Object.keys(fragment.notes ?? {}).filter((id) => !(trusted?.notes && id in trusted.notes)).length;
@@ -490,8 +517,8 @@ export function recordStep({ run, project, data, step, url }) {
   const deleted = [...new Set([...(trusted?.deleted ?? []), ...(isObj(info) && Array.isArray(info.userDeleted) ? info.userDeleted : []).filter((n) => String(n).endsWith('.dc.html'))])]
     .filter((n) => !sent.includes(`project/${n}`)).sort();
   const next = {
-    url, state: 'published', pages: record.pages + (pageIsNew ? 1 : 0), files: record.files + sent.filter((p) => !(p in was)).length,
-    bytes: record.bytes + Math.max(0, grown), notes: record.notes + newNotes,
+    url, state: 'published', pages: record.pages + (pageIsNew ? 1 : 0), files: Math.max(0, record.files + sent.filter((p) => !(p in was)).length - sentNull.length),
+    bytes: Math.max(0, record.bytes + Math.max(0, grown) - freed), notes: Math.max(0, record.notes + newNotes - droppedNotes),
     ...(record.dsInstalledSha256 ? { dsInstalledSha256: record.dsInstalledSha256 } : {}),
     ...(isObj(info) && typeof info.launchWritten === 'string' ? { launchPage: info.launchWritten } : (record.launchPage ? { launchPage: record.launchPage } : {})),
   };
