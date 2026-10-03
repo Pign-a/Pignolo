@@ -21,13 +21,14 @@ test('the README links the guide in the shell guard section', () => {
 });
 
 test('both changelogs name the leak-values change', () => {
-  assert.match(read('CHANGELOG.md').split(/^## /m)[1], /leak-values/);
-  assert.match(read('plugins', 'pignolo-ui', 'CHANGELOG.md').split(/^## /m)[1], /leak-values/);
+  assert.match(read('CHANGELOG.md').split(/^## /m).find((e) => e.startsWith('0.21.0')), /leak-values/);
+  assert.match(read('plugins', 'pignolo-ui', 'CHANGELOG.md').split(/^## /m).find((e) => e.startsWith('0.11.0')), /leak-values/);
 });
 
-test('the versions of this fix: core 0.21.0 and pignolo-ui 0.11.0', () => {
-  assert.strictEqual(JSON.parse(read('plugins', 'pignolo', '.claude-plugin', 'plugin.json')).version, '0.21.0');
-  assert.strictEqual(JSON.parse(read('plugins', 'pignolo-ui', '.claude-plugin', 'plugin.json')).version, '0.11.0');
+test('the versions of this fix: core 0.21.0 or later and pignolo-ui 0.11.0 or later', () => {
+  const atLeast = (v, min) => { const a = v.split('.').map(Number); const b = min.split('.').map(Number); return a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] >= b[2]))); };
+  assert.ok(atLeast(JSON.parse(read('plugins', 'pignolo', '.claude-plugin', 'plugin.json')).version, '0.21.0'));
+  assert.ok(atLeast(JSON.parse(read('plugins', 'pignolo-ui', '.claude-plugin', 'plugin.json')).version, '0.11.0'));
 });
 
 test('the guide has no personal paths', () => {
