@@ -36,7 +36,8 @@ function takeSnapshots(v, { cwd, env, sessionId, snapshot, clean }) {
   const list = [...new Set(dirs)].slice(0, MAX_SNAPSHOT_DIRS);
   const required = v.snapshot === 'required';
   const notes = [];
-  let failed = false;
+  // Un directorio desconocido nunca basta para una forma `required` (H7, RT1-04): se respalda el del hook, pero se niega.
+  let failed = required && Boolean(v.snapshotUnknown);
   for (const dir of list) {
     try {
       const snap = snapshot({ cwd: dir, reason: 'antes-de-comando', timeoutMs: Math.floor(SNAPSHOT_DEADLINE_MS / list.length), env, sessionId });

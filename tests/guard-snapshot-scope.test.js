@@ -152,8 +152,9 @@ test('required: respalda cada directorio real y suma el del hook si alguno no se
   const a = makeTempDir();
   const b = makeTempDir();
   const got = [];
-  guard.run(bash('x', b), { env: {}, evaluate: required([a], true), snapshot: (o) => { got.push(o.cwd); return { ref: 'r' }; } });
+  const r = guard.run(bash('x', b), { env: {}, evaluate: required([a], true), snapshot: (o) => { got.push(o.cwd); return { ref: 'r' }; } });
   assert.deepStrictEqual(got.sort(), [a, b].sort());
+  assert.strictEqual(r.exit, 2); // H7: con un directorio desconocido, la forma `required` se niega aunque la instantánea salga bien (RT1-04)
 });
 
 test('snapshot-required es una regla deny declarada', () => {

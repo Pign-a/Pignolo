@@ -28,7 +28,7 @@ function badLong(arg, bad) {
 
 // Opciones de git sobre los argumentos que siguen al subcomando.
 function gitArgsOk(args) {
-  return !args.some((a) => badLong(a, GIT_BAD_LONG) || /^-O/.test(a));
+  return !args.some((a) => badLong(a, GIT_BAD_LONG) || /^-[^-]*O/.test(a));
 }
 
 function gitOk(words) {

@@ -21,7 +21,7 @@ const DENY_BASH = [
   'ls $(rm a.txt)', 'ls "$d"', 'FOO=1 ls', 'env ls', 'xargs ls', 'ls; (rm a.txt)', 'ls &', 'echo hi >> log.txt', '(ls)', '{ ls; }',
   'find . -delete', 'find . -exec rm {} +', 'find . -fprint out.txt', 'find . -ok rm {} ;',
   'git diff --output=out.patch', 'git diff --out=x', 'git log --ext-diff', 'git -c core.pager=less log', 'git -C sub log', 'git --git-dir=x log',
-  'git diff -O orden.txt', 'git show --textconv HEAD:a', 'git grep --open-files-in-pager=vim foo',
+  'git diff -O orden.txt', 'git grep -nOrm foo', 'git show --textconv HEAD:a', 'git grep --open-files-in-pager=vim foo',
   'git branch x', 'git branch -D x', 'git tag v1', 'git tag', 'git stash', 'git stash pop', 'git worktree add x', 'git remote add o u',
   'rg --pre ./f foo', 'rg --pre-glob=x foo', 'rg -nz foo', 'sort -o a.txt a.txt', 'sort --output=a.txt a.txt', 'sort --out=a a', 'sort -ro a a', 'sort --compress-program=sh a',
   'sed -i s/a/b/ a.txt', 'ls "unclosed', 'cat <<EOF\nx\nEOF', 'cat <<< hi', 'ls <(echo)', 'ls `pwd`', 'ls $HOME', 'ls ${X}', 'tee a.txt', 'tree -o x', 'file -C',
