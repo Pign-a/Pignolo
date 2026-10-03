@@ -52,6 +52,7 @@ import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
 import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { portable } from '../lib/portable.mjs';
 import { isLink, linkProblem, runLinkProblem } from '../lib/link-guard.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
 import { writeLocalCopies, LocalCopyError } from '../lib/local-copy.mjs';
@@ -446,7 +447,7 @@ const COMMANDS = {
       info.product = product.status === 'ok' ? 'product.md' : null;
       if (opts.brief !== undefined) info.brief = 'brief.md';
       else if (!('brief' in info)) info.brief = null;
-      fs.writeFileSync(runFile, `${JSON.stringify(info, null, 2)}\n`);
+      fs.writeFileSync(runFile, `${JSON.stringify(portable(info, project), null, 2)}\n`);
       return { out: { product, brief, text: [productText, briefText].filter(Boolean).join('\n\n'), line }, code: 0 };
     },
   },

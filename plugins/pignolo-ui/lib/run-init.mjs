@@ -2,6 +2,7 @@
 // 14-day prune of old runs. The prune only touches direct child directories of runs/, never
 // follows a link (symlink or junction) and checks isInsideRunRoot on every candidate.
 import fs from 'node:fs';
+import { portable } from './portable.mjs';
 import path from 'node:path';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from './run-folder.mjs';
 import { findDesignFile } from './approved.mjs';
@@ -67,11 +68,11 @@ export function initRun({ project, command, slug, now = new Date(), meta = {} })
     version: 1,
     command,
     createdAt: new Date(now).toISOString(),
-    project: path.resolve(project),
+    project: '.',
     design: designFile ? path.relative(project, designFile).replace(/\\/g, '/') : null,
     ...meta,
   };
-  fs.writeFileSync(path.join(run, 'run.json'), `${JSON.stringify(info, null, 2)}\n`);
+  fs.writeFileSync(path.join(run, 'run.json'), `${JSON.stringify(portable(info, project), null, 2)}\n`);
   const pruned = prune(runsDir, project, now, run);
   return { run, runId: path.basename(run), pruned };
 }

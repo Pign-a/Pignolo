@@ -17,6 +17,7 @@ import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { findBrowser } from '../lib/browser-find.mjs';
 import { BrowserUnavailable, PageLoadError } from '../lib/browser-session.mjs';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { portable } from '../lib/portable.mjs';
 import { APPROVED_PATH } from '../lib/approved.mjs';
 import { createOpener, watchSignals } from './browser.mjs';
 import { preflight } from '../lib/browser-run.mjs';
@@ -313,7 +314,7 @@ async function cmdApproved(opts, ctx) {
   const rows = r.result ?? screens.map((s) => ({ screen: s, differences: [], unverified: r.unverified }));
   const out = path.join(run, 'compare-approved.json');
   fs.mkdirSync(run, { recursive: true });
-  fs.writeFileSync(out, `${JSON.stringify({ screens: rows }, null, 2)}\n`);
+  fs.writeFileSync(out, `${JSON.stringify(portable({ screens: rows }, project), null, 2)}\n`);
   print(ctx.stdout, { out, screens: rows, ...cleanupInfo(r.cleanup) });
   return 0;
 }

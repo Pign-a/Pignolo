@@ -38,7 +38,7 @@ test('init creates the run under .pignolo-ui/runs, writes run.json and leaves th
   const info = JSON.parse(fs.readFileSync(path.join(r.json.run, 'run.json'), 'utf8'));
   assert.equal(info.url, 'http://localhost:3000');
   assert.deepEqual(info.files, ['a.html', 'b.html']);
-  assert.equal(path.resolve(info.project), path.resolve(project));
+  assert.equal(info.project, '.');
   assert.ok(r.json.run.replace(/\\/g, '/').includes('.pignolo-ui/runs/'));
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: project, encoding: 'utf8' }), '');
   const remote = run(['init', '--project', project, '--command', 'audit', '--slug', 'x', '--url', 'https://example.com']);

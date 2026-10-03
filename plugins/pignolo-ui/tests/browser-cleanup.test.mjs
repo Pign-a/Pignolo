@@ -35,7 +35,7 @@ test('a profile that cannot be removed is reported by the CLI (cleanup and lefto
     const printed = out.json();
     const dom = JSON.parse(fs.readFileSync(path.join(run, 'dom.json'), 'utf8'));
     assert.equal(dom.cleanup.profileRemoved, false);
-    assert.equal(printed.leftoverProfile, dom.cleanup.profile, 'the path of what is left is printed');
+    assert.equal(path.basename(printed.leftoverProfile), dom.cleanup.profile, 'the path of what is left is printed');
     assert.ok(fs.existsSync(printed.leftoverProfile), 'nothing was pruned behind the user\'s back');
     rmQuiet(printed.leftoverProfile);
   } finally {
@@ -60,7 +60,7 @@ test('a browser that does not start still reports its profile when it cannot be 
   assert.match(printed.degraded, /did not answer over the pipe|could not start/);
   const dom = JSON.parse(fs.readFileSync(path.join(run, 'dom.json'), 'utf8'));
   assert.equal(dom.cleanup.profileRemoved, false);
-  assert.equal(printed.leftoverProfile, dom.cleanup.profile);
+  assert.equal(path.basename(printed.leftoverProfile), dom.cleanup.profile);
   assert.ok(fs.existsSync(printed.leftoverProfile));
   rmQuiet(printed.leftoverProfile);
 });

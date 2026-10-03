@@ -20,6 +20,7 @@ import { runCheck } from '../lib/ui-check.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { BaseRefError, assertRef } from '../lib/scope.mjs';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { portable } from '../lib/portable.mjs';
 import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 
 class UsageError extends Error {}
@@ -166,7 +167,7 @@ export async function main(argv, { cwd = process.cwd(), check = runCheck } = {})
     fs.mkdirSync(runDir, { recursive: true });
     const out = path.join(runDir, 'ui-check.json');
     const report = { catalogVersion: loadCatalog().catalogVersion, inputs: result.inputs, base, entries: result.entries };
-    fs.writeFileSync(out, `${JSON.stringify(report, null, 2)}\n`);
+    fs.writeFileSync(out, `${JSON.stringify(portable(report, project), null, 2)}\n`);
 
     const count = (s) => result.entries.filter((e) => e.status === s).length;
     const counts = {
