@@ -255,3 +255,23 @@ test('ui-rules: contextFor builds a one-line context from the rules for a known 
   assert.strictEqual(contextFor('define', '', i), '');
   assert.ok(contextFor('improve', 'login', i).length <= 160);
 });
+
+// Revisión (RU-01): la compuerta de definición de pignolo-ui (reference/foundation.md, 4h) exige que DESIGN.md no tenga la
+// marca `extraídos, no decididos` (ni la forma vieja `extracted, not decided`) ni nada en `pignolo.extracted`. Un DESIGN.md
+// propuesto desde el código existe y no está vacío, pero NO está decidido: la pestaña tiene que recomendar solo `define`.
+test('review: a DESIGN.md extracted from the code and not decided counts as undecided and gives only define', async () => {
+  const { readUiInput } = await load('ui-input.js');
+  const { rulesFor } = await load('ui-rules.js');
+  const variants = [
+    '---\nname: x\npignolo:\n  extracted:\n    - colors.primary\n---\n# d\n\nTokens extraídos, no decididos (extracted, not decided): these tokens come from the code.\n',
+    '---\nname: x\n---\n# d\n\nextracted, not decided\n',
+  ];
+  for (const text of variants) {
+    const r = await readUiInput(mem({ ...base(), 'DESIGN.md': text }), '/p');
+    assert.strictEqual(r.input.design.exists, true);
+    assert.strictEqual(r.input.design.decided, false, 'un DESIGN.md con la marca de extraído no está decidido');
+    const rules = rulesFor(r.input);
+    assert.strictEqual(rules.onlyDefine, true);
+    assert.deepStrictEqual(rules.recs.map((x) => x.action), ['define']);
+  }
+});
