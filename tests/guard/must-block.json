@@ -1810,5 +1810,89 @@
   "command": "Start-Process node -ArgumentList hooks\\launcher.js",
   "expect": "block",
   "rule": "pignolo-launcher"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$D/.git/config\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \".git/$f\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo {} > \"$D/.pignolo/state.json\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$D/disabled\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$D/.disabled\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$HOME/.pignolo/disabled\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "echo {} > \"$CLAUDE_CONFIG_DIR/settings.json\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo {} > \"$CLAUDE_PLUGIN_ROOT/hooks/hooks.json\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$H/.gitconfig\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo {} > \"$H/.claude/settings.local.json\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$X/plugins/cache/p/hooks/hooks.json\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$X/.GITCONFIG\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$X\\.pignolo\\disabled\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "powershell",
+  "command": "echo {} > \"$CLAUDE_CONFIG_DIR/settings.json\"",
+  "expect": "block",
+  "rule": "protected-path"
  }
 ]

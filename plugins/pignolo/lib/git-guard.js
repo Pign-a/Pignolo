@@ -67,7 +67,6 @@ const RULES = {
   'subagent-main': ['deny', 'un subagente no hace push ni merge sobre main/master: lo hace solo el hilo principal', 'terminá tu tarea y respondé (handback); el hilo principal hace el push o el merge'],
   'snapshot-required': ['deny', 'este comando sobrescribe trabajo sin commitear y solo pasa con una instantánea previa; la instantánea falló', 'reintentá, o commiteá el trabajo como WIP antes'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
-  'dynamic-redirect': ['unverifiable', 'una redirección cuyo destino sale de una variable o sustitución no se puede verificar', 'escribí la ruta de destino literal'],
   // ask
   'push-delete': ['ask', 'pignolo pide confirmación: borrado de una rama remota'],
   'branch-delete': ['ask', 'pignolo pide confirmación: borrado de rama (recuperable por reflog)'],
@@ -928,17 +927,24 @@ function isFlag(p, ctx) {
   return FLAG_RE.test(p) || p === `${ctx.locs.pignoloHome}/disabled`;
 }
 
+// Destino dinámico (T5, R-10): se niega solo si la parte literal nombra algo protegido; si no, pasa.
+// .pignolo o un nombre base disabled / .disabled son el interruptor (protected-flag); .git, .gitconfig, .claude,
+// settings*.json, hooks.json y plugins/ son escritura protegida (protected-path: apagan la guardia en la
+// sesión siguiente).
+const DYN_FLAG = /(^|\/)(\.pignolo(\/|$)|\.?disabled$)/i;
+const DYN_PROTECTED = /(^|\/)(\.gitconfig$|\.claude(\/|$)|settings[^/]*\.json$|hooks\.json$|plugins\/)/i;
 // Destino de una redirección: flags, rutas protegidas y destinos dinámicos.
 function checkWriteTarget(w, st, ctx, out) {
   if (w.dyn) {
-    if (/pignolo|disabled/i.test(w.value)) { out.push(hit('protected-flag')); return; }
+    const lit = cleanPath(w.value);
+    if (DYN_FLAG.test(lit)) { out.push(hit('protected-flag')); return; }
     // Un destino dinámico que nombra .git sigue siendo deny (conjunto catastrófico).
-    if (GIT_DIR_RE.test(cleanPath(w.value))) { out.push(hit('protected-path')); return; }
+    if (GIT_DIR_RE.test(lit) || DYN_PROTECTED.test(lit)) { out.push(hit('protected-path')); return; }
     const prefix = w.dynAt > 0 ? w.value.slice(0, w.dynAt).replace(/\\/g, '/') : '';
-    if (!prefix) { out.push(hit('dynamic-redirect')); return; }
+    if (!prefix) return;
     const slash = prefix.lastIndexOf('/');
     const d = resolveAt(slash < 0 ? '.' : (prefix.slice(0, slash) || '/'), st, ctx);
-    if (d === null) { out.push(hit('dynamic-redirect')); return; }
+    if (d === null) return;
     if (isProtectedWrite(`${d}/x`, SHELL_LOCS(ctx))) out.push(hit('protected-path'));
     else if (/(^|\/)\.?pignolo$/.test(d)) out.push(hit('protected-flag'));
     return;

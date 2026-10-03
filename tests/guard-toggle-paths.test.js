@@ -24,12 +24,9 @@ test('F7: flag writes through cd with a glob, cp, mkdir and ln', () => {
   }
 });
 
-test('F7: a redirect whose target starts with an unknown variable is unverifiable (ask/deny by mode)', () => {
-  assert.strictEqual(evaluate('echo x > $OUT', { mode: 'default' }).decision, 'ask');
-  for (const mode of ['auto', 'bypassPermissions', 'dontAsk']) {
-    const v = evaluate('echo x > $OUT', { mode });
-    assert.strictEqual(v.decision, 'block', mode);
-    assert.strictEqual(v.rule, 'dynamic-redirect');
+test('F7/T5: a redirect to an unknown variable passes unless the literal part names something protected', () => {
+  for (const mode of ['default', 'auto', 'bypassPermissions', 'dontAsk']) {
+    assert.strictEqual(evaluate('echo x > $OUT', { mode }).decision, 'allow', mode);
   }
   // Si el destino dinámico puede caer en .git o ~/.pignolo, sigue siendo deny en todos los modos.
   for (const cmd of ['echo x > "$R/.git/HEAD"', 'echo x > ".git/$f"', 'echo x > ~/.pignolo/$f']) {
@@ -37,10 +34,16 @@ test('F7: a redirect whose target starts with an unknown variable is unverifiabl
     assert.strictEqual(v.decision, 'block', cmd);
     assert.ok(['protected-path', 'protected-flag'].includes(v.rule), `${cmd} -> ${v.rule}`);
   }
-  assert.strictEqual(rule('echo x > "$d/notas.txt"'), 'dynamic-redirect');
+  // H5: lo que apaga la guardia en la sesión siguiente tampoco se escribe por un destino dinámico.
+  for (const cmd of ['echo {} > "$CLAUDE_CONFIG_DIR/settings.json"', 'echo {} > "$CLAUDE_PLUGIN_ROOT/hooks/hooks.json"', 'echo x > "$H/.gitconfig"']) {
+    assert.strictEqual(rule(cmd), 'protected-path', cmd);
+  }
+  assert.strictEqual(rule('echo x > "$d/notas.txt"'), null);
+  assert.strictEqual(rule('echo x > "$OUT/pignolo-notes.txt"'), null);
   assert.strictEqual(rule('echo x > "logs/$n.txt"'), null);
   assert.strictEqual(rule('echo x > "$CLAUDE_JOB_DIR/tmp/a.txt"'), null);
   assert.strictEqual(rule('echo x > .pignolo/$f'), 'protected-flag');
+  assert.strictEqual(rule('echo x > "$D/.disabled"'), 'protected-flag');
 });
 
 test('relative paths resolve against the cwd of the payload', () => {

@@ -358,5 +358,41 @@
  {
   "shell": "powershell",
   "command": "Get-Content plugins\\pignolo\\hooks\\launcher.js | Select-String deadline"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > $OUT"
+ },
+ {
+  "shell": "bash",
+  "command": "npm test > \"$LOG\" 2>&1"
+ },
+ {
+  "shell": "bash",
+  "command": "D=$(mktemp -d); echo x > $D/a"
+ },
+ {
+  "shell": "bash",
+  "command": "for f in a b; do git show HEAD:$f > $f; done"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$OUT/pignolo-notes.txt\""
+ },
+ {
+  "shell": "bash",
+  "command": "node build.js > \"$ROOT/out/build.log\" 2>&1"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x >> $LOG"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status > $log"
+ },
+ {
+  "shell": "bash",
+  "command": "cd repo && nproc; for i in 1 2 3 4; do node probe2.mjs kill > ../p$i.txt 2>&1 & done; wait; cat ../p1.txt ../p2.txt"
  }
 ]
