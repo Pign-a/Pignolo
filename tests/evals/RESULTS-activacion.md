@@ -1,0 +1,109 @@
+# Resultados: activación de las skills con lenguaje normal
+
+Estado: **corrida el 2026-10-03; resultados al final.** La ficha se commiteó antes de la primera corrida, como pide `docs/protocolo-de-pruebas.md`, y no se tocó después salvo esta línea; el control corrió con 3 repeticiones y no con 1 (ver Resultados).
+
+## Pregunta e hipótesis
+
+Decisión del autor (2026-10-03): las skills tienen que poder activarse con lenguaje normal, no solo con `/comando`. ¿Con las `description` nuevas ("Use when the user asks to ..." con frases en castellano rioplatense y en inglés), el modelo invoca la skill correcta ante una frase normal, y no invoca ninguna de las ocho ante un arreglo chico o una pregunta?
+
+Hipótesis (sentido esperado): con el cambio, el modelo invoca la skill esperada en al menos 16 de 20 frases, y una de las ocho en a lo sumo 1 de 10 frases que no deben activar ninguna. Antes del cambio, 0 de 20 (las ocho llevaban `disable-model-invocation: true`, así que la herramienta Skill no las ofrecía al modelo): el brazo de control mide ese piso, no una competencia.
+
+## Variable y lo fijo
+
+- **Variable que cambia:** los plugins. Control = `main` en `3882ded` (antes del cambio; es el tip de `main` y el merge-base de la rama, verificado el 2026-10-03; se extrae con `git worktree add --detach`, sin tar). Tratamiento = la rama `feat/skills-lenguaje-natural`.
+- **Fijo:** las 30 frases (`tests/evals/activation-cases.js`), el modelo (sonnet por defecto del runner; el autor puede pedir opus, que es el que usa a diario), `--max-turns 2`, una carpeta de proyecto vacía con `git init`, solo la herramienta Skill, sin ajustes de usuario (`--setting-sources project`), máquina.
+
+## Brazos
+
+| Brazo | Plugins | Repeticiones |
+|---|---|---|
+| Control | `git archive 3882ded plugins` | 1 por frase (30 corridas): confirma el piso en 0 |
+| Tratamiento | este árbol | 3 por frase (90 corridas) |
+
+Casos: 20 frases que deben activar una skill concreta (incluida "quiero que hagamos ahora el panel de datos de la app" → `pignolo-ui:new`; 5 `new`, 4 `improve`, 3 `audit`, 3 `define`, 1 `status`, 2 `close-session`, 1 `init`, 1 `setup`) y 10 que no deben activar ninguna de las ocho (arreglos chicos de CSS o de texto, un bug, preguntas, un diff para revisar).
+
+## Métricas
+
+Todas salen de `tests/evals/activation-run.js` (una fila por corrida en `<out>/<brazo>.metrics.jsonl`; la salida cruda de cada corrida queda en `<out>/raw/<brazo>-<caso>-r<n>.jsonl` para recalificar sin volver a gastar) sin intervención manual:
+
+- **Acierto en positivas:** de las 20 frases, cuántas invocaron la skill esperada, por repetición (tres rondas de 20 en el tratamiento). Se miran **todas** las skills invocadas, en orden (no solo la primera): cuenta como acierto que la esperada se haya invocado y que antes de ella solo haya estado `pignolo:entry`. Con pignolo activo `entry` ("Use first for any request") manda un pedido de UI a pignolo-ui, así que `pignolo:entry` → `pignolo-ui:new` es el camino correcto; cualquier otra skill antes de la esperada, o ninguna, es fallo. Criterio fijado antes de la corrida (revisión RNL-05).
+- **Falsa activación en negativas:** de las 10 frases, cuántas invocaron una de las ocho en cualquier punto de la lista (`pignolo:entry` no cuenta), por repetición.
+- **Confusión entre skills:** en las positivas fallidas, cuál se invocó en su lugar (o ninguna), para ajustar las `description`.
+- **Costo:** `total_cost_usd` de cada corrida; suma por brazo.
+
+Lo que **no** mide: si la pregunta de confirmación (`AskUserQuestion`) aparece ni cómo se ve, ni si el paso 0 distingue bien el `/comando` de la activación sola (eso necesita una sesión interactiva; queda como prueba manual del autor).
+
+## Regla de decisión
+
+Se adopta el texto si en el tratamiento la **mediana** de las tres rondas es ≥ 16/20 en positivas, el **mínimo** es ≥ 14/20, y las falsas activaciones tienen mediana ≤ 1/10 y máximo ≤ 2/10, **y** los rangos no se pisan con el control (0/20). Si no se cumple, se ajustan las `description` según la matriz de confusión y se repite solo el brazo de tratamiento. Una diferencia con rangos que se pisan es "sin diferencia demostrada" y se decide por lo más simple.
+
+## Presupuesto
+
+120 corridas (30 de control y 90 de tratamiento). Estimación del costo: **≈ 12 USD (rango 6 a 18)**, nivel **E0**: no hay medición de una corrida de una frase con la lista de skills cargada; sale de las corridas medidas de un solo agente en `docs/benchmarks.md` (0,05 a 0,15 USD por corrida de un turno). Tope del runner: 20 USD (`--cap 20`; el gasto se lee de los `metrics.jsonl`, vale entre invocaciones). Si se agota a mitad, se corta, se anota hasta dónde llegó cada brazo y el resultado baja a E2 sin repeticiones completas. Antes de gastar el total: `--probe` corre una sola corrida (P01) para validar el montaje (que la herramienta Skill invocada aparezca en el stream); costo ≈ 0,05 a 0,15 USD.
+
+## Cómo correrla
+
+```
+node tests/evals/activation-run.js --arm treatment --probe
+node tests/evals/activation-run.js --arm control --reps 1 --cap 20
+node tests/evals/activation-run.js --arm treatment --reps 3 --cap 20
+```
+
+`--dry-run` cuenta las corridas sin gastar. Los temporales (incluido el worktree del control) se borran al terminar.
+
+## Amenazas a la validez
+
+- Una sola carpeta de proyecto vacía: la activación real ocurre con el contexto de un proyecto con `.pignolo/` y `CLAUDE.md`, que puede empujar a `pignolo:entry` en lugar de la skill de pignolo-ui.
+- Sonnet como modelo de prueba; el autor usa opus: la activación puede diferir.
+- Frases escritas por quien escribió las descriptions: favorece al tratamiento. Las 10 negativas se escribieron adrede cerca del límite (pantalla, texto, bug) para compensarlo.
+- El control es una cota de 0 por construcción, no un competidor.
+- No probado todavía: que `--tools Skill` y `--allowedTools Skill` dejen invocar skills de un plugin cargado con `--plugin-dir` en `claude -p`. Por eso existe `--probe`.
+
+## Corrida descartada (antes de los arreglos de la revisión)
+
+Hubo una primera corrida parcial, descartada: 19 corridas del brazo de tratamiento sobre el árbol anterior a estos arreglos (descriptions y paso 0 sin los arreglos RNL-01 a RNL-04, calificación de la primera skill), 0,82 USD, 19 de 19 correctas, sin salida cruda guardada. El control no llegó a correr: `tar` falló en Windows al tomar `C:` como host remoto. No cuenta como dato de la prueba. Archivo: `%TEMP%/claude-eval-activation/treatment-v1-parcial.metrics.jsonl` (suma 0,82 USD al gasto que lee el runner si se corre con el `--out` por defecto).
+
+## Resultados
+
+Corrida el 2026-10-03, sonnet, `--max-turns 2`. Los datos crudos (`control.metrics.jsonl`, `treatment.metrics.jsonl` y la salida de cada corrida en `raw/`) quedan en `%TEMP%/claude-eval-activation/`; no se versionan. Las cifras se recalcularon desde esos archivos. Control = `3882ded`; tratamiento = la rama `feat/skills-lenguaje-natural` antes de unir `main`.
+
+**Desvío de la ficha:** el control corrió con 3 repeticiones por frase (90 corridas) en vez de 1 (30), así que ambos brazos son comparables ronda a ronda. Costó ≈ 1,33 USD más que lo presupuestado para el control.
+
+### Por ronda (E3: dos brazos, una sola variable, 3 repeticiones, métricas y criterio fijados antes de correr; con las amenazas de abajo)
+
+| Brazo | Medida | Ronda 1 | Ronda 2 | Ronda 3 | Mediana | Rango |
+|---|---|---|---|---|---|---|
+| Control | Positivas (de 20) | 0 | 0 | 0 | 0 | 0 a 0 |
+| Control | Falsas activaciones (de 10) | 0 | 0 | 0 | 0 | 0 a 0 |
+| Tratamiento | Positivas (de 20) | 20 | 20 | 20 | **20** | 20 a 20 |
+| Tratamiento | Falsas activaciones (de 10) | 0 | 0 | 0 | **0** | 0 a 0 |
+
+Totales: control 0/60 en positivas y 30/30 negativas sin falsa activación; tratamiento 60/60 y 30/30. Por skill esperada, el tratamiento acertó todas las repeticiones: `pignolo-ui:new` 15/15, `improve` 12/12, `audit` 9/9, `define` 9/9, `pignolo:status` 3/3, `close-session` 6/6, `init` 3/3, `setup` 3/3.
+
+### Regla de decisión aplicada
+
+Mediana en positivas 20 (pide >= 16): cumple. Mínimo 20 (pide >= 14): cumple. Falsas activaciones, mediana 0 (pide <= 1) y máximo 0 (pide <= 2): cumple. Rangos contra el control (0/20): 20 a 20 contra 0 a 0, no se pisan: cumple. **Se adopta el texto de las `description`.** E3 para la diferencia (es total, 60/60 contra 0/60); no se generaliza a otros modelos ni a frases ajenas (ver amenazas).
+
+### Qué otras skills aparecieron (E3, conteo de invocaciones en las 90 corridas de cada brazo)
+
+- Control: `pignolo:entry` 36 (en 8 de las 10 negativas; no cuenta como falsa activación, y en las positivas se quedó ahí porque el modelo no podía ver las skills de pignolo-ui), `dataviz` 4, `run` 2, `update-config` 2, `code-review` 2, `security-review` 1. Son skills del entorno de la máquina de prueba que compiten por frases cercanas.
+- Tratamiento: las ocho skills esperadas en las positivas; `pignolo:entry` solo 2 veces (una en una negativa, que no cuenta), `run` 1, `code-review` 2 (las dos en la negativa N10, "revisá este diff", donde invocar `code-review` es razonable y no es una de las ocho). Con las skills de pignolo-ui visibles el modelo fue directo a ellas, sin pasar por `entry` (0 de 60 positivas con `entry` primero).
+
+### Los `exit 1`
+
+Control 24 de 90, tratamiento 15 de 90 (E3, leído de la salida cruda de cada corrida). Todos son `subtype: error_max_turns` con `stop_reason: tool_use` en el turno 3: el modelo invocó la skill (turno 1), recibió su texto (turno 2) y quiso seguir con una herramienta, y `--max-turns 2` lo cortó. No es un fallo de la herramienta ni del plugin. **No afectan la calificación**: la invocación de la skill queda registrada antes del corte. En el tratamiento los 15 son corridas calificadas como correctas (13 positivas y 2 negativas sin falsa activación). En el control son 18 positivas y 6 negativas; las positivas eran fallo igual, porque no había skill de pignolo-ui que invocar. Hubo más cortes en el control porque `entry`, `run` y otras piden pasos de herramienta; el costo de esas corridas incluye el turno extra hasta el corte.
+
+### Costo y duración
+
+| Brazo | USD (E3, `total_cost_usd` de cada corrida) | Mediana por corrida | Rango por corrida | Suma de corridas |
+|---|---|---|---|---|
+| Control | 2,00 (1,14 / 0,44 / 0,42 por ronda) | 7,2 s | 2,6 a 19,4 s | 11,5 min |
+| Tratamiento | 2,64 (1,52 / 0,59 / 0,54 por ronda) | 6,8 s | 4,0 a 17,6 s | 10,8 min |
+
+La primera ronda cuesta el doble o más que las otras dos en ambos brazos (la caché del prompt se arma ahí). El tratamiento cuesta ≈ 0,64 USD más porque lee y sigue el texto de cada skill invocada. La duración es la de `duration_ms` de la salida cruda, por corrida, no el tiempo de pared del lote.
+
+**Gasto total de la prueba:** 5,59 USD = control 2,00 + tratamiento 2,64 + sondas 0,129 + corrida parcial descartada 0,82. Muy por debajo de los 12 USD estimados (E0) y del tope de 20.
+
+### Amenazas que siguen en pie
+
+Son las de la ficha y no se resolvieron: carpeta de proyecto vacía (la activación en un proyecto con `.pignolo/` y `CLAUDE.md` puede diferir), sonnet en vez de opus, frases escritas por quien escribió las descriptions (el 100 % de aciertos lo favorece; las negativas se escribieron cerca del límite y no hubo ninguna falsa activación), control como piso de 0 por construcción. Se suma que `--max-turns 2` mide la elección de la skill, no su ejecución. Queda pendiente la prueba manual del autor en una sesión interactiva (la pregunta de confirmación y la distinción entre `/comando` y activación sola).

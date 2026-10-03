@@ -151,7 +151,7 @@ export function lintPlugin(root) {
         if (fm.name !== expectedName || !KEBAB.test(fm.name || '')) add(rule, rel, `name must be "${expectedName}" (kebab-case)`);
         if (!isQuoted(fm.description)) add(rule, rel, 'description must be a quoted YAML string');
         else if (unquote(fm.description).length > 1536) add(rule, rel, 'description longer than 1536 characters is truncated');
-        if (isSkill && fm['disable-model-invocation'] !== 'true') add(rule, rel, 'commands need disable-model-invocation: true');
+        // Lenguaje natural (2026-10-03): una skill puede o no llevar disable-model-invocation; la description dice cuándo usarla.
       }
       if (isSkill && text.length > SKILL_MAX_CHARS) add('skill-size', rel, `SKILL.md has ${text.length} characters (limit ~3k tokens)`);
     }

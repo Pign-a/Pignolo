@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.15.0 — sin publicar
+
+Lenguaje natural (decisión del autor, 2026-10-03). Sobre 0.14.1 de `main`. Otra rama sin unir (`core/init-rapido`) también dice 0.15.0 y se renumera al unirse.
+
+- **Skills que se activan con una frase normal:** se quitó `disable-model-invocation` de `status`, `close-session`, `init` y `setup` (y de las cuatro de pignolo-ui, ver su CHANGELOG). `on` y `off` quedan solo humanas. Cada `description` empieza con "Use when the user asks to ..." con frases en castellano rioplatense y en inglés y cuándo no usarla.
+- **Confirmación con AskUserQuestion:** `close-session`, `init` y `setup` suman un paso 0 que, si la skill se activó sola (sin la etiqueta `<command-name>`), pregunta si correrla ahora (recomendado) o no; `close-session` renumera sus pasos de 0-6 a 1-7. `status` solo lee y no pregunta. El texto está en `templates/activation-confirm.md`.
+- **`pignolo:entry`** manda un pedido de pantalla, componente, panel o diseño a la skill de pignolo-ui que corresponde cuando el plugin está instalado.
+- Tests: `tests/skill-natural-language.test.js`. Prueba de activación corrida (tratamiento 60/60, control 0/60): `tests/evals/RESULTS-activacion.md`.
+
+**Arreglos de la revisión (RNL-02 a RNL-05):**
+
+- `entry` deriva a pignolo-ui solo un pedido que autoriza un cambio (o un pedido explícito de auditar); una pregunta sobre una pantalla se responde en solo lectura (RNL-03). Si el usuario ya eligió "Hacerlo directo" para ese pedido, `entry` no lo manda de nuevo y se evita el bucle (RNL-02).
+- El paso 0 de `templates/activation-confirm.md`: si `AskUserQuestion` no está disponible (`claude -p`, un subagente sin ella) la skill no sigue sola: dice en una línea que necesita confirmación del humano y termina, salvo que la hayan invocado con `/` (RNL-04).
+- Specs actualizadas: `init`, `setup`, `status` y `close-session` ya no son solo humanas. Menores y decisiones pendientes en `docs/gaps.md` (G64 a G70).
+- Prueba de activación: la calificación mira todas las skills invocadas y cuenta `pignolo:entry` → la esperada como acierto; el control se extrae con `git worktree add --detach` (sin tar, que fallaba en Windows) y cada corrida guarda su salida cruda en `<out>/raw/` (RNL-05).
+
 ## 0.14.1 — 2026-10-02
 
 Cambio de contrato de la guardia de git, por decisión del autor (2026-10-02): la confirmación en `git push` y en `git merge` sobre `main` frenaba demasiado la autonomía del agente y se quita.
