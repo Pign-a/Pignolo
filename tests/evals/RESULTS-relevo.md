@@ -24,6 +24,29 @@ _Ficha escrita y commiteada antes de la primera corrida, como pide `docs/protoco
 
 **Amenazas a la validez, conocidas de antemano.** Una sola corrida por brazo y un solo hito; el brazo de control hace 7 tareas y puede no llegar a un contexto grande; el revisor es de la misma familia de modelos que los ejecutores; los dos brazos compiten por la máquina; el umbral por cuenta de tareas no es el de la simulación.
 
+## Ampliación de la ficha (2026-10-02, pedido del autor; escrita antes de lanzar los brazos nuevos)
+
+El autor pidió comparar cuatro formas de ejecutar un plan y después probar combinaciones. Se suman dos brazos sobre **la misma tarea y el mismo commit de partida** (`c67aeee`), así los cuatro son comparables:
+
+| Brazo | Ejecución | Reglas del ciclo | Estado al ampliar |
+|---|---|---|---|
+| `unico-v2` (control) | un ejecutor de punta a punta | `liviano-v2` | ejecución terminada |
+| `relevo-tareas-v2` | relevo tras 3 tareas | `liviano-v2` | segundo tramo en curso |
+| `unico-v1` | un ejecutor de punta a punta | `liviano-v1` | nuevo |
+| `relevo-tokens-v2` | relevo por límite de tokens | `liviano-v2` | nuevo |
+
+- **`liviano-v1` en la ejecución** es el encargo anterior: sin lista de autochequeo y con la suite completa (`npm test`) corrida por el propio ejecutor al final, repitiendo solos los archivos que fallen. Todo lo demás del encargo es igual.
+- **Relevo por límite de tokens:** el controlador mide el contexto del agente en su transcripción cada 30 s; cuando pasa de **300 mil tokens** le avisa que entregue al cerrar la tarea en curso, y sigue un agente nuevo con la misma libreta de traspaso. Si nunca pasa del umbral, no hay relevo y se informa así.
+- **Comparaciones planeadas:** `unico-v2` contra `relevo-tareas-v2` y contra `relevo-tokens-v2` (cambia solo la ejecución); `unico-v2` contra `unico-v1` (cambian solo las reglas del ciclo). Las combinaciones (por ejemplo relevo con `liviano-v1`) quedan para una segunda ronda, según lo que salga.
+- **Ciclo completo por brazo:** después de ejecutar, cada brazo recibe su revisión opus y su pasada de arreglos con las reglas de su método (`v1`: informe en prosa, el que arregla reconstruye los casos, arregla también los menores y corre la suite completa; `v2`: hallazgos importantes como tests que fallan, solo críticos e importantes, sin suite completa). Los revisores no saben que hay un experimento ni de qué brazo es cada rama. Al final el controlador corre la suite completa una vez sobre cada rama.
+- **Métricas por fase** (ejecución, revisión, arreglos) y del ciclo entero: tokens por tipo y costo ponderado, minutos de pared, usos de herramienta, contexto máximo; hallazgos críticos, importantes y menores; tests que pasan en la suite final. La velocidad (minutos de pared del ciclo) es la métrica que más le interesa al autor; el costo ponderado sigue siendo la de la regla de decisión original.
+- **Regla de decisión, ampliada:** para cada comparación, la alternativa gana si es al menos 15 % mejor que el control en minutos de pared **o** en costo ponderado, sin ser 15 % peor en la otra, y sin más críticos ni más de un importante por encima del control. Si no, "sin diferencia demostrada" y queda lo más simple.
+- **Carga:** los dos brazos nuevos corren a la vez y sin otros agentes, igual que corrió el primer par.
+- **Sigue siendo nivel E2:** una corrida por brazo.
+- **Presupuesto ampliado:** hasta ≈ 4 millones de tokens de contexto final sumando ejecuciones, revisiones y arreglos de los cuatro brazos. Sin dólares.
+
+**Amenazas nuevas.** Los pares corren en momentos distintos (la máquina y los límites de uso pueden diferir); el segundo tramo de `relevo-tareas-v2` corrió sin compañía; la revisión de `unico-v1` tiene otro formato que las demás, así que sus conteos de hallazgos son menos comparables; el agente de `unico-v2` reenvió su informe varias veces después de terminar y ese gasto se descuenta (se toma su costo hasta la primera entrega).
+
 ## Resultados
 
 _Pendiente: se completa al terminar las corridas._
