@@ -27,8 +27,15 @@ export function portable(value, project, { home = os.homedir() } = {}) {
   const re = (v) => new RegExp(`${escapeRe(v)}(?=$|[/${BS}${BS}])`, `${ci}g`);
   const proj = variants(project).map(re);
   const hom = home ? variants(home).map(re) : [];
+  // Si el proyecto es carpeta madre del home (p. ej. C:\Users), el home va primero: relativizar antes dejaría ./<usuario>/...
+  const rel = home ? path.relative(path.resolve(project), path.resolve(home)) : '';
+  const homeInside = Boolean(home) && rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
   const fix = (s) => {
     let t = s;
+    if (homeInside) {
+      for (const r of hom) t = t.replace(r, '~');
+      if (t !== s && t.startsWith('~') && !t.includes('\n')) t = t.split(BS).join('/');
+    }
     for (const r of proj) t = t.replace(r, '.');
     if (t !== s && t.startsWith('.') && !t.includes('\n')) t = t.split(BS).join('/');
     if (isAbs(t) && !t.includes('\n')) t = t.split(SEP).filter(Boolean).pop() ?? t;

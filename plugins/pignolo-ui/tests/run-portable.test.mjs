@@ -81,3 +81,17 @@ test('portable: relativiza el proyecto y su file://, el home pasa a ~ y una ruta
   assert.deepEqual(out.n, ['texto normal', 4, null]);
   assert.ok(!out.h.includes(os.homedir()));
 });
+
+test('portable: si el proyecto es carpeta madre del home, el home pasa a ~ antes de relativizar (sin ./<usuario>/...)', () => {
+  const project = path.resolve(makeTempDir());
+  const home = path.join(project, 'usuario-prueba');
+  const out = portable({
+    a: path.join(home, 'Documentos', 'x.txt'),
+    u: `${pathToFileURL(home).href}/y.txt`,
+    s: path.join(project, 'src', 'a.css'),
+  }, project, { home });
+  assert.equal(out.a, '~/Documentos/x.txt');
+  assert.equal(out.u, '~/y.txt');
+  assert.equal(out.s, './src/a.css');
+  assert.ok(!JSON.stringify(out).includes('usuario-prueba'));
+});
