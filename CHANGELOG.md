@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.19.0 — sin publicar
+
+Guardia sin tropiezos, etapa 2: cuatro reglas que angostan un solo lugar, sin tocar el parser ni las reglas de git (plan `docs/plans/2026-10-02-guardia-sin-tropiezos.md`, tarjetas T4 a T7). Versión: 0.19.0, la siguiente libre sobre 0.17.0 (el plan decía 0.16.1; la 0.18.0 la toma otro frente).
+
+- **T4, leer el launcher (`pignolo-launcher`):** solo cuenta ejecutarlo: el programa mismo es el launcher, o un intérprete, shell, `source`, `Start-Process` o similar lo recibe como operando. `cat`, `sed`, `grep`, `git diff`, `cp`, `wc` y un `for` pasan; `node --check <launcher>` pasa solo sin otra opción. H4: si la línea nombra el launcher y un intérprete o shell corre un script dinámico, `-` o stdin, se niega (`node "$(echo …/launcher.js)" toggle` y la forma con `ForEach-Object`). Cierra de paso `node "$(find . -name launcher.js)" toggle`, que antes pasaba.
+- **T5, redirección a una variable (`dynamic-redirect`, retirada):** un destino dinámico pasa salvo que su parte literal nombre `.pignolo` o un `disabled` (`protected-flag`), o `.git`, `.gitconfig`, `.claude`, `settings*.json`, `hooks.json` o `plugins/` (`protected-path`, H5). Sale de `RULES` y de `NOT_EXPRESSIBLE`.
+- **T6, comodines con "pignolo" o "disabled" (`protected-flag`):** la rama corre solo para programas que escriben o borran, mira de `cp`/`install`/`ln` solo el destino (en `mv` también la fuente) y niega solo si el patrón puede alcanzar `.pignolo/disabled` o `.pignolo/.disabled`, por tramos.
+- **T7, código inline (`inline-code`):** `lib/inline-calls.js` recorre el texto salteando literales y comentarios; niega con uso de procesos fuera de literales y git nombrado (cierra `eval`, `['execSync']`, `{execSync: run}` y `exec(` de Python, H6) y un primer argumento armado con `+`. Sin tokenizar rige la búsqueda ingenua. `awk` mira el `print` con pipe sin el contenido de las comillas. Arreglo de paso: `-e<código>` y `-c<código>` pegados perdían la primera letra del código.
+- **Corpus:** 34 de las 35 filas `pignolo-launcher`, 13 de 16 `dynamic-redirect` y 35 de 51 `inline-code` de `medidos.json` pasan a allow; ninguna fila de "debe seguir negado" cambió. Tests nuevos: `inline-calls`, filas en `must-allow`/`must-block`. Tres tests de `guard-structural` usaban `ls` como comando de proceso: ahora usan git (sin git pasan).
+- **Límites declarados:** ver `docs/gaps.md` G75 a G77.
+
 ## 0.17.0 — 2026-10-03
 
 `init` y `setup` rápidos y el repositorio en blanco (decisión del autor, 2026-10-02; plan en `docs/plans/2026-10-02-init-rapido-y-repo-en-blanco.md`). Versión: 0.17.0, el siguiente libre sobre 0.16.0 (núcleo de main). Unido con las skills en lenguaje natural: el paso 0 de confirmación (`AskUserQuestion` con `templates/activation-confirm.md`, solo si la skill se activó sola) va antes de todo el flujo rápido y del camino en blanco; `init` y `setup` siguen sin `disable-model-invocation`.

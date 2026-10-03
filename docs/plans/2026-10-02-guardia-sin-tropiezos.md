@@ -139,7 +139,7 @@ T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecuci
 | Etapa | Tarjetas | Versión | Por qué juntas | Foco de su revisión (opus) |
 |---|---|---|---|---|
 | 1. Red y mecanismo | T1, T2, T3 y la parte de T12 de ellas | 0.16.0 | No cambian veredictos de reglas. Ponen la red (fixture) y los dos mecanismos nuevos (cuándo y dónde va la instantánea, y el plazo) | D-G4 (polaridad, H7, H9, `null`); el clasificador de solo lectura (§10.3); el launcher sigue cerrado |
-| 2. Reglas sin parser | T4, T5, T6, T7 y su parte de T12 | 0.16.1 | Cada una angosta una regla en un lugar, sin tocar el parser ni las reglas de git | H4, H5, H6, T6 `mv`; que ninguna fila de "no tocar" cambie (fixture) |
+| 2. Reglas sin parser | T4, T5, T6, T7 y su parte de T12 | 0.19.0 (el plan decía 0.16.1; la siguiente libre al unir, 2026-10-03) | Cada una angosta una regla en un lugar, sin tocar el parser ni las reglas de git | H4, H5, H6, T6 `mv`; que ninguna fila de "no tocar" cambie (fixture) |
 | 3. Parser, git y lo recuperable | T8, T9, T10, T11, T13 y el cierre de T12 | 0.16.2 | Comparten el estado de la shell (`for`, `switchedTo`, `-C`, `onMain`) y las reglas de rol | H1, H2, H8; D-G5; la matriz de roles; la plantilla; la medición |
 
 Cada etapa: ejecutor sonnet en serie; el controlador une `main` en la rama de la etapa, corre la suite completa una vez, la revisión opus recibe el diff como archivo armado por script y entrega cada hallazgo importante determinista como test que falla; un agente nuevo arregla; una re-revisión acotada en sonnet; recién entonces se une a `main`. Se suma la versión siguiente libre sobre la de `main` en ese momento (si otra rama subió el núcleo, se corre el número). Las etapas 2 y 3 usan la fixture y la instantánea de la 1.
