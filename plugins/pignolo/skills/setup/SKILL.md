@@ -1,7 +1,6 @@
 ---
 name: setup
-description: Check the environment, choose the model profile, add pignolo's permission rules and review rule conflicts. Human-only.
-disable-model-invocation: true
+description: "Use when the user asks to configure pignolo itself, in Spanish or English: 'configurá pignolo', 'cambiá el perfil a economy', 'elegí el perfil de modelos', 'agregá los permisos de pignolo', 'set up pignolo', 'change the pignolo profile'. Checks the environment, chooses the model profile, adds pignolo's permission rules and reviews rule conflicts. Do not use to activate pignolo in a project (that is init)."
 ---
 
 Guide the human through pignolo's setup. Speak to them in their language. Never edit any user rule file.
@@ -16,6 +15,8 @@ Guide the human through pignolo's setup. Speak to them in their language. Never 
 - Keep lists short: group rules by purpose (one line per group), never list every rule.
 
 ## Steps
+
+0. **Confirm (only if you chose this skill yourself).** If the turn carries a `<command-name>` tag for this skill, the user typed the command: go to step 1. Otherwise run nothing yet: read `${CLAUDE_PLUGIN_ROOT}/templates/activation-confirm.md`, section `setup`, and ask with AskUserQuestion (never plain chat text) with the recommended option first, "Configurar pignolo ahora (Recomendado)", and "No ahora". On "No ahora" end this skill and carry on with what the user was doing.
 
 1. **Environment check.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" check`.
    - Plain: "your machine is ready" or the one or two things that matter, in simple terms.

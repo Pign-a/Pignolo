@@ -17,9 +17,9 @@ const SCRIPT = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'close-session.
 const USAGE_VERBS = /uso: close-session\.js <([a-z|-]+)>/.exec(SCRIPT)[1].split('|');
 const VERBS = ['evidence', 'scan', 'decide', 'archive', 'index', 'prune'];
 
-test('frontmatter: invoked by the human only, real references', () => {
+test('frontmatter: model-invocable (natural language), real references', () => {
   assert.equal(s.data.name, 'close-session');
-  assert.equal(s.data['disable-model-invocation'], true);
+  assert.equal(s.data['disable-model-invocation'], undefined);
   assert.ok(s.data.description.length > 40);
   assert.deepEqual(brokenReferences(s.text), []);
 });

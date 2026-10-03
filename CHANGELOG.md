@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.0 — sin publicar
+
+Lenguaje natural (decisión del autor, 2026-10-03). Número provisorio: hay ramas sin unir con 0.14.1, 0.15.0 y 0.16.0; se renumera al unir.
+
+- **Skills que se activan con una frase normal:** se quitó `disable-model-invocation` de `status`, `close-session`, `init` y `setup` (y de las cuatro de pignolo-ui, ver su CHANGELOG). `on` y `off` quedan solo humanas. Cada `description` empieza con "Use when the user asks to ..." con frases en castellano rioplatense y en inglés y cuándo no usarla.
+- **Confirmación con AskUserQuestion:** `close-session`, `init` y `setup` suman un paso 0 que, si la skill se activó sola (sin la etiqueta `<command-name>`), pregunta si correrla ahora (recomendado) o no; `close-session` renumera sus pasos de 0-6 a 1-7. `status` solo lee y no pregunta. El texto está en `templates/activation-confirm.md`.
+- **`pignolo:entry`** manda un pedido de pantalla, componente, panel o diseño a la skill de pignolo-ui que corresponde cuando el plugin está instalado.
+- Tests: `tests/skill-natural-language.test.js`. Prueba de activación armada y sin correr: `tests/evals/RESULTS-activacion.md`.
+
 ## 0.14.0 — 2026-10-02
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Se une después del hito 8d (0.13.1); en su rama llevó los números 0.13.0 y 0.13.1 (brainstorming), así que esta es la versión menor libre siguiente.

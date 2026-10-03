@@ -10,18 +10,18 @@ const { readSkill, brokenReferences } = require('./skill-forms');
 const SKILL = readSkill('init');
 const ROOT = path.join(__dirname, '..');
 
-test('frontmatter: human-only, name init, real script references and verbs', () => {
+test('frontmatter: model-invocable (natural language), name init, real script references and verbs', () => {
   assert.equal(SKILL.data.name, 'init');
-  assert.equal(SKILL.data['disable-model-invocation'], true);
+  assert.equal(SKILL.data['disable-model-invocation'], undefined);
   assert.ok(SKILL.data.description.length > 40);
   assert.deepEqual(brokenReferences(SKILL.text), []);
   assert.ok(fs.existsSync(path.join(PLUGIN_ROOT, 'skills', 'init', 'SKILL.md')));
 });
 
-test('the fourteen steps come in order: detect before preview, preview before apply, apply before verify', () => {
+test('step 0 confirms, then the fourteen steps come in order: detect before preview, preview before apply, apply before verify', () => {
   const t = SKILL.text;
   const steps = [...t.matchAll(/^(\d+)\. \*\*/gm)].map((m) => Number(m[1]));
-  assert.deepEqual(steps, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+  assert.deepEqual(steps, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
   const at = (re) => t.search(re);
   assert.ok(at(/init\.js" detect/) < at(/init\.js" preview/));
   assert.ok(at(/init\.js" preview/) < at(/init\.js" apply/));
