@@ -7,7 +7,7 @@ import {
   parseJson,
 } from './model.js'
 import {
-  readState, suggestionText, answerPrefix, answerText, pickColor, progress, bar, stageLine, sparkText, sparkCells, MARK,
+  readState, suggestionText, answerPrefix, answerText, answerInvalid, pickColor, progress, bar, stageLine, sparkText, sparkCells, MARK,
 } from './state.js'
 
 const PANE = 'pignolo-panel'
@@ -37,6 +37,7 @@ let unfolded = false // `p`: pros y contras desplegados
 let selected = null // fila elegida: { key, kind, copy, hash }
 const postponedLocal = new Set() // `z`: ocultas solo en esta sesion del mod (close-session las persiste)
 const answered = new Map() // id -> true: respondidas desde el panel (no se reenvian aunque el registro aun las traiga abiertas)
+const sending = new Set() // ids con un envio en curso: `prompt.submit` espera a que la sesion quede libre y una segunda pulsacion no puede encolar otro (RP-01)
 
 // ---- lectura (unico archivo: .pignolo/panel-state.json) ----
 
@@ -270,6 +271,10 @@ async function submitAnswer($, decision, option) {
   }
 }
 
+function sameOptions(a, b) {
+  return a.options.length === b.options.length && a.options.every((x, i) => x.label === b.options[i].label)
+}
+
 // <press-handler:answer> el UNICO sitio desde el que se llama a submitAnswer: el boton de una opcion.
 function optionButton($, Button, d, o, i, letter) {
   const rec = o.label === d.recommended
@@ -280,16 +285,34 @@ function optionButton($, Button, d, o, i, letter) {
     plain: true,
     dimColor: !rec,
     onPress: async () => {
-      if (answered.has(d.id)) return // ya enviada: no se reenvia
-      const ok = await submitAnswer($, d, o.label)
-      if (!ok) {
-        $.ui.toast('No pude enviar la respuesta; escribila en el prompt')
+      if (answered.has(d.id) || sending.has(d.id)) return // ya enviada o enviandose: una respuesta se envia una sola vez
+      if (answerInvalid(d, o.label)) {
+        $.ui.toast('Pregunta inválida: no se envía; respondela en el prompt')
         return
       }
-      answered.set(d.id, true)
-      cache = { at: 0, value: null }
-      $.ui.toast('Enviado: ' + o.label)
+      sending.add(d.id) // antes de cualquier await: lo de abajo espera a la sesion
       $.ui.invalidate('ui.render')
+      try {
+        // Relee el registro: si la decision ya no esta abierta o cambio su pregunta u opciones, no se envia lo que se dibujo.
+        cache = { at: 0, value: null }
+        const fresh = await readSnapshot($, await $.clock.now())
+        const cur = fresh.kind === 'ok' ? fresh.decisions.find((x) => x.id === d.id) : null
+        if (!cur || cur.status !== 'open' || cur.question !== d.question || !sameOptions(cur, d)) {
+          $.ui.toast('La decisión cambió: mirá el panel y elegí de nuevo')
+          return
+        }
+        const ok = await submitAnswer($, d, o.label)
+        if (!ok) {
+          $.ui.toast('No pude enviar la respuesta; escribila en el prompt')
+          return
+        }
+        answered.set(d.id, true)
+        cache = { at: 0, value: null }
+        $.ui.toast('Enviado: ' + o.label)
+      } finally {
+        sending.delete(d.id)
+        $.ui.invalidate('ui.render')
+      }
     },
   })
 }
@@ -320,15 +343,18 @@ function decisionsBlock($, e, snap, width) {
     body.push(Text({ key: 'q-' + d.id, wrap: 'wrap', children: [Text({ color: warn, bold: true, children: [(qi + 1) + '  '] }), Text({ bold: true, children: [d.question] })] }))
     if (d.context) body.push(Text({ key: 'qc-' + d.id, dimColor: true, wrap: 'wrap', children: ['   ' + d.context] }))
     const rows = []
-    opts.forEach((o, i) => {
+    if (sending.has(d.id)) rows.push(Text({ key: 'ans-' + d.id + '-sending', dimColor: true, children: ['enviando…'] }))
+    else opts.forEach((o, i) => {
       const k = nextLetter()
       letters.push(k)
       rows.push(optionButton($, Button, d, o, i, k))
       if (unfolded && o.pros) rows.push(Text({ key: 'pros-' + d.id + '-' + i, dimColor: true, wrap: 'wrap', children: ['     ↳ ' + o.pros] }))
     })
-    const k = nextLetter()
-    letters.push(k)
-    rows.push(otherButton($, Button, d, opts.length, k))
+    if (!sending.has(d.id)) {
+      const k = nextLetter()
+      letters.push(k)
+      rows.push(otherButton($, Button, d, opts.length, k))
+    }
     body.push(Box({ key: 'qb-' + d.id, flexDirection: 'column', paddingLeft: 3, children: rows }))
     if (qi < list.length - 1) body.push(Text({ key: 'qs-' + d.id, children: [' '] }))
   })

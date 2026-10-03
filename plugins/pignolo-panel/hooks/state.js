@@ -8,6 +8,13 @@ export const STAGE_LABEL = { plan: 'plan', execution: 'ejecución', review: 'rev
 export const MARK = { done: '●', current: '◐', todo: '○', waiting: '⚑' }
 
 const str = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v))
+// Una sola linea: saltos de linea y separadores Unicode pasan a espacio (igual que `sanitize` del nucleo).
+// Los caracteres de control que quedan se dibujan como `?` (el motor se niega a dibujarlos) y marcan la linea como invalida.
+export const oneLine = (v) => str(v).replace(/[\r\n\t\p{Zl}\p{Zp}]+/gu, ' ').replace(/\p{Cc}/gu, '?').replace(/\s{2,}/g, ' ').trim()
+// Caracteres de control (salvo los saltos, que oneLine aplana) o pasado del tope: no se envia como palabras del usuario.
+export const QUESTION_MAX = 300
+export const OPTION_MAX = 80
+const badLine = (v, max) => /\p{Cc}/u.test(str(v).replace(/[\r\n\t]/g, ' ')) || str(v).length > max
 const arr = (v) => (Array.isArray(v) ? v : [])
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null)
 
@@ -34,8 +41,15 @@ export function readState(raw) {
     .filter((d) => obj(d) && str(d.id) && str(d.question))
     .map((d) => ({
       id: str(d.id),
-      question: str(d.question),
-      options: arr(d.options).map((o) => (obj(o) ? { label: str(o.label), pros: str(o.pros_contras) } : { label: str(o), pros: '' })).filter((o) => o.label).slice(0, 4),
+      // Lo que se muestra es lo que se envia: una sola linea (los saltos pasan a espacio). Lo que ademas trae caracteres de
+      // control o pasa del tope no se envia (RP-03): `bad` en la decision y en cada opcion.
+      question: oneLine(d.question),
+      bad: badLine(d.question, QUESTION_MAX),
+      options: arr(d.options)
+        .map((o) => (obj(o) ? { raw: str(o.label), pros: str(o.pros_contras) } : { raw: str(o), pros: '' }))
+        .filter((o) => o.raw)
+        .slice(0, 4)
+        .map((o) => ({ label: oneLine(o.raw), pros: o.pros, bad: badLine(o.raw, OPTION_MAX) })),
       recommended: str(d.recommended),
       context: str(d.context),
       kind: d.kind === 'budget' ? 'budget' : 'user',
@@ -99,6 +113,11 @@ export function answerPrefix(d) {
 }
 export function answerText(d, option) {
   return answerPrefix(d) + option + '.'
+}
+// `true` si ESTA respuesta no puede enviarse: la pregunta o la opcion traen caracteres de control o pasan del tope.
+export function answerInvalid(d, option) {
+  const o = d.options.find((x) => x.label === option)
+  return Boolean(d.bad) || !o || Boolean(o.bad)
 }
 
 // Color de tema con respaldo: si el tema expone sus claves y no trae `key`, usa `fallback`.
