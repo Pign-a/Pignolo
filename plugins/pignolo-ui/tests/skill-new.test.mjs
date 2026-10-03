@@ -161,3 +161,34 @@ test('comments (D-4c-5, A4C-11): the main thread reads with ArtifactComments act
   }
   assert.ok(!/aplic[aá] los comentarios/i.test(text));
 });
+
+// ---- hito 4i, T2: drop what was not chosen, refine on the canvas, go on with another screen ----
+
+test('new: after the choice the canvas drops the unchosen options before refining, and approve.mjs save comes after the last refinement', () => {
+  const text = readReference('present-and-choose.md');
+  indexOrder(text, ['Drop the options not chosen', 'Refine', 'approve.mjs" save']);
+  assert.ok(text.includes('build ... --options <X>'), 'the build is redone with the chosen letter');
+  assert.ok(text.includes('combined option if any, drop, refine'), 'the order of R-4i-4');
+  assert.ok(text.includes('Step 5 runs after the last round'), 'what is approved is the final state');
+});
+
+test('present-and-choose: a change after the choice is applied to the chosen option and republished, never only to the local copy', () => {
+  const text = readReference('present-and-choose.md');
+  for (const lit of ['option-<X>', 'never only to the local copy', 'No fixed number of rounds', 'one line offers to finish', 'options-check', 'leak-check']) assert.ok(text.includes(lit), lit);
+  assert.ok(!/at most (three|3) rounds|tope de 3/i.test(text), 'no fixed cap of rounds (D-4i-Q3)');
+});
+
+test('present-and-choose: the text says that what the user moved or added is not touched and that an edited artboard asks (regression of stage 2)', () => {
+  const text = readReference('present-and-choose.md');
+  for (const lit of ['never removes or changes what the user did', 'artboard-edited-by-hand', 'what the user moved or added stays', 'saqué del lienzo']) assert.ok(text.includes(lit), lit);
+  const drop = text.slice(text.indexOf('4c. **Drop'), text.indexOf('4d. **Refine'));
+  assert.ok(drop.includes('artboard-edited-by-hand') && drop.includes('ask'), 'an artboard edited by hand asks before it is removed');
+});
+
+test('new: a Next screen step asks with AskUserQuestion and a yes opens a new run in the same canvas', () => {
+  const { text } = readSkill('new');
+  indexOrder(text, ['**Report.**', 'Next screen']);
+  const step = text.slice(text.indexOf('Next screen'));
+  for (const lit of ['AskUserQuestion', 'same canvas', 'run.mjs" init', 'PRODUCT.md', 'recommended first']) assert.ok(step.includes(lit), lit);
+  assert.ok(text.includes('refinement rounds') && /no fixed (cap|number)/.test(text), 'refinement rounds are apart from the one round of mockups');
+});
