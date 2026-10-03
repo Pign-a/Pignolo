@@ -6,7 +6,8 @@ _Última actualización: 2026-10-02._ Leer esto primero al retomar. Es corto a p
 
 - **En `main` y en GitHub (`071892e`):** núcleo **0.15.0** (guardia sin confirmar push ni merge, `subagent-main` con R6; skills en lenguaje natural con confirmación por `AskUserQuestion`) y pignolo-ui **0.10.0** (4h definición inicial, etapa 2 del lienzo 0.8.0, 4i todo en el lienzo 0.9.0, lenguaje natural 0.10.0). Prueba de activación: `tests/evals/RESULTS-activacion.md`.
 - **Ramas sin unir:** `core/init-rapido` (falta revisión opus; su versión 0.15.0 choca y pasa a la siguiente libre), `ui/hito-4e-chequeos` (falta revisión opus), `plan/guardia-sin-tropiezos` (falta auditoría previa).
-- **Prototipo fuera de git:** `local/pignolo-panel/`, mod de Claude Code (≥ 2.1.287) con banda, panel `/pignolo-panel` (agentes, plan, costo) y fila del agente; validado y con 10 tests; falta que el autor lo vea en su terminal.
+- **Panel (rama `feat/panel`, sobre el plan `docs/plans/2026-10-03-panel-de-pignolo.md`):** ejecutado en serie (T1 a T7), falta la revisión opus (`prompt.submit` y `UserPromptSubmit` van con revisión propia), una pasada de arreglos, la suite completa una vez y unir. Núcleo **0.18.0** y plugin `pignolo-panel` **0.1.0**; si cambia el orden de unión de las ramas de la guardia (0.16.x y 0.17.0), solo se renumera 0.18.0.
+- **Prototipo fuera de git (ya llevado al repo como `plugins/pignolo-panel/`):** `local/pignolo-panel/`, mod de Claude Code (≥ 2.1.287) con banda, panel `/pignolo-panel` (agentes, plan, costo) y fila del agente; validado y con 10 tests; falta que el autor lo vea en su terminal.
 - **Propuesto, sin OK del autor:** mensajes de la guardia en lenguaje llano para el usuario (`deny` en JSON con `systemMessage` corto y el detalle técnico solo para Claude).
 - **Decisiones abiertas del autor:** clave `brief` en el núcleo; si `entry` deriva la UI antes o después del piso de riesgo (gap de P-1); `test-paths` por defecto; G44.
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.18.0 — sin publicar
+
+Panel de pignolo (decisión del autor, 2026-10-03). Sobre 0.15.0 de `main`. Las ramas de la guardia en curso usan 0.16.x y 0.17.0: si cambia el orden de unión, solo se renumera esta versión.
+
+- **Registro de estado del panel** (`lib/panel-state.js`, `scripts/panel.js`): `<main>/.pignolo/panel-state.json`, formato `pignolo-panel-state/1` (UTF-8 sin BOM, LF, máximo 64 KB). Lo escribe pignolo (escritura atómica con archivo temporal y `rename`, lock `O_EXCL` con reintento de 2 s y toma de uno de 10 s, rechazo de un `.pignolo` que apunte afuera del proyecto) y lo lee el plugin opcional `pignolo-panel`. `refresh` recalcula plan, ramas, tarjetas y siguiente paso desde lo que pignolo ya guarda (planes, `run.json`, cola, ledger de revisión, sellos de la suite, refs de git); los eventos solo suman decisiones, evidencia rojo/verde y tope de gasto. Verbos de `panel.js`: `show [--json|--text]`, `refresh`, `ask`, `answer`, `postpone`, `reopen`, `evidence`, `budget`. Un fallo del registro nunca cambia el código de salida del comando que lo llamó. Se suma `panel-state.json` a `.pignolo/.gitignore` (también en proyectos anteriores: el registro lo agrega al escribir).
+- **Los scripts refrescan el registro al terminar** (`plan.js`, `run.js`, `queue.js`, `gate.js`, `sabotage.js`, `cleanup.js`, `ledger.js save`; los verbos de solo lectura no). `sabotage.js` anota la línea roja y `gate.js` la verde de la tarjeta de la tarea.
+- **Hook `UserPromptSubmit` `panel-answer`:** marca como respondida una decisión cuando el prompt cumple `Respuesta a la decisión Q-<n> ("<pregunta>"): <opción>.`. Falla abierto (nunca niega ni reescribe el prompt, siempre sale 0; el launcher lo suma a los hooks que no bloquean). `hooks.json` conserva todos los hooks de la guardia y no lleva `modules`.
+- **`lib/next-steps.js`:** las reglas del siguiente paso en un solo lugar (decisión, unir, revisar, push, tarjeta, cerrar la sesión). No sugiere si algo corre, si hay algo que mirar, si hay dos candidatos en el mismo nivel o si el único paso cuesta plata sin OK. `scripts/next.js` suma `suggest` al JSON (el resto queda igual).
+- **Decisiones pospuestas:** `close-session.js panel` las vuelve a abrir y la skill las lista al usuario (paso 2a). La skill `status` suma el estado del panel en texto (`panel.js show --text`); `entry` trata un mensaje `Respuesta a la decisión Q-<n>` como cita literal del usuario.
+- **Aviso de tope de gasto:** al llegar al 80 % del tope aprobado de un hito (`panel.js budget`) aparece una decisión, una vez por hito.
+- Tests: `tests/panel-state.test.js`, `panel-script.test.js`, `panel-writers.test.js`, `panel-answer-hook.test.js`, `panel-decisions.test.js`, `next-steps.test.js`, `panel-plugin-layout.test.js`, `panel-trust.test.js`, `panel-plugin-cli.test.js` y `changelog-versions.test.js`.
+
 ## 0.15.0 — sin publicar
 
 Lenguaje natural (decisión del autor, 2026-10-03). Sobre 0.14.1 de `main`. Otra rama sin unir (`core/init-rapido`) también dice 0.15.0 y se renumera al unirse.
