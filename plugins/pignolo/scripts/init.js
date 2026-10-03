@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { mainRoot, projectRoot } = require('../lib/disabled');
+const { panelDo } = require('../lib/panel-hook');
 const { gitRun, isRepo } = require('../lib/git');
 const { projectState } = require('../lib/project');
 const { readProjectConfig } = require('../lib/project-config');
@@ -474,6 +475,8 @@ function main(argv, env = process.env) {
   if (o.verb === 'choices') return { body: choicesOf({ cwd, env, file: o.file, isPublic: o.public === undefined ? undefined : o.public === 'yes' }), code: 0 };
   if (o.verb === 'verify') {
     const body = verify({ cwd, env });
+    // Un proyecto con project.md y sin registro (init corrió a mitad de sesión): se genera ahora; el panel no espera al próximo arranque.
+    panelDo(cwd, (panel, root) => { if (!fs.existsSync(panel.fileOf(root))) panel.refresh(root); });
     if (body.ok) return { body, code: 0 };
     return { body: { ...body, kind: 'invalid-config' }, code: 1, alt: 'corregí .pignolo/project.md según `configError` (o restaurá el respaldo de PIGNOLO_HOME/init-backup) y repetí verify' };
   }
@@ -493,7 +496,10 @@ function main(argv, env = process.env) {
       return { body: { ok: false, kind: 'stale-preview', refused: 'stale-preview', reason: 'el plan o el repo cambiaron desde el preview: no se escribió nada' }, code: 1, alt: 'volvé a correr `init.js preview`, mostrale el resultado nuevo al humano y repetí apply con el stamp nuevo' };
     }
   }
-  return report(runSteps({ cwd, env, plan, dry: false }));
+  const applied = report(runSteps({ cwd, env, plan, dry: false }));
+  // project.md recién creado: el registro del panel se genera ya (solo si project.md existe; protegido: nunca cambia el resultado de apply).
+  panelDo(cwd, (panel, root) => panel.refresh(root));
+  return applied;
 }
 
 module.exports = { main, detect, verify, runSteps, STEP_IDS, BLANK_STEPS };

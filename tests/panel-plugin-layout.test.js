@@ -15,10 +15,10 @@ const modFiles = () => fs.readdirSync(path.join(PANEL, 'hooks')).filter((f) => f
 // El código sin comentarios de línea ni de bloque (las notas pueden nombrar lo que el mod NO hace).
 const code = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|\s)\/\/.*$/, '$1')).join('\n');
 
-test('layout: plugin.json has name, version 0.3.0 and no settings hooks', () => {
+test('layout: plugin.json has name, version 0.3.1 and no settings hooks', () => {
   const pj = json(path.join(PANEL, '.claude-plugin', 'plugin.json'));
   assert.strictEqual(pj.name, 'pignolo-panel');
-  assert.strictEqual(pj.version, '0.3.0');
+  assert.strictEqual(pj.version, '0.3.1');
   assert.strictEqual(pj.userConfig.uiRecommendations.default, true);
   assert.strictEqual(pj.userConfig.uiRecommendations.type, 'boolean');
   assert.strictEqual(pj.license, 'MIT');
@@ -58,7 +58,8 @@ test('layout: the mod reads panel-state.json and, for the UI tab, only the files
   const reg = code(read(path.join(PANEL, 'hooks', 'register.js')));
   const reads = [...reg.matchAll(/\$\.fs\.(?:read|exists)\(([^)]*)\)/g)].map((m) => m[1]);
   assert.ok(reads.length >= 2);
-  for (const r of reads) assert.match(r, /panel-state\.json|wizard-detect\.json|WIZARD_FILE|\.pignolo\/project\.md|\$\.plugin\.root \+ '\/sample\/panel-state\.json'|file|^p$|root \+ '\/' \+ name/, r);
+  // `dir + rel` es findUp: sus unicos llamadores pasan `/.pignolo/panel-state.json` y `/.pignolo/project.md`
+  for (const r of reads) assert.match(r, /panel-state\.json|wizard-detect\.json|WIZARD_FILE|\.pignolo\/project\.md|\$\.plugin\.root \+ '\/sample\/panel-state\.json'|file|^dir [+] rel$|^p$|root \+ '\/' \+ name/, r);
   assert.strictEqual((reg.match(/\$\.fs\.list\(/g) || []).length, 1, 'un solo lugar recorre carpetas');
   assert.match(reg, /function uiReader\(\$\) \{[\s\S]*?list: \(p\) => \$\.fs\.list\(p\)/);
 });

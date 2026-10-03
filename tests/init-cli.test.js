@@ -655,3 +655,32 @@ test('M-1: skeleton sin adapt aprobado no crea docs/specs al lado de doc/specs n
   assert.doesNotMatch(pm, /spec: docs\/specs\//);
   assert.ok((stepOf(ap, 'skeleton').notes || []).some((n) => /^spec: hay una carpeta existente/.test(n)));
 });
+
+test('apply leaves the panel registry written right after project.md exists (no waiting for the next SessionStart)', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  assert.equal(fs.existsSync(path.join(repo, '.pignolo', 'panel-state.json')), false);
+  const ap = cli(['apply', '--plan', fullPlan(repo, env), '--cwd', repo], { env });
+  assert.equal(ap.status, 0, ap.stderr);
+  assert.ok(fs.existsSync(path.join(repo, '.pignolo', 'project.md')));
+  const reg = JSON.parse(fs.readFileSync(path.join(repo, '.pignolo', 'panel-state.json'), 'utf8'));
+  assert.equal(reg.schema, 'pignolo-panel-state/1');
+});
+
+test('apply without project.md among the approved steps (and no project.md) writes no registry', () => {
+  const repo = nodeRepo();
+  const ap = cli(['apply', '--plan', planFile({ v: 1, approved: ['reflog'], answers: {}, proposal: {} }), '--cwd', repo]);
+  assert.equal(ap.status, 0, ap.stderr);
+  assert.equal(fs.existsSync(path.join(repo, '.pignolo', 'panel-state.json')), false);
+});
+
+test('verify writes the registry only when project.md exists and the registry is missing', () => {
+  const repo = nodeRepo();
+  const env = env0();
+  cli(['apply', '--plan', fullPlan(repo, env), '--cwd', repo], { env });
+  const file = path.join(repo, '.pignolo', 'panel-state.json');
+  fs.rmSync(file);
+  const v = cli(['verify', '--cwd', repo], { env });
+  assert.equal(v.status, 0, v.stderr);
+  assert.ok(fs.existsSync(file));
+});

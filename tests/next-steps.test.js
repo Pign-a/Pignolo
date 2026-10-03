@@ -41,8 +41,29 @@ test('next-steps rule review: a branch with commits and no review gives "revisá
 });
 
 test('next-steps rule push: main ahead of origin and nothing running gives "hacé push de main"', () => {
-  const r = nextStep(facts({ main: { ahead: 2 } }));
+  const r = nextStep(facts({ main: { ahead: 2, name: 'main' } }));
   assert.equal(r.main.prompt, 'hacé push de main');
+});
+
+test('next-steps rule push: names the real principal branch (master), never a fixed main', () => {
+  const r = nextStep(facts({ main: { ahead: 2, name: 'master', onMain: true, dirty: false, remote: true } }));
+  assert.equal(r.main.prompt, 'hacé push de master');
+  assert.equal(r.main.text, 'hacé push de master');
+  assert.equal(r.main.key, 'p:master');
+  assert.match(r.main.why, /master está adelantado a origin[/]master/);
+});
+
+test('next-steps rule push: no name known, uncommitted changes, no remote or not on the principal branch does not suggest push', () => {
+  const base = { ahead: 2, name: 'master', onMain: true, dirty: false, remote: true };
+  assert.equal(nextStep(facts({ main: { ahead: 2 } })).main, null);
+  assert.equal(nextStep(facts({ main: { ...base, dirty: true } })).main, null);
+  assert.equal(nextStep(facts({ main: { ...base, remote: false } })).main, null);
+  assert.equal(nextStep(facts({ main: { ...base, onMain: false } })).main, null);
+});
+
+test('next-steps rule merge: names the real principal branch when known', () => {
+  const r = nextStep(facts({ main: { ahead: 0, name: 'master' }, branches: [br({ review: 'APPROVE', suite: 'green' })] }));
+  assert.equal(r.main.prompt, 'uní feat/x a master');
 });
 
 test('next-steps rule push: unknown ahead does not suggest', () => {
@@ -80,7 +101,7 @@ test('next-steps does not suggest for a branch that waits for the user', () => {
 
 test('next-steps: attention kinds (task-blocked, queue-conflict, run-malformed, sabotage-pending, flow-expired-task, plan-unreadable) never become a suggestion', () => {
   for (const kind of ['task-blocked', 'queue-conflict', 'run-malformed', 'sabotage-pending', 'flow-expired-task', 'plan-unreadable']) {
-    const r = nextStep(facts({ attention: [kind], decisions: [dec()], main: { ahead: 3 } }));
+    const r = nextStep(facts({ attention: [kind], decisions: [dec()], main: { ahead: 3, name: 'main' } }));
     assert.deepEqual([r.main, r.none], [null, 'attention'], kind);
     assert.deepEqual(toRegistry(r), { none: 'attention' });
   }
@@ -98,7 +119,7 @@ test('next-steps rule close-session: not suggested while anything runs, or when 
   assert.equal(nextStep(facts({ decisions: post, busy: true })).none, 'busy');
   assert.equal(nextStep(facts({ decisions: post, cards: [card('T1')] })).main.rule, 'card');
   assert.equal(nextStep(facts({ decisions: post, branches: [br()] })).main.rule, 'review');
-  assert.equal(nextStep(facts({ decisions: post, main: { ahead: 1 } })).main.rule, 'push');
+  assert.equal(nextStep(facts({ decisions: post, main: { ahead: 1, name: 'main' } })).main.rule, 'push');
   assert.equal(nextStep(facts({ decisions: post, branches: [br({ costOk: { ok: false } })] })).none, 'cost');
 });
 
@@ -106,11 +127,11 @@ test('next-steps: the order is decision, merge, review, push, card and gives at 
   const r = nextStep(facts({
     decisions: [dec()],
     branches: [br({ review: 'APPROVE', suite: 'green', name: 'a' }), br({ name: 'b' })],
-    main: { ahead: 1 }, cards: [card('T1')],
+    main: { ahead: 1, name: 'main' }, cards: [card('T1')],
   }));
   assert.equal(r.main.rule, 'decision');
   assert.deepEqual(r.alternatives.map((a) => a.rule), ['merge', 'review']);
-  const r2 = nextStep(facts({ branches: [br({ review: 'APPROVE', suite: 'green', name: 'a' })], main: { ahead: 1 }, cards: [card('T1')] }));
+  const r2 = nextStep(facts({ branches: [br({ review: 'APPROVE', suite: 'green', name: 'a' })], main: { ahead: 1, name: 'main' }, cards: [card('T1')] }));
   assert.deepEqual([r2.main.rule, ...r2.alternatives.map((a) => a.rule)], ['merge', 'push', 'card']);
   const reg = toRegistry(r2);
   assert.equal(reg.rule, 'merge');

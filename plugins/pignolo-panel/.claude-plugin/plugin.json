@@ -1,6 +1,6 @@
 {
   "name": "pignolo-panel",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Panel visual para pignolo: siguiente paso, decisiones tuyas, ramas, costo, una pestaña UI con recomendaciones (con pignolo-ui) y un asistente de inicio para activar pignolo en un proyecto nuevo. Requiere Claude Code 2.1.287 o más nuevo.",
   "author": {
     "name": "Ignacio"
