@@ -308,7 +308,7 @@ async function sabotage({ cwd = process.cwd(), patchFile, level, timeoutMs = DEF
   if (prev.busy) throw new SabotageError(`otro sabotaje en curso (pid ${prev.busy.pid}, candado ${lockPath(gitdir)}); esperá a que termine.`);
 
   // 2. Árbol limpio.
-  if (statusPaths(root).length) throw new SabotageError('commiteá o guardá tus cambios (commit WIP) antes de sabotear: el sabotaje restaura desde HEAD.');
+  if (statusPaths(root).length) throw new SabotageError('commiteá o guardá tus cambios (commit WIP, solo código por ruta, sin git add -f) antes de sabotear: el sabotaje restaura desde HEAD.');
 
   // 3. Comando declarado en HEAD.
   const head = git(['rev-parse', '--verify', 'HEAD'], root);

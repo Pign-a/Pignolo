@@ -141,6 +141,8 @@ Comandos, frenos y la corrida abortada por el límite de sesión en [`tests/eval
 
 ## Guardia de shell
 
+Privacidad (núcleo 0.21.0): un subagente no puede forzar lo ignorado (`git add -f`) y un `git commit` con archivos privados de pignolo (`.pignolo-ui/`, `.pignolo/local/`, `leak-values.json`) se frena; si ya quedaron en tu historial, ver [docs/fuga-leak-values.md](docs/fuga-leak-values.md).
+
 Capa contra errores honestos, no frontera de seguridad (spec §1.9). Analiza cada comando de Bash (tokenizador propio) y de PowerShell (AST nativo, ~0,3 s por comando) sobre su argv literal:
 
 - **Conjunto catastrófico**, siempre activo (también con `PIGNOLO_DISABLED=1` y `/pignolo:off`): borrar o mover `.git`, `.claude`, `~/.pignolo`, `~` o la raíz del repo, o un comodín o variable en esos lugares (no se expanden globs: `rm *.log` en la raíz también se niega; en PowerShell, un borrado que recibe las rutas por el pipeline cuenta como comodín); escribir con Edit/Write en `.git/**`, `.claude/**` (salvo `.claude/worktrees/`), `.gitconfig`, `~/.pignolo/**`, `~/.claude/settings*.json` o `~/.claude/plugins/**`, y desde la shell en los mismos lugares salvo el `.claude/**` del proyecto. El resto de `~/.claude` (memoria, planes, `CLAUDE_JOB_DIR`, skills) no se protege.

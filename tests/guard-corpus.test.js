@@ -20,7 +20,7 @@ const MODE = 'bypassPermissions';
 test('must-block: every command is denied or asked, with its rule', () => {
   const bad = [];
   for (const c of load('must-block.json')) {
-    const v = evaluate(c.command, { shell: c.shell, mode: MODE, psTimeoutMs: PS_T });
+    const v = evaluate(c.command, { shell: c.shell, mode: MODE, psTimeoutMs: PS_T, subagent: c.subagent === true });
     if (v.decision !== c.expect || v.rule !== c.rule) bad.push(`${c.shell} ${JSON.stringify(c.command)} -> ${v.decision}/${v.rule}, esperado ${c.expect}/${c.rule}`);
   }
   assert.deepStrictEqual(bad, []);
@@ -29,7 +29,7 @@ test('must-block: every command is denied or asked, with its rule', () => {
 test('must-allow: every command is allowed in every mode', () => {
   const bad = [];
   for (const c of load('must-allow.json')) {
-    const v = evaluate(c.command, { shell: c.shell, mode: MODE, psTimeoutMs: PS_T });
+    const v = evaluate(c.command, { shell: c.shell, mode: MODE, psTimeoutMs: PS_T, subagent: c.subagent === true });
     if (v.decision !== 'allow') bad.push(`${c.shell} ${JSON.stringify(c.command)} -> ${v.decision}/${v.rule}`);
   }
   assert.deepStrictEqual(bad, []);

@@ -260,17 +260,17 @@ test('CLI plan: with git failed in leak-origins.json next to the values, plan is
 test('leak-values run without git on the PATH reports git failed and writes leak-origins.json that stops plan', () => {
   const r = makeRun();
   assert.equal(canvasIndex(BUILD_ARGS(r)).status, 0);
-  const out = path.join(makeTempDir(), 'leak-values.json');
   const env = { ...process.env };
   for (const k of Object.keys(env)) if (k.toLowerCase() === 'path') delete env[k];
   env.PATH = makeTempDir();
-  const lv = runScript('run.mjs', ['leak-values', '--project', r.project, '--out', out], { env });
+  env.PIGNOLO_HOME = makeTempDir();
+  const lv = runScript('run.mjs', ['leak-values', '--project', r.project, '--run', r.run], { env });
   assert.equal(lv.status, 0, lv.stderr);
   assert.equal(lv.json.origins.git, 'failed');
   assert.deepEqual(Object.keys(lv.json.origins).sort(), ['account-email', 'git', 'git-email', 'git-name', 'home', 'os-user']);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(out), 'leak-origins.json'), 'utf8')).git, 'failed');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(path.dirname(lv.json.out), 'leak-origins.json'), 'utf8')).git, 'failed');
   const kit = planKit(r, { values: LEAK_VALUES });
-  fs.copyFileSync(path.join(path.dirname(out), 'leak-origins.json'), path.join(kit.dir, 'leak-origins.json'));
+  fs.copyFileSync(path.join(path.dirname(lv.json.out), 'leak-origins.json'), path.join(kit.dir, 'leak-origins.json'));
   assert.equal(kit.plan().json.problems[0].code, 'no-leak-values');
 });
 

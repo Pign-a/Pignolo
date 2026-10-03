@@ -36,9 +36,9 @@ test('both agents exist and the plugin linter is green', () => {
   assert.deepEqual(lintPlugin(PLUGIN_ROOT), []);
 });
 
-test('the CHANGELOG has the entry of the current version, which is 0.10.0', () => {
+test('the CHANGELOG has the entry of the current version, which is 0.11.0', () => {
   const changelog = fs.readFileSync(path.join(PLUGIN_ROOT, 'CHANGELOG.md'), 'utf8');
-  assert.equal(manifest.version, '0.10.0');
+  assert.equal(manifest.version, '0.11.0');
   assert.match(changelog, new RegExp(`^## ${manifest.version.replace(/\./g, '\\.')} `, 'm'));
 });
 

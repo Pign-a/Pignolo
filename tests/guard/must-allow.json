@@ -450,5 +450,76 @@
  {
   "shell": "bash",
   "command": "node -e \"// execSync('git status') en un comentario\nconsole.log(1)\""
+ },
+ {
+  "shell": "bash",
+  "command": "git restore --staged .pignolo-ui/runs"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git restore --staged .pignolo-ui/runs"
+ },
+ {
+  "shell": "bash",
+  "command": "git rm --cached -r .pignolo-ui/runs"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git rm --cached -r .pignolo-ui/runs"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset -- .pignolo-ui/runs"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git reset -- .pignolo-ui/runs"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset HEAD -- leak-values.json"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git reset HEAD -- leak-values.json"
+ },
+ {
+  "shell": "bash",
+  "command": "git add src/a.js"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add src/a.js"
+ },
+ {
+  "shell": "bash",
+  "command": "git add -n -f .pignolo-ui"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add -n -f .pignolo-ui"
+ },
+ {
+  "shell": "bash",
+  "command": "git add -f --dry-run .pignolo-ui"
+ },
+ {
+  "shell": "bash",
+  "subagent": true,
+  "command": "git add -f --dry-run .pignolo-ui"
+ },
+ {
+  "shell": "bash",
+  "command": "git reset --soft HEAD~1"
+ },
+ {
+  "shell": "bash",
+  "command": "git add -f .env.example"
  }
 ]
