@@ -16,6 +16,9 @@ const SEVERITIES = ['bloquea', 'alto', 'medio', 'detalle']
 const COMMANDS = ['new', 'improve', 'audit']
 const RUN = /^(\d{4}-\d{2}-\d{2})-\d{4}-(new|improve|audit)-([a-z0-9][a-z0-9-]*)$/
 const RULE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,23}$/
+// Misma marca que la compuerta 4h (plugins/pignolo-ui/reference/foundation.md, paso 1) y que lib/design-patch.mjs:240: un DESIGN.md
+// propuesto desde el código la lleva siempre hasta que el usuario lo decide. Sin la bandera `i`, igual que allá.
+const EXTRACTED_MARK = /extraídos, no decididos|extracted, not decided/
 const HEADING = /^##\s+(.*?)\s*#*\s*$/
 
 // Nombre seguro: solo [a-z0-9._-], hasta `max` caracteres; sin puntos, guiones ni guiones bajos al comienzo.
@@ -110,7 +113,10 @@ export async function readUiInput(fsx, root) {
       input.product = { exists: true, undecided: undecidedSections(await readText(fsx, `${root}/${prod.name}`)) }
     }
     const des = find(top, 'file', /^design\.md$/i)
-    if (des) input.design = { exists: true, decided: (await readText(fsx, `${root}/${des.name}`)).trim().length > 0 }
+    if (des) {
+      const text = await readText(fsx, `${root}/${des.name}`)
+      input.design = { exists: true, decided: text.trim().length > 0 && !EXTRACTED_MARK.test(text) }
+    }
 
     const screens = new Map()
     // 1) pantallas aprobadas: design/approved/<flujo>/<pantalla>.html
@@ -181,3 +187,7 @@ export async function hashInput(input) {
 }
 
 export const knownScreen = (input, name) => input.screens.some((s) => s.name === name)
+
+// Pantallas que pignolo-ui ya nombró en sus corridas y todavía no tienen versión aprobada: los únicos objetivos que `new` admite
+// en una recomendación (el modelo no inventa nombres).
+export const pendingScreen = (input, name) => input.screens.some((s) => s.name === name && !s.flow)
