@@ -23,7 +23,9 @@ function commitAll(repo) {
 const TABLE = [
   ['recién git init', () => {}, { blank: true, reason: 'empty' }],
   ['README + .gitignore + .claude/settings.local.json', (d) => { write(d, 'README.md'); write(d, '.gitignore'); write(d, '.claude/settings.local.json', '{}'); }, { blank: true, reason: 'only-plain-docs' }],
-  ['solo archivos ocultos', (d) => { write(d, '.gitignore'); write(d, '.github/workflows/ci.yml'); }, { blank: true, reason: 'empty' }],
+  ['solo archivos ocultos', (d) => { write(d, '.gitignore'); write(d, '.claude/settings.local.json', '{}'); write(d, '.gitattributes'); }, { blank: true, reason: 'empty' }],
+  ['un archivo oculto desconocido (.github/workflows/ci.yml) no es blanco', (d) => { write(d, '.gitignore'); write(d, '.github/workflows/ci.yml'); }, { blank: false, reason: 'has-files', first: '.github' }],
+  ['.GIT y .Claude con otra capitalización', (d) => { write(d, '.Claude/settings.json', '{}'); write(d, '.GitIgnore'); }, { blank: true, reason: 'empty' }],
   ['un .js', (d) => { write(d, 'index.js'); }, { blank: false, reason: 'has-files', first: 'index.js' }],
   ['un package.json', (d) => { write(d, 'package.json', '{}'); }, { blank: false, reason: 'has-files', first: 'package.json' }],
   ['un package.json ilegible', (d) => { write(d, 'package.json', '{no'); }, { blank: false, reason: 'has-files', first: 'package.json' }],

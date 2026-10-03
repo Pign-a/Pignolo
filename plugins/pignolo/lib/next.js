@@ -11,7 +11,7 @@ const { readCounter } = require('./handback-counter');
 const { recoverAll } = require('./sabotage');
 const ps = require('./plan-state');
 const { gitRun } = require('./git');
-const { blankProject } = require('./init-blank');
+const { hasCodeOrManifest } = require('./init-blank');
 
 const STAGE_ACTION = {
   spec: 'escribir la lista de afirmaciones clave',
@@ -119,7 +119,7 @@ function blankInitReady(main) {
   try {
     if (!fs.existsSync(path.join(main, '.pignolo', 'tmp', 'init-blank.json'))) return false;
     if (fs.existsSync(path.join(main, '.pignolo', 'project.md'))) return false;
-    return blankProject({ root: main }).blank === false;
+    return hasCodeOrManifest({ root: main });
   } catch (_) { return false; }
 }
 
