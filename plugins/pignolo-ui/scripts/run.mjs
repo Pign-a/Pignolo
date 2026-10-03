@@ -11,7 +11,8 @@
 //   run.mjs no-publish --run <run>
 //   run.mjs norms --run <run> [--norms <norms.md>]
 //   run.mjs check --project <repo> --run <run> [--files <a,b>] [--design <DESIGN.md>] [--base <ref>] [--url <local URL>] [--before <ui-check.json>]
-//   run.mjs leak-values --project <repo> --out <file> [--email <mail>]
+//   run.mjs leak-values --project <repo> --run <run> [--email <mail>]   (writes OUTSIDE the project; `out` is the values file)
+//   run.mjs leak-migrate --project <repo> [--delete]   (old leak files under .pignolo-ui/runs: lists, never prints contents)
 //   run.mjs git-state --project <repo> --out <file>
 //   run.mjs options-check --project <repo> --run <run> --option <A|B|C> [--kind option|direction] --expected <a.html,b.html> --git-before <file> [--destination canvas|local] [--provided-file <json list>]
 //   run.mjs discard --run <run> --option <A|B|C> [--kind option|direction]
@@ -38,6 +39,7 @@ import { loadNorms, extract, judgmentIds } from '../lib/norms.mjs';
 import { loadCatalog } from '../lib/catalog.mjs';
 import { loadSymptoms, mergeUserSymptoms, buildMenu, matchWords } from '../lib/symptoms.mjs';
 import { collectLeakValues, collectLeakOrigins } from '../lib/leak-values.mjs';
+import { writeLeakFiles, findLegacyLeakFiles } from '../lib/leak-store.mjs';
 import { optionModel } from '../lib/option-model.mjs';
 import { readValuesFile } from '../lib/leak-check.mjs';
 import { gitState, checkOption } from '../lib/option-check.mjs';
@@ -50,11 +52,14 @@ import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
 import crypto from 'node:crypto';
 import { isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { portable } from '../lib/portable.mjs';
 import { isLink, linkProblem, runLinkProblem } from '../lib/link-guard.mjs';
 import { buildCompareHtml, openFile } from '../lib/compare-html.mjs';
 import { writeLocalCopies, LocalCopyError } from '../lib/local-copy.mjs';
 
 class UsageError extends Error {}
+
+const LEAK_NOTE = 'Estos valores son datos personales: viven fuera del proyecto; nunca los agregues a git (ni con git add -f).';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const LETTER = /^[A-Z]$/;
@@ -290,17 +295,42 @@ const COMMANDS = {
   },
 
   'leak-values': {
-    spec: { value: ['project', 'out', 'email'] },
+    spec: { value: ['project', 'run', 'out', 'email'] },
     run(opts, { cwd }) {
       const project = projectDir(cwd, opts);
-      need(opts, 'out');
+      if (opts.out !== undefined) throw new UsageError('--out ya no existe: los valores se guardan fuera del proyecto (--run)');
+      need(opts, 'run');
       const values = collectLeakValues({ project, email: opts.email });
-      const out = path.resolve(cwd, opts.out);
-      fs.writeFileSync(out, `${JSON.stringify(values)}\n`);
-      // canvas-index plan reads this file (next to the values) to refuse when git did not run
+      // canvas-index plan reads leak-origins.json (next to the values) to refuse when git did not run; it holds only booleans and the git state
       const origins = collectLeakOrigins({ project, email: opts.email });
-      fs.writeFileSync(path.join(path.dirname(out), 'leak-origins.json'), `${JSON.stringify(origins)}\n`);
-      return { out: { out, count: values.length, origins }, code: 0 };
+      let written;
+      try { written = writeLeakFiles({ project, run: opts.run, values, origins }); } catch (e) {
+        if (/^leak-store:/.test(e.message)) throw new UsageError(e.message);
+        throw e;
+      }
+      process.stderr.write(`${LEAK_NOTE}\n`);
+      return { out: { out: written.valuesFile, count: values.length, origins, legacy: findLegacyLeakFiles(project).length, note: LEAK_NOTE }, code: 0 };
+    },
+  },
+
+  'leak-migrate': {
+    spec: { value: ['project'], flags: ['delete'] },
+    run(opts, { cwd }) {
+      const project = projectDir(cwd, opts);
+      const found = findLegacyLeakFiles(project);
+      let tracked = [];
+      if (found.length) {
+        const ls = spawnSync('git', ['ls-files', '-z', '--', ...found], { cwd: project, encoding: 'utf8', timeout: 30000, windowsHide: true });
+        if (ls.status === 0) tracked = ls.stdout.split('\0').filter(Boolean).sort();
+      }
+      const deleted = [];
+      if (opts.delete === true) {
+        for (const rel of found) {
+          try { fs.rmSync(path.join(project, ...rel.split('/'))); deleted.push(rel); } catch { /* left in place */ }
+        }
+        if (tracked.length) process.stderr.write('Hay archivos con valores personales en el índice de git: sacalos del índice y revisá el historial, ver docs/fuga-leak-values.md. Esto no toca el índice ni el historial.\n');
+      }
+      return { out: { found, tracked, deleted }, code: 0 };
     },
   },
 
@@ -417,7 +447,7 @@ const COMMANDS = {
       info.product = product.status === 'ok' ? 'product.md' : null;
       if (opts.brief !== undefined) info.brief = 'brief.md';
       else if (!('brief' in info)) info.brief = null;
-      fs.writeFileSync(runFile, `${JSON.stringify(info, null, 2)}\n`);
+      fs.writeFileSync(runFile, `${JSON.stringify(portable(info, project), null, 2)}\n`);
       return { out: { product, brief, text: [productText, briefText].filter(Boolean).join('\n\n'), line }, code: 0 };
     },
   },

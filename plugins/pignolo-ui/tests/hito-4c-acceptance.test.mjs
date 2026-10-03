@@ -30,7 +30,7 @@ function flow({ options = ['A', 'B', 'C'] } = {}) {
   const seen = (res) => { out.push(res.stdout); return res; };
   const k = {
     r, data, out,
-    values: path.join(r.run, 'leak-values.json'),
+    values: null,
     types: path.join(r.run, 'types.json'),
     gate: (extra = []) => seen(run(['publish-gate', '--data', data, '--project', r.project, '--presentation', 'auto', '--run', r.run, ...extra])),
     present: (extra = []) => seen(run(['present', '--data', data, '--project', r.project, '--presentation', 'auto', '--kind', 'option', '--artifact', 'yes', '--design-type', 'yes', '--run', r.run, ...extra])),
@@ -39,7 +39,7 @@ function flow({ options = ['A', 'B', 'C'] } = {}) {
       assert.equal(run(['git-state', '--project', r.project, '--out', before]).status, 0);
       return seen(run(['options-check', '--project', r.project, '--run', r.run, '--option', letter, '--destination', destination, '--expected', SCREENS.join(','), '--git-before', before]));
     },
-    leakValues: () => seen(run(['leak-values', '--project', r.project, '--out', k.values, '--email', 'cuenta@ejemplo.test'])),
+    leakValues: () => { const res = seen(run(['leak-values', '--project', r.project, '--run', r.run, '--email', 'cuenta@ejemplo.test'])); if (res.json) k.values = res.json.out; return res; },
     build: (extra = {}) => seen(canvasIndex(BUILD_ARGS(r, { options: options.join(','), platform: 'both', ...extra }))),
     verify: () => seen(canvasIndex(['verify', '--run', r.run])),
     plan: () => seen(canvasIndex(['plan', '--project', r.project, '--run', r.run, '--values-file', k.values, '--types-file', k.types, '--data', data])),

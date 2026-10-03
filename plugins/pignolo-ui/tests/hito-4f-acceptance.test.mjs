@@ -36,8 +36,9 @@ function flow(withProduct) {
   const init = run(['init', '--project', project, '--command', 'new', '--slug', 'cuenta', '--now', '2026-10-01T10:00:00Z']);
   assert.equal(init.status, 0, init.stderr);
   const runDir = init.json.run;
-  const values = path.join(runDir, 'leak-values.json');
-  assert.equal(run(['leak-values', '--project', project, '--out', values]).status, 0);
+  const lv = run(['leak-values', '--project', project, '--run', runDir]);
+  assert.equal(lv.status, 0, lv.stderr);
+  const values = lv.json.out;
 
   // context, then the brief of the screen
   const brief = writeBrief(runDir, 'brief.md');

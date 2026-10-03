@@ -37,7 +37,7 @@ test('initRun leaves the repo clean, writes run.json, and keeps .gitignore even 
   assert.equal(info.command, 'audit');
   assert.equal(info.design, null);
   assert.equal(info.url, 'http://localhost:3000');
-  assert.equal(path.resolve(info.project), path.resolve(repo));
+  assert.equal(info.project, '.');
   assert.equal(runId, '2026-09-30-1405-audit-inicio');
   assert.deepEqual(pruned, []);
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: repo, encoding: 'utf8' }), '');

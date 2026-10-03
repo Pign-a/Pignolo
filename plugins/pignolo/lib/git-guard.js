@@ -32,14 +32,15 @@ const RULES = {
   'protected-path': ['catastrophic', 'nadie escribe en .git, .claude (salvo .claude/worktrees), .gitconfig, ~/.pignolo, ~/.claude/settings*.json ni ~/.claude/plugins', 'usá comandos git; lo que haya que cambiar ahí lo hace el humano'],
   // deny
   'invalid-input': ['deny', 'el comando llegó vacío o no es texto', 'reenviá el comando completo'],
-  stash: ['deny', 'git stash sin etiqueta: el stash se comparte entre worktrees y se pierde trabajo', 'commiteá el trabajo (commit WIP) o usá `git stash push -m "<etiqueta>"` y aplicalo por SHA'],
-  'checkout-path': ['deny', 'git checkout con ruta sobrescribe cambios sin commitear', 'para ver otra versión usá `git show <ref>:<ruta>`; para descartar, commiteá primero'],
-  'checkout-force': ['deny', 'git checkout -f descarta cambios sin commitear', 'commiteá o respaldá y cambiá de rama sin -f'],
-  'switch-force': ['deny', 'git switch -f / --discard-changes descarta cambios sin commitear', 'commiteá o respaldá y cambiá de rama sin forzar'],
-  restore: ['deny', 'git restore sobre el árbol descarta cambios sin commitear', 'usá `git restore --staged <ruta>` para sacar del índice, o commiteá antes'],
-  'reset-hard': ['deny', 'git reset --hard / --merge descarta cambios sin commitear', 'usá `git reset --soft` o `git revert`; si hace falta, commiteá WIP antes'],
+  stash: ['deny', 'git stash sin etiqueta: el stash se comparte entre worktrees y se pierde trabajo', 'commiteá el trabajo (commit WIP, solo código por ruta, sin git add -f) o usá `git stash push -m "<etiqueta>"` y aplicalo por SHA'],
+  'checkout-path': ['deny', 'git checkout con ruta sobrescribe cambios sin commitear', 'para ver otra versión usá `git show <ref>:<ruta>`; para descartar, commiteá primero (solo código, por ruta, sin git add -f)'],
+  'checkout-force': ['deny', 'git checkout -f descarta cambios sin commitear', 'commiteá (solo código, por ruta, sin git add -f) o respaldá y cambiá de rama sin -f'],
+  'switch-force': ['deny', 'git switch -f / --discard-changes descarta cambios sin commitear', 'commiteá (solo código, por ruta, sin git add -f) o respaldá y cambiá de rama sin forzar'],
+  restore: ['deny', 'git restore sobre el árbol descarta cambios sin commitear', 'usá `git restore --staged <ruta>` para sacar del índice, o commiteá antes (solo código, por ruta, sin git add -f)'],
+  'reset-hard': ['deny', 'git reset --hard / --merge descarta cambios sin commitear', 'usá `git reset --soft` o `git revert`; si hace falta, commiteá WIP antes (solo código, por ruta, sin git add -f)'],
   clean: ['deny', 'git clean borra archivos sin seguimiento sin recuperación', 'revisá con `git clean -n` y borrá a mano lo que corresponda'],
-  'worktree-remove-force': ['deny', 'git worktree remove --force descarta cambios sin commitear del worktree', 'commiteá o respaldá el worktree y usá `git worktree remove` sin --force'],
+  'worktree-remove-force': ['deny', 'git worktree remove --force descarta cambios sin commitear del worktree', 'commiteá (solo código, por ruta, sin git add -f) o respaldá el worktree y usá `git worktree remove` sin --force'],
+  'add-force': ['deny', 'git add -f/--force (y update-index --add) agrega al índice archivos que el proyecto ignora a propósito (por ejemplo .pignolo-ui/ guarda datos personales del autor)', 'agregá solo código por ruta, sin git add -f; si querías resguardar trabajo, commiteá solo esas rutas de código, sin git add -f, y dejá lo ignorado fuera'],
   'no-verify': ['deny', '--no-verify / -n saltea los hooks del repo', 'arreglá lo que el hook rechaza; si hay que saltearlo, es decisión del humano'],
   'gc-prune': ['deny', 'git gc --prune / git prune eliminan objetos inalcanzables', 'no hace falta podar; si es imprescindible, lo decide el humano'],
   'reflog-expire': ['deny', 'expirar o borrar el reflog elimina la red de seguridad de commits', 'no se toca el reflog; es la última capa de recuperación'],
@@ -52,9 +53,9 @@ const RULES = {
   'git-env-config': ['deny', 'GIT_CONFIG_* o GIT_EXEC_PATH inyectan configuración que la guardia no ve', 'quitá esas variables del comando'],
   'pignolo-ref': ['deny', 'las refs refs/pignolo/* son los respaldos de pignolo', 'no se tocan; si sobran, lo decide el humano'],
   'update-ref-stdin': ['deny', 'git update-ref --stdin puede borrar o pisar cualquier ref, respaldos incluidos', 'usá `git branch` o `git tag`, o `git update-ref <ref> <valor>` de a una'],
-  'read-tree-update': ['deny', 'git read-tree -u reescribe el árbol de trabajo', 'usá `git show <ref>:<ruta>` o commiteá antes'],
-  'checkout-index-force': ['deny', 'git checkout-index -f sobrescribe archivos del árbol de trabajo', 'usá `git show <ref>:<ruta>` o commiteá antes'],
-  'rm-force': ['deny', 'git rm -f borra archivos con cambios sin commitear', 'usá `git rm --cached` o commiteá antes'],
+  'read-tree-update': ['deny', 'git read-tree -u reescribe el árbol de trabajo', 'usá `git show <ref>:<ruta>` o commiteá antes (solo código, por ruta, sin git add -f)'],
+  'checkout-index-force': ['deny', 'git checkout-index -f sobrescribe archivos del árbol de trabajo', 'usá `git show <ref>:<ruta>` o commiteá antes (solo código, por ruta, sin git add -f)'],
+  'rm-force': ['deny', 'git rm -f borra archivos con cambios sin commitear', 'usá `git rm --cached` o commiteá antes (solo código, por ruta, sin git add -f)'],
   'git-C': ['deny', 'con git -C / --git-dir / --work-tree la guardia no ve el otro directorio: `checkout <x>` puede ser un archivo', 'usá `cd <ruta> && git checkout <x>`'],
   'protected-flag': ['deny', 'los flags del interruptor solo los escribe /pignolo:off y /pignolo:on', 'pedile al humano que escriba /pignolo:off o /pignolo:on'],
   'pignolo-launcher': ['deny', 'el launcher de pignolo solo lo invocan los hooks (y /pignolo:status con session-start)', 'pedile al humano que use /pignolo:off, /pignolo:on o /pignolo:status'],
@@ -66,7 +67,7 @@ const RULES = {
   'pignolo-worktree-tools': ['deny', 'solo el hilo principal crea worktrees de tarea, etiqueta contratos y aplica la limpieza (worktree.js create|tag-contract, cleanup.js apply)', 'pedile al hilo principal que lo haga; podés leer con worktree.js list o cleanup.js report'],
   'pignolo-protected-refs': ['deny', 'int/*, queue/*, cp/* y contract/* solo las escriben la cola y el hilo principal (git switch/checkout, tag, branch, update-ref, push, fetch o commit/merge sobre esas ramas)', 'trabajá en la rama de tu tarea y pedí la integración al hilo principal'],
   'subagent-main': ['deny', 'un subagente no hace push ni merge sobre main/master: lo hace solo el hilo principal', 'terminá tu tarea y respondé (handback); el hilo principal hace el push o el merge'],
-  'snapshot-required': ['deny', 'este comando sobrescribe trabajo sin commitear y solo pasa con una instantánea previa; la instantánea falló', 'reintentá, o commiteá el trabajo como WIP antes'],
+  'snapshot-required': ['deny', 'este comando sobrescribe trabajo sin commitear y solo pasa con una instantánea previa; la instantánea falló', 'reintentá, o commiteá el trabajo como WIP antes (solo código, por ruta, sin git add -f)'],
   'sabotage-lock': ['deny', 'hay un sabotaje en curso o interrumpido en este worktree (candado pignolo-sabotage.json en su git-dir): el árbol puede tener el código saboteado y git commit / git add lo guardarían', `corré \`node "${path.join(__dirname, '..', 'scripts', 'sabotage.js').split(path.sep).join('/')}" --recover\``],
   // ask
   'push-delete': ['ask', 'pignolo pide confirmación: borrado de una rama remota'],
@@ -1591,6 +1592,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     sub = words[i].value;
   }
   if (!GIT_BUILTINS.has(sub)) { lost(); out.push(hit('unknown-git-subcommand')); done(); return; }
+  if (sub === 'stage') sub = 'add'; // git stage es un sinónimo de git add: mismas reglas
   const args = words.slice(name === 'git' ? i + 1 : 1); // la forma con guion (git-push) no tiene subcomando entre los operandos
   const o = parseOpts(args, SPECS[sub]);
   if (ctx.collect) {
@@ -1598,6 +1600,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
       sub, args: args.map((w) => w.value), positionals: o.positionals.map((w) => w.value),
       shorts: [...o.shorts], longs: [...o.longs],
       onMain: Boolean(st.onMain), cwdChanged: Boolean(st.moved || redirected),
+      dirs: redir.dirs.slice(), dirsUnknown: redir.unresolved, // los -C literales (en orden) y si hay otro directorio que no se pudo resolver
     });
   }
   // Con -C / --git-dir / --work-tree todo se evalúa con sus reglas; lo que depende
@@ -1625,12 +1628,21 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
   done();
 }
 
+// Un subagente no tiene razón para forzar lo ignorado (D7): add -f/--force y update-index --add/--cacheinfo. -n/--dry-run no agrega nada.
+function forcesIgnored(sub, o) {
+  if (sub === 'update-index') return longIs(o, 'add') || longIs(o, 'cacheinfo');
+  if (sub !== 'add') return false;
+  if (o.shorts.has('n') || longIs(o, 'dry-run')) return false;
+  return o.shorts.has('f') || longIs(o, 'force');
+}
+
 function gitRules(sub, o, args, ctx, st, realSt, redir, cfg = []) {
   const base = gitRulesBase(sub, o, args, ctx, st);
   if (!ctx.subagent) return base;
   const extra = [];
   if (protectsRefs(sub, o, realSt || st, redir)) extra.push('pignolo-protected-refs');
   if (touchesMain(sub, o, realSt || st, redir, cfg)) extra.push('subagent-main');
+  if (forcesIgnored(sub, o)) extra.push('add-force');
   return extra.length ? [...base, ...extra] : base;
 }
 

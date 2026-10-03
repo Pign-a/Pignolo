@@ -16,6 +16,8 @@ You are the orchestrator in the main conversation. `<main>` is the project root 
 - **Models.** Run `node "<P>/scripts/setup.js" models` once at the start and pass `model: <models[role]>` on every dispatch.
 - **Seed.** `gate.js` passes a random test-order seed to the tests (`PIGNOLO_TEST_SEED`) and prints it as `seedOffered`; the implementer reports the one of its final seal and the closing summary quotes it. A failure that goes away on a rerun is not fixed: rerun with `--seed <seedOffered>` of the failing seal; if it fails only with that seed, the tests depend on their order: ask the human (category `scope`) before merging, and never rerun until green.
 
+NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pignolo-ui/ and .pignolo/local/ hold the author's private data (leak-values.json has the user name, home folder and email) and are ignored on purpose. For a backup or WIP commit, commit only code paths by name and leave the ignored folders out.
+
 ## Steps
 
 1. **Open the flow.** `node "<P>/scripts/run.js" start --flow daily --cwd "<main>"`. Exit 1: stop and tell the human what the message says.

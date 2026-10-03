@@ -38,7 +38,7 @@ test('init creates the run under .pignolo-ui/runs, writes run.json and leaves th
   const info = JSON.parse(fs.readFileSync(path.join(r.json.run, 'run.json'), 'utf8'));
   assert.equal(info.url, 'http://localhost:3000');
   assert.deepEqual(info.files, ['a.html', 'b.html']);
-  assert.equal(path.resolve(info.project), path.resolve(project));
+  assert.equal(info.project, '.');
   assert.ok(r.json.run.replace(/\\/g, '/').includes('.pignolo-ui/runs/'));
   assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: project, encoding: 'utf8' }), '');
   const remote = run(['init', '--project', project, '--command', 'audit', '--slug', 'x', '--url', 'https://example.com']);
@@ -186,8 +186,8 @@ test('leak-values writes a list that leak-check accepts (round trip with the git
   const project = makeRepo();
   execFileSync('git', ['config', 'user.email', 'ana.ejemplo@example.test'], { cwd: project });
   execFileSync('git', ['config', 'user.name', 'Ana Ejemplo'], { cwd: project });
-  const values = path.join(makeTempDir(), 'values.json');
-  const r = run(['leak-values', '--project', project, '--out', values]);
+  const r = run(['leak-values', '--project', project, '--run', 'r1']);
+  const values = r.json?.out;
   assert.equal(r.status, 0, r.stderr);
   assert.ok(JSON.parse(fs.readFileSync(values, 'utf8')).includes('ana.ejemplo@example.test'));
   const dir = writeTree(makeTempDir(), { 'a.html': '<p>contacto ana.ejemplo@example.test</p>' });

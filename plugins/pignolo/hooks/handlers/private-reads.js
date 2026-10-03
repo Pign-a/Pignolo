@@ -91,6 +91,12 @@ function shellDenied(command, ps, { cwd, home, roots, store }) {
   return false;
 }
 
+// Valores personales de pignolo-ui (T1 del plan 2026-10-03-fuga-leak-values): solo en este hook, no en lib/holdout.js
+// (lo usan el guardado y el sello). Un subagente no los lee; el hilo principal sí.
+const extraPrivateRoots = (env) => [path.join(pignoloHome(env), 'ui-leaks')];
+const LEAK_MESSAGE = 'pignolo bloqueó la lectura: los valores personales de pignolo-ui (ui-leaks) no los lee un subagente. '
+  + 'Alternativa: usá el resultado de leak-check; si necesitás saber qué valor falló, pedíselo al hilo principal.\n';
+
 exports.run = (input, ctx = {}) => {
   if (!input.agent_id || input.agent_type === 'pignolo:validator') return { exit: 0 };
   const env = ctx.env || process.env;
@@ -99,11 +105,8 @@ exports.run = (input, ctx = {}) => {
   if (!state.active) return { exit: 0 };
 
   const home = userHomes(env)[0];
-  const roots = privateRoots(env).map((r) => resolveClean(r, cwd, home));
   const store = resolveClean(pignoloHome(env), cwd, home);
   const at = (p, base = cwd) => resolveClean(p, base, home);
-  const inside = (p) => roots.some((r) => isWithin(p, r));
-  const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
   const staging = input.agent_type === 'pignolo:test-writer' ? null : resolveClean(path.join(state.main, '.pignolo', 'tmp', 'holdout'), cwd, home);
   const staged = (p) => staging !== null && isWithin(p, staging);
   // Glob/Grep desde <main>/.pignolo o una carpeta suya que contiene la preparación (<main>/.pignolo/tmp):
@@ -113,17 +116,29 @@ exports.run = (input, ctx = {}) => {
   const ti = input.tool_input || {};
   const tool = String(input.tool_name || '');
 
-  let denied = false;
-  if (tool === 'Read') denied = typeof ti.file_path === 'string' && (inside(at(ti.file_path)) || staged(at(ti.file_path)));
-  else if (tool === 'Glob' || tool === 'Grep') {
-    const base = typeof ti.path === 'string' && ti.path ? at(ti.path) : cleanPath(cwd);
-    const pat = tool === 'Glob' ? ti.pattern : ti.glob;
-    const prefix = typeof pat === 'string' && pat !== '' ? at(staticPrefix(pat), base) : null;
-    denied = insideOrAbove(base) || staged(base) || stagedAbove(base)
-      || (prefix !== null && (insideOrAbove(prefix) || staged(prefix) || stagedAbove(prefix)));
-  } else if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string') {
-    denied = shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store })
-      || (staging !== null && stagingDenied(ti.command, { cwd, home, staging }));
-  }
-  return denied ? { exit: 2, stderr: MESSAGE } : { exit: 0 };
+  // ¿se niega con estas raíces privadas? (la preparación del holdout solo cuenta en la primera pasada)
+  const deniedWith = (rootList, withStaging) => {
+    const roots = rootList.map((r) => resolveClean(r, cwd, home));
+    const inside = (p) => roots.some((r) => isWithin(p, r));
+    const insideOrAbove = (p) => roots.some((r) => isWithin(p, r) || isWithin(r, p));
+    const st = (p) => withStaging && staged(p);
+    const stAbove = (p) => withStaging && stagedAbove(p);
+    if (tool === 'Read') return typeof ti.file_path === 'string' && (inside(at(ti.file_path)) || st(at(ti.file_path)));
+    if (tool === 'Glob' || tool === 'Grep') {
+      const base = typeof ti.path === 'string' && ti.path ? at(ti.path) : cleanPath(cwd);
+      const pat = tool === 'Glob' ? ti.pattern : ti.glob;
+      const prefix = typeof pat === 'string' && pat !== '' ? at(staticPrefix(pat), base) : null;
+      return insideOrAbove(base) || st(base) || stAbove(base)
+        || (prefix !== null && (insideOrAbove(prefix) || st(prefix) || stAbove(prefix)));
+    }
+    if ((tool === 'Bash' || tool === 'PowerShell') && typeof ti.command === 'string') {
+      return shellDenied(ti.command, tool === 'PowerShell', { cwd, home, roots, store })
+        || (withStaging && staging !== null && stagingDenied(ti.command, { cwd, home, staging }));
+    }
+    return false;
+  };
+
+  if (deniedWith(privateRoots(env), true)) return { exit: 2, stderr: MESSAGE };
+  if (deniedWith(extraPrivateRoots(env), false)) return { exit: 2, stderr: LEAK_MESSAGE };
+  return { exit: 0 };
 };

@@ -154,7 +154,7 @@ test('m-5: the "after" map.json lives in <run>/after and the repeated commands d
 });
 
 test('m-10: leak-values gets the account email and present-and-choose defines <flow> and <approved>', () => {
-  assert.match(readReference('options.md'), /leak-values --project <repo> --out <run>\/leak-values\.json --email /);
+  assert.match(readReference('options.md'), /leak-values --project <repo> --run <run> --email /);
   const pc = readReference('present-and-choose.md');
   assert.match(pc.split('\n').slice(0, 3).join('\n'), /`<flow>`[^\n]*`<approved>`/);
 });

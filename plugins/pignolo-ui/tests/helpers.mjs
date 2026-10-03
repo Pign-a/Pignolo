@@ -27,6 +27,8 @@ export function makeTempDir(prefix = 'pignolo-ui-test-') {
   return dir;
 }
 
+const TEST_HOME = makeTempDir('pignolo-ui-home-');
+
 // Writes a tree { 'a/b.css': 'text' } under dir and returns dir.
 export function writeTree(dir, tree) {
   for (const [rel, content] of Object.entries(tree)) {
@@ -38,11 +40,15 @@ export function writeTree(dir, tree) {
 }
 
 // Runs plugins/pignolo-ui/scripts/<script> with node and returns { status, stdout, stderr, json }.
+// Ningún test escribe en el ~/.pignolo real: sin PIGNOLO_HOME propio, el script corre con una carpeta temporal.
 export function runScript(script, args, opts = {}) {
+  const env = { ...(opts.env ?? process.env) };
+  if (!opts.env || !('PIGNOLO_HOME' in opts.env)) env.PIGNOLO_HOME = TEST_HOME;
   const res = spawnSync(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', script), ...args], {
     encoding: 'utf8',
     timeout: 30000,
     ...opts,
+    env,
   });
   let json = null;
   try { json = JSON.parse(res.stdout); } catch { /* not JSON */ }

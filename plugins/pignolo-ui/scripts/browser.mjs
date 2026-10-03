@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from '../lib/run-folder.mjs';
+import { portable } from '../lib/portable.mjs';
 import { isLoopbackUrl } from '../lib/site-fetch.mjs';
 import { findBrowser } from '../lib/browser-find.mjs';
 import { openBrowser, BrowserUnavailable } from '../lib/browser-session.mjs';
@@ -160,7 +161,7 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     if (opts.command === 'measure') {
       const r = await measurePage({ url, plan, open, before, page: opts.file !== undefined ? path.relative(project, path.resolve(cwd, opts.file)).split(path.sep).join('/') : undefined });
       out = path.join(run, 'browser.json');
-      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, plan, entries: r.entries }, null, 2)}\n`);
+      fs.writeFileSync(out, `${JSON.stringify(portable({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, plan, entries: r.entries }, project), null, 2)}\n`);
       const count = (s) => r.entries.filter((e) => e.status === s).length;
       const blockingNew = r.entries.filter((e) => e.status === 'fail' && e.severity === 'bloquea' && e.scope === 'new').length;
       exitCode = blockingNew ? 1 : 0;
@@ -168,12 +169,12 @@ export async function main(argv, { cwd = process.cwd(), env = process.env, brows
     } else if (opts.command === 'capture') {
       const r = await capturePage({ url, plan, open, outDir: path.join(run, 'captures') });
       out = path.join(run, 'captures.json');
-      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, captures: r.captures, unverified: r.unverified }, null, 2)}\n`);
+      fs.writeFileSync(out, `${JSON.stringify(portable({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, captures: r.captures, unverified: r.unverified }, project), null, 2)}\n`);
       summary = { captures: r.captures.length, unverified: r.unverified.length };
     } else {
       const r = await dumpDom({ url, plan, open, outDir: run });
       out = path.join(run, 'dom.json');
-      fs.writeFileSync(out, `${JSON.stringify({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, doms: r.doms, unverified: r.unverified }, null, 2)}\n`);
+      fs.writeFileSync(out, `${JSON.stringify(portable({ ...head, browser: r.browser, url, finalUrl: r.finalUrl, degraded: r.degraded, cleanup: opener.state.cleanup, doms: r.doms, unverified: r.unverified }, project), null, 2)}\n`);
       summary = { doms: r.doms.map((d) => d.path), unverified: r.unverified.length };
     }
     const degraded = JSON.parse(fs.readFileSync(out, 'utf8')).degraded ?? null;
