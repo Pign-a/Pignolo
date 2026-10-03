@@ -162,6 +162,43 @@ test('wizard-detect: with .git itself a link nothing is written through it', (t)
   assert.equal(fs.existsSync(path.join(real, '.git', 'pignolo')), false);
 });
 
+test('wizard-detect: the project reached with another capitalization of its path still writes only inside its own .git/pignolo', (t) => {
+  if (process.platform !== 'win32' && process.platform !== 'darwin') { t.skip('el sistema distingue mayúsculas: no hay otra grafía de la misma ruta'); return; }
+  const repo = nodeRepo();
+  const other = repo.replace(/[a-z]/g, (c, i) => (i % 2 ? c.toUpperCase() : c));
+  const before = fs.readdirSync(path.dirname(repo)).sort();
+  const r = W.writeFor(other);
+  assert.ok(r.path, JSON.stringify(r));
+  assert.ok(fs.existsSync(FILE(repo)));
+  assert.deepEqual(fs.readdirSync(path.dirname(repo)).sort(), before);
+  assert.deepEqual(fs.readdirSync(repo).sort(), fs.readdirSync(repo).sort());
+  assert.equal(fs.existsSync(path.join(repo, 'pignolo')), false);
+  assert.equal(fs.existsSync(path.join(repo, '.pignolo')), false);
+});
+
+test('wizard-detect: a folder with accents, braces, spaces and quotes in its name gives a valid file and the verbs work', () => {
+  const base = makeTempDir('pignolo-raro-');
+  const repo = path.join(base, "mi proyecto ñandú {x} 'q'");
+  fs.mkdirSync(repo);
+  git(['init', '-q', '-b', 'main'], repo);
+  git(['config', 'user.name', 'pignolo-test'], repo);
+  git(['config', 'user.email', 'test@example.invalid'], repo);
+  write(repo, 'package.json', JSON.stringify({ name: 'demo', scripts: { test: 'vitest run' }, devDependencies: { vitest: '1' } }));
+  write(repo, 'src/a.test.ts', '// t\n');
+  commitAll(repo, 'base');
+  const run = (verb, ...args) => spawnSync(process.execPath, [INIT, verb, '--cwd', repo, ...args], { encoding: 'utf8', timeout: 60000, env: { ...process.env, PIGNOLO_HOME: makeTempDir('pignolo-home-') } });
+  const w = run('wizard-detect', '--write');
+  assert.equal(w.status, 0, w.stderr);
+  const data = JSON.parse(fs.readFileSync(FILE(repo), 'utf8'));
+  assert.equal(data.schema, 'pignolo-wizard-detect/1');
+  assert.equal(JSON.stringify(data).includes('ñandú'), false); // el nombre de la carpeta no viaja
+  const choices = path.join(base, 'c.json');
+  fs.writeFileSync(choices, JSON.stringify({ v: 1, id: data.id, project: 'confirm', profile: 'balanced', perms: 'user' }));
+  const c = run('choices', '--file', choices);
+  assert.equal(JSON.parse(c.stdout).ok, true, c.stdout);
+  assert.equal(JSON.parse(c.stdout).idSame, true);
+});
+
 test('wizard-detect: offerFirst is true once and false afterwards', () => {
   const repo = nodeRepo();
   assert.equal(W.offerFirst(repo), true);

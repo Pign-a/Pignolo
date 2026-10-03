@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — sin publicar
+
+**Asistente de inicio** (decisión del autor, 2026-10-03): al abrir Claude Code en un proyecto que todavía no usa pignolo (sin `.pignolo/project.md`), el panel se abre solo con un asistente de pocos pasos: cada uno con lo que pignolo detectó y la opción recomendada marcada. Va con el núcleo 0.20.0 (que deja la detección y valida las elecciones).
+
+- **Marco redondeado de 70 columnas** (`╭─ Empezar con pignolo ─ … paso 2 de 5 ─╮`), barra de progreso, opciones con letra en columnas fijas (letra, 28, resto) con la recomendada marcada, y el mismo ancho en todos los pasos; todo texto, sin `Raster` (Desktop lo dibuja igual). El criterio visual está fijado como test (`tests/wizard-view.test.ts`, el mockup del paso 2 en `tests/fixtures/`).
+- **Pasos:** 1 el proyecto (lenguaje, tests, rama principal: confirmar o pedir corregir), 2 perfil de modelos, 3 permisos (resumen llano por regla), 4 carpetas (si hay candidatas; por fila: adoptar, mover o dejar), 5 interfaz (solo con pignolo-ui), y el resumen. Repo en blanco: una sola pantalla ("crear solo la estructura" o "más tarde").
+- **Teclas** (según la doc de mods; `Esc` no se puede capturar): una letra elige, `Enter` presiona el botón de seguir (tiene el foco), `p` vuelve, `Esc` cierra el panel (y el asistente no vuelve a abrirse solo en la sesión), en el paso de carpetas el número de la fila cambia su decisión.
+- **Aplicar envía UN mensaje** como tuyo: la frase `Activá pignolo en este proyecto con estas elecciones: --choices {json}` (una sola vez aunque se pulse dos veces; relee la detección y no envía si cambió; una línea y sin invisibles, por `submitText`). **Quien escribe es `/pignolo:init`**, con sus controles de siempre: vista previa y una pantalla final de confirmación; cancelar deja todo igual. El panel no escribe nada. (`prompt.submit` rechaza un texto que empiece con `/`, por eso no es el comando.)
+- **Abre solo una vez por proyecto** (lo decide el hook de arranque del núcleo: `offer` solo la primera vez) y una vez por sesión, con `autoOpen` prendido y la terminal de 144 columnas o más; cede ante una decisión "Te toca" abierta. `/pignolo-panel wizard` lo abre a mano (retoma donde quedó) y `/pignolo-panel wizard demo` lo muestra con datos de muestra (solo llena el prompt, nunca envía).
+- **Lee** `.git/pignolo/wizard-detect.json` (solo si no hay `.pignolo/project.md`). Archivo ausente, roto, de otra versión o sin `id`: el asistente no se abre y no hay mensaje de error.
+- **Cero llamadas nuevas** del mod (la lista de `calls:` es la de 0.2.0; cerrar el asistente vuelve al panel de siempre y `Esc` cierra el panel). Sigue habiendo un único `prompt.submit` (`submitText`).
+
 ## 0.2.0 — sin publicar
 
 Pestaña **UI** (decisión del autor, 2026-10-03): con pignolo-ui instalado, una cuarta pestaña (tecla `4`) con las 3 mejores acciones para tu interfaz y atajos que envían el pedido.

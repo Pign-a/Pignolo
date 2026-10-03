@@ -38,6 +38,7 @@ test('wizard-model: a valid detection file reads and one with another schema, a 
     JSON.stringify(detect({ id: 'XYZ' })),
     JSON.stringify(detect({ id: undefined })),
     '{no es json',
+    JSON.stringify(detect({ pad: 'x'.repeat(70 * 1024) })), // mas de 64 KB: no es un archivo del nucleo
     '',
     '﻿{"x":1}',
     'null',

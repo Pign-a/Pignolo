@@ -274,6 +274,15 @@ Repo en blanco (una sola pantalla, sin pasos): "Este proyecto está en blanco: n
 - [ ] Repo en blanco: el asistente lo dice y ofrece solo la estructura; en Desktop (sin `Raster`) todo se ve igual.
 - [ ] Borrar `.git/pignolo/wizard-detect.json` o dejarlo con basura: el asistente no se abre y no hay errores.
 
+## Resultados del Task 0 y de la ejecución (2026-10-03)
+
+- **W1 (probado con `claude` real):** `prompt.submit({ text: '/pignolo:…', asUser: true })` **se rechaza**: "a text beginning with / would run a command as the user; run one with $.command.run({ command }) (host check)". Aplica D-W8: el mensaje es la frase fija `Activá pignolo en este proyecto con estas elecciones: --choices {json}` (activa la skill `init` por lenguaje natural; su paso 0 pregunta). `$.command.run` sería una llamada nueva: no se usa.
+- **W2 (doc de mods, no probado en una terminal):** con `closeOnEscape: true` Esc cierra el panel y sin él vuelve el foco al prompt: el mod nunca recibe Esc; un `hotkey` es un dígito o una letra minúscula; `Enter` presiona el `Button` con el foco (`autoFocus: true`). Respaldo aplicado: letras eligen, `p` vuelve, Enter sigue (botón con foco), Esc cierra; el pie dice `← p atrás   Esc cierra` y `Enter siguiente →`. Un `Button` con `hotkey` y `plain` dibuja `<tecla>: <texto>` (galería de la doc): el marco no depende de eso (cada celda de botón tiene ancho fijo).
+- **W3 (probado):** `$.fs.read` y `$.fs.exists` leen dentro de `.git/`; `$.fs.stat` distingue `kind: 'dir'`. Se queda Q1 (`.git/pignolo/`). El mod usa `fs.exists` (sin `stat`) para no sumar una llamada.
+- **W4 (probado):** `claude plugin validate` con el código nuevo: la lista `calls:` queda igual que la de 0.2.0 (se evitó `ui.close`: cerrar el asistente vuelve al panel de siempre). Hace falta `claude` con red al menos una vez para que `claude plugin test` corra (interruptor remoto).
+- **W5 (medido):** `wizard-detect` tarda 0,3 a 0,6 s en un repo de ~1.200 archivos y 2,1 s en frío: más que el 1 s del umbral del plan, así que **la detección va en un proceso desacoplado** (el riesgo del plan ya previsto), no dentro del hook.
+- Cambios sobre el plan: el mockup del paso 2 lleva `sonnet en lo seguro, el más barato` y `opus casi en todo, el más caro` (la cifra «≈ 40 % menos» no está medida) y el pie cambia por la sonda W2; `wizardTree` no recibe `$` (no cruza imports); la plantilla de la skill vive en `templates/init-choices.md` (la skill tiene un tope de largo); el contrato de mockup literal lo corre `tests/panel-wizard-mockup.test.js` (un test del motor no lee archivos).
+
 ## Decisiones abiertas para el autor (recomendación primero)
 
 - **Q1: ¿dónde vive el resultado de la detección?** Recomendado: `.git/pignolo/wizard-detect.json` (D-W2: no ensucia el repo ni crea `.pignolo/` antes de tiempo). Alternativa: `.pignolo/wizard-detect.json` con un `.gitignore` propio (más visible; crea la carpeta de pignolo en un proyecto que todavía no la pidió). Si la sonda W3 dice que el mod no lee `.git/`, pasa a la alternativa.

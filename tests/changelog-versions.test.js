@@ -24,7 +24,7 @@ for (const p of PLUGINS) {
   });
 }
 
-test('changelog: the panel plan versions are the ones the plan names (core 0.18.0, panel 0.2.0)', () => {
-  assert.strictEqual(JSON.parse(read(...PLUGINS[0].manifest)).version, '0.18.0');
-  assert.strictEqual(JSON.parse(read(...PLUGINS[2].manifest)).version, '0.2.0');
+test('changelog: the wizard plan versions are the ones the plan names (core 0.20.0, renumerable al unir; panel 0.3.0)', () => {
+  assert.strictEqual(JSON.parse(read(...PLUGINS[0].manifest)).version, '0.20.0');
+  assert.strictEqual(JSON.parse(read(...PLUGINS[2].manifest)).version, '0.3.0');
 });

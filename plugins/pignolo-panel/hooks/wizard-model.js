@@ -7,6 +7,8 @@ import { oneLine, hasHiddenChars } from './state.js'
 export const SCHEMA = 'pignolo-wizard-detect/1'
 export const CHOICES_VERSION = 1
 export const MAX_CHOICES_CHARS = 700
+// el nucleo no escribe mas de 64 KB (lib/wizard-detect.js): un archivo mas grande no es el suyo y no se parsea
+export const MAX_FILE_CHARS = 64 * 1024
 // `prompt.submit` rechaza un texto que empieza con `/` (sonda W1, 2026-10-03): el mensaje no es el comando sino la frase fija que activa
 // la skill `init` por lenguaje natural (su paso 0 pregunta confirmacion).
 export const MESSAGE_PREFIX = 'Activá pignolo en este proyecto con estas elecciones: --choices '
@@ -30,7 +32,9 @@ const fail = (reason) => ({ ok: false, reason })
 export function readWizardDetect(raw) {
   let j
   try {
-    j = JSON.parse(String(raw))
+    const s = String(raw)
+    if (s.length > MAX_FILE_CHARS) return fail('too-big')
+    j = JSON.parse(s)
   } catch {
     return fail('not-json')
   }
