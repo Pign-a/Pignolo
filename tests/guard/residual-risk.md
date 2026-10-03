@@ -15,7 +15,7 @@ Estado: tras la ronda de arreglos de la auditoría ronda 3 (2026-09-29). Ronda 2
 | M4 sin parseo de PowerShell, `gci -Force \| Remove-Item` | debe arreglarse (conjunto catastrófico) | Arreglado: en la heurística de texto, un pipe a un borrador cuenta como destino catastrófico. |
 | M5 alias a un borrador (`New-Alias g Remove-Item; g .git …`, `& (Get-Command Remove-Item) .git`) | construido sin procedencia realista | Declarado: es no verificable (`ps-sink`, `dynamic-command`: ask en interactivo, deny en los modos autónomos), no catastrófico; con la guardia apagada pasa. Un agente no arma un alias para borrar. |
 | M6 `[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('.git', …)`, `gci -Force \| % Delete` | debe arreglarse (catastrófico) | Arreglado: un método `Delete*` de cualquier tipo con una ruta protegida como argumento, y `ForEach-Object -MemberName Delete` sobre lo que viene del pipeline desde la raíz. |
-| M7 `cd` cuyo efecto no se ve | forma realista solo la negación | Arreglado `! cd x && …` (el directorio queda desconocido). Declarados abajo `eval 'cd -'`, `cd` dentro de una función y `CDPATH` (construidos sin procedencia realista). |
+| M7 `cd` cuyo efecto no se ve | forma realista solo la negación | Arreglado `! cd x && …` (el directorio queda desconocido). `eval 'cd -'` también se arregló en la etapa 1 (RT1-02: un `cd` dentro de `eval` deja el directorio desconocido). Declarados abajo `cd` dentro de una función y `CDPATH` (construidos sin procedencia realista). |
 | M8 apagar pignolo desde la shell | debe arreglarse `claude plugin disable\|uninstall\|remove pignolo` | Arreglado: `protected-flag` (deny en todos los modos). `disableAllHooks` escrito en `.claude/settings.local.json` desde la shell queda fuera de alcance (§11.6: `.claude/**` se protege solo por Edit/Write). |
 | M9 nombres cortos 8.3 (`rm -rf GIT~1`) | fuera de alcance | Declarado (§11.6 "rutas 8.3 y enlaces simbólicos"). |
 | M10 la receta de recuperación pisa los archivos actuales | debe arreglarse (documentación) | Arreglado: el README avisa y dice cómo guardar antes el trabajo actual. |
@@ -75,7 +75,6 @@ Arreglado: borrar desde `node -e`, `python -c`, `ruby -e`, `perl -e`, `php -r` o
 | `busybox sh -c 'git reset --hard'` | fuera de alcance | Git for Windows no trae `busybox`. Ronda 3. |
 | `busybox rm -rf .git` | fuera de alcance | Igual que el anterior. Ronda 3. |
 | `rsync -a --delete vacio/ .git/` | fuera de alcance | Git for Windows no trae `rsync`. Ronda 3. |
-| `cd /tmp && eval 'cd -' && rm -rf .g*` | construido sin procedencia realista | El `cd` va dentro de un texto evaluado: su efecto no se propaga a la línea de afuera. Revisión final (M7). |
 | `f() { cd "$1"; }; cd /tmp && f /ruta/al/repo && rm -rf .g*` | construido sin procedencia realista | El `cd` va dentro de una función; la guardia no sigue llamadas a funciones. Revisión final (M7). |
 | `CDPATH=.. cd repo && rm -rf .g*` | construido sin procedencia realista | `CDPATH` cambia adónde resuelve un `cd` relativo; la guardia no lo modela. Revisión final (M7). |
 | `echo '{"disableAllHooks":true}' > .claude/settings.local.json` | fuera de alcance | `.claude/**` del proyecto se protege de escrituras solo por Edit/Write (§11.6). Apagar los hooks así apaga la guardia en las sesiones siguientes; lo cubren las instantáneas y los respaldos ya tomados. Revisión final (M8). |

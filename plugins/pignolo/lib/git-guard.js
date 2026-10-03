@@ -735,7 +735,7 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   const ps = shell === 'powershell';
   const name = progName(words[0].value);
   const args = words.slice(1);
-  if (CD_CMDS.has(name)) { if (inShell) changeDir(name, args, st, ctx, Boolean(cmd.negated)); return; }
+  if (CD_CMDS.has(name)) { if (inShell) changeDir(name, args, st, ctx, Boolean(cmd.negated), cmd); return; }
   if (DISCARD_PROGS.has(name)) markDiscard(ctx, st);
 
   if (DELETE_CMDS.has(name)) checkDeleteOperands(ps && cmd.pipedIn && !psPaths(args).length ? operands(args).concat(pipedPaths(cmd)) : operands(args), st, ctx, out);
@@ -776,13 +776,18 @@ function dispatch(words, cmd, shell, ctx, out, depth, st, inShell) {
   if (name === 'cmd') { analyzeCmd(args, ctx, out, depth, st); return; }
   if (!ps && name === 'eval') {
     if (args.length) code(args[0].dyn && args[0].dynAt === 0 ? dynWord() : word(args.map((w) => w.value).join(' ')), 'bash', ctx, out, depth, st);
+    // eval corre en la shell actual y su texto se analiza sobre una copia: un cd de adentro mueve el directorio de lo que sigue (RT1-02).
+    if (args.some((w) => w.dyn || SHELL_CD.test(w.value))) dirLost(st);
     return;
   }
   if (!ps && (name === 'source' || name === '.')) {
     const f = args[0];
     if (!f) return;
     if (f.dyn) { out.push(hit('hidden-code')); return; }
-    if (/^(-|\/dev\/stdin|\/dev\/fd\/\d+|\/proc\/self\/fd\/\d+)$/.test(f.value)) stdinCode(cmd, 'bash', ctx, out, depth, st);
+    if (/^(-|\/dev\/stdin|\/dev\/fd\/\d+|\/proc\/self\/fd\/\d+)$/.test(f.value)) {
+      stdinCode(cmd, 'bash', ctx, out, depth, st);
+      if (!cmd.stdinBody || SHELL_CD.test(cmd.stdinBody)) dirLost(st); // corre en la shell actual (RT1-02)
+    }
     return; // un script en un archivo: su contenido está fuera de alcance
   }
   if (!ps && name === 'trap') { if (args[0]) code(args[0], 'bash', ctx, out, depth, st); return; }
@@ -1285,13 +1290,26 @@ function stateIn(st, ctx, dir) {
   return f;
 }
 
-function changeDir(name, args, st, ctx, negated) {
+// Texto de shell con un cd (o pushd/popd/chdir) como comando: corrido en la shell actual, mueve el directorio.
+const SHELL_CD = /(^|[\s;&|(){}`])(cd|pushd|popd|chdir)([\s;&|)}]|$)/;
+
+// Código que corre en la shell actual y no se puede seguir: el directorio queda desconocido (RT1-02).
+function dirLost(st) {
+  st.moved = true;
+  if (st.pending) st.pending.sure = false;
+  setPossible(st, null);
+}
+
+function changeDir(name, args, st, ctx, negated, cmd) {
   st.moved = true; // gitCommands: un comando git posterior corre en otro directorio
   const t = args.find((w) => w.kind !== 'param' && !(w.value.startsWith('-') && w.value.length > 1));
   const before = possible(st);
   // Un `cd` a una carpeta literal que existe no falla (cd-chain): se mira antes de moverlo, contra el directorio real de ahora.
   const prior = st.pending;
-  const sure = !negated && name !== 'popd' && name !== 'pop-location' && Boolean(t) && !t.dyn && !t.glob && t.value !== '-' && !/^~/.test(t.value)
+  // Solo es seguro un cd con un único operando literal, sin opciones ni redirecciones: con un argumento de más, una opción
+  // inválida o una redirección que no abre, el cd falla aunque la carpeta exista (RT1-01).
+  const plain = args.length === 1 && args[0] === t && Boolean(cmd) && Array.isArray(cmd.redirects) && cmd.redirects.length === 0;
+  const sure = plain && !negated && name !== 'popd' && name !== 'pop-location' && Boolean(t) && !t.dyn && !t.glob && t.value !== '-' && !/^~/.test(t.value)
     && st.cwd !== null && Boolean(st.cwdReal) && ctx.statPath(t.value, st) === 'dir' && (!prior || Boolean(prior.sure));
   let next;
   if (name === 'popd' || name === 'pop-location' || (t && (t.dyn || t.glob || t.value === '-'))) next = null;
