@@ -21,7 +21,7 @@ Question text in the user's language, short: what you are about to start ("Esto 
 
 ## Option descriptions
 
-Figures are measured ones: `pignolo-ui:ui-option` 0,06 a 0,09 USD per option, `pignolo-ui:ui-auditor` 0,27 a 0,31 USD (docs/benchmarks.md), the judgment reading about 0,3 USD (`costLine` of `run.mjs`). `new` and `improve` always dispatch `ui-auditor`, so the recommended option states its cost on top of the options. The 0,06 to 0,09 figure is for sonnet; with the `max` profile the options run on opus, which has no USD figure in the repo (only 10 to 17 % more tokens and 2 to 3 times the time, `docs/benchmarks.md` 2e): say so without a number. Say "≈" and never add a figure that is not here.
+Figures are measured ones: `pignolo-ui:ui-option` 0,06 a 0,09 USD per option, `pignolo-ui:ui-auditor` 0,27 a 0,31 USD (docs/benchmarks.md), the judgment reading about 0,3 USD (`costLine` of `run.mjs`). `new` and `improve` always dispatch `pignolo-ui:ui-auditor`, so the recommended option states its cost on top of the options. The 0,06 to 0,09 figure is for sonnet; with the `max` profile the options run on opus, which has no USD figure in the repo (only 10 to 17 % more tokens and 2 to 3 times the time, `docs/benchmarks.md` 2e): say so without a number. Say "≈" and never add a figure that is not here.
 
 ### new
 
