@@ -1,0 +1,30 @@
+{
+  "schema": "pignolo-wizard-detect/1",
+  "id": "5d3f0a91c2e7",
+  "blank": false,
+  "project": {
+    "type": "code-tested",
+    "stacks": ["node"],
+    "tests": { "cmd": "npm run test", "state": "declared" },
+    "main": "main"
+  },
+  "profiles": [
+    { "id": "balanced", "label": "balanceado", "line": "sonnet para construir, opus revisa", "recommended": true },
+    { "id": "economy", "label": "económico", "line": "sonnet en lo seguro, el más barato", "recommended": false },
+    { "id": "max", "label": "máximo", "line": "opus casi en todo, el más caro", "recommended": false }
+  ],
+  "permissions": {
+    "groups": [
+      { "id": "blocks", "line": "los comandos de git que pierden trabajo (reset --hard, push -f…)" },
+      { "id": "asks", "line": "antes de borrar ramas y etiquetas" },
+      { "id": "free", "line": "push y merge normales" }
+    ]
+  },
+  "places": {
+    "candidates": [
+      { "kind": "spec", "from": "diseno/", "to": "docs/specs/", "decision": "adopt", "options": ["adopt", "move", "leave"], "moves": [{ "from": "diseno/", "to": "docs/specs/" }], "note": null },
+      { "kind": "plan", "from": "plans/", "to": "docs/plans/", "decision": "adopt", "options": ["adopt", "move", "leave"], "moves": [{ "from": "plans/", "to": "docs/plans/" }], "note": null }
+    ]
+  },
+  "offer": true
+}
