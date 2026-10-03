@@ -1,0 +1,4 @@
+{
+  "description": "pignolo-panel: solo lee y dibuja",
+  "modules": ["./register.js"]
+}

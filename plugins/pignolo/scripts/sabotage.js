@@ -7,6 +7,7 @@
 // (con --recover: hay un sabotaje en curso); 3 no se pudo restaurar (con --recover: los
 // archivos cambiaron después del corte y no se tocó nada).
 const path = require('node:path');
+require('../lib/panel-hook').panelRefreshOnExit();
 const { sabotage, recover, DEFAULT_TIMEOUT_MS } = require('../lib/sabotage');
 
 function usage(msg) {
@@ -55,7 +56,13 @@ async function main() {
     return 3;
   }
   if (r.newFiles.length) process.stderr.write(`pignolo sabotage: el comando dejó otros cambios en el árbol: ${r.newFiles.join(', ')}.\n`);
-  if (r.red) return 0;
+  if (r.red) {
+    // Evidencia roja para el panel (una línea; no cambia nada del resultado).
+    const hook = require('../lib/panel-hook');
+    const line = String(r.logTail || '').split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
+    hook.panelEvidence(cwd, hook.cardOfWorktree(cwd), { red: line ? `falla: ${line}` : 'falla (rojo demostrado)' });
+    return 0;
+  }
   if (r.logTail) process.stderr.write(`${r.logTail}\n`);
   process.stderr.write(`pignolo sabotage: el comando siguió verde con el parche${r.timedOut ? ' (no terminó en el plazo, eso no es rojo)' : ''}: el test no protege lo que dice. Alternativa: revisá el test o el parche.\n`);
   return 1;

@@ -21,6 +21,7 @@ You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PL
 
 ## Rules
 
+- **Panel.** A question that ends your turn also goes to the panel: `node "<P>/scripts/panel.js" ask --key "present:<name>" …`, and `panel.js answer` when they reply. Command, limits and notes: `<P>/templates/question.md`.
 - Never publish without a `check` exit 0 for that exact file.
 - Never add or drop an option between the text and the artifact.
 - Fall back to text, with a one-line notice, when there is no Artifact tool, when the form has no approved template, or when the canvas has no consent.

@@ -14,6 +14,8 @@ const VERB_RE = /\b(merge|push|pull|rebase|fetch|branch|update-ref|reset|cherry-
 
 function skips(name, input) {
   if (!input || typeof input !== 'object') return false;
+  // panel-answer solo concierne al prompt con el formato de la respuesta de una decisión del panel.
+  if (name === 'panel-answer') return !(typeof input.prompt === 'string' && input.prompt.startsWith('Respuesta a la decisión'));
   if (name === 'plan-audit-gate') return input.agent_type !== REVIEW_AGENT && input.agent_type !== VERIFY_AGENT;
   // egress rige solo para subagentes (R-7 del hito 6): el hilo principal queda libre por construcción.
   if (name === 'egress') return !input.agent_id;

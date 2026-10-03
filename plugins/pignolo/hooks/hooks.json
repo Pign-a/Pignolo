@@ -101,6 +101,14 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/launcher.js", "panel-answer"], "timeout": 30 }
+        ]
+      }
+    ],
     "UserPromptExpansion": [
       {
         "matcher": "",

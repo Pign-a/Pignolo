@@ -21,6 +21,8 @@ const { headSha, workingTree } = require('../lib/changes');
 const { gitRun } = require('../lib/git');
 const { repoIdFor } = require('../lib/seals');
 const { pignoloHome } = require('../lib/home');
+require('../lib/panel-hook').panelRefreshOnExit({ only: ['save'] });
+const { panelDo } = require('../lib/panel-hook');
 
 const GIT_MS = 60000;
 const VALUE = ['level', 'profile', 'sha', 'out', 'ledger', 'id', 'cwd', 'judgment', 'round', 'kind'];
@@ -200,6 +202,20 @@ const VERBS = {
     const repoId = repoIdFor({ cwd: path.resolve(o.cwd), timeoutMs: GIT_MS });
     const file = path.join(pignoloHome(), 'reviews', repoId, `${ledger.sha}-${kind}.json`);
     writeJson(file, ledger);
+    // Una revisión que escala (hallazgos que siguen en pie tras las rondas) es del autor: queda en "Te toca" (needs-review-batch).
+    if (kind === 'review') {
+      const open = (ledger.findings || []).filter((x) => x.status === 'confirmed').length;
+      const key = `review:${String(ledger.sha).slice(0, 7)}`;
+      panelDo(path.resolve(o.cwd), (panel, main) => {
+        if (L.nextStep(ledger) === 'escalate') {
+          panel.ask(main, {
+            key, question: `La revisión de ${String(ledger.sha).slice(0, 7)} escaló con ${open} hallazgo${open === 1 ? '' : 's'} sin arreglar: ¿cómo seguimos?`,
+            options: [{ label: 'verlos juntos' }, { label: 'aceptarlos y seguir' }, { label: 'parar' }], recommended: 'verlos juntos',
+            context: 'Pasaron las rondas de arreglo y quedan hallazgos confirmados: decidir es tuyo (needs-review-batch).',
+          });
+        }
+      });
+    }
     print({ ok: true, file });
     return 0;
   },

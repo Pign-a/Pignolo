@@ -8,6 +8,8 @@
 // ocupada (`busy`); 3 no se pudo dejar el estado consistente (`cp-missing`).
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
+require('../lib/panel-hook').panelRefreshOnExit();
+const { panelDo } = require('../lib/panel-hook');
 const Q = require('../lib/queue');
 const B = require('../lib/branches');
 
@@ -57,7 +59,20 @@ const ALTERNATIVE = {
   'not-ancestor': 'rebaseá la tarea sobre el contrato en su worktree',
 };
 
+// Una rama de tarea que la cola no pudo integrar y queda esperando al autor (conflicto de lógica, compuerta roja o inestable): el
+// panel la marca "espera" (⚑); cuando la cola la integra, la marca se va. Protegido: el registro nunca cambia el resultado.
+const WAITING_KINDS = ['conflict', 'gate-failed', 'flaky'];
+let current = null; // { root, plan, task } de la llamada en curso
+function markWaiting(waiting) {
+  if (!current || !current.task) return;
+  panelDo(current.root, (panel, main) => {
+    const branch = Q.resolveTask({ main, plan: current.plan, task: current.task });
+    panel.setWaiting(main, { branch, waiting });
+  });
+}
+
 function fail(kind, message, extra, exit = 1) {
+  if (WAITING_KINDS.includes(kind)) markWaiting(true);
   out({ ok: false, kind, message, ...extra });
   const alt = ALTERNATIVE[kind] || 'revisá el motivo y repetí';
   process.stderr.write(`pignolo queue: ${kind}: ${message}${/Alternativa:/.test(message) ? '' : `. Alternativa: ${alt}`}\n`);
@@ -86,8 +101,11 @@ function main() {
     return;
   }
   if (!o.task) throw new Usage(`${verb} necesita --task`);
+  current = { root, plan: o.plan, task: o.task };
   if (verb === 'run') {
-    out(Q.integrate({ main: root, plan: o.plan, task: o.task, resolveTrivial: o['resolve-trivial'] === true }));
+    const r = Q.integrate({ main: root, plan: o.plan, task: o.task, resolveTrivial: o['resolve-trivial'] === true });
+    if (r && r.status === 'integrated') markWaiting(false);
+    out(r);
     return;
   }
   const task = Q.resolveTask({ main: root, plan: o.plan, task: o.task });

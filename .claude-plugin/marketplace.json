@@ -1,7 +1,9 @@
 {
   "name": "pignolo",
   "description": "Pignolo: metodología de desarrollo con agentes para Claude Code",
-  "owner": { "name": "Ignacio Agustín Miste" },
+  "owner": {
+    "name": "Ignacio Agustín Miste"
+  },
   "plugins": [
     {
       "name": "pignolo",
@@ -12,6 +14,11 @@
       "name": "pignolo-ui",
       "source": "./plugins/pignolo-ui",
       "description": "Interfaces web con decisiones de diseño explícitas y verificadas (opcional, anda sin pignolo)"
+    },
+    {
+      "name": "pignolo-panel",
+      "source": "./plugins/pignolo-panel",
+      "description": "Panel visual opcional: siguiente paso, decisiones tuyas, ramas, costo y, con pignolo-ui, una pestaña UI con recomendaciones (Claude Code 2.1.287 o más nuevo)"
     }
   ]
 }

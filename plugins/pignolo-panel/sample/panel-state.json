@@ -1,0 +1,195 @@
+{
+  "schema": "pignolo-panel-state/1",
+  "updated": "2026-10-03T12:00:00.000Z",
+  "pluginVersion": "0.18.0",
+  "seq": 2,
+  "plan": {
+    "slug": "exportar-reportes",
+    "stage": "executing",
+    "request": "Exportar reportes a CSV y PDF desde la vista de resumen"
+  },
+  "decisions": [
+    {
+      "id": "Q-1",
+      "question": "¿El PDF usa la plantilla corta o la completa?",
+      "options": [
+        {
+          "label": "plantilla corta",
+          "pros_contras": "Gana: una página por reporte, rápido de generar. Pierde: sin índice ni anexos."
+        },
+        {
+          "label": "plantilla completa",
+          "pros_contras": "Gana: índice y anexos. Pierde: reportes largos y más lentos."
+        }
+      ],
+      "recommended": "plantilla corta",
+      "context": "La completa suma índice y anexos; la corta es una página por reporte.",
+      "kind": "user",
+      "status": "open",
+      "askedAt": "2026-10-03T11:40:00.000Z"
+    },
+    {
+      "id": "Q-2",
+      "question": "¿Se agrega una dependencia para escribir CSV?",
+      "options": [
+        {
+          "label": "sí, agregarla",
+          "pros_contras": "Gana: menos código propio. Pierde: una dependencia más que mantener."
+        },
+        {
+          "label": "no, escribirlo a mano",
+          "pros_contras": "Gana: nada nuevo que mantener. Pierde: unas 40 líneas propias."
+        }
+      ],
+      "recommended": "no, escribirlo a mano",
+      "context": "Escribirlo a mano son unas 40 líneas y evita sumar una dependencia al proyecto.",
+      "kind": "user",
+      "status": "open",
+      "askedAt": "2026-10-03T11:40:00.000Z"
+    }
+  ],
+  "branches": [
+    {
+      "name": "feat/export-csv",
+      "stage": "suite",
+      "review": "APPROVE",
+      "suite": "green",
+      "commits": 4,
+      "waiting": false,
+      "merged": false,
+      "sha": "a1b2c3d4e5f6"
+    },
+    {
+      "name": "feat/export-pdf",
+      "stage": "review",
+      "review": "none",
+      "suite": "none",
+      "commits": 3,
+      "waiting": false,
+      "merged": false,
+      "sha": "0f1e2d3c4b5a"
+    },
+    {
+      "name": "fix/fechas-utc",
+      "stage": "fixes",
+      "review": "CHANGES",
+      "suite": "red",
+      "commits": 2,
+      "waiting": false,
+      "merged": false,
+      "sha": "9a8b7c6d5e4f"
+    },
+    {
+      "name": "chore/limpieza-deps",
+      "stage": "execution",
+      "review": "none",
+      "suite": "none",
+      "commits": 1,
+      "waiting": true,
+      "merged": false,
+      "sha": "1122334455aa"
+    }
+  ],
+  "cards": [
+    {
+      "id": "T1",
+      "plan": "exportar-reportes",
+      "title": "Modelo de filas exportables",
+      "status": "done",
+      "red": "falla: filas vacías",
+      "green": "12/12",
+      "evidence": ""
+    },
+    {
+      "id": "T2",
+      "plan": "exportar-reportes",
+      "title": "Escritor CSV",
+      "status": "done",
+      "red": "falla: comillas",
+      "green": "9/9",
+      "evidence": ""
+    },
+    {
+      "id": "T3",
+      "plan": "exportar-reportes",
+      "title": "Escritor PDF",
+      "status": "running",
+      "red": "falla: paginado",
+      "green": "",
+      "evidence": ""
+    },
+    {
+      "id": "T4",
+      "plan": "exportar-reportes",
+      "title": "Botón exportar en la vista",
+      "status": "todo",
+      "red": "",
+      "green": "",
+      "evidence": ""
+    },
+    {
+      "id": "T5",
+      "plan": "exportar-reportes",
+      "title": "Documentación de uso",
+      "status": "todo",
+      "red": "",
+      "green": "",
+      "evidence": ""
+    }
+  ],
+  "budget": [],
+  "main": {
+    "ahead": 2
+  },
+  "next": {
+    "rule": "decision",
+    "key": "d:Q-1",
+    "text": "¿El PDF usa la plantilla corta o la completa?",
+    "prompt": "Decisión Q-1: plantilla corta",
+    "costNote": null,
+    "why": "Hay una decisión tuya pendiente; la recomendada es \"plantilla corta\".",
+    "alternatives": []
+  },
+  "agents": [
+    {
+      "type": "implementer",
+      "description": "T3 escritor PDF",
+      "model": "sonnet",
+      "minutes": 4.2,
+      "tokens": 38400
+    },
+    {
+      "type": "refuter",
+      "description": "refutar T2",
+      "model": "opus",
+      "minutes": 2.1,
+      "tokens": 21000
+    }
+  ],
+  "activity": [
+    0,
+    120,
+    340,
+    900,
+    1500,
+    800,
+    600,
+    1200,
+    2400,
+    1800,
+    700,
+    300,
+    500,
+    1100,
+    2000,
+    2600,
+    1900,
+    800,
+    400,
+    900,
+    1400,
+    1700,
+    1000,
+    600
+  ]
+}

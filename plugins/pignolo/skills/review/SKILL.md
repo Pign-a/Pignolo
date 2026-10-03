@@ -7,6 +7,7 @@ You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PL
 
 ## Rules
 
+- **Panel.** A question that ends your turn also goes to the panel: `node "<P>/scripts/panel.js" ask --key "review:<name>" …`, and `panel.js answer` when they reply. Command, limits and notes: `<P>/templates/question.md`.
 - **You never grade findings.** You copy each agent's `json` block verbatim into a file with Write and let `ledger.js` decide. You never drop, merge, reword or re-rate a finding (spec §12). Refuted findings are always listed in the summary.
 - **Frozen candidate for the reviewers.** Lenses, refuters and judges review one SHA. Right before dispatching them and again before accepting their blocks, `node "<P>/scripts/ledger.js" frozen --cwd "<wt>" --sha <the SHA they review>` must exit 0; if it exits 1, do not use their blocks: start over on the new SHA. The repro tests (step 7) and the fixer (step 9) run against `<SHA>` and move HEAD on purpose: their commits enter the ledger only through `ledger.js round --sha <SHA2>`, and the next reviewers are frozen on `<SHA2>`.
 - **Writers follow the daily rules, seed rule included:** `run.js renew` before each dispatch, `run.js task` before each writer, `run.js status` after each writer (accepted only with `handback.accepted`), at most 2 automatic continuations, `--file` relative with `/`.
