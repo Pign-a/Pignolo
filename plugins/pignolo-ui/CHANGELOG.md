@@ -6,6 +6,7 @@
 
 - `run.mjs leak-values --project <repo> --run <corrida>` escribe fuera del proyecto, imprime `out` (el archivo de valores) y un aviso de no agregarlos a git; `--out` ya no existe. `repoId` sale de la ruta real (junction o mayúsculas dan el mismo id); la carpeta se niega si cae dentro del proyecto; las corridas de más de 14 días se podan.
 - Nuevo `run.mjs leak-migrate --project <repo> [--delete]`: lista (nunca el contenido) los archivos viejos bajo `.pignolo-ui/runs/` y los borra solo con `--delete`; no toca el índice ni el historial.
+- Ningún archivo de la corrida guarda rutas absolutas ni datos del usuario: `run.json` guarda `project: "."` y `browser.json`, `captures.json`, `dom.json`, `ui-check.json` y `compare-approved.json` pasan por `lib/portable.mjs` (rutas y `file://` del proyecto a relativos, el home a `~`, el perfil temporal del navegador a su último nombre; `cleanup.profile` es ahora solo el nombre, la ruta completa sigue en `leftoverProfile` por salida estándar). Nadie leía `run.json.project`.
 - `reference/context.md`: marcador `<values>` y la línea `NO-GIT-UI:`; las skills y referencias dejan de nombrar `<run>/leak-values.json`.
 
 

@@ -23,7 +23,7 @@ function exists(ref, cwd) {
 //   `commit -a`         -> árbol de trabajo (lo rastreado) y el índice contra HEAD
 //   `commit <rutas>`    -> el árbol de trabajo de esas rutas contra HEAD
 //   `commit --amend`    -> contra HEAD^ (el commit corregido reemplaza a HEAD)
-function commitPaths({ cwd, all = false, amend = false, paths = [] }) {
+function commitPaths({ cwd, all = false, amend = false, paths = [], include = false }) {
   const base = amend ? 'HEAD^' : 'HEAD';
   const hasBase = exists(base, cwd);
   const out = new Set();
@@ -33,13 +33,34 @@ function commitPaths({ cwd, all = false, amend = false, paths = [] }) {
     // con rutas, git commit toma el contenido del árbol de trabajo de esas rutas
     if (hasBase) add(names(['diff', ...f, base, '--', ...paths], cwd));
     else add(names(['ls-files', '-z', '--cached', '--', ...paths], cwd));
-    return [...out]; // --only (el modo por omisión): lo que ya estaba en el índice y no se nombra no viaja
+    if (!include) return [...out]; // --only (el modo por omisión): lo que ya estaba en el índice y no se nombra no viaja
+    // -i/--include: el índice contra HEAD más esas rutas (sigue abajo)
   }
   if (hasBase) add(names(['diff', '--cached', ...f, base], cwd));
   else add(names(['ls-files', '-z', '--cached'], cwd));
   if (all && hasBase) add(names(['diff', ...f, base], cwd));
   return [...out];
 }
+
+// Archivos que un `git add <args>` indexaría, sin ejecutarlo (`git add --dry-run`, salida `add 'ruta'`). Si git falla o
+// el add es interactivo, falla cerrado: todo lo que hay sin rastrear (ignorado incluido) bajo las rutas del add.
+function addNames(args, cwd) {
+  const flags = args.filter((a) => a !== '--dry-run' && a !== '-n');
+  try {
+    const out = gitRun(['add', '--dry-run', ...flags], cwd, { timeout: TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 });
+    return String(out || '').split('\n').map((l) => /^(?:add|remove) '(.*)'$/.exec(l.trim())).filter(Boolean).map((m) => m[1]);
+  } catch (_) {
+    const dd = args.indexOf('--');
+    const specs = dd >= 0 ? args.slice(dd + 1) : args.filter((a) => !a.startsWith('-'));
+    return names(['ls-files', '-z', '--others', '--', ...specs], cwd);
+  }
+}
+
+function addedPrivate({ cwd, args }) {
+  try { return addNames(args, cwd).filter(isPrivatePath); } catch (_) { return []; }
+}
+
+function hasHead(cwd) { return exists('HEAD', cwd); }
 
 // Rutas privadas del commit. Sin repo o si git falla -> [] (segunda capa: no frena lo que no puede ver).
 function stagedPrivate(opts) {
@@ -48,9 +69,11 @@ function stagedPrivate(opts) {
 
 // Comando para sacarlas del índice: hasta 5 rutas, o la carpeta madre. Un comando por vez (no lo encadenes con `&&` al
 // commit: la compuerta mira el índice antes de que corra el primero).
-function exitCommand(paths) {
+function exitCommand(paths, { unborn = false } = {}) {
+  // En un repo sin commits no hay HEAD y `restore --staged` falla: la salida es `git rm --cached` (no borra el archivo).
+  const cmd = unborn ? 'git rm -r --cached --' : 'git restore --staged --';
   const q = (p) => `"${p.replace(/"/g, '\\"')}"`;
-  if (paths.length <= 5) return `git restore --staged -- ${paths.map(q).join(' ')}`;
+  if (paths.length <= 5) return `${cmd} ${paths.map(q).join(' ')}`;
   const roots = new Set(paths.map((p) => {
     const parts = p.split('/');
     const i = parts.findIndex((s) => s.toLowerCase() === '.pignolo-ui');
@@ -58,7 +81,7 @@ function exitCommand(paths) {
     const j = parts.findIndex((s, k) => s.toLowerCase() === '.pignolo' && k + 1 < parts.length);
     return j >= 0 ? parts.slice(0, j + 2).join('/') : path.posix.dirname(p);
   }));
-  return `git restore --staged -- ${[...roots].map(q).join(' ')}`;
+  return `${cmd} ${[...roots].map(q).join(' ')}`;
 }
 
-module.exports = { stagedPrivate, exitCommand, commitPaths };
+module.exports = { stagedPrivate, addedPrivate, hasHead, exitCommand, commitPaths };

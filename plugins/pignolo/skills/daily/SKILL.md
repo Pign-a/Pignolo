@@ -18,7 +18,7 @@ You are the orchestrator in the main conversation. `<main>` is the project root 
 
 NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pignolo-ui/ and .pignolo/local/ hold the author's private data (leak-values.json has the user name, home folder and email) and are ignored on purpose. For a backup or WIP commit, commit only code paths by name and leave the ignored folders out.
 
-
+## Steps
 
 1. **Open the flow.** `node "<P>/scripts/run.js" start --flow daily --cwd "<main>"`. Exit 1: stop and tell the human what the message says.
 2. **Branch and worktree** (spec §11.1, §11.2 mechanism B). Pick a slug (`[a-z0-9-]`, at most 40 characters) and today's date. From `<main>`: `git branch --show-current` is the origin branch; then `cd "<main>" && git worktree add -b task/daily/<YYYY-MM-DD>-<slug> "<main>/.pignolo/worktrees/<slug>" HEAD`. Call the worktree `<wt>` and its `git rev-parse HEAD` `<base>`. If the branch name exists, add `-2`, `-3`.

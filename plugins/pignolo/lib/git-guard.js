@@ -1574,6 +1574,7 @@ function analyzeGit(name, words, cmd, st, ctx, out) {
     sub = words[i].value;
   }
   if (!GIT_BUILTINS.has(sub)) { lost(); out.push(hit('unknown-git-subcommand')); done(); return; }
+  if (sub === 'stage') sub = 'add'; // git stage es un sinónimo de git add: mismas reglas
   const args = words.slice(name === 'git' ? i + 1 : 1); // la forma con guion (git-push) no tiene subcomando entre los operandos
   const o = parseOpts(args, SPECS[sub]);
   if (ctx.collect) {

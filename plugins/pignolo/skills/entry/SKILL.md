@@ -15,7 +15,7 @@ A message that starts with `Respuesta a la decisión Q-<n>` is the human's own a
 
 NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pignolo-ui/ and .pignolo/local/ hold the author's private data (leak-values.json has the user name, home folder and email) and are ignored on purpose. For a backup or WIP commit, commit only code paths by name and leave the ignored folders out.
 
-
+## Steps
 
 1. **Is pignolo on here?** Find the project root: the nearest directory upward that holds `.pignolo/project.md` (stop at the first one that holds `.git`). If there is none, or `.pignolo/.disabled` exists there, pignolo is not active: say so in one line and handle the request normally, without pignolo's flows. Call that root `<main>` (for a git worktree, the main checkout that owns it).
 2. **Does the request authorize a change?** (spec §5.1) A question, an explanation or an investigation authorizes none: answer read-only. Something you notice while reading never widens the authorization: report it and stop there. When in doubt, stay read-only and ask the human (category `scope`) whether they want a change; go on only with an explicit yes. Only a request that authorizes a change goes on to step 3 and can reach the trivial or daily lane. A request to review without changing anything goes to the `pignolo:review` skill in report-only mode.

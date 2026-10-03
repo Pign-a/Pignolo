@@ -9,6 +9,7 @@
 - `private-reads`: un subagente no lee `<PIGNOLO_HOME>/ui-leaks` (mensaje propio).
 - Textos: las skills `daily`, `trivial`, `entry` y `close-session` suman la línea `NO-RUNS-COMMIT:`; las alternativas de la guardia que dicen "commiteá" suman "solo código, por ruta, sin git add -f".
 - Guía para quien ya los tiene en git: `docs/fuga-leak-values.md`.
+- Pasada de arreglos de la revisión (RL-02 a RL-06): la compuerta mira el `add` anterior de la misma línea (`git add -f . && git commit`, `git add -A; git commit`: calcula lo que indexaría con `git add --dry-run` y trata el commit como `-a`); `git stage` cae en las reglas de `git add`; `git commit -i/--include <ruta>` es índice más rutas; en un repo sin commits la salida sugerida es `git rm -r --cached --`; `git commit --dry-run` no se frena; `daily`, `entry` y `close-session` recuperan su encabezado `## Steps`.
 
 ## 0.20.0 — sin publicar
 

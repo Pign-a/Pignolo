@@ -14,7 +14,7 @@ const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { snapshotWip } = require('../../lib/git-backup');
 const { gitRun } = require('../../lib/git');
 const path = require('node:path');
-const { stagedPrivate, exitCommand } = require('../../lib/private-index');
+const { stagedPrivate, addedPrivate, hasHead, exitCommand } = require('../../lib/private-index');
 
 const SNAPSHOT_DEADLINE_MS = 2000; // dentro del plazo de 3 s del launcher
 
@@ -66,17 +66,29 @@ const longHas = (c, name, min) => c.longs.some((l) => l.length >= min && name.st
 function commitGate(collect, cwd, command) {
   if (!Array.isArray(collect) || !/commit/i.test(String(command || ''))) return null;
   const leaked = new Set();
-  for (const c of collect) {
-    if (c.sub !== 'commit' || c.incomplete || c.dirsUnknown) continue;
-    let dir = cwd;
-    for (const d of c.dirs || []) dir = path.resolve(dir, d);
-    const all = c.shorts.includes('a') || longHas(c, 'all', 3);
+  let unborn = false;
+  const dirOf = (c) => (c.dirs || []).reduce((d, x) => path.resolve(d, x), cwd);
+  collect.forEach((c, idx) => {
+    if (c.sub !== 'commit' || c.incomplete || c.dirsUnknown || longHas(c, 'dry-run', 3)) return; // --dry-run no registra nada
+    const dir = dirOf(c);
+    let all = c.shorts.includes('a') || longHas(c, 'all', 3);
     const amend = longHas(c, 'amend', 3);
-    for (const p of stagedPrivate({ cwd: dir, all, amend, paths: c.positionals || [] })) leaked.add(p);
-  }
+    const include = c.shorts.includes('i') || longHas(c, 'include', 3);
+    const paths = c.positionals || [];
+    // Un add antes del commit en la misma línea (add ... && commit, add -A; commit): la compuerta corre antes de los
+    // dos, así que lo que el add va a indexar se suma (calculado con git add --dry-run) y el commit sin rutas se
+    // mira como -a. Con rutas (--only) el add no viaja, salvo con -i/--include (índice más rutas).
+    const adds = collect.slice(0, idx).filter((a) => a.sub === 'add' && !a.incomplete && !a.dirsUnknown);
+    if (adds.length && (!paths.length || include)) {
+      all = true;
+      for (const a of adds) for (const p of addedPrivate({ cwd: dirOf(a), args: a.args || [] })) leaked.add(p);
+    }
+    for (const p of stagedPrivate({ cwd: dir, all, amend, paths, include })) leaked.add(p);
+    if (!hasHead(dir)) unborn = true;
+  });
   if (!leaked.size) return null;
   const list = [...leaked];
-  return { exit: 2, stderr: `pignolo bloqueó el commit: el índice tiene archivos privados de pignolo (${list.slice(0, 5).join(', ')}${list.length > 5 ? ', ...' : ''}). Alternativa: sacalos del índice con \`${exitCommand(list)}\` en un comando aparte (no lo encadenes con && al commit) y commiteá de nuevo.\n` };
+  return { exit: 2, stderr: `pignolo bloqueó el commit: el índice tiene archivos privados de pignolo (${list.slice(0, 5).join(', ')}${list.length > 5 ? ', ...' : ''}). Alternativa: sacalos del índice con \`${exitCommand(list, { unborn })}\` en un comando aparte (no lo encadenes con && al commit) y commiteá de nuevo.\n` };
 }
 
 exports.run = (input, ctx = {}) => {
