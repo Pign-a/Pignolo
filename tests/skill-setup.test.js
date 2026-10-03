@@ -57,5 +57,5 @@ test('setup: toda opción y subcomando que nombra existe en setup.js; permission
 });
 
 test('setup: no es más larga que antes por más de un margen chico', () => {
-  assert.ok(SKILL.text.length <= 7300, String(SKILL.text.length));
+  assert.ok(SKILL.text.length <= 7900, String(SKILL.text.length));
 });

@@ -180,6 +180,42 @@ function permissions(args, env, cwd) {
   return result;
 }
 
+// Reglas que pignolo agregó antes y la plantilla ya no trae (misma cadena exacta). Solo se quitan de `ask`; nunca otra regla.
+// `mcp__*__*navigate*` atrapaba browser_navigate (solo abre una página) y, como `ask` le gana a `allow`, volvía a preguntar aun con "no preguntar más".
+const RETIRED_ASK = ['mcp__*__*navigate*'];
+
+function retired(args, env, cwd) {
+  const files = [
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.local.json'),
+    path.join(userClaudeDir(env), 'settings.json'),
+  ];
+  const current = new Set(JSON.parse(fs.readFileSync(TEMPLATE, 'utf8')).permissions.ask ?? []);
+  const out = [];
+  for (const file of [...new Set(files)]) {
+    if (!fs.existsSync(file)) continue;
+    let settings;
+    try {
+      settings = JSON.parse(readText(file));
+    } catch (_) {
+      out.push({ file, remove: [], applied: false, backup: null, error: 'settings inválido: no se toca' });
+      continue;
+    }
+    const ask = settings && settings.permissions && settings.permissions.ask;
+    const remove = Array.isArray(ask) ? RETIRED_ASK.filter((r) => !current.has(r) && ask.includes(r)) : [];
+    const entry = { file, remove, applied: false, backup: null };
+    if (args.apply && remove.length) {
+      entry.backup = `${file}.pignolo-bak-${Date.now()}`;
+      fs.copyFileSync(file, entry.backup);
+      settings.permissions.ask = ask.filter((r) => !remove.includes(r));
+      fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
+      entry.applied = true;
+    }
+    out.push(entry);
+  }
+  return { files: out, total: out.reduce((n, e) => n + e.remove.length, 0) };
+}
+
 function config(args, env) {
   const partial = {};
   if (args.profile !== undefined) partial.profile = args.profile;
@@ -299,10 +335,11 @@ function main(argv, env = process.env, cwd = process.cwd()) {
   const args = parseArgs(rest);
   if (cmd === 'check') return check(env, cwd);
   if (cmd === 'permissions') return permissions(args, env, cwd);
+  if (cmd === 'retired') return retired(args, env, cwd);
   if (cmd === 'config') return config(args, env);
   if (cmd === 'conflicts') return conflicts(args, env, cwd);
   if (cmd === 'models') return models(env);
-  throw new Error('uso: setup.js check | permissions --target user|project [--apply] | config --profile <p> [--presentation <x>] [--language <l>] | models | conflicts --list | --check <archivo.json> | --record <archivo.json>');
+  throw new Error('uso: setup.js check | permissions --target user|project [--apply] | retired [--apply] | config --profile <p> [--presentation <x>] [--language <l>] | models | conflicts --list | --check <archivo.json> | --record <archivo.json>');
 }
 
 if (require.main === module) {
