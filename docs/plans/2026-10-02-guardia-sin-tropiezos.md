@@ -1,13 +1,13 @@
 # Plan: guardia sin tropiezos (núcleo 0.16.0)
 
-Fecha: 2026-10-02. Rama del plan: `plan/guardia-sin-tropiezos`, sobre `core/guard-sin-confirmar-push` (62bde34: ya quitó la confirmación de push y merge y agregó `subagent-main`). La ejecución sale de una rama nueva desde ese mismo commit.
+Fecha: 2026-10-02; ajustado el 2026-10-03 con la auditoría previa (opus, veredicto "con cambios") y las decisiones D-G5 y D-G6. Rama del plan: `plan/guardia-sin-tropiezos`, con `main` unido (guardia sin confirmar push ni merge, `subagent-main`, R6, núcleo 0.15.0, skills en lenguaje natural). La ejecución sale de una rama nueva desde el `main` vigente al empezar cada etapa (la auditoría se hizo contra `18f62d5`), ya no desde 62bde34. Se ejecuta en **tres etapas** (§6), cada una con su revisión opus y unida a `main` antes de la siguiente.
 Auditoría que lo motiva: [`docs/audits/2026-10-02-reglas-de-la-guardia.md`](../audits/2026-10-02-reglas-de-la-guardia.md) (181 llamadas bloqueadas en una sesión de desarrollo, ninguna frenó un daño real; 166 siguen bloqueadas con el código de la base).
 Spec: `docs/specs/2026-09-26-pignolo-v1-design.md` (§8.1 plantilla, §8.3 plazo del launcher, §11.6 guardia y respaldos).
-Método (CLAUDE.md): tarjetas con archivos, interfaces y casos literales; un solo ejecutor sonnet en serie; sin repetir el código en el plan; el rojo de cada test nuevo se demuestra al ejecutar, rompiendo lo que protege; una revisión opus al final con una pasada de arreglos. Es la guardia (área de riesgo): auditoría previa del plan en opus (§10).
+Método (CLAUDE.md): tarjetas con archivos, interfaces y casos literales; un solo ejecutor sonnet en serie; sin repetir el código en el plan; el rojo de cada test nuevo se demuestra al ejecutar, rompiendo lo que protege; una revisión opus por etapa con una pasada de arreglos. Es la guardia (área de riesgo): la auditoría previa del plan en opus ya se hizo y sus cambios están aplicados (§3b); las cinco preguntas de §10 quedan como foco de las revisiones por etapa.
 
 ## 1. Alcance
 
-**Entra** (decisiones D-G1 a D-G4 del autor, §3):
+**Entra** (decisiones D-G1 a D-G6 del autor, §3):
 
 - Angostar las reglas de la guardia que frenan actividad común: `inline-code`, `pignolo-launcher`, `dynamic-redirect`, `catastrophic-delete` (solo el disparador), `dynamic-argument`, `protected-flag`, `unparseable`, `dynamic-command`.
 - Dejar pasar lo recuperable con la instantánea tomada antes: `checkout <ref> -- <archivos>`, `checkout -- <archivos>`, `restore <archivos>`, `stash` / `push` / `pop` / `apply` (reglas `checkout-path`, `restore`, `stash`, `git-C`).
@@ -15,7 +15,7 @@ Método (CLAUDE.md): tarjetas con archivos, interfaces y casos literales; un sol
 - Instantánea WIP solo antes de los comandos que pueden descartar trabajo.
 - Plantilla `permissions.json`: sin la familia "el texto menciona git" y alineada con lo que la guardia deja pasar.
 - Medir: reevaluar los 181 comandos registrados con el código nuevo y el costo por comando del hook antes y después.
-- Versión 0.16.0, CHANGELOG, spec, README, registro de riesgo residual.
+- Versión (0.16.0 la etapa 1; las etapas 2 y 3 suben el parche), CHANGELOG, spec, README y registro de riesgo residual, repartidos por etapa.
 
 **No entra:**
 
@@ -25,16 +25,17 @@ Método (CLAUDE.md): tarjetas con archivos, interfaces y casos literales; un sol
 
 ## 2. Restricciones globales
 
-1. Después de cada tarjeta la suite completa pasa (`npm test`, nunca `node --test tests/`). Cada tarjeta cambia en el mismo commit el código, sus tests y las filas del corpus que cambian de veredicto.
-2. Un commit por tarjeta, en español, Conventional Commits. La versión (0.16.0) y el CHANGELOG se tocan una sola vez, en T12.
+1. Cada tarjeta corre solo los archivos de test que toca y los de los módulos que dependen de lo que cambió (`node --test <archivo>`). La **suite completa (`npm test`, nunca `node --test tests/`) la corre el controlador una sola vez por etapa**, con la máquina quieta, sobre la rama ya unida con `main` y después de los arreglos de la revisión (CLAUDE.md, ciclo del 2026-10-01). Un test nuevo que falla bajo carga es un hallazgo. Cada tarjeta cambia en el mismo commit el código, sus tests y las filas del corpus que cambian de veredicto.
+2. Un commit por tarjeta, en español, Conventional Commits. La versión y el CHANGELOG se tocan una sola vez por etapa, en la parte de T12 de esa etapa (0.16.0, 0.16.1, 0.16.2).
 3. Node >= 22, sin dependencias npm. Nada de red ni de pagos.
 4. Los tests de la guardia no tocan el `~/.pignolo` real (usan `tests/helpers.js`) y no dependen del reloj: el plazo de 3 s se prueba bajando el plazo con `PIGNOLO_DEADLINE_MS` (R-7), no esperando.
 5. El repo es público: la fixture de T1 no lleva rutas absolutas, usuarios, ids de agente ni nombres de proyectos privados.
 6. Nada se relaja si no está en una tabla de este plan. Si el ejecutor encuentra una forma que le parece segura y no está, no la agrega: la anota en `docs/gaps.md`.
 7. Ninguna tarjeta cambia el comportamiento de `ctx.subagent` (ver "Foco de revisión", punto 4).
+9. Una forma que la guardia hoy niega **no se abre** salvo que la tabla de la tarjeta lo diga fila por fila. Donde un relajamiento depende de un dato que la guardia no conoce (un directorio, un valor de variable, un archivo en disco), si el dato se desconoce la forma sigue negada (falla cerrada). Y `null` de una instantánea no es una instantánea buena si el directorio no es un repo (R-2).
 8. Con `PIGNOLO_DISABLED=1` y con `/pignolo:off` solo rige el conjunto catastrófico, como hoy; las formas nuevas que exigen instantánea pasan sin ella (la guardia está apagada).
 
-Autochequeo del ejecutor al cerrar **cada** tarjeta (5 puntos): (1) `npm test` completo en verde; (2) cada fila "debe seguir negado" de la tarjeta se evaluó y sigue negada, con su regla; (3) el rojo de cada test nuevo se mostró rompiendo lo indicado en "Rojo" y se restauró; (4) ninguna regla de la lista "no tocar" cambió de veredicto (la fixture de T1 y los corpus lo cubren); (5) spec y README de la tarjeta al día.
+Autochequeo del ejecutor al cerrar **cada** tarjeta (los 5 ítems de CLAUDE.md, cada uno respondido con evidencia): (1) formas de git que saltan la guardia: cada fila "debe seguir negado" de la tarjeta se evaluó y sigue negada, con su regla, y ninguna regla de la lista "no tocar" cambió de veredicto (la fixture de T1 y los corpus lo cubren); (2) rutas con otra capitalización, junctions y symlinks (`Main` como archivo, un temporal que es enlace a la raíz); (3) archivos que no son UTF-8 (fixture, corpus y plantilla se leen y escriben en UTF-8); (4) lectores que quedaron con la forma vieja de un dato (el campo `snapshot` de `evaluate`, `guard.js`, los tests que esperan una instantánea, `permissions.json`); (5) cada afirmación del informe marcada "probado" o "no probado". Además, el rojo de cada test nuevo se mostró rompiendo lo indicado en "Rojo" y se restauró, y spec y README de la tarjeta están al día.
 
 ## 3. Decisiones del autor (2026-10-02), citadas
 
@@ -43,7 +44,28 @@ Principio: "la guardia frena al agente en los comandos realmente peligrosos y no
 - **D-G1:** todos los ajustes técnicos de la auditoría (sus cambios 1, 2, 4, 7, 8 y 9): `inline-code` se niega solo cuando el código inline llama a git o borra algo protegido o calculado; leer el launcher (`pignolo-launcher`) deja de bloquearse, solo se bloquea ejecutarlo; `dynamic-redirect` se permite salvo que la parte literal nombre `.git` o `.pignolo`; `catastrophic-delete` resuelve `mktemp`, las variables de un `for`, los comodines con prefijo literal y `find -delete` sobre rutas temporales; `dynamic-argument`, `protected-flag`, `unparseable` (`case`) y `dynamic-command` se angostan como dice la auditoría; la plantilla de permisos pierde la familia "el texto menciona git" y la entrada `git restore *`, que además niega `--staged`.
 - **D-G2:** lo recuperable pasa, con la instantánea tomada antes: `git checkout <ref> -- <archivos literales>`, `git checkout -- <archivos>`, `git restore` de archivos concretos (y `--ours` / `--theirs`), `git stash` / `stash push` / `pop` / `apply`. Siguen negados `stash drop` y `stash clear`, y las formas no literales o de árbol entero que la auditoría deja cerradas.
 - **D-G3:** plazo del launcher: cuando vence el plazo de 3 s, un comando de solo lectura POR ESTRUCTURA pasa; lo que escribe, borra o no se puede clasificar sigue negado.
-- **D-G4:** la instantánea se toma solo antes de los comandos que pueden descartar trabajo (checkout, restore, stash, reset, clean, rm y similares, como lista cerrada derivada de la clasificación de la propia guardia), no antes de todo comando. Un comando que la guardia no puede clasificar sigue teniendo instantánea.
+- **D-G4:** la instantánea se toma solo antes de los comandos que pueden descartar trabajo (checkout, restore, stash, reset, clean, rm y similares, como lista cerrada derivada de la clasificación de la propia guardia), no antes de todo comando. Un comando que la guardia no puede clasificar sigue teniendo instantánea. Por la auditoría, la lista incluye los seis comandos que hoy pisan trabajo y que hoy tienen instantánea: `node -e` (todo código inline) que escribe, `awk -i inplace`, `[IO.File]::WriteAllText` (métodos .NET de `[IO.File]`/`[System.IO.*]`), `New-Item -Force`, `git submodule update --force` y `git bisect` (más `sparse-checkout` y `filter-branch` de git).
+- **D-G5 (2026-10-03):** `git merge` con argumento dinámico (`merge "$B"`) **sigue frenado**: el riesgo es `--no-verify` en una variable. `fetch` con argumento dinámico tampoco entra (`--upload-pack` ejecuta un programa). Lo que la guardia conoce (la lista literal de un `for`, una asignación literal en la misma línea) ya se sustituye y se evalúa por valor: eso sí pasa.
+- **D-G6 (2026-10-03):** correr tests o scripts propios (`npm test`, `node x.js`, `make`) **no toma instantánea**. Es el costo declarado de D-G4 (registro de riesgo residual): un script propio que borre archivos no deja respaldo previo.
+
+## 3b. Cambios por la auditoría previa (2026-10-03)
+
+La auditoría (opus, "con cambios") probó contra `main` (`18f62d5`) que el plan, tal como estaba, abría formas hoy cerradas. Cada una tiene su arreglo en la tarjeta indicada; ninguna forma cerrada hoy se abre.
+
+| Id | Forma que se habría abierto o fallo | Arreglo | Tarjeta |
+|---|---|---|---|
+| H1, H1b | `git checkout main` con un archivo `main` cambia de rama; sin `--` la forma de archivos no llamaba a `switchedTo` y un subagente bajaba `onMain` | Los nombres de main, `-` y `@{-N}` sin `--` siguen en `checkout-path`; la forma de archivos nunca toca `switchedTo` ni `offNext` | T11 |
+| H2 | `for b in feat main; do git checkout $b; done && git merge x` desde un subagente | `switchedTo` a main limpia `offNext`; un bucle expandido nunca baja `onMain` | T8 |
+| H3 | `merge "$B"` con `B=--no-verify`; `fetch` con `--upload-pack` | Cerrado por D-G5: solo `worktree add` se relaja | T10 |
+| H4 | `node "$(echo <launcher>)" toggle` apagaba la guardia | Intérprete o shell con script dinámico o `-` en una línea que nombra el launcher se niega | T4 |
+| H5 | Escritura dinámica a `settings.json`, `hooks.json`, `.gitconfig` | La parte literal protegida se niega (`protected-path`); `dynamic-redirect` se retira | T5 |
+| H6 | `eval`, `['execSync']`, `{execSync: run}` y `exec(` de Python escondían un `git` | Regla cerrada de R-9: uso de procesos fuera de literales Y git nombrado | T7 |
+| H7 | La instantánea se tomaba en el cwd del hook aunque el comando corriera tras `cd`, `env -C` o `Start-Process -WorkingDirectory`; `null` contaba como buena | `snapshotDirs` = `realDirs(st)`; directorio desconocido sigue negado; `null` no vale en un no-repo | T2, T11 |
+| H8 | `stash`/`checkout`/`restore` con `GIT_DIR`/`GIT_WORK_TREE`/`--git-dir` | Con `redirected` y sin `-C` literal resuelto siguen negados | T11 |
+| H9 | Seis comandos que hoy pisan trabajo y tienen instantánea quedaban en `'none'` | Entran a `DISCARD` (D-G4) | T2 |
+| menores | `@` de PowerShell, `tree`/`file`, opciones de git en PowerShell, rama del `setTimeout`, `mv` con la fuente, comodín solo bajo la raíz del repo, `rm -rf s*` y los ignorados | Aplicados en T3, T6, T9 | T3, T6, T9 |
+
+También cambió con `main`: la restricción de suite completa (una vez por etapa), la base de la fixture (`main`, con `subagent`/`agentType`/`cwd` por fila), las filas de rol de T10 y T11, la versión (0.16.0) y el número de gap (G71).
 
 ## 4. Decisiones técnicas que toma este plan
 
@@ -52,18 +74,18 @@ Cada una es del agente (CLAUDE.md) y queda registrada acá; si el autor las disc
 | Id | Decisión | Tarjeta |
 |---|---|---|
 | R-1 | `evaluate` devuelve un campo nuevo `snapshot`: `'none'`, `'before'` (instantánea de mejor esfuerzo, como hoy: si falla se avisa con `systemMessage`) o `'required'` (la forma solo pasa si la instantánea sale bien). Se calcula también cuando el veredicto es block (no se usa). `guard.js` lo usa. Lo no clasificable (cualquier regla de clase `unverifiable` o `ask`, incluso en un modo interactivo) da `'before'`. | T2 |
-| R-2 | Regla nueva `snapshot-required` (clase deny): una forma `'required'` cuya instantánea lanza error o sale con `partial` se niega. Una instantánea que devuelve `null` (árbol limpio o no es un repo) cuenta como buena: no hay nada que perder. Con `PIGNOLO_CANARY=1` (no toma instantánea) una forma `'required'` se niega. | T2, T11 |
+| R-2 | Regla nueva `snapshot-required` (clase deny): una forma `'required'` cuya instantánea lanza error o sale con `partial` se niega. Una instantánea que devuelve `null` cuenta como buena **solo si** cada directorio de `snapshotDirs` es un repo con el árbol limpio (se comprueba con `repoInfo`): si el directorio no es un repo o no se pudo determinar, no hay respaldo y se niega. Con `PIGNOLO_CANARY=1` (no toma instantánea) una forma `'required'` se niega. | T2, T11 |
 | R-3 | Las formas que HOY pasan (`stash push -m <x>`, `stash apply <sha>`, `stash list/show/create`) siguen en `'before'`: no se les agrega una condición nueva. Las formas que pasan por D-G2 son `'required'`. | T11 |
 | R-4 | "Archivo literal" (D-G2): palabra sin variable ni sustitución, sin `* ? [ \ :`, que no sea `.`, `..` ni termine en `/`, y que en disco no sea una carpeta. Se mira el disco con el cwd real del hook, o con la costura `opts.statPath` (T1). Sin cwd real ni costura no se relaja nada (la evaluación pura sigue negando como hoy). | T1, T11 |
 | R-5 | `stash` que pasa: sin argumentos, `push` (con `-m`, `-u`/`--include-untracked`, `-k`, `-q`, `--` y rutas literales), `pop`, `apply` con cero o una referencia literal (`stash@{N}` o un sha). Siguen negados: `drop`, `clear`, `save`, `branch`, `store`, `-a`/`--all` (arrastra los ignorados), `-p`/`--patch`, `--pathspec-from-file`, cualquier argumento dinámico y todo lo desconocido. | T11 |
-| R-6 | `git -C <dir literal>` entra en D-G2 (3 de los 21 casos medidos de `checkout-path`/`restore`/`git-C` eran `-C`): se resuelve el directorio contra el cwd real, las reglas de checkout se evalúan sobre ese directorio y la instantánea se toma en él, no en el cwd del hook. `-C` con variable, `--git-dir` y `--work-tree` siguen en `git-C`. | T11 |
-| R-7 | D-G3 rige para los hooks `guard` y `scope-gate` (ambos deciden sobre un comando); `private-reads` y `plan-audit-gate` siguen negando al vencer (limitan lo que lee o ejecuta un subagente: un `cat` del holdout es de solo lectura y justo lo que `private-reads` niega). Bash se clasifica con el tokenizador de la guardia; PowerShell con una lista cerrada por texto, sin AST (el AST es lo que tarda). La variable `PIGNOLO_DEADLINE_MS` solo BAJA el plazo (nunca lo sube) y existe para probarlo sin esperar. El aviso sale por `systemMessage`. | T3 |
-| R-8 | Polaridad de D-G4: la lista cerrada es la de lo que descarta; un programa desconocido (`npm`, `node x.js`, `make`) es neutro y no lleva instantánea. Es el costo declarado de D-G4: un script propio que borre archivos ya no deja respaldo previo (registro de riesgo residual). | T2 |
-| R-9 | `inline-code`: se buscan llamadas a proceso FUERA de los literales de cadena (un `spawnSync('git'...)` escrito dentro de una cadena que se va a guardar en un archivo no es una llamada). Si el escáner no puede tokenizar (comillas sin cerrar, plantilla con `${`), cae a la búsqueda ingenua y niega. | T7 |
-| R-10 | `dynamic-redirect`: la parte literal nombra `.git`, `.pignolo` o un nombre base `disabled` / `.disabled` (el flag) => se niega (`protected-path` o `protected-flag`); si no, pasa. | T5 |
-| R-11 | `protected-flag`: la rama de "comodín o variable con el texto pignolo/disabled" mira solo programas que escriben o borran (`WRITE_CMDS`) y, de `cp`/`mv`/`install`/`ln`, solo el destino; y solo si el patrón puede alcanzar `.pignolo/disabled` o `~/.pignolo/disabled`, comparando segmento por segmento (un comodín no cruza `/`; un tramo variable cuenta como `**`; un comodín puede casar un nombre con punto, a propósito). | T6 |
-| R-12 | `catastrophic-delete`: (a) `$(mktemp ...)` y `` `mktemp ...` `` con solo las opciones `-d`, `-q`, `-t` y una plantilla sin `/` ni `..` valen una ruta temporal; un valor que, ya sustituido, tenga un segmento `..` sigue siendo dinámico. (b) la variable de un `for` con lista literal se evalúa una vez por valor. (c) comodín con prefijo literal no vacío que no empieza con punto (`^[A-Za-z0-9_][A-Za-z0-9_.-]*`) antes del primer comodín, sin segmentos `..` y sin nombrar `.git`/`.pignolo` en el resto: pasa (`rm -f build-*.log`); `*.log`, `.g*`, `*/build` siguen negados. (d) `find <inicio...> -delete` pasa solo si todos los inicios resuelven bajo una ruta temporal (`$TEMP`, `$TMPDIR`, `/tmp`, una variable de `mktemp`): `find` entra en `.git`, así que `find . -name "*.pack" -delete` sigue negado aunque el patrón no case con `.git`. (e) PowerShell: `$_`, `$_.FullName`, `$_.PSPath` y `$PSItem.*` como operando de un borrador dentro de un `ForEach-Object` valen las rutas que produce el `Get-ChildItem`/`Get-Item` de arriba, si su raíz es literal y temporal. | T9 |
-| R-13 | `dynamic-argument`: la variable en posición de ref o ruta se permite solo en `merge`, `fetch` (sin `-u`/`--update-head-ok`) y `worktree add`, y solo en el hilo principal. Más estricto que la auditoría §6.1 en dos puntos: `branch` y `tag` quedan como hoy (una variable al principio sigue negada, porque puede valer `-D`; con prefijo literal, como `"task/$ID"`, ya pasa), y un subagente conserva la regla de hoy (si no, `fetch origin "$B"` con `B=x:int/p` escribiría `int/p` sin que `pignolo-protected-refs` lo vea). La expansión del `for` con lista literal vale para todos. | T10 |
+| R-6 | `git -C <dir literal>` entra en D-G2 (3 de los 21 casos medidos de `checkout-path`/`restore`/`git-C` eran `-C`): se resuelve el directorio contra el cwd real, las reglas de checkout se evalúan sobre ese directorio y la instantánea se toma en él, no en el cwd del hook. `-C` con variable, `--git-dir` y `--work-tree` siguen en `git-C`. `snapshotDirs` sale de `realDirs(st)` en cada punto de descarte (también tras `cd ../wt &&`, `env -C dir` y `Start-Process -WorkingDirectory`), juntando los de cada punto; si el directorio real de una forma `'required'` se desconoce (`cwdReal` nulo y sin `alts`), la forma sigue negada. Con `GIT_DIR`/`GIT_WORK_TREE`/`--git-dir` en la línea (`redirected`) y sin un `-C` literal resuelto, `stash`, `checkout` y `restore` de archivos siguen negados. | T2, T11 |
+| R-7 | D-G3 rige para los hooks `guard` y `scope-gate` (ambos deciden sobre un comando); `private-reads` y `plan-audit-gate` siguen negando al vencer (limitan lo que lee o ejecuta un subagente: un `cat` del holdout es de solo lectura y justo lo que `private-reads` niega). Bash se clasifica con el tokenizador de la guardia; PowerShell con una lista cerrada por texto, sin AST (el AST es lo que tarda). La variable `PIGNOLO_DEADLINE_MS` solo BAJA el plazo (nunca lo sube) y existe para probarlo sin esperar. El aviso sale por `systemMessage`, de **una sola constante** (el plan de mensajes llanos lo mueve a su catálogo). El pase corre **solo** en la rama del `setTimeout` del plazo vencido: `msg.error`, `worker.on('error')` y `worker.on('exit')` siguen negando. | T3 |
+| R-8 | Polaridad de D-G4 y D-G6: la lista cerrada es la de lo que descarta; correr tests o scripts propios (`npm test`, `node x.js`, `make`) es neutro y no lleva instantánea (D-G6, decidido por el autor). Pero **todo código inline** (`-e`/`-c`/heredoc a un intérprete), `awk -i`, los métodos .NET de `[IO.File]`/`[System.IO.*]`, `New-Item -Force` y los subcomandos de git `submodule`, `bisect`, `sparse-checkout` y `filter-branch` entran en la lista (H9). Un comando que no parsea o que pasa por el fallback nuevo de `unparseable`, o por el `inline-code` relajado, da `'before'`, nunca `'none'`. Costo declarado: un script propio que borre archivos ya no deja respaldo previo (registro de riesgo residual). | T2 |
+| R-9 | `inline-code` (regla cerrada, no mira el primer argumento): hay **uso de procesos** si `SPAWN_RE` o un sumidero (`eval`, `Function`, `vm.`, `exec(`/`compile(` de Python, `instance_eval`, `eval` de perl) aparece **fuera** de los literales de cadena y comentarios, o si un literal con nombre de módulo de procesos (`child_process`, `node:child_process`, `subprocess`, `os`) es argumento de `require(`/`import`/`__import__(`. Si hay uso de procesos y el texto nombra git en cualquier lado, se niega. Si no hay uso de procesos, pasa (un `spawnSync('git'...)` dentro de una cadena que se guarda en un archivo no es una llamada). Si el escáner no puede tokenizar (comillas sin cerrar, plantilla con `${`), cae a la búsqueda ingenua y niega. | T7 |
+| R-10 | `dynamic-redirect`: la parte literal nombra `.git`, `.pignolo` o un nombre base `disabled` / `.disabled` (el flag) => se niega (`protected-path` o `protected-flag`); también se niega la parte literal que nombra `.gitconfig`, `.claude`, `settings*.json` o `plugins/` (escritura protegida de `paths.js`: apagan la guardia en la sesión siguiente; `protected-path`); si no, pasa. `dynamic-redirect` **se retira** de `RULES` y de `NOT_EXPRESSIBLE` (lo más simple; el inventario del plan de mensajes lo necesita fijo). | T5 |
+| R-11 | `protected-flag`: la rama de "comodín o variable con el texto pignolo/disabled" mira solo programas que escriben o borran (`WRITE_CMDS`) y, de `cp`/`install`/`ln`, solo el destino (en `mv` también la fuente, porque se borra: mover el flag es usar el interruptor); y solo si el patrón puede alcanzar `.pignolo/disabled` o `~/.pignolo/disabled`, comparando segmento por segmento (un comodín no cruza `/`; un tramo variable cuenta como `**`; un comodín puede casar un nombre con punto, a propósito). | T6 |
+| R-12 | `catastrophic-delete`: (a) `$(mktemp ...)` y `` `mktemp ...` `` con solo las opciones `-d`, `-q`, `-t` y una plantilla sin `/` ni `..` valen una ruta temporal; un valor que, ya sustituido, tenga un segmento `..` sigue siendo dinámico. (b) la variable de un `for` con lista literal se evalúa una vez por valor. (c) comodín con prefijo literal no vacío que no empieza con punto (`^[A-Za-z0-9_][A-Za-z0-9_.-]*`) antes del primer comodín, sin segmentos `..` y sin nombrar `.git`/`.pignolo` en el resto, **y solo si el directorio del patrón es la raíz del repo o una carpeta dentro de ella** (si es `~`, `/`, un ancestro de la raíz, `.git`, `~/.pignolo` o se desconoce, sigue negado: `cd ~ && rm -rf D*` sigue en `catastrophic-delete`): pasa (`rm -f build-*.log`); `*.log`, `.g*`, `*/build` siguen negados. (d) `find <inicio...> -delete` pasa solo si todos los inicios resuelven bajo una ruta temporal (`$TEMP`, `$TMPDIR`, `/tmp`, una variable de `mktemp`): `find` entra en `.git`, así que `find . -name "*.pack" -delete` sigue negado aunque el patrón no case con `.git`. (e) PowerShell: `$_`, `$_.FullName`, `$_.PSPath` y `$PSItem.*` como operando de un borrador dentro de un `ForEach-Object` valen las rutas que produce el `Get-ChildItem`/`Get-Item` de arriba, si su raíz es literal y temporal. | T9 |
+| R-13 | `dynamic-argument` (cerrada por D-G5): la variable en posición de ref o ruta se permite **solo en `worktree add`** y solo en el hilo principal. `merge` y `fetch` con variable **siguen negados** (D-G5: `merge "$B"` puede valer `--no-verify`; `fetch` puede valer `--upload-pack=<cmd>` o `--update-head-ok`). `branch` y `tag` quedan como hoy (una variable al principio sigue negada porque puede valer `-D`; con prefijo literal, como `"task/$ID"`, ya pasa), y un subagente conserva la regla de hoy. Lo que la guardia conoce se evalúa por valor: la lista literal de un `for` (T8) y una asignación literal en la misma línea (ya se sustituye) pasan por las mismas reglas con el valor puesto (`B=--no-verify; git merge "$B"` da `no-verify`). | T10 |
 | R-14 | `dynamic-command`: la variable con un literal asignada en el mismo comando (`R="node x.mjs"; $R a`) ya se resuelve en la base (se verificó): solo se agrega el test de regresión. Lo que falta es la función definida en el mismo comando, que se analiza por su cuerpo con `"$@"` reemplazado por los argumentos de la llamada; si el parser no delimita el cuerpo, se deja negado y se anota (tarjeta T10, parte b, la primera que se recorta). | T10 |
 | R-15 | `unparseable`: se arregla `case ... esac`. Si el texto igual no parsea, se niega solo si nombra git (`mentionsGit`), un borrador (`TEXT_DELETE`) o un sumidero (`eval`, `source`, `\| sh`, `\| bash`, `bash -c`, `sh -c`, `node -e`, `python -c`, `-EncodedCommand`, `Invoke-Expression`, `iex`); si no, pasa. `ps-unavailable` queda como está. | T8 |
 | R-16 | Plantilla: sale la familia `bash -c *git *`, `sh -c *git *`, `node -e *git *`, `python -c *git *`, `python3 -c *git *`, `cmd /c *git *`, `cmd.exe /c *git *`, `xargs *git *`, `find * -exec *git *`, `alias *git*` (se queda `eval *`); salen `git stash`, `git stash pop *`, `git checkout -- *`, `git checkout * -- *` y `git restore *` (Bash y PowerShell) y entran las formas de árbol entero (`git checkout -- .`, `git checkout * -- .`, `git restore .`, `git restore -- .`, y las mismas en PowerShell). Se quedan `git stash drop *`, `git stash clear *`, `git checkout .`, `git checkout -f *` y todo lo demás. La capa 1 no puede expresar "con instantánea": es más estricta a propósito en `git checkout -- .`. | T11 |
@@ -75,11 +97,12 @@ Cada una es del agente (CLAUDE.md) y queda registrada acá; si el autor las disc
 Los cuatro modos de falla que más probablemente muerdan. El revisor opus los ataca primero.
 
 1. **Un comando destructivo que ahora pasa.**
-   - Formas relajadas, las que más: la variable de un `for` con valores que se vuelven peligrosos al expandirse (`.git`, `../..`, `*`, `--force`); `mktemp` con `..` o con `-p`; el comodín con prefijo literal en la raíz del repo (`rm -rf s*` borra `src/`: recuperable por git y por la instantánea, declarado); `find <temp> -delete`; un `inline-code` que arma el comando por partes (pasa, igual que hoy con escribirlo en un archivo); el escáner de cadenas del R-9 (una comilla mal contada esconde una llamada); `git merge "$B"` con `B=--abort` (la auditoría acepta que `merge` no pierde trabajo); `git checkout -- <archivo>` cuyo contenido previo nació en la misma línea de comando (la instantánea se toma antes de la línea: lo que se pierde es lo que el propio agente hizo en esa línea, decisión aceptada).
+   - Formas relajadas, las que más: la variable de un `for` con valores que se vuelven peligrosos al expandirse (`.git`, `../..`, `*`, `--force`); `mktemp` con `..` o con `-p`; el comodín con prefijo literal en la raíz del repo (`rm -rf s*` borra `src/`: recuperable por git y por la instantánea, declarado); `find <temp> -delete`; un `inline-code` que arma el comando por partes (pasa, igual que hoy con escribirlo en un archivo); el escáner de cadenas del R-9 (una comilla mal contada esconde una llamada); `git worktree add` con opciones calculadas por una variable (solo `worktree add`, hilo principal); `git checkout -- <archivo>` cuyo contenido previo nació en la misma línea de comando (la instantánea se toma antes de la línea: lo que se pierde es lo que el propio agente hizo en esa línea, decisión aceptada).
    - La capa 3 es mejor esfuerzo y la capa 1 (plantilla) es la única viva si el hook no arranca: al sacar `bash -c *git *` de la plantilla, `bash -c "git stash drop"` queda sin freno si el hook no corre. La auditoría lo acepta.
 2. **Una instantánea que se saltea antes de un comando destructivo mal clasificado.**
    - La polaridad de R-8 hace que todo lo que no figura en la lista cerrada corra sin instantánea. Hay que recorrer todos los caminos que llaman a `analyze`: `bash -c`, `eval`, `xargs`, `find -exec`, `env`, `sudo`, `npx`, `cmd /c`, `Start-Process`, `powershell -Command`, `ForEach-Object -MemberName Delete`, `.Delete()`. El indicador va en `ctx` (compartido en la recursión), no en el estado `st`, que se copia.
-   - Un script propio (`node limpiar.js`, `npm run clean`, `make clean`, `sh x.sh`) borra sin respaldo: declarado (R-8).
+   - Un script propio (`node limpiar.js`, `npm run clean`, `make clean`, `sh x.sh`) borra sin respaldo: declarado (D-G6, R-8). El código inline (`node -e`, `python -c`) sí lleva instantánea (H9).
+   - Una forma `'required'` tras `cd ../wt &&`, `env -C` o con `GIT_DIR` respalda el directorio real, no el del hook (H7, H8).
    - Un comando que no parsea o no se clasifica debe dar `'before'`, nunca `'none'`.
 3. **Una clasificación de solo lectura equivocada bajo el plazo.**
    - Un comando que escribe y el clasificador toma por lectura corre sin análisis ni respaldo en la máquina cargada. Por eso la lista es cerrada y por estructura (no por texto) en Bash: opciones que escriben (`git diff --output=`, `sort -o`, `find -fprint`, `rg --pre`, `git -c`, `--ext-diff`), redirecciones, sustituciones, variables, subshells, segundo plano.
@@ -88,7 +111,8 @@ Los cuatro modos de falla que más probablemente muerdan. El revisor opus los at
 4. **Las reglas de rol de subagente debilitadas sin querer.**
    - Tocan código compartido: `checkLauncher` (el patrón `executes` de `checkRunScript` no se toca), `analyzeGit` (el `-C` resuelto no puede cambiar el `st` que se le pasa a `protectsRefs`/`touchesMain`, solo el `inner`), `gitRules` (los extras `pignolo-protected-refs` y `subagent-main` se agregan después de la base y no se tocan), el relajamiento de `dynamic-argument` (solo hilo principal, R-13) y la expansión de `for` (más precisa para todos).
    - `git stash pop` y `apply` pasan también para un subagente; el stash es común a los worktrees de tarea: un `pop` puede traer el de otro agente. No pierde trabajo (queda aplicado en otro árbol), pero lo mueve: declarado en el registro de riesgo residual.
-   - Test de guarda en T11: la matriz de roles de `tests/guard-subagent-main.test.js` y `tests/guard-queue.test.js` sigue igual de verde sin tocar una sola fila.
+   - Test de guarda en T11: la matriz de roles de `tests/guard-subagent-main.test.js`, `tests/guard-queue.test.js`, `tests/guard-main-forms.test.js`, `tests/guard-main-verbs.test.js`, `tests/review-guard-push.test.js`, `tests/guard-brace.test.js` y `tests/guard-rereview.test.js` sigue igual de verde sin tocar una sola fila.
+   - `switchedTo`/`offNext`/`onMain` (R5, R7, RR1): una expansión de `for` o la forma de archivos de `checkout` no pueden bajar `onMain` ni dejar `offNext` puesto (H1, H2; T8, T11).
 
 ## 6. Orden y dependencias
 
@@ -105,12 +129,24 @@ Los cuatro modos de falla que más probablemente muerdan. El revisor opus los at
 | T9 | Borrados de temporales | `catastrophic-delete` | L | T5, T8 |
 | T10 | Variables en `merge`/`fetch`/`worktree add`; funciones | `dynamic-argument`, `dynamic-command` | M | T8 |
 | T11 | Lo recuperable pasa con instantánea; plantilla | D-G2, `checkout-path`, `restore`, `stash`, `git-C` | L | T1, T2 |
-| T12 | Versión 0.16.0, CHANGELOG, spec, README, riesgo residual | - | S | T1 a T11 |
+| T12 | Versión, CHANGELOG, spec, README, riesgo residual (una parte por etapa) | - | S | la etapa de cada parte |
 | T13 | Medir: los 181 con el código nuevo y el costo por comando | - | M | T12 |
 
 T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecución en serie (CLAUDE.md: un solo ejecutor en serie por defecto).
 
+### Etapas (cada una con su revisión opus y su pasada de arreglos; cada una se une a `main` antes de empezar la siguiente)
+
+| Etapa | Tarjetas | Versión | Por qué juntas | Foco de su revisión (opus) |
+|---|---|---|---|---|
+| 1. Red y mecanismo | T1, T2, T3 y la parte de T12 de ellas | 0.16.0 | No cambian veredictos de reglas. Ponen la red (fixture) y los dos mecanismos nuevos (cuándo y dónde va la instantánea, y el plazo) | D-G4 (polaridad, H7, H9, `null`); el clasificador de solo lectura (§10.3); el launcher sigue cerrado |
+| 2. Reglas sin parser | T4, T5, T6, T7 y su parte de T12 | 0.16.1 | Cada una angosta una regla en un lugar, sin tocar el parser ni las reglas de git | H4, H5, H6, T6 `mv`; que ninguna fila de "no tocar" cambie (fixture) |
+| 3. Parser, git y lo recuperable | T8, T9, T10, T11, T13 y el cierre de T12 | 0.16.2 | Comparten el estado de la shell (`for`, `switchedTo`, `-C`, `onMain`) y las reglas de rol | H1, H2, H8; D-G5; la matriz de roles; la plantilla; la medición |
+
+Cada etapa: ejecutor sonnet en serie; el controlador une `main` en la rama de la etapa, corre la suite completa una vez, la revisión opus recibe el diff como archivo armado por script y entrega cada hallazgo importante determinista como test que falla; un agente nuevo arregla; una re-revisión acotada en sonnet; recién entonces se une a `main`. Se suma la versión siguiente libre sobre la de `main` en ese momento (si otra rama subió el núcleo, se corre el número). Las etapas 2 y 3 usan la fixture y la instantánea de la 1.
+
 ## 7. Tarjetas
+
+Las listas de ids de "Corpus" de las tarjetas T4 a T11 salieron de la base vieja (62bde34). Al terminar T1 se regeneran desde la fixture hecha con el `main` vigente y se pegan en un anexo al final de este plan (`## Anexo A`); las de abajo valen como orientación. Las llaves, `cmd //c`, R6 y RR1 de `main` pueden mover filas; la tolerancia "≤ 10 distintas de `audit`" se explica fila por fila, no se fija de antemano.
 
 ### T1. Fixture saneada, costura de disco y línea base
 
@@ -125,37 +161,37 @@ T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecuci
 
 **Interfaz**
 - `evaluate(command, { ..., statPath })`: `statPath(valor)` devuelve `'file'`, `'dir'` o `null`. Por defecto resuelve `valor` contra `realDirs(st)` en disco (`'dir'` si es carpeta, `'file'` si existe, `null` si no). El chequeo actual de `checkout` (`fs.existsSync` sobre `realDirs`) pasa a usar `statPath`; trata `'file'` y `'dir'` igual que hoy: sin cambio de comportamiento.
-- Fila de `medidos.json`: `{ id: "ev-000".."ev-180", shell, cmd, files?: [rutas relativas que eran archivos], audit: "block:<regla>" | "allow", base: "block:<regla>" | "allow", expect: "block:<regla>" | "allow" }`. `audit` es el veredicto que midió la auditoría (campo `now` de su `events.json`); `base` es lo que la fixture da con el código de la base (se anota corriendo, en T1); `expect` arranca igual a `base` y cada tarjeta lo mueve para las filas que libera.
+- Fila de `medidos.json`: `{ id: "ev-000".."ev-180", shell, subagent?: boolean, agentType?: string, cwd?: string, cmd, files?: [rutas relativas que eran archivos], audit: "block:<regla>" | "allow", base: "block:<regla>" | "allow", expect: "block:<regla>" | "allow" }`. `audit` es el veredicto que midió la auditoría (campo `now` de su `events.json`); `base` es lo que la fixture da con el código de `main` al empezar la etapa 1 (se anota corriendo, en T1; no con 62bde34). `subagent`/`agentType` son por fila (ev-132 es de un subagente): sin ellos las reglas de rol no se evalúan y `base` no reproduce la auditoría. Sin `cwd`, `headDirs` es ilegible y cuenta como main (determinista, anotado); `expect` arranca igual a `base` y cada tarjeta lo mueve para las filas que libera.
 - Saneado (en `local/`): rutas absolutas del usuario, de `tmp/` y de worktrees pasan a rutas relativas genéricas (`wt/`, `repo/`, `/tmp/x`); ids de agente, ids de sesión y hashes largos se quitan; `cd` a rutas privadas se reduce a `cd wt`; los nombres privados de la denylist se reemplazan por `proj`. Se conserva la forma del comando (comillas, `for`, heredocs, redirecciones, funciones).
 
 **Tests (todos verdes en la base)**
 1. `medidos.json` tiene 181 filas, ids únicos y todos los campos.
-2. Para cada fila, `evaluate(cmd, { shell, mode: 'bypassPermissions', statPath: (p) => (files||[]).includes(p) ? 'file' : null, psTimeoutMs: 30000 })` da `base` (veredicto y regla).
+2. Para cada fila, `evaluate(cmd, { shell, mode: 'bypassPermissions', subagent: row.subagent, agentType: row.agentType, statPath: (p) => (files||[]).includes(p) ? 'file' : null, psTimeoutMs: 30000 })` da `base` (veredicto y regla).
 3. Cuenta: en la base, bloqueadas + permitidas = 181; se imprime cuántas difieren de `audit` (la auditoría usó el disco real) y se exige que sean <= 10; si son más, se revisa el saneado.
 4. Fuga: ninguna fila (ni `cmd` ni `files`) trae una letra de unidad de Windows seguida de `:` y una barra, ni una carpeta de usuario de Windows, Linux o macOS, ni la de datos de aplicación, ni la carpeta de trabajos de Claude, ni un hash de 16 o más caracteres hexadecimales, ni un correo; y ninguna línea de `local/guard/denylist.txt` si el archivo existe (si no existe, se anota y se sigue). Son expresiones regulares genéricas: el test no lleva ningún nombre privado.
 5. La costura: `evaluate('git checkout x.js', { statPath: () => 'file' }).rule === 'checkout-path'` y con `statPath: () => null` es `allow`.
 
 **Rojo:** el test 2 se muestra rompiendo una regla a mano (por ejemplo, vaciando `RULES['dynamic-redirect']` de la lista que corta en `checkWriteTarget`: las filas de esa regla cambian de `base` y el test lo dice). El test 4 se muestra pegando una ruta absoluta de Windows en una fila.
 
-**Docs:** `docs/gaps.md` registra G-guardia-1: "los 181 bloqueos de una sesión; la fixture los versiona". Nada en spec ni README.
+**Docs:** `docs/gaps.md` registra G71 (el siguiente libre de `main`): "los 181 bloqueos de una sesión; la fixture los versiona". Nada en spec ni README.
 
 ### T2. La instantánea solo antes de lo que descarta (D-G4)
 
 **Reglas:** ninguna cambia de veredicto; cambia cuándo se toma la instantánea. Reglas nuevas: `snapshot-required` (se declara acá, se usa en T11).
 
 **Archivos**
-- `plugins/pignolo/lib/git-guard.js`: `evaluate` devuelve `snapshot` y `snapshotDirs`; el indicador `ctx.discard` se levanta en los puntos de la lista cerrada; entra `RULES['snapshot-required']` (deny, razón: "este comando sobrescribe trabajo sin commitear y solo pasa con una instantánea previa; la instantánea falló", alternativa: "reintentá, o commiteá el trabajo como WIP antes").
+- `plugins/pignolo/lib/git-guard.js`: `evaluate` devuelve `snapshot` y `snapshotDirs`; el indicador `ctx.discard` se levanta en los puntos de la lista cerrada (en `ctx`, compartido en la recursión, no en `st`); `snapshotDirs` = `realDirs(st)` de cada punto de descarte; entra `RULES['snapshot-required']` (la regla número 60 de `RULES`) (deny, razón: "este comando sobrescribe trabajo sin commitear y solo pasa con una instantánea previa; la instantánea falló", alternativa: "reintentá, o commiteá el trabajo como WIP antes").
 - `plugins/pignolo/hooks/handlers/guard.js`: usa `v.snapshot`.
 - `tests/guard-snapshot-scope.test.js` (nuevo); se ajustan `tests/guard-handler.test.js` y `tests/permissions.test.js` (`NOT_EXPRESSIBLE['snapshot-required']`: "depende de que la instantánea de esta llamada salga bien").
 
 **Interfaz**
-- `evaluate(...).snapshot`: `'none' | 'before' | 'required'` (R-1). `snapshotDirs`: lista de directorios reales a respaldar (vacía = el cwd del hook; T11 la llena para `-C`).
-- Flujo de `guard.js`: evalúa; si block, exit 2 sin instantánea (como hoy); si la guardia está apagada, exit 0; si `snapshot === 'none'`, no llama a `snapshotWip` (ni su `rev-parse`); si `'before'`, como hoy (un fallo se avisa por `systemMessage` y no cambia la decisión); si `'required'`, un fallo, un `partial` o `PIGNOLO_CANARY=1` dan exit 2 con la razón de `snapshot-required` (R-2).
+- `evaluate(...).snapshot`: `'none' | 'before' | 'required'` (R-1). `snapshotDirs`: lista de directorios reales a respaldar, tomados de `realDirs(st)` en el punto de descarte (H7: tras `cd ../wt &&`, `env -C` o `Start-Process -WorkingDirectory` es el directorio real, no el cwd del hook). Vacía = el cwd del hook. Una forma `'required'` cuyo directorio real no se conoce (`cwdReal` nulo y sin `alts`) sigue con su regla de hoy. Para `'before'` se usan los mismos directorios (mejor esfuerzo).
+- Flujo de `guard.js`: evalúa; si block, exit 2 sin instantánea (como hoy); si la guardia está apagada, exit 0; si `snapshot === 'none'`, no llama a `snapshotWip` (ni su `rev-parse`); si `'before'`, como hoy (un fallo se avisa por `systemMessage` y no cambia la decisión); si `'required'`, un fallo, un `partial`, una instantánea `null` en un directorio que no es un repo o `PIGNOLO_CANARY=1` dan exit 2 con la razón de `snapshot-required` (R-2).
 - Lista cerrada de lo que descarta (R-8), derivada de las propias estructuras de la guardia; `DISCARD` se exporta para los tests:
-  - programas: `DELETE_CMDS` (rm, rmdir, unlink, shred, del, erase, rd, Remove-Item, ri, mv, move, Move-Item, mi, ren, rename, Rename-Item, rni, rimraf, del-cli, trash), más `cp copy copy-item cpi tee install truncate ln set-content sc out-file clear-content clc tee-object new-item ni dd robocopy xcopy rsync`, y los de `FILE_WRITERS` (curl, wget, unzip, 7z, patch);
-  - formas: redirección de salida con `>` o `>|` (no `>>`, no `>&`, no a `/dev/null`); `sed -i`, `perl -i`, `ruby -i`; `tar` que extrae; `find` con `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`; código inline con una API de borrado (`inlineDeletes` encontró llamadas);
-  - git: `checkout`, `switch`, `restore`, `reset`, `clean`, `stash` (salvo `list`/`show`/`create`), `rm`, `read-tree`, `checkout-index`, `worktree`, `rebase`, `merge`, `pull`, `cherry-pick`, `revert`, `am`, `apply`, `mv`. Se quedan fuera (no tocan archivos del árbol): `status log diff show add commit push fetch branch tag remote config rev-parse ls-files` y los demás de lectura;
-  - no clasificable: parseo fallido, `hidden-code`, `dynamic-command`, `unknown-git-subcommand`, `ps-unavailable` y cualquier regla de clase `unverifiable` o `ask` => `'before'`.
+  - programas: `DELETE_CMDS` (rm, rmdir, unlink, shred, del, erase, rd, Remove-Item, ri, mv, move, Move-Item, mi, ren, rename, Rename-Item, rni, rimraf, del-cli, trash), más `cp copy copy-item cpi tee install truncate ln set-content sc out-file clear-content clc tee-object new-item ni dd robocopy xcopy rsync`, y los de `FILE_WRITERS` (curl, wget, unzip, 7z, patch); `New-Item -Force`; los métodos .NET de `[IO.File]`/`[System.IO.*]` (`WriteAllText`, `Delete`, `Move`...);
+  - formas: redirección de salida con `>` o `>|` (no `>>`, no `>&`, no a `/dev/null`); `sed -i`, `perl -i`, `ruby -i`, `awk -i`; `tar` que extrae; **todo código inline** (`-e`/`-c`/heredoc a un intérprete: `node -e`, `python -c`, `node - <<EOF`), llame o no a una API de borrado (H9); `find` con `-delete`, `-exec`, `-execdir`, `-ok`, `-okdir`; código inline con una API de borrado (`inlineDeletes` encontró llamadas);
+  - git: `checkout`, `switch`, `restore`, `reset`, `clean`, `stash` (salvo `list`/`show`/`create`), `rm`, `read-tree`, `checkout-index`, `worktree`, `rebase`, `merge`, `pull`, `cherry-pick`, `revert`, `am`, `apply`, `mv`, `submodule`, `bisect`, `sparse-checkout`, `filter-branch`. Se quedan fuera (no tocan archivos del árbol): `status log diff show add commit push fetch branch tag remote config rev-parse ls-files` y los demás de lectura;
+  - no clasificable: parseo fallido (y lo que pasa por el fallback nuevo de `unparseable` de T8 y por el `inline-code` relajado de T7), `hidden-code`, `dynamic-command`, `unknown-git-subcommand`, `ps-unavailable` y cualquier regla de clase `unverifiable` o `ask` => `'before'`.
   - Las envolturas (`env`, `sudo`, `timeout`, `xargs`, `bash -c`, `eval`, `cmd /c`, `Start-Process`, `powershell -Command`, `find -exec`) ya reevalúan lo envuelto con el mismo `ctx`: el indicador sale solo.
 
 **Tabla: instantánea (antes: siempre; después: la de la tabla)**
@@ -174,7 +210,7 @@ T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecuci
 | `git stash list` | sí | `none` |
 | `npm test` | sí | `none` |
 | `node --test tests/` | sí | `none` |
-| `node scripts/x.js` | sí | `none` (declarado, R-8) |
+| `node scripts/x.js` | sí | `none` (D-G6) |
 | `mkdir -p out/x` / `touch f.txt` | sí | `none` |
 | `echo hi >> log.txt` | sí | `none` |
 | `npm test > /dev/null 2>&1` | sí | `none` |
@@ -191,6 +227,12 @@ T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecuci
 | `bash -c "rm a.txt"` / `xargs rm < lista.txt` | sí | `before` |
 | PowerShell `Remove-Item a.txt` / `Set-Content a.txt x` / `Out-File a.txt` | sí | `before` |
 | modo interactivo: `eval "$X"` (ask) / `git lg` (ask) | sí | `before` |
+| `node -e "require('fs').writeFileSync('a.txt','x')"` / `awk -i inplace '{print}' a.txt` | sí | `before` (H9) |
+| PowerShell `[IO.File]::WriteAllText('a.txt','x')` / `New-Item -Force a.txt` | sí | `before` (H9) |
+| `git submodule update --force` / `git bisect start` / `git sparse-checkout set x` | sí | `before` (H9) |
+| `cd ../wt && git checkout -- a.txt` (etapa 3: pasa) | sí | `before` o `required`, con `snapshotDirs` = el directorio de `../wt` (H7) |
+| `cd "$D" && git stash` (directorio desconocido) | sí | sigue negado (`stash`) |
+| línea que no parsea y pasa por el fallback de T8 | sí | `before` |
 
 **Debe seguir igual (no se toca):** un comando bloqueado sigue sin instantánea; con la guardia apagada no hay instantánea; `agent-gate` (instantánea y respaldo de refs antes de cada despacho) no cambia.
 
@@ -199,12 +241,13 @@ T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecuci
 2. Meta-test: una muestra por cada regla de pérdida de trabajo (`stash`, `checkout-path`, `checkout-force`, `switch-force`, `restore`, `reset-hard`, `clean`, `rm-force`, `read-tree-update`, `checkout-index-force`, `worktree-remove-force`, `catastrophic-delete`) da `snapshot !== 'none'` aunque el veredicto sea block. Si alguien agrega una regla de pérdida de trabajo sin la lista, falla.
 3. Handler: con la instantánea inyectada (`ctx.snapshot` de `tests/helpers.js`), `ls` no la llama; `rm tmp.txt` la llama una vez; un block no la llama; una instantánea que lanza error en `'before'` deja exit 0 con `systemMessage`.
 4. `PIGNOLO_CANARY=1` no toma instantánea (como hoy).
+5. `snapshotDirs`: `cd ../wt && git checkout -- a.txt` deja la instantánea de `../wt`; una forma `'required'` con directorio desconocido sigue negada; `null` en un directorio que no es un repo da exit 2 (H7).
 
 **Rojo:** el test 1 se rompe cambiando `DISCARD` para que no incluya `rm` (la fila `rm a.txt` pasa a `none`); el meta-test, vaciando la rama de `reset` de la lista; el handler, haciendo que `guard.js` ignore `v.snapshot`.
 
 **Tests existentes que cambian:** `tests/guard-handler.test.js` (los que esperan una instantánea antes de un comando inocuo, "takes a WIP snapshot before an allowed shell command in a dirty repo", "work destroyed by an allowed command is recoverable from refs/pignolo/wip" y el de `systemMessage` por fallo) pasan a usar un comando de la lista (`rm a.txt`, con el archivo ya creado) en vez de `echo`/`ls`.
 
-**Docs:** spec §11.6: reescribir el punto "`scripts/wip-snapshot` toma la instantánea antes de todo comando de Bash/PowerShell, sin clasificarlo" => "antes de los comandos que pueden descartar trabajo (lista cerrada) y de los que la guardia no puede clasificar; el resto de los comandos corre sin instantánea (decisión del autor, 2026-10-02, D-G4)"; el costo medido (0,25–0,35 s) se cita como el que se ahorra, con el dato real de T13. README: la frase de "Borrados que no pasan por git" aclara que un script propio no deja respaldo previo. `docs/gaps.md`: G22 y G42 pasan a "parcialmente cerrado".
+**Docs (parte de la etapa 1):** spec §11.6: reescribir el punto "`scripts/wip-snapshot` toma la instantánea antes de todo comando de Bash/PowerShell, sin clasificarlo" => "antes de los comandos que pueden descartar trabajo (lista cerrada) y de los que la guardia no puede clasificar; el resto de los comandos corre sin instantánea (decisión del autor, 2026-10-02, D-G4; D-G6 para los scripts propios, 2026-10-03)"; el costo medido (0,25–0,35 s) se cita como el que se ahorra, con el dato real de T13. README: la frase de "Borrados que no pasan por git" aclara que un script propio no deja respaldo previo. `docs/gaps.md`: G22 y G42 pasan a "parcialmente cerrado".
 
 ### T3. Plazo vencido: pasa lo de solo lectura (D-G3)
 
@@ -212,16 +255,16 @@ T3, T4, T5, T6 y T7 no dependen entre sí: el orden de la tabla es el de ejecuci
 
 **Archivos**
 - `plugins/pignolo/lib/read-only.js` (nuevo): `isReadOnlyByStructure(command, shell)`. Solo depende de `./shell-parse`.
-- `plugins/pignolo/hooks/launcher.js`: al vencer el plazo, para `guard` y `scope-gate` con un payload de Bash o PowerShell con `tool_input.command` de texto, consulta el clasificador; si da true, sale 0 con `systemMessage`; si no, niega como hoy. Lee `PIGNOLO_DEADLINE_MS` (solo si es un entero menor que el plazo vigente, mínimo 1).
+- `plugins/pignolo/hooks/launcher.js`: **solo en la rama del `setTimeout` del plazo vencido** (`msg.error`, `worker.on('error')` y `worker.on('exit')` siguen negando), para `guard` y `scope-gate` con un payload de Bash o PowerShell con `tool_input.command` de texto, consulta el clasificador; si da true, sale 0 con `systemMessage` (el texto sale de **una sola constante**, para el plan de mensajes llanos); si no, niega como hoy. Lee `PIGNOLO_DEADLINE_MS` (solo si es un entero menor que el plazo vigente, mínimo 1).
 - `tests/guard-deadline.test.js` (nuevo); `tests/launcher.test.js` (el test del plazo sigue igual).
 
 **Definición de "solo lectura por estructura" (conservadora, cerrada)**
 Bash (con `parseBash`; un `ParseError` => false):
 1. Todos los comandos simples, unidos por `&&`, `||`, `;`, `|` o salto de línea. Sin subshell `( )`, sin `{ }`, sin `&` al final, sin sustitución `$( )` ni `` ` ``, sin `<( )`, sin heredoc ni here-string, sin asignaciones al frente, sin palabra dinámica (`$x`, `${x}`): todo `dyn` => false.
 2. Redirecciones: solo `2>&1`, `>&2`, `>/dev/null`, `2>/dev/null`, `&>/dev/null` y `<` de entrada. Cualquier otro `>` o `>>` => false.
-3. Programa (tras `progName`) en la lista: `ls pwd cat head tail wc stat file du tree basename dirname realpath readlink echo printf true false test [ cd grep egrep fgrep rg sort cut tr nl column diff cmp md5sum sha1sum sha256sum od hexdump strings jq which find`. Excepciones por programa: `rg` sin `--pre`, `--pre-glob`, `--hostname-bin`, `-z`, `--search-zip`; `sort` sin `-o` ni `--output`, `--compress-program`; `find` sin `-delete -exec -execdir -ok -okdir -fprint -fprint0 -fprintf -fls`.
-4. `git` (sin `-c`, `-C`, `--git-dir`, `--work-tree`; solo `--no-pager` como opción global) con subcomando en `status log diff show rev-parse rev-list ls-files ls-tree cat-file blame shortlog describe merge-base show-ref name-rev diff-tree diff-index diff-files grep`, o en las formas exactas `branch` (con argumentos solo de `-a -r -v -vv --show-current --list`), `tag` (solo `-l`/`--list`), `stash list`, `stash show`, `worktree list`, `remote -v`. Ningún argumento que empiece con `--output`, `--ext-diff`, `--textconv`, `--exec`, `--open-files-in-pager` ni sea `-O`.
-PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*\s*$`, donde `CMD` es `Get-ChildItem`, `Get-Content`, `Get-Item`, `Get-Location`, `Test-Path`, `Select-String`, `Resolve-Path`, `Write-Output`, `Write-Host`, o `git` con un subcomando de la lista de Bash; `ARG` es `[-A-Za-z0-9_.:/\\*?=,@%+~#]+` o una cadena entre comillas simples sin `$` ni `` ` ``, o entre comillas dobles sin `$` ni `` ` ``. Sin `|`, `;`, `&`, `>`, `<`, `(`, `{`, `$` fuera de comillas simples.
+3. Programa (tras `progName`) en la lista: `ls pwd cat head tail wc stat du basename dirname realpath readlink echo printf true false test [ cd grep egrep fgrep rg sort cut tr nl column diff cmp md5sum sha1sum sha256sum od hexdump strings jq which find`. (Sin `tree` y sin `file`: `tree -o` y `file -C` escriben.) Excepciones por programa: `rg` sin `--pre`, `--pre-glob`, `--hostname-bin`, `-z`, `--search-zip`; `sort` sin `-o` ni `--output`, `--compress-program`; `find` sin `-delete -exec -execdir -ok -okdir -fprint -fprint0 -fprintf -fls`.
+4. `git` (sin `-c`, `-C`, `--git-dir`, `--work-tree`; solo `--no-pager` como opción global) con subcomando en `status log diff show rev-parse rev-list ls-files ls-tree cat-file blame shortlog describe merge-base show-ref name-rev diff-tree diff-index diff-files grep`, o en las formas exactas `branch` (con argumentos solo de `-a -r -v -vv --show-current --list`), `tag` (solo `-l`/`--list`), `stash list`, `stash show`, `worktree list`, `remote -v`. Ningún argumento que empiece con `--output`, `--ext-diff`, `--textconv`, `--exec`, `--open-files-in-pager` ni sea `-O`. Las mismas exclusiones de opciones de `git` valen en PowerShell.
+PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*\s*$`, donde `CMD` es `Get-ChildItem`, `Get-Content`, `Get-Item`, `Get-Location`, `Test-Path`, `Select-String`, `Resolve-Path`, `Write-Output`, `Write-Host`, o `git` con un subcomando de la lista de Bash; `ARG` es `[-A-Za-z0-9_.:/\\*?=,%+~#]+` (sin `@`: `git log @a` es *splatting* y con `$a = '--output=x'` escribe) o una cadena entre comillas simples sin `$` ni `` ` ``, o entre comillas dobles sin `$` ni `` ` ``. Sin `|`, `;`, `&`, `>`, `<`, `(`, `{`, `$` fuera de comillas simples.
 
 **Tabla: plazo vencido (comando de Bash salvo que diga PowerShell)**
 
@@ -259,12 +302,13 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 2. Launcher, con `PIGNOLO_DEADLINE_MS=1` y el `guard` real: `ls` => exit 0 y `systemMessage` que menciona el plazo; `rm a.txt` => exit 2 con "plazo interno"; `PowerShell` con `Get-ChildItem src` => exit 0.
 3. Launcher, `scope-gate` con `git log main..branch` (casa con el prefiltro) => exit 0; `git merge x` => exit 2.
 4. Launcher, `private-reads` con `agent_id` y un `Bash` de lectura (`cat a.txt`) => exit 2 con el plazo en 1 ms (no pasa). `plan-audit-gate` igual.
-5. `PIGNOLO_DEADLINE_MS=99999` no sube el plazo: el handler lento de `tests/launcher.test.js` sigue negado antes de 6 s.
+5. `PIGNOLO_DEADLINE_MS=99999` no sube el plazo: se fija el handler de 8 s de `tests/launcher.test.js:88` y el comando sigue negado antes de 6 s.
+5b. Los caminos de error del launcher (`msg.error`, `worker.on('error')`, `worker.on('exit')`) siguen negando aunque el comando sea de solo lectura. PowerShell `git log @a` y `tree -o out.txt` / `file -C -m magic` bajo plazo vencido: deny.
 6. Sin `PIGNOLO_DEADLINE_MS`, el comportamiento y el mensaje de hoy no cambian.
 
 **Rojo:** el test 1 se rompe agregando `rm` a la lista de programas (una fila de "deny" pasa); el 2 y el 3, haciendo que el launcher consulte el clasificador para todos los hooks (el 4 falla); el 5, quitando el "solo si es menor".
 
-**Docs:** spec §8.3: el punto "tiene un plazo interno (~3 s) que, al vencer, niega" => "...al vencer, niega salvo que el hook sea `guard` o `scope-gate` y el comando sea de solo lectura por estructura (lista cerrada, `lib/read-only.js`); entonces pasa con un aviso (decisión del autor, 2026-10-02, D-G3)". README, sección Guardia: una línea.
+**Docs (parte de la etapa 1):** spec §8.3: el punto "tiene un plazo interno (~3 s) que, al vencer, niega" => "...al vencer, niega salvo que el hook sea `guard` o `scope-gate` y el comando sea de solo lectura por estructura (lista cerrada, `lib/read-only.js`); entonces pasa con un aviso (decisión del autor, 2026-10-02, D-G3)". README, sección Guardia: una línea.
 
 ### T4. Leer el launcher deja de bloquearse (`pignolo-launcher`)
 
@@ -272,7 +316,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Archivos:** `plugins/pignolo/lib/git-guard.js` (`checkLauncher`); `tests/git-guard.test.js`, `tests/guard-toggle-paths.test.js`, `tests/guard/must-allow.json`, `tests/guard/must-block.json`.
 
-**Comportamiento:** hay ejecución cuando (a) el programa mismo (`words[0]` tras quitar envoltorios) es el launcher, o (b) el programa es un intérprete (`INTERP`) o una shell (`SHELLS`) y alguno de sus operandos es el launcher. Leerlo con `cat`, `sed`, `grep`, `head`, `git diff`, `git show`, `cp` (como fuente), `wc`, un `for f in ...` o pasárselo a cualquier otro programa no cuenta. `node --check <launcher>` pasa (R-18). Se mantiene la excepción `node <launcher> session-start`. La detección de palabras dinámicas que terminan en `launcher.js` (`$L`) se mantiene para el caso de ejecución.
+**Comportamiento:** hay ejecución cuando (a) el programa mismo (`words[0]` tras quitar envoltorios) es el launcher, o (b) el programa es un intérprete (`INTERP`) o una shell (`SHELLS`) y alguno de sus operandos es el launcher. Leerlo con `cat`, `sed`, `grep`, `head`, `git diff`, `git show`, `cp` (como fuente), `wc`, un `for f in ...` o pasárselo a cualquier otro programa no cuenta. `node --check <launcher>` pasa (R-18). Se mantiene la excepción `node <launcher> session-start`. La detección de palabras dinámicas que terminan en `launcher.js` (`$L`) se mantiene para el caso de ejecución. **H4 (cierre):** si la línea nombra el launcher en cualquier lado y tiene un intérprete o una shell (`INTERP`/`SHELLS`, también detrás de `xargs`, `find -exec` o `ForEach-Object`) con una palabra dinámica o `-` (stdin) como script, se niega: `node "$(echo plugins/pignolo/hooks/launcher.js)" toggle` y PowerShell `Get-ChildItem <launcher> | ForEach-Object { node $_.FullName toggle }` siguen negados (`toggle` con un payload inventado apaga la guardia).
 
 **Tabla**
 
@@ -302,12 +346,14 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `./hooks/launcher.js guard` |
 | `timeout 5 node hooks/launcher.js toggle` |
 | PowerShell `node plugins\pignolo\hooks\launcher.js toggle` |
+| `node "$(echo plugins/pignolo/hooks/launcher.js)" toggle` (H4) |
+| PowerShell `Get-ChildItem plugins\pignolo\hooks\launcher.js \| ForEach-Object { node $_.FullName toggle }` (H4) |
 
 **Corpus:** los 35 ids de `medidos.json` con `base: block:pignolo-launcher` (ev-009, 011, 015, 032, 036, 039, 040, 041, 046, 053, 054, 057, 058, 075, 076, 078, 082, 086, 087, 091, 097, 103, 107, 108, 113, 114, 120, 121, 122, 123, 124, 134, 150, 151, 166) pasan a `expect: allow` (todas son lecturas: `cat -n`, `sed -n`, `grep -n`, `git diff`). Si alguna sigue negada por otra regla, el ejecutor la anota con su regla en `expect` y lo explica en el commit. Se suman a `must-allow.json` las filas de "pasa" de la tabla (Bash y PowerShell).
 
 **Rojo:** las filas de "pasa" fallan en la base (`pignolo-launcher`); las de "debe seguir negado" se muestran rompiendo `checkLauncher` para que solo mire `words[0]` (`bash hooks/launcher.js` pasa y el test lo dice).
 
-**Docs:** spec §11.6 (la regla ya dice "solo cuando se ejecuta" para los scripts de pignolo; se suma el launcher); README sin cambio.
+**Docs (parte de la etapa 2):** spec §11.6 (la regla ya dice "solo cuando se ejecuta" para los scripts de pignolo; se suma el launcher); README sin cambio. `docs/gaps.md` (números libres al escribirlos): hoy ya pasan y se registran `node $(ls .../launch*) toggle`, `printf … > l.txt; xargs -a l.txt node` y `find … -exec node {} toggle`.
 
 ### T5. Redirección a una variable (`dynamic-redirect`)
 
@@ -315,7 +361,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Archivos:** `plugins/pignolo/lib/git-guard.js` (`checkWriteTarget`); `tests/guard-toggle-paths.test.js`, `tests/permissions.test.js` (`dynamic-redirect` ya está en `NOT_EXPRESSIBLE`; la razón cambia), `tests/guard/must-allow.json`, `tests/guard/must-block.json`.
 
-**Comportamiento:** un destino con variable o sustitución que, tras sustituir lo conocido, sigue siendo dinámico: se niega solo si la parte literal nombra `.git` (`protected-path`), `.pignolo` o un nombre base `disabled` / `.disabled` (`protected-flag`); en cualquier otro caso pasa. Se mantiene la resolución del prefijo literal que ya hay (si resuelve a una ruta protegida, se niega). Se saca la prueba `/pignolo|disabled/i` sobre el texto entero. La regla `dynamic-redirect` queda en `RULES` (sin uso desde acá, para no romper `permissions.test.js`), o se retira junto con su entrada de `NOT_EXPRESSIBLE`: el ejecutor elige lo más simple y lo deja anotado.
+**Comportamiento:** un destino con variable o sustitución que, tras sustituir lo conocido, sigue siendo dinámico: se niega solo si la parte literal nombra `.git` (`protected-path`), `.pignolo` o un nombre base `disabled` / `.disabled` (`protected-flag`); en cualquier otro caso pasa. Se mantiene la resolución del prefijo literal que ya hay (si resuelve a una ruta protegida, se niega). Se saca la prueba `/pignolo|disabled/i` sobre el texto entero. **H5:** la parte literal que nombra `.gitconfig`, `.claude`, `settings*.json` o `plugins/` también se niega (`protected-path`: `echo {} > "$CLAUDE_CONFIG_DIR/settings.json"`, `echo {} > "$CLAUDE_PLUGIN_ROOT/hooks/hooks.json"`, `echo x > "$H/.gitconfig"`). Decidido: la regla `dynamic-redirect` **se retira** de `RULES` y de `NOT_EXPRESSIBLE`.
 
 **Tabla**
 
@@ -340,12 +386,13 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `echo {} > "$D/.pignolo/state.json"` | `protected-flag` |
 | `echo x > "$D/disabled"` / `echo x > "$D/.disabled"` | `protected-flag` |
 | `echo x > "$HOME/.pignolo/disabled"` | `protected-flag` |
+| `echo {} > "$CLAUDE_CONFIG_DIR/settings.json"` / `echo {} > "$CLAUDE_PLUGIN_ROOT/hooks/hooks.json"` / `echo x > "$H/.gitconfig"` (H5) | `protected-path` |
 
 **Corpus:** los 13 ids con `base: block:dynamic-redirect` (ev-012, 022, 096, 100, 119, 125, 135, 137, 140, 142, 147, 154, 155) pasan a `expect: allow` salvo los que otra regla siga negando. Se suman a `must-allow.json` las filas de "pasa" y a `must-block.json` las de "debe seguir negado" que no estén.
 
 **Rojo:** las filas de "pasa" fallan en la base; las de "debe seguir negado" se muestran haciendo que el destino dinámico pase siempre (`echo x > "$D/.git/config"` pasa y el test lo dice).
 
-**Docs:** spec §11.6 (la lista de lo no verificable ya no incluye "redirección a una variable"); README, línea de "No verificable": quitar el caso. Residual: una variable que valga `.git/config` sin que el texto lo nombre pisa un archivo recuperable de la sombra.
+**Docs (parte de la etapa 2):** spec §11.6 (la lista de lo no verificable ya no incluye "redirección a una variable"); README, línea de "No verificable": quitar el caso. `docs/gaps.md`: `cp x.json "$CLAUDE_CONFIG_DIR/settings.json"` ya pasa hoy (`checkPathArgs` no mira rutas protegidas en un destino dinámico). Residual: una variable que valga `.git/config` sin que el texto lo nombre pisa un archivo recuperable de la sombra.
 
 ### T6. Comodines con el texto "pignolo" o "disabled" (`protected-flag`)
 
@@ -353,7 +400,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Archivos:** `plugins/pignolo/lib/git-guard.js` (`checkPathArgs`, una función `flagReachable(word, ctx)`); `tests/git-guard.test.js`, `tests/guard-toggle-paths.test.js`, `tests/guard/must-allow.json`.
 
-**Comportamiento (R-11):** la rama `if (w.dyn || w.glob)` solo corre si el programa está en `WRITE_CMDS`; en `cp`/`mv`/`install`/`ln` mira solo el destino (las fuentes se leen). Dentro, se niega solo si el patrón puede alcanzar `.pignolo/disabled`, `.pignolo/.disabled`, `<home>/.pignolo/disabled` o `<pignoloHome>/disabled` (comparación por segmentos; un tramo variable cuenta como `**`). La rama de rutas literales (`isFlag`, nombre base `.disabled`, borrar `.pignolo`) no cambia. `sed`, `pytest`, `for`, intérpretes y programas desconocidos con un comodín que nombra "pignolo" o "disabled" pasan.
+**Comportamiento (R-11):** la rama `if (w.dyn || w.glob)` solo corre si el programa está en `WRITE_CMDS`; en `cp`/`install`/`ln` mira solo el destino (las fuentes se leen); **en `mv` mira también la fuente** (se borra: mover el flag es usar el interruptor). Dentro, se niega solo si el patrón puede alcanzar `.pignolo/disabled`, `.pignolo/.disabled`, `<home>/.pignolo/disabled` o `<pignoloHome>/disabled` (comparación por segmentos; un tramo variable cuenta como `**`). La rama de rutas literales (`isFlag`, nombre base `.disabled`, borrar `.pignolo`) no cambia. `sed`, `pytest`, `for`, intérpretes y programas desconocidos con un comodín que nombra "pignolo" o "disabled" pasan.
 
 **Tabla**
 
@@ -372,6 +419,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | Comando | Regla (antes y después) |
 |---|---|
 | `touch .pignolo/.dis*` | `protected-flag` |
+| `mv .pignolo/disabled /tmp/x` / `mv .pig*/.disabled /tmp/x` (la fuente) | `protected-flag` |
 | `touch */disabled` | `protected-flag` |
 | `cp /dev/null .pig*/.disabled` | `protected-flag` |
 | `touch "$D/.pignolo/disabled"` | `protected-flag` |
@@ -384,7 +432,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Rojo:** las filas de "pasa" fallan en la base; se rompe `flagReachable` para que devuelva true siempre (`touch *disabled*` vuelve a negarse) y para que devuelva false siempre (`touch */disabled` pasa y `must-block` lo dice).
 
-**Docs:** spec §11.6 (regla del flag: "solo programas que escriben o borran y solo si el comodín alcanza el flag"); README sin cambio.
+**Docs (parte de la etapa 2):** spec §11.6 (regla del flag: "solo programas que escriben o borran y solo si el comodín alcanza el flag"); README sin cambio.
 
 ### T7. Código inline que llama a git de verdad (`inline-code`)
 
@@ -392,7 +440,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Archivos:** `plugins/pignolo/lib/inline-calls.js` (nuevo: escáner de llamadas a proceso fuera de literales); `plugins/pignolo/lib/git-guard.js` (`inlineCheck`, `analyzeAwk`); `tests/inline-calls.test.js` (nuevo); `tests/guard-structural.test.js` (14 menciones: se revisan una por una), `tests/guard-catastrophic.test.js`, `tests/git-guard.test.js`, `tests/guard/must-allow.json`, `tests/guard/must-block.json`.
 
-**Interfaz:** `inlineCallsGit(text, lang)` devuelve `{ deny: boolean, why }`. Niega si: (a) hay una llamada a proceso FUERA de literales de cadena cuyo primer argumento literal es `git` (`spawn('git'...)`, `execFileSync('git', ...)`, `subprocess.run(['git', ...])`, `os.system('git ...')`) o una cadena de shell que empieza con `git ` o lo trae tras `&&`, `;`, `|` (`execSync('npm test && git stash drop')`); en perl y ruby, backticks, `system`, `exec`, `qx`, `%x` con la misma prueba; (b) hay una llamada a proceso con comando no literal (`execSync(cmd)`, `spawnSync(process.execPath, ...)`) Y el texto nombra git (`mentionsGit`); (c) `inlineDeletes` (como hoy). El escáner recorre el texto salteando literales de cadena (`'`, `"`, backtick, triple comilla de Python) y comentarios (`//`, `#`); si no puede (comillas sin cerrar, plantilla con `${`), usa la búsqueda ingenua de hoy (`SPAWN_RE` + `mentionsGit`) y niega (R-9). Una llamada a proceso con comando literal que no es git (`spawnSync('node', ...)`, `execSync('npm test')`, `subprocess.run(['npm','test'])`) pasa. En awk, `print ... |` cuenta solo fuera de comillas; `system(` y `| getline` siguen negando. `sedExecutes` no cambia.
+**Interfaz:** `inlineCallsGit(text, lang)` devuelve `{ deny: boolean, why }` con la regla de R-9 (H6; sustituye a la de "primer argumento", que se saltea `eval`, `['execSync']` y `{execSync: run}`). Niega si: (a) hay **uso de procesos** (`SPAWN_RE` o un sumidero `eval`/`Function`/`vm.`/`exec(`/`compile(`/`instance_eval`/`eval` de perl fuera de literales y comentarios, o un literal con nombre de módulo de procesos como argumento de `require(`/`import`/`__import__(`) Y el texto nombra git en cualquier lado (`mentionsGit`); o (b) `inlineDeletes` (como hoy). En perl y ruby, backticks, `system`, `exec`, `qx`, `%x` cuentan como uso de procesos. Sin uso de procesos, pasa. El escáner recorre el texto salteando literales de cadena (`'`, `"`, backtick, triple comilla de Python) y comentarios (`//`, `#`); si no puede (comillas sin cerrar, plantilla con `${`), usa la búsqueda ingenua de hoy (`SPAWN_RE` + `mentionsGit`) y niega (R-9). Una llamada a proceso con comando literal que no es git (`spawnSync('node', ...)`, `execSync('npm test')`, `subprocess.run(['npm','test'])`) pasa. En awk, `print ... |` cuenta solo fuera de comillas; `system(` y `| getline` siguen negando. `sedExecutes` no cambia.
 
 **Tabla**
 
@@ -419,6 +467,10 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `python -c "import os; os.system('git clean -fdx')"` |
 | `node -e "const c=['git','reset','--hard'].join(' ');require('child_process').execSync(c)"` (b) |
 | `node -e "require('child_process').execSync('npm test && git stash drop')"` |
+| `node -e "eval('require(\"child_process\").execSync(\"git reset --hard\")')"` (H6: la llamada está dentro de una cadena que va a `eval`) |
+| `node -e "require('child_process')['execSync']('git reset --hard')"` (H6) |
+| `node -e "const {execSync: run}=require('child_process'); run('git reset --hard')"` (H6) |
+| `python3 -c "exec('import os; os.system(\"git clean -fdx\")')"` (H6) |
 | `perl -E 'system("git reset --hard")'` / `ruby -e` con backticks de `git reset --hard` |
 | `node -e` con una plantilla de JavaScript (comillas invertidas) que contiene `${require("child_process").execSync("git reset --hard")}`: el escáner no puede tokenizarla y cae a la búsqueda ingenua |
 | `awk 'BEGIN{system("git reset --hard")}'` / `sed -n '1e git reset --hard' a.txt` |
@@ -431,7 +483,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Rojo:** las filas de "pasa" fallan en la base; la fila `execSync('git status')` se muestra rompiendo (a) para que solo mire `spawn` (pasa y el test lo dice); la de plantilla con `${`, haciendo que el fallback devuelva false.
 
-**Docs:** spec §11.6, punto "Código inline (I1)": "con una API de borrado..." queda y se agrega que `inline-code` por llamada a proceso solo niega si llama a git (literal o no literal con git en el texto); README, línea de "No verificable": `node -e`/`python -c` "que llaman a git". Residual: un script inline que arma el comando por partes pasa (hoy pasa igual si está en un archivo).
+**Docs (parte de la etapa 2):** spec §11.6, punto "Código inline (I1)": "con una API de borrado..." queda y se agrega que `inline-code` por llamada a proceso solo niega si hay uso de procesos y el texto nombra git; README, línea de "No verificable": `node -e`/`python -c` "que llaman a git". Residual: un script inline que arma el comando por partes pasa (hoy pasa igual si está en un archivo).
 
 ### T8. `case` y `for` en el parser; lo que no parsea (`unparseable`)
 
@@ -443,7 +495,8 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 - `parseBash` entiende `case WORD in PATRON) lista ;; ... esac`: los patrones no son comandos, el cuerpo de cada rama es una lista de comandos separados por `;;` o `;`. Las filas existentes de `must-block.json` (`case x in x) git reset --hard;; esac` y la de `g''it`) cambian de regla: `unparseable` => `reset-hard`.
 - Cada comando que sale de `parseBash` lleva `loops`: lista (de afuera hacia adentro) de `{ name, values }` de los `for NAME in ...; do ... done` que lo contienen; `values` es la lista de valores si todas las palabras de la lista son literales (sin `dyn`; un `*` es un valor con comodín, que se evalúa como tal) y `null` si no (`$(ls)`, `$f`, `"$@"`). Un `for` sin `in` o con la lista dinámica da `values: null`.
 - `script()` evalúa un comando con `loops` una vez por cada combinación de valores (tope: 32 combinaciones; si se pasa, `values: null` para ese comando), con la variable asignada al valor en `st.vars`; los valores con `..`, `.git`, comodines o que empiezan con `-` se evalúan tal cual (el valor expandido pasa por las mismas reglas: `for b in --force x; do git push origin $b; done` da `push-force`).
-- Si el parseo igual falla: se niega (`unparseable`) solo si el texto nombra git (`mentionsGit`), un borrador (`TEXT_DELETE`) o un sumidero (R-15); si no, pasa. El conjunto catastrófico por texto (`TEXT_DELETE` + `TEXT_TARGET`) sigue igual y rige siempre. `ps-unavailable` no cambia.
+- `switchedTo` a main limpia `offNext`, y un bucle expandido nunca baja `onMain` (se combina con OR): `for b in feat main; do git checkout $b; done && git merge x` desde un subagente da `subagent-main` (H2: en bash HEAD termina en main). Una palabra `braceOnly` en la lista del `for` (`for d in {a,b}`) da `values: null` (o se expande con `braceExpand`; nunca se toma como literal).
+- Si el parseo igual falla (y para lo que el fallback deja pasar), la instantánea de T2 es `'before'`, nunca `'none'`. Se niega (`unparseable`) solo si el texto nombra git (`mentionsGit`), un borrador (`TEXT_DELETE`) o un sumidero (R-15); si no, pasa. El conjunto catastrófico por texto (`TEXT_DELETE` + `TEXT_TARGET`) sigue igual y rige siempre. `ps-unavailable` no cambia.
 
 **Tabla**
 
@@ -465,6 +518,8 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | PowerShell `git status && git reset --hard` (PowerShell 5.1 no entiende `&&`) | `unparseable` |
 | `eval "$(` | `unparseable` (el texto nombra `eval`) |
 | `for b in --force x; do git push origin $b; done` | `push-force` desde T8 (antes: `dynamic-argument`) |
+| subagente, HEAD en `feat`: `for b in feat main; do git checkout $b; done && git merge x` (H2) | `subagent-main` |
+| `for d in {a,b}; do rm -rf "$d"; done` (llaves: `values: null`) | `catastrophic-delete` |
 
 **Tests nuevos:** parser: 8 filas (`case` con varios patrones y `\|`, `case` anidado en `for`, `;;&` no soportado => `ParseError`, `esac` suelto => `ParseError`, `for` con lista literal => `loops.values`, lista dinámica => `null`, `for` anidado, tope de 32 combinaciones). Guardia: las filas de la tabla; el for-expansión con valores peligrosos (`for d in a ../..; do rm -rf "$d"; done` queda en `catastrophic-delete`: lo cierra T9, acá solo se comprueba que el valor expandido llega a la regla con la variable sustituida).
 
@@ -472,7 +527,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Rojo:** las filas de `case` fallan en la base; el fallback se muestra rompiéndolo para que siempre niegue (`echo "abc` vuelve a negarse) o para que nunca niegue (`git status "` pasa).
 
-**Docs:** spec §11.6: "parseo fallido" deja de ser fail-closed por estructura: "si el parseo falla, se niega solo si el texto nombra git, un borrador o un sumidero"; README, línea de "No verificable". `docs/gaps.md`: si el parser no delimita bien algún caso, se anota.
+**Docs (parte de la etapa 3):** spec §11.6: "parseo fallido" deja de ser fail-closed por estructura: "si el parseo falla, se niega solo si el texto nombra git, un borrador o un sumidero"; README, línea de "No verificable". `docs/gaps.md`: si el parser no delimita bien algún caso, se anota.
 
 ### T9. Borrados de temporales (`catastrophic-delete`)
 
@@ -480,7 +535,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Archivos:** `plugins/pignolo/lib/git-guard.js` (`recordAssignments`, `isCatastrophicOperand`, `analyzeFind`, `pipedPaths`, el tratamiento de `$_` en PowerShell); `tests/guard-catastrophic.test.js`, `tests/guard-powershell.test.js`, `tests/guard/must-allow.json`, `tests/guard/must-block.json`.
 
-**Comportamiento (R-12):** (a) mktemp; (b) variable de `for` (usa los `loops` de T8); (c) comodín con prefijo literal; (d) `find` bajo temporales; (e) PowerShell con `$_`. Todo el resto, igual.
+**Comportamiento (R-12):** (a) mktemp; (b) variable de `for` (usa los `loops` de T8); (c) comodín con prefijo literal, solo en la raíz del repo o en una carpeta dentro de ella; (d) `find` bajo temporales; (e) PowerShell con `$_`. Todo el resto, igual.
 
 **Tabla**
 
@@ -493,7 +548,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `msg=$(mktemp) && cat > $msg <<'EOF'` + cuerpo + `EOF` + `git commit -q -F $msg && rm -f $msg` (medido, ev-079) | deny `catastrophic-delete` | pasa |
 | `rm -f build-*.log` | deny `catastrophic-delete` | pasa |
 | `rm -rf dist-* tmp-*` / `rm -rf node_m*` | deny `catastrophic-delete` | pasa |
-| `rm -rf s*` (borra `src/` en la raíz: recuperable; residual declarado) | deny `catastrophic-delete` | pasa |
+| `rm -rf s*` (borra `src/` en la raíz: recuperable solo lo versionado; residual declarado) | deny `catastrophic-delete` | pasa |
 | `for d in c5-a c5b-b; do rm -rf "$d"; done` | deny `catastrophic-delete` | pasa |
 | `cd $TEMP && for d in 3qAp5L 650Mc7; do rm -rf "pignolo-ui-browser-$d"; done` (medido, ev-050) | deny `catastrophic-delete` | pasa |
 | `for d in c5b-*; do rm -rf "$d"; done` | deny `catastrophic-delete` | pasa (valor `c5b-*`: prefijo literal) |
@@ -509,6 +564,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `rm *.log` | comodín al principio (README: "`rm *.log` en la raíz se niega") |
 | `rm -rf */build` | comodín al principio de un segmento |
 | `rm -rf s*/..` / `rm -rf s*/.git` | `..` o `.git` después del comodín |
+| `cd ~ && rm -rf D*` / `cd / && rm -rf b*` | el directorio del patrón es `~` o `/` |
 | `rm -rf "$d"` | variable sin `for` |
 | `for d in $(ls); do rm -rf "$d"; done` | lista no literal |
 | `for d in a ../..; do rm -rf "$d"; done` | un valor sube a la raíz |
@@ -525,16 +581,16 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Rojo:** las filas de "pasa" fallan en la base; las de "debe seguir negado" se muestran rompiendo cada pata: (a) que mktemp no excluya `..` (`"$D/.."` pasa), (c) que el prefijo acepte el punto (`.g*` pasa), (d) que `find` mire solo el patrón (`find . -name "*.pack" -delete` pasa), (b) que `for` no revalide el valor (`for d in .git x` pasa).
 
-**Docs:** spec §11.6 (conjunto catastrófico: el glob con prefijo literal que no empieza con punto pasa; mktemp, `for` y `find -delete` en temporales se resuelven); README, sección Guardia, primera viñeta: reemplazar "no se expanden globs: `rm *.log` en la raíz también se niega" por la regla nueva (`rm *.log` se sigue negando; `rm build-*.log` pasa). Registro de riesgo residual: `rm -rf s*` en la raíz.
+**Docs:** spec §11.6 (conjunto catastrófico: el glob con prefijo literal que no empieza con punto pasa; mktemp, `for` y `find -delete` en temporales se resuelven); README, sección Guardia, primera viñeta: reemplazar "no se expanden globs: `rm *.log` en la raíz también se niega" por la regla nueva (`rm *.log` se sigue negando; `rm build-*.log` pasa). Registro de riesgo residual: `rm -rf s*` en la raíz es recuperable por git solo para lo versionado, **no** para los archivos ignorados (la instantánea no los guarda, `git-backup.js:6`).
 
 ### T10. Variables en `merge`/`fetch`/`worktree add`; funciones (`dynamic-argument`, `dynamic-command`)
 
-**Reglas tocadas:** `dynamic-argument`, `dynamic-command`.
+**Reglas tocadas:** `dynamic-argument` (solo `worktree add`, por D-G5), `dynamic-command`.
 
 **Archivos:** `plugins/pignolo/lib/git-guard.js` (`analyzeGit`: la condición `o.dynSlot && DESTRUCTIVE.has(sub)`; `runWords`/`dispatch` para funciones); `tests/git-guard.test.js`, `tests/guard-structural.test.js`, `tests/guard-queue.test.js`, `tests/guard-subagent-main.test.js` (solo se comprueba que no cambian), `tests/guard/must-allow.json`, `tests/guard/must-block.json`.
 
 **Comportamiento**
-- Parte a (`dynamic-argument`, R-13): en el hilo principal, la variable al principio de un argumento de `merge`, `fetch` (sin `-u` ni `--update-head-ok`) y `worktree add` no cuenta como `dynamic-argument`. Todo subcomando de `DESTRUCTIVE` fuera de esos tres sigue como hoy. Con `ctx.subagent` nada cambia. La expansión de `for` (T8) hace el resto: `for b in a b; do git merge $b; done` evalúa `git merge a` y `git merge b`.
+- Parte a (`dynamic-argument`, R-13, D-G5): en el hilo principal, la variable al principio de un argumento de `worktree add` no cuenta como `dynamic-argument`. `merge` y `fetch` con variable **siguen negados** (`merge "$B"` por `--no-verify`; `fetch` por `--upload-pack`). Todo subcomando de `DESTRUCTIVE` fuera de `worktree add` sigue como hoy. Con `ctx.subagent` nada cambia. La expansión de `for` (T8) hace el resto: `for b in a b; do git merge $b; done` evalúa `git merge a` y `git merge b`, y un valor `--no-verify` en la lista da `no-verify`.
 - Parte b (`dynamic-command`, R-14): una función definida en el mismo comando (`nombre(){ ...; "$@"; ...; }` o `function nombre { ... }`) se analiza por su cuerpo, con `"$@"` / `$@` / `$1` reemplazados por los argumentos de cada llamada `nombre args`. Si el parser no delimita el cuerpo, se deja el `dynamic-command` de hoy y se anota en `docs/gaps.md` (la fila de la fixture queda con `expect` de bloqueo y su razón). La variable literal (`R="node x.mjs"; $R a`) ya pasa en la base: se agrega un test de regresión, sin código.
 
 **Tabla (hilo principal)**
@@ -543,9 +599,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 |---|---|---|
 | `for b in feat/a feat/b; do git merge --no-ff $b; done` | deny `dynamic-argument` | pasa |
 | `for b in a b; do git push origin $b; done` | deny `dynamic-argument` | pasa (valores literales; `push` común pasa) |
-| `git fetch origin "$B"` | deny `dynamic-argument` | pasa |
 | `git worktree add "$J/wt" main` | deny `dynamic-argument` | pasa |
-| `git merge --no-ff "$B" -m "merge: $B"` | deny `dynamic-argument` | pasa |
 | `git worktree add "$J/wt-$N" -b "task/$N" main` | deny `dynamic-argument` | pasa |
 | medido (ev-176, saneado): `git status --short \| head -3; for b in plan/a plan/b; do git merge --no-ff $b -m "merge: $b" 2>&1 \| tail -1; done; git log --oneline -4` | deny `dynamic-argument` | pasa |
 | `run(){ "$@"; }; run git status` | deny `dynamic-command` | pasa (si el parser delimita el cuerpo) |
@@ -557,6 +611,10 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 | Comando | Regla (antes y después) |
 |---|---|
+| `git merge "$B"` / `git merge --no-ff "$B" -m "merge: $B"` (D-G5) | `dynamic-argument` |
+| `B=--no-verify; git merge "$B"` | `no-verify` |
+| `git fetch origin "$B"` / `B=--upload-pack=x; git fetch origin "$B"` (D-G5) | `dynamic-argument` / `git-shell` |
+| `for b in --no-verify x; do git merge $b; done` | `no-verify` |
 | `git push origin $B` / `git checkout $B` / `git reset "$R"` / `git rm $F` / `git config $K $V` | `dynamic-argument` |
 | `git clean $F` | `clean` |
 | `git stash $A` | `stash` (o `dynamic-argument`: el test mira solo la decisión) |
@@ -566,13 +624,13 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `for b in --force x; do git push origin $b; done` | `push-force` |
 | `run(){ "$@"; }; run git reset --hard` | `reset-hard` |
 | `$R "$S" a` (R sin asignar) | `dynamic-command` |
-| subagente (`subagent: true`): `git fetch origin "$B"` / `git merge --no-ff "$B"` | `dynamic-argument` (sin cambio para roles) |
+| subagente (`subagent: true`): `git fetch origin "$B"` / `git merge --no-ff "$B"` / `git worktree add "$J/wt" main` | negado (hoy `subagent-main` o `dynamic-argument`: el test mira solo la decisión, no la regla) |
 
-**Corpus:** ids `base: block:dynamic-argument` (ev-132, 173, 175, 176) y `base: block:dynamic-command` (ev-007, 148). La auditoría estima ≈ 3 de 5 y ≈ 4 de 6 junto con `unparseable`. ev-132 es de un subagente: sigue negado.
+**Corpus:** ids `base: block:dynamic-argument` (ev-132, 173, 175, 176) y `base: block:dynamic-command` (ev-007, 148). La auditoría estima ≈ 3 de 5 y ≈ 4 de 6 junto con `unparseable`. ev-132 es de un subagente: sigue negado. Con D-G5, los `merge "$B"` y `fetch` con variable de la fixture siguen negados salvo los que el `for` expande (ev-176).
 
-**Rojo:** las filas de "pasa" fallan en la base; la de subagente se muestra haciendo que el relajamiento ignore `ctx.subagent` (`git fetch origin "$B"` pasa para un subagente y el test lo dice); `git branch "$NAME" main` rompiendo la lista para incluir `branch`.
+**Rojo:** las filas de "pasa" fallan en la base; la de subagente se muestra haciendo que el relajamiento ignore `ctx.subagent` (`git worktree add "$J/wt" main` pasa para un subagente y el test lo dice); `git branch "$NAME" main` rompiendo la lista para incluir `branch`; `git merge "$B"` rompiéndola para incluir `merge`.
 
-**Docs:** spec §11.6 (lista de `dynamic-argument`: "variable en ref o ruta de `merge`, `fetch` y `worktree add`, en el hilo principal"); README, línea de "No verificable".
+**Docs (parte de la etapa 3):** spec §11.6 (lista de `dynamic-argument`: "variable en ref o ruta de `worktree add`, en el hilo principal; `merge` y `fetch` con variable siguen negados (D-G5)"); README, línea de "No verificable".
 
 ### T11. Lo recuperable pasa con la instantánea tomada antes (D-G2); plantilla
 
@@ -582,10 +640,10 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Comportamiento (R-3 a R-6)**
 - Fixture de los tests: repo con `a.txt` (archivo), `sub/b.txt` (la carpeta `sub`) y un hermano `../wt` (otro repo con `a.txt`).
-- `checkout`: pasa con `'required'` si hay `--` y todos los argumentos tras él son archivos literales (R-4), con o sin `<ref>` antes, con o sin `--ours`/`--theirs`; o sin `--`, si todos los posicionales existen en disco como archivo. `-p`, `--patch`, `--pathspec-from-file`, `.`, carpetas, comodines, variables, sin ruta (`checkout --ours`) y un `<ref> <ruta>` sin `--` donde la ruta no existe como archivo siguen en `checkout-path`.
+- `checkout`: pasa con `'required'` si hay `--` y todos los argumentos tras él son archivos literales (R-4), con o sin `<ref>` antes, con o sin `--ours`/`--theirs`; o sin `--`, si todos los posicionales existen en disco como archivo **y ninguno casa con `MAIN_REF` (sin distinguir mayúsculas), ni es `-`, ni `@{-N}`** (git cambia de rama cuando el nombre es a la vez archivo y rama: `git checkout main` con un archivo `main` da "Switched to branch 'main'"; esa forma sigue en `checkout-path`). **Nunca** se llama a `switchedTo` ni se marca `offNext` en la forma de archivos, con `--` o sin él (H1, H1b: si no, un subagente baja `onMain` con `git checkout main && git checkout a.txt && git merge x`). `-p`, `--patch`, `--pathspec-from-file`, `.`, carpetas, comodines, variables, sin ruta (`checkout --ours`) y un `<ref> <ruta>` sin `--` donde la ruta no existe como archivo siguen en `checkout-path`.
 - `restore`: pasa con `'required'` con archivos literales, con `--source`, `--staged --worktree`, `--ours`/`--theirs`; `--staged` solo ya pasaba. `restore .`, `restore -- .`, `restore sub`, `restore :/`, `-p` siguen en `restore`.
 - `stash` (R-5).
-- `git -C <dir literal>` (R-6): el directorio se resuelve contra el cwd real; las reglas de `checkout`/`restore`/`stash` se evalúan sobre él (la comprobación de archivo y carpeta mira ese directorio); `checkout <rama>` ya no cae en `git-C`; `snapshotDirs` lleva ese directorio. `-C "$X"`, `--git-dir`, `--work-tree` siguen en `git-C` si el subcomando es `checkout` con posicionales. Para `protectsRefs`/`touchesMain` se sigue pasando el `st` real (el `inner` es solo para las reglas de archivos).
+- `git -C <dir literal>` (R-6): el directorio se resuelve contra el cwd real; las reglas de `checkout`/`restore`/`stash` se evalúan sobre él (la comprobación de archivo y carpeta mira ese directorio); `checkout <rama>` ya no cae en `git-C`; `snapshotDirs` lleva ese directorio. `-C "$X"`, `--git-dir`, `--work-tree` siguen en `git-C` si el subcomando es `checkout` con posicionales. Para `protectsRefs`/`touchesMain` se sigue pasando el `st` real (el `inner` es solo para las reglas de archivos, una copia `{...st}`: un `checkout` dentro de `-C` no toca `onMain`/`offNext` de `st`). H8: con `redirected` (`GIT_DIR`, `GIT_WORK_TREE`, `--git-dir`) y sin un `-C` literal resuelto, `stash`, `checkout` y `restore` de archivos siguen negados (`git-C` / `stash` / `restore`). La instantánea de los `'required'` sale de `snapshotDirs` (T2).
 - Plantilla (R-16): ver la lista en §4. `permissions.test.js`: `BLOCK_SAMPLES.stash` => `git stash drop`; `checkout-path` => `git checkout -- .`; `restore` => `git restore .`; se sacan de `SAMPLE_OVERRIDES` las entradas de la familia quitada; `NOT_EXPRESSIBLE['snapshot-required']`.
 
 **Tabla (con cwd del repo de prueba; PowerShell donde se indica)**
@@ -620,6 +678,10 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `git checkout main src/x.js` (la ruta no existe en el fixture) / `git checkout lib/nonexist.js other.js` | `checkout-path` |
 | `git checkout -- $F` | `checkout-path` (la palabra dinámica no es literal) |
 | `git checkout -f` | `checkout-force` |
+| subagente con HEAD en `feat` y un archivo `main` en el repo: `git checkout main && git merge x` (H1) | `subagent-main` o `checkout-path`, nunca allow |
+| subagente: `git checkout main && git checkout a.txt && git merge x` (H1b) | `subagent-main` |
+| subagente: `git checkout main && git -C ../wt checkout feat && git merge x` (el `-C` no cambia `st`) | `subagent-main` (hoy da `git-C`) |
+| `GIT_DIR=../x/.git git stash` / `git --git-dir=../x/.git checkout -- a.txt` / `GIT_WORK_TREE=../x git restore a.txt` (H8) | `stash` / `git-C` / `restore` |
 | `git switch -f main` | `switch-force` |
 | `git restore .` / `git restore -- .` / `git restore sub` / `git restore :/` / `git restore -p a.txt` | `restore` |
 | `git stash drop` / `git stash drop stash@{0}` / `git stash clear` | `stash` |
@@ -629,10 +691,10 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 | `git reset --hard HEAD~1` / `git clean -fd` / `git worktree remove --force ../wt` | `reset-hard` / `clean` / `worktree-remove-force` |
 
 **Handler (tests con la instantánea inyectada y real)**
-- Instantánea que lanza error en `git checkout -- a.txt` => exit 2, razón `snapshot-required`; con `partial` => exit 2; con `null` (árbol limpio) => exit 0; con `PIGNOLO_CANARY=1` => exit 2.
+- Instantánea que lanza error en `git checkout -- a.txt` => exit 2, razón `snapshot-required`; con `partial` => exit 2; con `null` en un repo con el árbol limpio => exit 0; con `null` en un directorio que no es un repo => exit 2; con `PIGNOLO_CANARY=1` => exit 2; `cd ../wt && git checkout -- a.txt` respalda `../wt` (H7).
 - Camino real: en un repo con `a.txt` modificado sin commitear, `git checkout -- a.txt` pasa y la versión previa del archivo está en `refs/pignolo/wip` (se recupera con el procedimiento del README); `git -C ../wt checkout -- a.txt` deja la instantánea del repo `../wt`, no la del cwd.
 - Guardia apagada (`PIGNOLO_DISABLED=1`): `git checkout -- a.txt` pasa sin instantánea (como todo lo demás).
-- Roles: las suites de `tests/guard-subagent-main.test.js` y `tests/guard-queue.test.js` pasan sin tocar una fila; un subagente en `main` con `git checkout -- a.txt` pasa (no es una regla de rol) y con `git stash pop` también.
+- Roles: las suites de `tests/guard-subagent-main.test.js`, `tests/guard-queue.test.js`, `tests/guard-main-forms.test.js`, `tests/guard-main-verbs.test.js`, `tests/review-guard-push.test.js`, `tests/guard-brace.test.js` y `tests/guard-rereview.test.js` pasan sin tocar una fila; un subagente en `main` con `git checkout -- a.txt` pasa (no es una regla de rol) y con `git stash pop` también.
 
 **Plantilla (tests de `permissions.test.js`)**
 - Todas las reglas deny restantes siguen negadas por la guardia en modo autónomo con su muestra.
@@ -643,17 +705,17 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 
 **Rojo:** las filas de "pasa" fallan en la base; se muestra rompiendo `literalFiles` para que acepte `.` (`git checkout -- .` pasa y el test lo dice) y para que no mire el disco (`git checkout -- sub` pasa); se rompe `guard.js` para que ignore el fallo de la instantánea en `'required'` (el test de error falla); se rompe la expansión del `-C` para que tome la instantánea del cwd (el test del `../wt` falla); se saca una entrada de plantilla y el test de cobertura falla.
 
-**Docs:** spec §8.1 (plantilla: sale la familia de texto, stash y checkout de archivos; entran las de árbol entero), spec §11.6 (la línea "*Reglas de git.* deny (pierde trabajo sin commitear): stash/pop/drop sin etiqueta..." => "pasan con la instantánea tomada antes: checkout y restore de archivos literales, stash/pop/apply; siguen negados drop, clear, y las formas de árbol entero o no literales (decisión del autor, 2026-10-02, D-G2)"), README (viñeta "Git"), `docs/gaps.md`. Registro de riesgo residual: la instantánea guarda el árbol de trabajo, no el índice (un cambio en stage y distinto en el árbol pierde la versión del stage con `checkout HEAD -- f`); lo que se crea y se deshace en la misma línea no tiene instantánea; el stash es común a los worktrees.
+**Docs (parte de la etapa 3):** spec §8.1 (plantilla: sale la familia de texto, stash y checkout de archivos; entran las de árbol entero), spec §11.6 (la línea "*Reglas de git.* deny (pierde trabajo sin commitear): stash/pop/drop sin etiqueta..." => "pasan con la instantánea tomada antes: checkout y restore de archivos literales, stash/pop/apply; siguen negados drop, clear, y las formas de árbol entero o no literales (decisión del autor, 2026-10-02, D-G2)"), README (viñeta "Git"), `docs/gaps.md`. Registro de riesgo residual: la instantánea guarda el árbol de trabajo, no el índice (un cambio en stage y distinto en el árbol pierde la versión del stage con `checkout HEAD -- f`); lo que se crea y se deshace en la misma línea no tiene instantánea; el stash es común a los worktrees.
 
-### T12. Versión 0.16.0, CHANGELOG, spec, README, riesgo residual
+### T12. Versión, CHANGELOG, spec, README, riesgo residual (una parte por etapa)
 
-**Archivos:** `plugins/pignolo/.claude-plugin/plugin.json` (0.14.1 => 0.16.0); `CHANGELOG.md`; `docs/specs/2026-09-26-pignolo-v1-design.md`; `README.md`; `tests/guard/residual-risk.md`; `docs/STATE.md`; `docs/gaps.md`.
+**Archivos:** `plugins/pignolo/.claude-plugin/plugin.json` (0.15.0 => 0.16.0 en la etapa 1, 0.16.1 en la 2 y 0.16.2 en la 3; siempre la siguiente libre sobre el `main` de ese momento); `CHANGELOG.md`; `docs/specs/2026-09-26-pignolo-v1-design.md`; `README.md`; `tests/guard/residual-risk.md`; `docs/STATE.md`; `docs/gaps.md`.
 
 **Contenido**
-- CHANGELOG, entrada `## 0.16.0 — 2026-10-0x` arriba de 0.14.1 (0.15.0 la usa otra rama: al integrar puede haber un conflicto de orden en este archivo; se resuelve conservando las dos entradas). Secciones: "Pasan ahora" (por regla), "Siguen negando" (los vecinos peligrosos), "Plazo del launcher", "Instantánea", "Plantilla", "Decisiones del autor (D-G1 a D-G4)", "Límites declarados".
+- CHANGELOG: una entrada por etapa (`## 0.16.0`, `## 0.16.1`, `## 0.16.2`, con la fecha de la unión) arriba de la de 0.15.0. El plan de mensajes llanos toma 0.17.0 (o la siguiente libre tras la etapa 3). Secciones (las que la etapa entrega): "Pasan ahora" (por regla), "Siguen negando" (los vecinos peligrosos), "Plazo del launcher", "Instantánea", "Plantilla", "Decisiones del autor (D-G1 a D-G6)", "Límites declarados".
 - Spec: las ediciones que cada tarjeta dejó anotadas más el principio (texto del autor, §3) al principio de §11.6, con su fecha; se agrega la frase de la auditoría "una regla que frena más de dos veces por sesión sin haber evitado un daño se angosta o se saca" como criterio de §15 si el autor la confirma (no se agrega sin su OK: queda en §9).
-- `residual-risk.md`: filas nuevas (cada una con el comando y por qué pasa): `rm -rf s*` en la raíz, `node -e` que arma el comando por partes, `bash x.sh`/`npm run clean` sin instantánea, `git merge "$B"` con `B=--abort`, `stash pop` de otro worktree, `checkout HEAD -- f` con cambios en stage, un `find` bajo temporales con rutas calculadas. El test `the residual-risk register names every audit command that still passes` suma esas filas.
-- `docs/STATE.md`: el estado y la decisión del 2026-10-02; `docs/gaps.md`: G22 y G42 parcialmente cerrados, G-guardia-1, y los puntos de §9.
+- `residual-risk.md`: filas nuevas (cada una con el comando y por qué pasa): `rm -rf s*` en la raíz, `node -e` que arma el comando por partes, `bash x.sh`/`npm run clean` sin instantánea, `node x.js` / `npm test` sin instantánea (D-G6), `stash pop` de otro worktree, `checkout HEAD -- f` con cambios en stage, un `find` bajo temporales con rutas calculadas. El test `the residual-risk register names every audit command that still passes` suma esas filas.
+- `docs/STATE.md`: el estado y la decisión del 2026-10-02; `docs/gaps.md`: G22 y G42 parcialmente cerrados, G71 (T1) y los siguientes libres de `main`, y los puntos de §9. Cada etapa deja su parte; la etapa 3 cierra el registro de riesgo residual y STATE.
 
 **Rojo:** el test de manifiesto (`tests/manifest.test.js`) falla si la versión de `plugin.json` y la entrada superior del CHANGELOG no coinciden; el registro de riesgo residual falla si una fila nueva no está en la tabla.
 
@@ -669,7 +731,7 @@ PowerShell (sin AST, solo texto): el comando entero casa con `^\s*(CMD)(\s+ARG)*
 **Parte B: costo por comando del hook, antes y después (se corre a mano, con la máquina quieta)**
 Sigue `docs/protocolo-de-pruebas.md`. La ficha se escribe y se commitea en `RESULTS-guardia-costo.md` ANTES de la primera corrida, con:
 1. Pregunta e hipótesis: "D-G4 baja el costo del hook `guard` en un comando que no descarta (`ls`, `git status`, `git add`, `node --version`) al menos 40 % de mediana y de 4–6 procesos `git` a 0; en un comando que descarta (`rm a.txt`) no lo sube más de 10 %; D-G3 no cambia nada con la máquina quieta".
-2. Variable que cambia: el commit del plugin (brazo A: la base `core/guard-sin-confirmar-push` 62bde34; brazo B: la rama final). Fijo: máquina, repo de prueba (un repo temporal de ~200 archivos con 5 modificados), el payload, la versión de node, git, sin sombra sembrada (corrida 1) y con la sombra sembrada por `scripts/shadow-seed.js` (corrida 2).
+2. Variable que cambia: el commit del plugin (brazo A: el `main` previo a la etapa 1; brazo B: la rama tras la etapa 3). Fijo: máquina, repo de prueba (un repo temporal de ~200 archivos con 5 modificados), el payload, la versión de node, git, sin sombra sembrada (corrida 1) y con la sombra sembrada por `scripts/shadow-seed.js` (corrida 2).
 3. Brazos A y B, intercalados (A, B, A, B...).
 4. Métricas: milisegundos de pared del launcher `guard` (`spawnSync(process.execPath, [launcher, 'guard'])` con el payload en stdin, como `runLauncher` de `tests/helpers.js`); procesos `git` por comando (variable de entorno `GIT_TRACE2_EVENT=<archivo>` en el entorno del hook: se cuentan los eventos `version`, uno por proceso git); procesos `node` por comando (se leen de `hooks.json` y del atajo de `lib/hook-fastpath.js`: 4 launchers por Bash en los dos brazos; no cambia en este plan, queda anotado para la auditoría §7.4).
 5. Comandos (cada uno con su clase): `ls` (lectura), `git status` (lectura de git), `git add a.txt` (neutro), `node --version` (neutro, no es de git), `rm a.txt` (descarta), `git checkout -- a.txt` (D-G2, solo brazo B: en A se niega y no hay instantánea que medir), PowerShell `git status` (lectura, +parseo).
@@ -686,7 +748,7 @@ Sigue `docs/protocolo-de-pruebas.md`. La ficha se escribe y se commitea en `RESU
 
 **Pruebas nuevas (estimación):** ≈ 60 bloques `test()` nuevos (T1: 5, T2: 6, T3: 9, T4: 3, T5: 3, T6: 3, T7: 6, T8: 5, T9: 4, T10: 4, T11: 8, T12: 1, T13: 3) y ≈ 270 filas escritas a mano en tablas, más las 181 filas de la fixture. Cambian de lugar unas 20 filas de los corpus existentes (`stash`, `checkout-path`, `restore`, `unparseable` por `case`) y se revisan a mano las 14 menciones de `inline-code` de `tests/guard-structural.test.js`.
 
-**Esfuerzo (estimación, supuesto S, no medido):** tamaños S ≈ 30 mil tokens del ejecutor, M ≈ 70 mil, L ≈ 130 mil: 3 S + 5 M + 5 L ≈ 1,1 millones de tokens de ejecutor sonnet en serie (T1, T2, T6, T10 y T13 en M; T3, T7, T8, T9 y T11 en L; T4, T5 y T12 en S), unas 8 a 10 horas de pared. Más una auditoría previa del plan en opus (≈ 150 mil tokens, §10) y una revisión opus final con una pasada de arreglos (≈ 250 mil). Un solo ejecutor en serie, como pide CLAUDE.md.
+**Esfuerzo (estimación, supuesto S, no medido):** tamaños S ≈ 30 mil tokens del ejecutor, M ≈ 70 mil, L ≈ 130 mil: 3 S + 5 M + 5 L ≈ 1,1 millones de tokens de ejecutor sonnet en serie (T1, T2, T6, T10 y T13 en M; T3, T7, T8, T9 y T11 en L; T4, T5 y T12 en S), unas 8 a 10 horas de pared. Más tres revisiones opus (una por etapa) con su pasada de arreglos (≈ 250 mil en total, supuesto); la auditoría previa del plan ya se hizo. Un solo ejecutor en serie, como pide CLAUDE.md.
 
 **Qué se recorta primero, en este orden, si hay que achicar** (cada paso deja la suite verde y el producto coherente):
 1. T10 parte b (funciones definidas en el mismo comando): 1 a 2 filas medidas.
@@ -706,6 +768,8 @@ No se decidió y el plan no lo toca:
 - `*navigate*` en el ask de MCP de la plantilla.
 - `--force-with-lease` sobre la rama propia de la tarea (`push-force`).
 
+Resueltas el 2026-10-03: D-G5 (`merge` y `fetch` dinámicos siguen frenados) y D-G6 (tests y scripts sin instantánea).
+
 Además, el plan encontró cuatro puntos de la auditoría que ninguna decisión cubre y que quedan fuera:
 
 - Cortar el plazo en cuanto hay un veredicto `allow` y respaldar después (auditoría §7, punto 1): D-G3 solo cubre el plazo vencido antes de que haya veredicto.
@@ -713,12 +777,29 @@ Además, el plan encontró cuatro puntos de la auditoría que ninguna decisión 
 - Los ajustes técnicos de la auditoría §8 que no están en sus cambios 1 a 9 (`-B`/`-C` sobre una rama inexistente en `ref-move`, `subagent-main` solo en el repo del proyecto, las lecturas de `places.js where`, `config-write` por la lista de claves protegidas, `git-shell` con `-x` literal).
 - Agregar a la spec la frase de la auditoría "una regla que frena más de dos veces por sesión sin haber evitado un daño se angosta o se saca" (§9 de la auditoría): el principio sí es del autor y entra; la regla de las dos veces espera su OK.
 
-## 10. Para la auditoría previa
+## 10. Foco de las revisiones por etapa
 
-Las cinco preguntas que un auditor (opus, con acceso al código de la base) debe atacar antes de ejecutar. Para cada una, debe producir comandos concretos (bash y PowerShell) que lo rompan, no opiniones.
+La auditoría previa del plan se hizo el 2026-10-03 (opus, "con cambios", aplicados en este documento). Las cinco preguntas siguen: el revisor opus de cada etapa las ataca sobre el código que esa etapa cambió. Para cada una, debe producir comandos concretos (bash y PowerShell) que lo rompan, no opiniones.
 
 1. **¿Algún comando destructivo llega a `allow` por una forma relajada?** Atacar, en este orden: la expansión del `for` (valores que se vuelven peligrosos al sustituirse, listas con llaves `{a,b}`, valores con comillas o espacios, `for` anidados que superan el tope de 32), `mktemp` (opciones, plantillas con `..` o con `/`, `$(mktemp)` concatenado), el comodín con prefijo literal (nombres cortos 8.3, `rm -rf s*` con cwd desconocido tras un `cd` que pudo fallar, `rm -rf s*/../..`), `find` bajo temporales (un temporal que sea un enlace a la raíz, `-L`), el destino dinámico de una redirección (`> "$D"` con `D=.git/config` asignado en otro comando), el escáner de cadenas del `inline-code` (comillas mal contadas, `eval` dentro de la cadena, `Function()` o `vm.runInNewContext` que no son llamadas a proceso), `merge`/`fetch` con variables y los límites de R-13. Para cada fallo: el comando, la regla que debía atraparlo y por qué no.
 2. **¿La polaridad de D-G4 (lista cerrada de lo que descarta) deja sin instantánea un comando que pierde trabajo?** Recorrer cada camino que llama a `analyze` y a `runWords` (envolturas, `bash -c`, `eval`, `cmd /c`, `Start-Process`, `powershell -Command`, `find -exec`, `xargs`, `.Delete()`, `ForEach-Object -MemberName Delete`, `git` con alias, funciones del mismo comando) y comprobar que el indicador `discard` llega a `ctx` y que lo no clasificable da `'before'`. Buscar un comando de la lista de la auditoría A.1/A.2 (cada regla de pérdida de trabajo) que dé `'none'`. Evaluar si dejar sin instantánea a `node x.js` y `npm run clean` es aceptable frente a la promesa del README ("los borrados que no pasan por git solo quedan cubiertos por las instantáneas previas").
 3. **¿El clasificador de solo lectura de D-G3 deja pasar algo que escribe, borra o ejecuta?** Atacar la lista de programas y de subcomandos de git (opciones que escriben: `--output`, `-o`, `--textconv`, `-O`, `--exec`; `core.pager` y `core.fsmonitor` en el repo; `git diff` con un driver externo en `.gitattributes`; `git grep -O`; `find` con `-fprint`/`-fls`; `sort -o`; `rg --pre`; `column`, `tr`, `cut` con redirecciones; `cat` de un FIFO); la forma en que `parseBash` marca `dyn` (¿se escapa un `$'...'`, un `${x:-y}`, un `$((...))`?); y el texto de PowerShell (alias, `-Path` con comodines que borran, comillas dobles con `$`). Probar también que `private-reads` y `plan-audit-gate` no heredan el pase, y que `PIGNOLO_DEADLINE_MS` no se puede usar para subir el plazo ni lo toma un `env` del proyecto del usuario sin querer.
 4. **¿La instantánea previa de D-G2 es una garantía real o solo una apariencia?** Casos: la instantánea guarda el árbol, no el índice; los archivos ignorados no se guardan; un `partial`; la instantánea del `-C` (¿se toma realmente en ese directorio y en su repo, o en el cwd?); un `checkout` que sigue a un `rm`, a un `sed -i` o a un `>` en la misma línea (¿qué se pierde y qué no?); el `reused` de una instantánea idéntica a la anterior; el modo sin sombra sembrada (el fallback dentro del repo, que devuelve `null` si el árbol está limpio) y la carrera entre la instantánea y el comando; qué pasa si el plazo de 2 s de la instantánea vence en una forma `'required'` (¿deny con razón clara?) y si ese deny reaparece como una molestia nueva medible en la sesión de origen.
 5. **¿Se debilitó una regla de rol de subagente, o la capa 1 y la capa 3 quedaron incoherentes?** Comparar, fila por fila, la matriz de `tests/guard-subagent-main.test.js`, `tests/guard-queue.test.js` y `tests/guard-pignolo-plan.test.js` antes y después; revisar que el `-C` resuelto de T11 no cambia el `st` de `protectsRefs`/`touchesMain`; que la expansión del `for` no deja pasar `git merge int/x` a un subagente; que `fetch origin "$B"` sigue negado para un subagente; que `checkLauncher` angostado no abre un hueco para ejecutar el launcher por `xargs node`, `env node`, `npx` o un `source`. Y en la plantilla: sin la familia "el texto menciona git", ¿qué forma que hoy frena la capa 1 queda sin freno si el hook no arranca, y es una de la lista "no tocar" (`git reset --hard` dentro de `bash -c`, `git push --force` dentro de `sh -c`)? Si lo es, hay que decidir con el autor entre dejar esa entrada o aceptar el límite declarado.
+
+## Anexo A. Ids de corpus regenerados
+
+(Se completa al terminar T1: las listas de ids por regla de T4 a T11 salidas de la fixture hecha con el `main` vigente. Hasta entonces valen como orientación las de cada tarjeta, que salieron de la base 62bde34.)
+
+## Para el plan de mensajes llanos (`plan/guardia-mensajes-llanos`)
+
+No se edita ese plan desde acá; esto es lo que este plan le cambia y lo que ese plan tiene que tomar en cuenta al actualizarse:
+
+1. **Regla nueva `snapshot-required`** (deny; la devuelve `handlers/guard.js`, no `evaluate`). Su dueño es el **agente**: reintentar o commitear el WIP. El exit 2 nuevo de `guard.js` lleva `rule: 'snapshot-required'` (R-1/R-2).
+2. **`dynamic-redirect` se retira** (T5, decidido): sale de `RULES` y de `NOT_EXPRESSIBLE`. El inventario de reglas se cuenta del `main` nuevo: 60 con `snapshot-required` menos `dynamic-redirect` = 59, o lo que dé el conteo real tras la etapa 2.
+3. **El pase del plazo** (T3) sale con exit 0 y un `systemMessage` técnico, de **una sola constante**. Va contra "el usuario solo ve lo que tiene que decidir": el plan de mensajes lo pasa a su catálogo (`launcher:deadline-pass`, dueño agente, sin `systemMessage`; el texto va a Claude). Su D-MSG-5 (`launcher:deadline`) se reclasifica contra el pase: el plazo vencido **negado** solo queda para lo que escribe o no se clasifica.
+4. **La nota de instantánea fallida** (`guard.js`, hoy líneas 38 y 40) cambia de lugar y de frecuencia: con D-G4 solo aparece en los comandos que descartan, y con `'required'` se vuelve un bloqueo (punto 1). Sus números de línea cambian.
+5. **Salen de las "del agente"** `stash`, `checkout-path`, `restore` y `git-C`: siguen existiendo pero con menos casos. Sus textos (`alternative`) cambian: el de `git-C` ("usá `cd <ruta> && git checkout <x>`") deja de tener sentido para `-C` literal. La lista "every block still blocks" y los conteos se regeneran sobre el `main` nuevo.
+6. **Versión:** este plan toma 0.16.0 (etapa 1), 0.16.1 y 0.16.2; el plan de mensajes llanos pasa a **0.17.0** (o la siguiente libre tras la etapa 3 de este).
+7. **`launcher.js`:** T3 agrega lógica en el hilo principal (rama del `setTimeout`). La R-10 de mensajes (`stdout: true` en el `Worker`) y el armado de la salida tienen que cubrir también ese camino de exit 0.
+8. **D-G5 y D-G6** no cambian mensajes: `merge`/`fetch` dinámicos siguen con su texto actual, y los scripts propios no tienen mensaje de instantánea.
