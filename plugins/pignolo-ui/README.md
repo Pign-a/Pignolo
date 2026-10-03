@@ -61,7 +61,7 @@ pignolo-ui no es asesoría legal ni certifica cumplimiento de ninguna norma. Ref
 
 ## Comandos de apoyo (`run.mjs` y `compare.mjs`)
 
-    node scripts/run.mjs env | init | config | present | publish-gate | no-publish | norms | check | leak-values | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
+    node scripts/run.mjs env | init | config | present | publish-gate | no-publish | norms | check | leak-values | leak-migrate | options-check | discard | auditor-check | menu | report-skeleton | report-line | verdict | compare-html
     node scripts/canvas-index.mjs build | verify | plan | diff | merge | record | refusal
     node scripts/canvas-comments.mjs quote
     node scripts/compare.mjs fingerprint | distance | options | approved | heights

@@ -186,8 +186,8 @@ test('leak-values writes a list that leak-check accepts (round trip with the git
   const project = makeRepo();
   execFileSync('git', ['config', 'user.email', 'ana.ejemplo@example.test'], { cwd: project });
   execFileSync('git', ['config', 'user.name', 'Ana Ejemplo'], { cwd: project });
-  const values = path.join(makeTempDir(), 'values.json');
-  const r = run(['leak-values', '--project', project, '--out', values]);
+  const r = run(['leak-values', '--project', project, '--run', 'r1']);
+  const values = r.json?.out;
   assert.equal(r.status, 0, r.stderr);
   assert.ok(JSON.parse(fs.readFileSync(values, 'utf8')).includes('ana.ejemplo@example.test'));
   const dir = writeTree(makeTempDir(), { 'a.html': '<p>contacto ana.ejemplo@example.test</p>' });

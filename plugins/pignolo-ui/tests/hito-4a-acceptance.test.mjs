@@ -53,8 +53,9 @@ test('4a: run, option check, leak check, approved decision, batch, report and a 
   assert.equal(oc.status, 0, oc.stderr + JSON.stringify(oc.json));
 
   // leak check, then approve
-  const values = path.join(scratch, 'values.json');
-  assert.equal(run(['leak-values', '--project', project, '--out', values]).status, 0);
+  const lv = run(['leak-values', '--project', project, '--run', runDir]);
+  assert.equal(lv.status, 0, lv.stderr);
+  const values = lv.json.out;
   assert.equal(runScript('leak-check.mjs', ['--dir', path.join(runDir, 'option-A'), '--values-file', values]).status, 0);
   const save = runScript('approve.mjs', ['save', '--project', project, '--flow', 'cuenta', '--from', path.join(runDir, 'option-A'), '--values-file', values, '--brief-file', writeBrief(), '--date', '2026-10-01']);
   assert.equal(save.status, 0, save.stderr + save.stdout);

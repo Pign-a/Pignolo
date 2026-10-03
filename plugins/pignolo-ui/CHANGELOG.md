@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 — sin publicar
+
+**Privacidad:** `leak-values.json` y `leak-origins.json` (usuario del SO, carpeta personal, nombre y email de git) ya no se guardan bajo el proyecto: viven en `<PIGNOLO_HOME>/ui-leaks/<repoId>/<corrida>/`, fuera de cualquier repo (un `git add -f` de `.pignolo-ui/runs/` los había metido al historial).
+
+- `run.mjs leak-values --project <repo> --run <corrida>` escribe fuera del proyecto, imprime `out` (el archivo de valores) y un aviso de no agregarlos a git; `--out` ya no existe. `repoId` sale de la ruta real (junction o mayúsculas dan el mismo id); la carpeta se niega si cae dentro del proyecto; las corridas de más de 14 días se podan.
+- Nuevo `run.mjs leak-migrate --project <repo> [--delete]`: lista (nunca el contenido) los archivos viejos bajo `.pignolo-ui/runs/` y los borra solo con `--delete`; no toca el índice ni el historial.
+- `reference/context.md`: marcador `<values>` y la línea `NO-GIT-UI:`; las skills y referencias dejan de nombrar `<run>/leak-values.json`.
+
+
 ## 0.10.0 — sin publicar
 
 **Lenguaje natural:** `new`, `improve`, `audit` y `define` se activan con una frase normal ("hagamos el panel de datos de la app"), no solo con `/pignolo-ui:...`. Decisión del autor, 2026-10-03. Sube de 0.9.0 a 0.10.0 porque cambia el contrato de las skills (ya no son solo humanas).

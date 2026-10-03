@@ -98,16 +98,14 @@ test('R4i-02: the second screen (new run, own types.json and leak-values) reache
   assert.equal(kit.record('canvas-publish', url).status, 0);
   const r2 = addRun(r);
   assert.equal(canvasIndex(BUILD_ARGS(r2, { first: 'no', 'page-name': 'new · 2026-10-02', now: '2026-10-02T09:00:00Z' })).status, 0);
-  // what step 9 now says to leave in the new run: <run>/types.json and <run>/leak-values.json
+  // what step 9 now says to leave in the new run: <run>/types.json and <values> (outside the project)
   const k2 = planKit(r2, { dataDir: kit.data });
   fs.copyFileSync(k2.typesFile, path.join(r2.run, 'types.json'));
-  fs.copyFileSync(k2.valuesFile, path.join(r2.run, 'leak-values.json'));
-  fs.copyFileSync(path.join(path.dirname(k2.valuesFile), 'leak-origins.json'), path.join(r2.run, 'leak-origins.json'));
-  const plan = canvasIndex(['plan', '--project', r2.project, '--run', r2.run, '--values-file', path.join(r2.run, 'leak-values.json'), '--types-file', path.join(r2.run, 'types.json'), '--data', kit.data]);
+  const plan = canvasIndex(['plan', '--project', r2.project, '--run', r2.run, '--values-file', k2.valuesFile, '--types-file', path.join(r2.run, 'types.json'), '--data', kit.data]);
   assert.equal(plan.status, 0, plan.stdout);
   assert.equal(plan.json.step.id, 'canvas-read-live');
   assert.equal(plan.json.step.params.url, url, 'the same canvas');
   // and without the files it does not work, which is what the old step 9 left out
-  const bare = canvasIndex(['plan', '--project', r2.project, '--run', r2.run, '--values-file', path.join(r2.run, 'leak-values.json'), '--types-file', path.join(r2.run, 'nope.json'), '--data', kit.data]);
+  const bare = canvasIndex(['plan', '--project', r2.project, '--run', r2.run, '--values-file', k2.valuesFile, '--types-file', path.join(r2.run, 'nope.json'), '--data', kit.data]);
   assert.equal(bare.status, 2);
 });
