@@ -192,7 +192,12 @@ function retired(args, env, cwd) {
   ];
   const current = new Set(JSON.parse(fs.readFileSync(TEMPLATE, 'utf8')).permissions.ask ?? []);
   const out = [];
-  for (const file of [...new Set(files)]) {
+  // En Windows el mismo archivo con otra capitalización del home es uno solo.
+  const key = (f) => (process.platform === 'win32' ? path.resolve(f).toLowerCase() : path.resolve(f));
+  const seen = new Set();
+  for (const file of files) {
+    if (seen.has(key(file))) continue;
+    seen.add(key(file));
     if (!fs.existsSync(file)) continue;
     let settings;
     try {
@@ -205,15 +210,21 @@ function retired(args, env, cwd) {
     const remove = Array.isArray(ask) ? RETIRED_ASK.filter((r) => !current.has(r) && ask.includes(r)) : [];
     const entry = { file, remove, applied: false, backup: null };
     if (args.apply && remove.length) {
-      entry.backup = `${file}.pignolo-bak-${Date.now()}`;
-      fs.copyFileSync(file, entry.backup);
-      settings.permissions.ask = ask.filter((r) => !remove.includes(r));
-      fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
-      entry.applied = true;
+      // Un archivo que no se puede escribir no corta el bucle: se informa con su error y se sigue con los demás.
+      try {
+        entry.backup = `${file}.pignolo-bak-${Date.now()}`;
+        fs.copyFileSync(file, entry.backup);
+        settings.permissions.ask = ask.filter((r) => !remove.includes(r));
+        fs.writeFileSync(file, JSON.stringify(settings, null, 2) + '\n');
+        entry.applied = true;
+      } catch (e) {
+        entry.applied = false;
+        entry.error = `no se pudo escribir: ${e.message}`;
+      }
     }
     out.push(entry);
   }
-  return { files: out, total: out.reduce((n, e) => n + e.remove.length, 0) };
+  return { files: out, total: out.reduce((n, e) => n + e.remove.length, 0), failed: out.filter((e) => e.error).length };
 }
 
 function config(args, env) {
