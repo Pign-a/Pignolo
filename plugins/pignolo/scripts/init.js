@@ -4,7 +4,8 @@
 // pasos aprobados) y verify. Lo opera solo el hilo principal (regla pignolo-init de la guardia).
 // JSON por stdout; exit 0 ok, 1 fallo con `kind` (y `Alternativa:` en stderr), 2 uso incorrecto,
 // 3 no se pudo dejar el estado consistente. Nunca commit, add ni push.
-// Uso: node init.js detect [--cwd <dir>] | preview --plan <archivo> [--cwd] | apply --plan <archivo> [--cwd] [--expect <stamp>] | verify [--cwd]
+// `wizard-detect [--write]` arma el resumen del asistente de inicio del panel (solo lee el proyecto; con --write lo deja en .git/pignolo/); `choices --file <archivo>` valida las elecciones del asistente (no escribe nada).
+// Uso: node init.js detect [--cwd <dir>] | wizard-detect [--cwd <dir>] [--write [--budget <ms>]] | choices --file <archivo> [--cwd <dir>] | preview --plan <archivo> [--cwd] | apply --plan <archivo> [--cwd] [--expect <stamp>] | verify [--cwd]
 // `preview` devuelve un `stamp`; `apply --expect <stamp>` se niega (stale-preview) si el plan o el repo cambiaron desde el preview.
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -26,6 +27,7 @@ const { proposeAdaptation, planAdaptation, applyAdaptation } = require('../lib/i
 const { applySkeleton } = require('../lib/init-skeleton');
 const { blankProject, BLANK_STEPS } = require('../lib/init-blank');
 const { buildSummary } = require('../lib/init-summary');
+const WD = require('../lib/wizard-detect');
 const SM = require('../lib/safe-move');
 const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
@@ -42,16 +44,24 @@ class Fail extends Error {
 
 function parse(argv) {
   const verb = argv[0];
-  if (!['detect', 'preview', 'apply', 'verify'].includes(verb)) throw new Usage('uso: init.js detect|preview|apply|verify [--plan <archivo>] [--cwd <dir>] [--expect <stamp>]');
+  if (!['detect', 'wizard-detect', 'choices', 'preview', 'apply', 'verify'].includes(verb)) throw new Usage('uso: init.js detect|wizard-detect|choices|preview|apply|verify [--plan <archivo>] [--file <archivo>] [--write] [--budget <ms>] [--cwd <dir>] [--expect <stamp>]');
   const o = { verb };
   for (let i = 1; i < argv.length; i += 1) {
     const a = argv[i];
-    if (!['--plan', '--cwd', '--expect'].includes(a)) throw new Usage(`opción desconocida: ${a}`);
+    if (a === '--write') {
+      if (verb !== 'wizard-detect') throw new Usage('--write solo vale con wizard-detect');
+      o.write = true;
+      continue;
+    }
+    if (!['--plan', '--cwd', '--expect', '--file', '--budget'].includes(a)) throw new Usage(`opción desconocida: ${a}`);
     i += 1;
     if (argv[i] === undefined) throw new Usage(`${a} necesita un valor`);
     o[a.slice(2)] = argv[i];
   }
   if (o.expect !== undefined && verb !== 'apply') throw new Usage('--expect solo vale con apply');
+  if (o.budget !== undefined && (verb !== 'wizard-detect' || !o.write || !/^\d{1,6}$/.test(o.budget))) throw new Usage('--budget <ms> solo vale con wizard-detect --write y es un número de milisegundos');
+  if (o.file !== undefined && verb !== 'choices') throw new Usage('--file solo vale con choices');
+  if (verb === 'choices' && !o.file) throw new Usage('choices necesita --file <archivo>');
   if ((verb === 'preview' || verb === 'apply') && !o.plan) throw new Usage(`${verb} necesita --plan <archivo>`);
   return o;
 }
@@ -417,6 +427,19 @@ function main(argv, env = process.env) {
   const o = parse(argv);
   const cwd = o.cwd || process.cwd();
   if (o.verb === 'detect') return { body: detect({ cwd, env }), code: 0 };
+  if (o.verb === 'wizard-detect') {
+    const main = resolveRoot(cwd);
+    if (!o.write) return { body: WD.buildWizardDetect({ main }), code: 0 };
+    // Con --write el único efecto es el archivo bajo <main>/.git/pignolo/ (nunca .pignolo/); `offer` es verdadero solo la primera vez.
+    // Si no alcanza el plazo o falla, no queda archivo (se borra uno viejo) y sale 0: lo lanza el hook de arranque, que calla.
+    try {
+      const w = WD.writeFor(main, { budgetMs: o.budget === undefined ? 10000 : Number(o.budget) });
+      return { body: w.path ? { ok: true, path: w.path, offer: w.offer } : { ok: true, skipped: w.skipped }, code: 0 };
+    } catch (e) {
+      WD.removeStale(main);
+      return { body: { ok: true, skipped: 'failed', reason: e.message }, code: 0 };
+    }
+  }
   if (o.verb === 'verify') {
     const body = verify({ cwd, env });
     if (body.ok) return { body, code: 0 };

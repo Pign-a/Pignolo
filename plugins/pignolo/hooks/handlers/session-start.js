@@ -15,6 +15,7 @@ const { deriveNext } = require('../../lib/next');
 const LAUNCHER = path.join(__dirname, '..', 'launcher.js');
 const SEEDER = path.join(__dirname, '..', '..', 'scripts', 'shadow-seed.js');
 const SABOTAGE_CLI = path.join(__dirname, '..', '..', 'scripts', 'sabotage.js');
+const INIT_CLI = path.join(__dirname, '..', '..', 'scripts', 'init.js');
 const CANARY_MARK = /pignolo bloqueó/;
 const FAMILY_LABEL = {
   catastrophic: 'catastrófico',
@@ -58,6 +59,24 @@ function shadowLines(sh) {
   if (sh.state === 'absent') return ['pignolo: sembrando el repo sombra en segundo plano (primera vez en este repo). Hasta que termine, las instantáneas quedan dentro del repo y no sobreviven a borrar .git.'];
   if (sh.state === 'error') return [`⚠ pignolo: la última siembra del repo sombra falló (${sh.error}). Se reintenta ahora; mientras tanto las instantáneas quedan dentro del repo y no sobreviven a borrar .git.`];
   return (sh.warnings || []).map((w) => `⚠ pignolo: ${w}`);
+}
+
+// Asistente de inicio del panel (etapa 3, D-W3). Solo si no hay .pignolo/project.md en el checkout principal. La detección corre en un
+// proceso desacoplado (como la siembra del repo sombra): el arranque no espera ni puede pasarse de plazo; el proceso tiene su plazo
+// propio y, al vencer o fallar, no deja archivo (borra uno viejo para que no engañe). Todo error se calla.
+function spawnWizard(main, budgetMs) {
+  const child = spawn(process.execPath, [INIT_CLI, 'wizard-detect', '--write', '--budget', String(budgetMs), '--cwd', main], { cwd: main, detached: true, stdio: 'ignore', windowsHide: true });
+  child.on('error', () => {});
+  child.unref();
+}
+
+function wizardDetect({ cwd, ctx }) {
+  try {
+    const main = mainRoot(cwd);
+    if (fs.existsSync(path.join(main, '.pignolo', 'project.md'))) return;
+    if (!fs.existsSync(path.join(main, '.git'))) return;
+    (ctx.wizardSpawn || spawnWizard)(main, ctx.wizardBudgetMs === undefined ? 3000 : ctx.wizardBudgetMs);
+  } catch (_) { /* el asistente nunca rompe el arranque */ }
 }
 
 exports.run = (input, ctx = {}) => {
@@ -110,6 +129,10 @@ exports.run = (input, ctx = {}) => {
       lines.push(`⚠ pignolo: no se pudo lanzar la siembra del repo sombra (${e.message}).`);
     }
   }
+  // Asistente de inicio del panel (etapa 3, D-W3): en un proyecto sin .pignolo/project.md, al arrancar o reanudar, deja el resumen de
+  // la detección en .git/pignolo/ para que el panel lo lea. Plazo propio de 3 s; al vencer o fallar, callado y sin archivo (se borra uno
+  // viejo para que no engañe). Nunca cambia la salida del hook ni bloquea el arranque.
+  if (!st.hooksOff && (input.source === 'startup' || input.source === 'resume')) wizardDetect({ cwd, ctx });
   // Próxima acción derivada del estado (R-10 del hito 5): solo si hay algo en curso. El sabotaje
   // interrumpido ya lo informó el bloque de arriba.
   let nextText = '';
