@@ -63,9 +63,9 @@ test('panel-answer hook: it never denies, never rewrites the prompt and exits 0 
   assert.equal(submit(dir, GOOD).status, 0);
 });
 
-test('panel-answer hook: the free option Otra is accepted as answer', () => {
+test('panel-answer hook: the free option Otra is not an option, so it does not mark the decision (falla cerrado, RP-02)', () => {
   const dir = project();
   const r = submit(dir, 'Respuesta a la decisión Q-1 ("¿El PDF usa la plantilla corta?"): Otra.');
   assert.equal(r.status, 0);
-  assert.deepEqual(status(dir).slice(0, 2), ['answered', 'Otra']);
+  assert.equal(status(dir)[0], 'open');
 });

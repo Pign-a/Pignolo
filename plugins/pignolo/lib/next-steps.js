@@ -6,17 +6,26 @@
 // No sugiere (`none`): algo corre ('busy'); algo anda mal ('attention'); dos candidatos en el mismo nivel
 // ('ambiguous'); el único paso cuesta plata sin OK ('cost'); sin evidencia ('nothing').
 
+// Texto de la respuesta que se envía desde el panel y que el hook `panel-answer` reconoce. UNA sola forma: el mod la
+// arma igual (pregunta de una línea, sin comillas dobles, recortada a 120 caracteres).
+function cleanQuestion(q) {
+  const one = String(q === null || q === undefined ? '' : q).replace(/[\r\n\p{Zl}\p{Zp}]+/gu, ' ').replace(/"/g, '').replace(/\s{2,}/g, ' ').trim();
+  return one.length > 120 ? `${one.slice(0, 119).trimEnd()}…` : one;
+}
+const answerPrefix = (d) => `Respuesta a la decisión ${d.id} ("${cleanQuestion(d.question)}"): `;
+const answerText = (d, option) => `${answerPrefix(d)}${option}.`;
+
 const TIER = { decision: 1, merge: 2, review: 3, push: 4, card: 5, 'close-session': 6 };
 
 const isApprove = (b) => b.review === 'APPROVE';
 const isGreen = (b) => b.suite === 'green';
 const unreviewed = (b) => !b.review || b.review === 'none';
 
-// Costo de un paso: costOk ausente = sin dato (no bloquea; la regla dice su costo base); costOk.ok falso bloquea;
-// con OK lo dice en la nota.
+// Costo de un paso: costOk ausente = se muestra igual, con la nota "sin OK de costo" si el paso cuesta plata (RP-07: nunca
+// se oculta ni se ejecuta); costOk.ok falso bloquea; con OK lo dice en la nota.
 function costOf(branch, base) {
   const c = branch && branch.costOk;
-  if (!c) return { ok: true, note: base || null };
+  if (!c) return { ok: true, note: base ? `${base} · sin OK de costo` : null };
   if (c.ok !== true) return { ok: false, note: null };
   const usd = typeof c.usd === 'number' ? `~${c.usd} USD, ya aprobado` : 'costo ya aprobado';
   return { ok: true, note: base ? `${base} · ${usd}` : usd };
@@ -26,7 +35,10 @@ const RULES = [
   {
     id: 'decision',
     find: (f) => f.decisions.filter((d) => d.status === 'open').map((d) => ({
-      rule: 'decision', key: `d:${d.id}`, text: d.question, prompt: `Decisión ${d.id}: ${d.recommended || ''}`.trim(),
+      rule: 'decision', key: `d:${d.id}`, text: d.question,
+      // el mismo texto que arma el botón del panel: el hook lo reconoce y cierra la decisión (RP-04). Sin una recomendada que sea
+      // una de las opciones solo llena el comienzo; la opción la escribe el usuario.
+      prompt: (d.options || []).some((o) => (o && o.label !== undefined ? o.label : o) === d.recommended) && d.recommended ? answerText(d, d.recommended) : answerPrefix(d).trim(),
       why: `Hay una decisión tuya pendiente${d.recommended ? `; la recomendada es "${d.recommended}"` : ''}.`,
     })),
   },
@@ -104,4 +116,4 @@ function toRegistry(step) {
   return { ...one(step.main), alternatives: step.alternatives.map(one) };
 }
 
-module.exports = { TIER, nextStep, suggestionText, toRegistry };
+module.exports = { TIER, nextStep, suggestionText, toRegistry, cleanQuestion, answerPrefix, answerText };

@@ -39,7 +39,9 @@ test('panel-state: a file that is not UTF-8, empty or with another schema gives 
   assert.deepEqual(r.problems, ['schema-unknown']);
   assert.deepEqual(r.state.decisions, []);
   // y el script que escribe se recupera: reconstruye el archivo
-  assert.deepEqual(panel.ask(dir, { question: '¿hola?', options: opts }), { id: 'Q-1' });
+  // la numeración no se reinicia al reconstruir: un Q-1 viejo no puede caer en otra decisión (RP-02)
+  const rebuilt = panel.ask(dir, { question: '¿hola?', options: opts });
+  assert.match(rebuilt.id, /^Q-[0-9]{9,}$/);
   assert.equal(panel.read(dir).state.decisions.length, 1);
 });
 

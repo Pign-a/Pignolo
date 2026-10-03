@@ -9,6 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { gitRun } = require('./git');
+const { cleanQuestion, answerText, answerPrefix } = require('./next-steps');
 
 const SCHEMA = 'pignolo-panel-state/1';
 const MAX_BYTES = 64 * 1024;
@@ -16,6 +17,7 @@ const STAGES = ['plan', 'execution', 'review', 'fixes', 'suite', 'merge'];
 const LOCK_WAIT_MS = 2000;
 const LOCK_STALE_MS = 10000;
 const NOW = () => new Date().toISOString();
+const REBUILD_BASE = () => Math.floor(Date.now() / 1000);
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const arr = (v) => (Array.isArray(v) ? v : []);
@@ -97,6 +99,7 @@ function normalize(raw) {
       status: ['open', 'answered', 'postponed'].includes(d.status) ? d.status : 'open',
       askedAt: typeof d.askedAt === 'string' ? d.askedAt : null,
     };
+    if (typeof d.key === 'string' && d.key.trim()) out.key = str(d.key, 80);
     if (typeof d.postponedAt === 'string') out.postponedAt = d.postponedAt;
     if (typeof d.answeredAt === 'string') out.answeredAt = d.answeredAt;
     if (typeof d.answer === 'string') out.answer = str(d.answer, 120);
@@ -246,6 +249,9 @@ function update(main, fn, { now = NOW() } = {}) {
     if (problems.length && !problems.includes('schema-unknown') && fs.existsSync(fileOf(main))) {
       process.stderr.write(`pignolo panel: el registro estaba ilegible (${problems.join(', ')}); se reconstruye.\n`);
     }
+    // Un registro reconstruido no reinicia la numeración: un Q-<n> viejo (un botón dibujado antes, un texto pegado) no puede
+    // caer en otra decisión (RP-02). La base sale del reloj, así que supera cualquier número dado antes.
+    if (problems.length && fs.existsSync(fileOf(main)) && state.seq < REBUILD_BASE()) state.seq = REBUILD_BASE();
     const before = JSON.stringify({ ...state, updated: null });
     const result = fn(state);
     if (JSON.stringify({ ...state, updated: null }) === before && fs.existsSync(fileOf(main))) return result; // sin cambios: no se reescribe
@@ -271,30 +277,59 @@ function nextId(state) {
   return `Q-${n}`;
 }
 
-function addDecision(state, { question, options, recommended, context, kind = 'user', now }) {
+function addDecision(state, { question, options, recommended, context, kind = 'user', key, now }) {
   const opts = arr(options).map(option).filter(Boolean).slice(0, 4);
   const id = nextId(state);
-  state.decisions.push({
+  const d = {
     id, question: str(question, 300), options: opts, recommended: str(recommended, 80), context: str(context, 400),
     kind: kind === 'budget' ? 'budget' : 'user', status: 'open', askedAt: now || NOW(),
-  });
+  };
+  if (typeof key === 'string' && key.trim()) d.key = str(key, 80);
+  state.decisions.push(d);
   return id;
 }
 
-function ask(main, { question, options, recommended = '', context = '', kind = 'user', now } = {}) {
-  if (typeof question !== 'string' || !question.trim()) throw new Error('falta la pregunta');
-  const id = update(main, (s) => addDecision(s, { question, options, recommended, context, kind, now }), { now });
-  return { id };
+// El texto que sale del panel como palabras del usuario se arma con esto: una sola línea, sin caracteres de control y con
+// tope de largo. Lo que no cumple se rechaza al escribir (RP-03), no se recorta en silencio.
+const BAD = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+function lineProblem(what, v, max) {
+  if (typeof v !== 'string') return null;
+  if (BAD.test(v)) return `${what} tiene saltos de línea o caracteres de control`;
+  if (v.length > max) return `${what} pasa de ${max} caracteres`;
+  return null;
+}
+function checkAsk({ question, options, recommended }) {
+  const bad = [lineProblem('la pregunta', question, 300), lineProblem('la recomendada', recommended, 80)];
+  arr(options).forEach((o, i) => {
+    bad.push(lineProblem(`la opción ${i + 1}`, isObj(o) ? o.label : o, 80));
+    if (isObj(o)) bad.push(lineProblem(`los pros y contras de la opción ${i + 1}`, o.pros_contras, 200));
+  });
+  const p = bad.find(Boolean);
+  if (p) throw new Error(`${p}: una pregunta del panel es de una sola línea`);
 }
 
-// { ok, reason? }: el id existe y no está respondida; la respuesta es una de sus opciones o la libre "Otra".
-function answer(main, { id, answer: text, now } = {}) {
+// Con `key` es idempotente: si ya hay una decisión sin responder con esa clave devuelve la misma (una skill puede repetir la llamada).
+function ask(main, { question, options, recommended = '', context = '', kind = 'user', key, now } = {}) {
+  if (typeof question !== 'string' || !question.trim()) throw new Error('falta la pregunta');
+  checkAsk({ question, options, recommended });
   return update(main, (s) => {
-    const d = s.decisions.find((x) => x.id === id);
+    const dup = key ? s.decisions.find((d) => d.key === key && d.status !== 'answered') : null;
+    return dup ? { id: dup.id, existing: true } : { id: addDecision(s, { question, options, recommended, context, kind, key, now }) };
+  }, { now });
+}
+
+// { ok, reason? }: el id (o la clave) existe y no está respondida; la respuesta es una de sus opciones o la libre "Otra".
+// `strict` (el hook `panel-answer`): la decisión tiene que estar abierta, la pregunta citada tiene que ser la suya y la
+// respuesta una de sus opciones, todo dentro del lock; si algo no coincide no marca nada (falla cerrado, RP-02).
+function answer(main, { id, key, answer: text, question, strict = false, now } = {}) {
+  return update(main, (s) => {
+    const d = s.decisions.find((x) => (key ? x.key === key && x.status !== 'answered' : x.id === id));
     if (!d) return { ok: false, reason: 'unknown-id' };
     if (d.status === 'answered') return { ok: false, reason: 'already-answered' };
+    if (strict && d.status !== 'open') return { ok: false, reason: 'not-open' };
+    if (strict && question !== cleanQuestion(d.question)) return { ok: false, reason: 'question-differs' };
     const given = typeof text === 'string' ? text : '';
-    if (given !== 'Otra' && !d.options.some((o) => o.label === given)) return { ok: false, reason: 'not-an-option' };
+    if (!d.options.some((o) => o.label === given) && (strict || given !== 'Otra')) return { ok: false, reason: 'not-an-option' };
     d.status = 'answered';
     d.answer = given;
     d.answeredAt = now || NOW();
@@ -328,6 +363,35 @@ function reopenPostponed(main, { now } = {}) {
   }, { now });
 }
 
+// close-session: lo que quedó sin responder al cerrar pasa a pospuesto; el próximo SessionStart lo reabre (RP-06).
+function parkOpen(main, { now } = {}) {
+  return update(main, (s) => {
+    const parked = [];
+    for (const d of s.decisions) {
+      if (d.status !== 'open') continue;
+      d.status = 'postponed';
+      d.postponedAt = now || NOW();
+      parked.push({ id: d.id, question: d.question });
+    }
+    return parked;
+  }, { now });
+}
+
+// La cola marca una rama que espera al autor (conflicto de lógica, compuerta roja). `refresh` conserva la marca.
+function setWaiting(main, { branch, waiting = true, now } = {}) {
+  if (typeof branch !== 'string' || !branch.trim()) throw new Error('falta la rama');
+  return update(main, (s) => {
+    let b = s.branches.find((x) => x.name === branch);
+    if (!b) {
+      if (!waiting) return { ok: true };
+      b = { name: str(branch, 120), stage: 'review', review: 'none', suite: 'none', commits: 0, waiting: false, merged: false };
+      s.branches.push(b);
+    }
+    b.waiting = waiting === true;
+    return { ok: true };
+  }, { now });
+}
+
 function evidence(main, { card, red, green, title, now } = {}) {
   if (typeof card !== 'string' || !card.trim()) throw new Error('falta la tarjeta');
   return update(main, (s) => {
@@ -340,11 +404,13 @@ function evidence(main, { card, red, green, title, now } = {}) {
   }, { now });
 }
 
+// `cap` puede faltar si el hito ya tiene su tope (se actualiza solo lo gastado).
 function setBudget(main, { hito, spent, cap, now } = {}) {
-  if (typeof hito !== 'string' || !hito.trim() || num(spent) === null || num(cap) === null) throw new Error('hito, spent y cap son obligatorios');
+  if (typeof hito !== 'string' || !hito.trim() || num(spent) === null || (cap !== undefined && num(cap) === null)) throw new Error('hito y spent son obligatorios; cap debe ser un número');
   return update(main, (s) => {
     const b = s.budget.find((x) => x.hito === hito);
-    if (b) { b.spent = Number(spent); b.cap = Number(cap); } else s.budget.push({ hito: str(hito, 60), spent: Number(spent), cap: Number(cap), warned: false });
+    if (cap === undefined && !b) throw new Error('el hito no tiene tope: falta cap');
+    if (b) { b.spent = Number(spent); if (cap !== undefined) b.cap = Number(cap); } else s.budget.push({ hito: str(hito, 60), spent: Number(spent), cap: Number(cap), warned: false });
     return { ok: true };
   }, { now });
 }
@@ -523,6 +589,6 @@ function toText(state) {
 }
 
 module.exports = {
-  SCHEMA, MAX_BYTES, STAGES, emptyState, read, normalize, sanitize, update, ask, answer, postpone, reopenPostponed, evidence, setBudget,
+  SCHEMA, MAX_BYTES, STAGES, emptyState, read, normalize, sanitize, update, ask, answer, postpone, reopenPostponed, evidence, setBudget, parkOpen, setWaiting, cleanQuestion, answerText, answerPrefix,
   compute, refresh, toText, fileOf, lockOf, serialize,
 };

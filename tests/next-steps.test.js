@@ -14,7 +14,7 @@ test('next-steps rule decision: an open decision gives its question with the rec
   const r = nextStep(facts({ decisions: [dec()] }));
   assert.equal(r.main.rule, 'decision');
   assert.equal(r.main.text, '¿plantilla corta?');
-  assert.equal(r.main.prompt, 'Decisión Q-1: sí');
+  assert.equal(r.main.prompt, 'Respuesta a la decisión Q-1 ("¿plantilla corta?"): sí.'); // el formato que reconoce el hook (RP-04)
   assert.match(r.main.why, /"sí"/);
   assert.equal(nextStep(facts({ decisions: [dec({ status: 'answered' })] })).main, null);
 });
@@ -36,7 +36,7 @@ test('next-steps rule review: a branch with commits and no review gives "revisá
   const r = nextStep(facts({ branches: [br()] }));
   assert.equal(r.main.rule, 'review');
   assert.equal(r.main.prompt, 'revisá feat/x');
-  assert.equal(suggestionText(r.main), 'revisá feat/x (usa una revisión opus)');
+  assert.equal(suggestionText(r.main), 'revisá feat/x (usa una revisión opus · sin OK de costo)'); // RP-07: se muestra igual, con la nota
   assert.equal(nextStep(facts({ branches: [br({ commits: 0 })] })).main, null);
 });
 
