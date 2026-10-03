@@ -1,0 +1,10 @@
+╭─ Empezar con pignolo ──────────────────────────────── paso 2 de 5 ─╮
+│ ▰▰▱▱▱                                                              │
+│ ¿Qué perfil de modelos usamos?                                     │
+│                                                                    │
+│  a  balanceado · recomendado    sonnet para construir, opus revisa │
+│  b  económico                   sonnet en lo seguro, el más barato │
+│  c  máximo                      opus casi en todo, el más caro     │
+│                                                                    │
+│ ← p atrás   Esc cierra                      Enter siguiente →      │
+╰────────────────────────────────────────────────────────────────────╯

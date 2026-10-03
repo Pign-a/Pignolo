@@ -4,7 +4,8 @@
 // pasos aprobados) y verify. Lo opera solo el hilo principal (regla pignolo-init de la guardia).
 // JSON por stdout; exit 0 ok, 1 fallo con `kind` (y `Alternativa:` en stderr), 2 uso incorrecto,
 // 3 no se pudo dejar el estado consistente. Nunca commit, add ni push.
-// Uso: node init.js detect [--cwd <dir>] | preview --plan <archivo> [--cwd] | apply --plan <archivo> [--cwd] [--expect <stamp>] | verify [--cwd]
+// `wizard-detect [--write]` arma el resumen del asistente de inicio del panel (solo lee el proyecto; con --write lo deja en .git/pignolo/); `choices --file <archivo>` valida las elecciones del asistente (no escribe nada).
+// Uso: node init.js detect [--cwd <dir>] | wizard-detect [--cwd <dir>] [--write [--budget <ms>]] | choices --file <archivo> [--cwd <dir>] | preview --plan <archivo> [--cwd] | apply --plan <archivo> [--cwd] [--expect <stamp>] | verify [--cwd]
 // `preview` devuelve un `stamp`; `apply --expect <stamp>` se niega (stale-preview) si el plan o el repo cambiaron desde el preview.
 const fs = require('node:fs');
 const crypto = require('node:crypto');
@@ -26,6 +27,8 @@ const { proposeAdaptation, planAdaptation, applyAdaptation } = require('../lib/i
 const { applySkeleton } = require('../lib/init-skeleton');
 const { blankProject, BLANK_STEPS } = require('../lib/init-blank');
 const { buildSummary } = require('../lib/init-summary');
+const WD = require('../lib/wizard-detect');
+const IC = require('../lib/init-choices');
 const SM = require('../lib/safe-move');
 const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
@@ -42,16 +45,25 @@ class Fail extends Error {
 
 function parse(argv) {
   const verb = argv[0];
-  if (!['detect', 'preview', 'apply', 'verify'].includes(verb)) throw new Usage('uso: init.js detect|preview|apply|verify [--plan <archivo>] [--cwd <dir>] [--expect <stamp>]');
+  if (!['detect', 'wizard-detect', 'decline', 'choices', 'preview', 'apply', 'verify'].includes(verb)) throw new Usage('uso: init.js detect|wizard-detect|decline|choices|preview|apply|verify [--plan <archivo>] [--file <archivo>] [--public yes|no] [--write] [--budget <ms>] [--cwd <dir>] [--expect <stamp>]');
   const o = { verb };
   for (let i = 1; i < argv.length; i += 1) {
     const a = argv[i];
-    if (!['--plan', '--cwd', '--expect'].includes(a)) throw new Usage(`opción desconocida: ${a}`);
+    if (a === '--write') {
+      if (verb !== 'wizard-detect') throw new Usage('--write solo vale con wizard-detect');
+      o.write = true;
+      continue;
+    }
+    if (!['--plan', '--cwd', '--expect', '--file', '--budget', '--public'].includes(a)) throw new Usage(`opción desconocida: ${a}`);
     i += 1;
     if (argv[i] === undefined) throw new Usage(`${a} necesita un valor`);
     o[a.slice(2)] = argv[i];
   }
   if (o.expect !== undefined && verb !== 'apply') throw new Usage('--expect solo vale con apply');
+  if (o.budget !== undefined && (verb !== 'wizard-detect' || !o.write || !/^\d{1,6}$/.test(o.budget))) throw new Usage('--budget <ms> solo vale con wizard-detect --write y es un número de milisegundos');
+  if (o.public !== undefined && (verb !== 'choices' || !['yes', 'no'].includes(o.public))) throw new Usage('--public yes|no solo vale con choices');
+  if (o.file !== undefined && verb !== 'choices') throw new Usage('--file solo vale con choices');
+  if (verb === 'choices' && !o.file) throw new Usage('choices necesita --file <archivo>');
   if ((verb === 'preview' || verb === 'apply') && !o.plan) throw new Usage(`${verb} necesita --plan <archivo>`);
   return o;
 }
@@ -413,10 +425,53 @@ function verify({ cwd, env, run }) {
   };
 }
 
+// `choices --file`: valida las elecciones que el asistente del panel mandó (una línea JSON, ver lib/init-choices.js) contra la detección de
+// ahora y devuelve lo que la skill necesita para armar el plan. NO escribe nada. Con una entrada mala o que ya no corresponde al proyecto
+// dice `ok: false` y la skill sigue el flujo de siempre: no se adivina nada.
+function choicesOf({ cwd, env, file, isPublic }) {
+  let line;
+  try {
+    const buf = fs.readFileSync(file);
+    if (buf.length > 4096) return { ok: false, reason: 'too-long' };
+    line = new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/\r?\n$/, '');
+  } catch (e) { return { ok: false, reason: e instanceof TypeError ? 'not-utf8' : 'unreadable' }; }
+  const parsed = IC.parseChoices(line);
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
+  const { choices } = parsed;
+  const main = resolveRoot(cwd);
+  const d = detect({ cwd, env });
+  if (Boolean(choices.blank) !== Boolean(d.blank)) return { ok: false, reason: 'blank-mismatch' };
+  const known = Object.keys(d.summary.recommendedPlaces || {});
+  const stray = Object.keys(choices.places || {}).filter((k) => !known.includes(k));
+  if (stray.length) return { ok: false, reason: `places-not-detected:${stray.join(',')}` };
+  const { approved, answers, extras } = IC.toAnswers(choices, { summary: d.summary, isPublic });
+  const cmp = IC.compareId(choices, WD.buildWizardDetect({ main, env }).id);
+  return { ok: true, approved, answers, extras, idSame: cmp.same, ...(cmp.note ? { note: cmp.note } : {}) };
+}
+
 function main(argv, env = process.env) {
   const o = parse(argv);
   const cwd = o.cwd || process.cwd();
   if (o.verb === 'detect') return { body: detect({ cwd, env }), code: 0 };
+  if (o.verb === 'wizard-detect') {
+    const main = resolveRoot(cwd);
+    if (!o.write) return { body: WD.buildWizardDetect({ main, env }), code: 0 };
+    // Con --write el único efecto es el archivo bajo <main>/.git/pignolo/ (nunca .pignolo/); `offer` es verdadero solo la primera vez.
+    // Si no alcanza el plazo o falla, no queda archivo (se borra uno viejo) y sale 0: lo lanza el hook de arranque, que calla.
+    try {
+      const w = WD.writeFor(main, { budgetMs: o.budget === undefined ? 10000 : Number(o.budget), env });
+      return { body: w.path ? { ok: true, path: w.path, offer: w.offer } : { ok: true, skipped: w.skipped, offer: false, stale: w.stale }, code: 0 };
+    } catch (e) {
+      WD.removeStale(main);
+      return { body: { ok: true, skipped: 'failed', reason: e.message }, code: 0 };
+    }
+  }
+  if (o.verb === 'decline') {
+    // "No usar pignolo acá" (RW-02): lo único que escribe es la marca bajo <main>/.git/pignolo/; no crea .pignolo/ ni nada más.
+    const w = WD.writeDecline(resolveRoot(cwd));
+    return w.ok ? { body: { ok: true, path: w.path }, code: 0 } : { body: { ok: false, kind: 'unwritable', reason: `no se pudo guardar la marca (${w.reason})` }, code: 1, alt: 'no hace falta: el asistente puede volver a ofrecerse; /pignolo:init sigue disponible a mano' };
+  }
+  if (o.verb === 'choices') return { body: choicesOf({ cwd, env, file: o.file, isPublic: o.public === undefined ? undefined : o.public === 'yes' }), code: 0 };
   if (o.verb === 'verify') {
     const body = verify({ cwd, env });
     if (body.ok) return { body, code: 0 };

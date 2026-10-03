@@ -5,6 +5,6 @@
     "test": "node --test \"tests/**/*.test.js\" \"plugins/pignolo-ui/tests/**/*.test.mjs\"",
     "test:quiet": "node --test --test-reporter=dot \"tests/**/*.test.js\" \"plugins/pignolo-ui/tests/**/*.test.mjs\"",
     "test:ui": "node --test \"plugins/pignolo-ui/tests/**/*.test.mjs\"",
-    "test:panel": "node --test tests/panel-plugin-layout.test.js tests/panel-trust.test.js tests/panel-plugin-cli.test.js tests/panel-ui-input.test.js tests/panel-ui-recs.test.js tests/panel-ui-request.test.js"
+    "test:panel": "node --test tests/panel-plugin-layout.test.js tests/panel-trust.test.js tests/panel-plugin-cli.test.js tests/panel-ui-input.test.js tests/panel-ui-recs.test.js tests/panel-ui-request.test.js tests/panel-wizard-mockup.test.js tests/wizard-contract.test.js"
   }
 }

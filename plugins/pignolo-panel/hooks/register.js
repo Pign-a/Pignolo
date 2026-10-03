@@ -1,9 +1,10 @@
 // pignolo-panel: solo lee y dibuja. Lee UN archivo (.pignolo/panel-state.json, que escribe pignolo) y lo muestra; la pestaña UI
-// (solo con pignolo-ui) lee ademas PRODUCT.md, DESIGN.md y la carpeta .pignolo-ui del proyecto.
+// (solo con pignolo-ui) lee ademas PRODUCT.md, DESIGN.md y la carpeta .pignolo-ui del proyecto; el asistente de inicio lee
+// `.git/pignolo/wizard-detect.json` (lo deja el hook de arranque del nucleo en un proyecto sin pignolo) y no escribe nada.
 // Efectos permitidos: llenar o sugerir texto en el prompt (nunca lo envia), copiar al portapapeles (`ui.copy`), UNA consulta a
 // haiku (`model.complete`, solo al abrir la pestaña UI, con un resumen sin contenido de archivos) y UN solo lugar que envia
-// (`submitText`), al que llegan solo dos botones: la respuesta de una decision de "Te toca" (`submitAnswer`) y el atajo de la
-// pestaña UI (`submitUiRequest`). No aprueba ni niega nada.
+// (`submitText`), al que llegan solo tres botones: la respuesta de una decision de "Te toca" (`submitAnswer`), el atajo de la
+// pestaña UI (`submitUiRequest`) y las elecciones del asistente de inicio (`submitWizard`). No aprueba ni niega nada.
 import {
   SYMBOL, COLOR, shortModel, minutes, tokens, usd, plural,
   newRegistry, addAgent, addUsage, finish, reopen, running, elapsed, sorted,
@@ -18,6 +19,8 @@ import { detectUi } from './ui-detect.js'
 import { uiRequestText } from './ui-request.js'
 import { tabModel, SHORTCUTS } from './ui-tab.js'
 import { contextFor } from './ui-rules.js'
+import { readWizardDetect, stepsFor, initialState, move, choicesOf, choicesMessage, DECLINE_MESSAGE } from './wizard-model.js'
+import { WIDTH as WIZARD_WIDTH, stepView, wizardTree } from './wizard-view.js'
 
 const PANE = 'pignolo-panel'
 const TABS_BASE = [['now', '1', 'Ahora'], ['branches', '2', 'Ramas'], ['cost', '3', 'Costo']]
@@ -56,6 +59,11 @@ let uiPending = false // hay una consulta en vuelo
 let uiSending = false // hay un pedido en envio: un atajo se envia una sola vez
 let uiCache = { at: 0, value: null } // lectura de los archivos de pignolo-ui (cache corta, como el registro)
 const recommender = createRecommender({})
+// asistente de inicio (etapa 3)
+const wizard = { open: false, data: null, steps: [], state: null, uiInstalled: false, demo: false, sending: false, sent: false }
+let wizardOpened = false // el asistente se abre solo una vez por sesion
+let wizardTicks = 0 // el hook de arranque deja la deteccion unos segundos despues de empezar: se mira en los primeros ciclos del temporizador
+const WIZARD_TICKS = 40
 
 // ---- lectura (unico archivo: .pignolo/panel-state.json) ----
 
@@ -751,6 +759,7 @@ async function enterUiTab($, { retry = false } = {}) {
 // Abre el panel por una accion del usuario (comando o tecla 0): vuelve a mirar si esta pignolo-ui y, si la pestaña UI es la
 // que quedó abierta, la consulta. (El abrir solo por una decision nueva NO pasa por acá: no consulta al modelo.)
 async function openPaneByUser($) {
+  wizard.open = false // el panel de siempre, no el asistente (que se abre con `/pignolo-panel wizard`)
   await refreshUiDetect($)
   const res = await openPane($)
   if (tab === 'ui' && uiDetect.installed) await enterUiTab($)
@@ -830,8 +839,200 @@ async function uiBody($, e, width) {
   return [block($, e, { key: 'blk-ui', title: m.title, right: m.right, body, foot: footer([['a–c, n, m, u, d', 'envía el pedido a Claude']]), width })]
 }
 
+// ---- asistente de inicio (etapa 3) ---------------------------------------------------------------------------------------
+// El panel no escribe nada: lee el resumen que deja pignolo en `.git/pignolo/wizard-detect.json` y, al aplicar, envia UN mensaje con
+// las elecciones (por `submitText`, el mismo `prompt.submit` de siempre). Quien escribe es `/pignolo:init`, con sus controles.
+
+const WIZARD_FILE = '/.git/pignolo/wizard-detect.json'
+
+// Raiz del proyecto: el primer directorio (desde el cwd hacia arriba) que tiene el archivo de deteccion. Nunca tira.
+async function findWizardRoot($) {
+  let dir = String(await $.session.cwd()).replace(/\\/g, '/').replace(/\/+$/, '')
+  for (let i = 0; i < 12 && dir; i += 1) {
+    if (await $.fs.exists(dir + WIZARD_FILE)) return dir
+    const up = dir.replace(/\/[^/]*$/, '')
+    if (up === dir || up === '') break
+    dir = up
+  }
+  return null
+}
+
+// { root, data } o null ante cualquier fallo (sin archivo, JSON roto, otra schema, sin id) o si el proyecto ya tiene pignolo: sin error a la vista.
+async function readWizard($) {
+  try {
+    const root = await findWizardRoot($)
+    if (!root) return null
+    if (await $.fs.exists(root + '/.pignolo/project.md')) return null
+    const r = readWizardDetect(String(await $.fs.read(root + WIZARD_FILE)))
+    return r.ok ? { root, data: r.data } : null
+  } catch {
+    return null
+  }
+}
+
+function startWizard(data, { uiInstalled, demo = false }) {
+  const steps = stepsFor({ data, uiInstalled })
+  Object.assign(wizard, { open: true, data, steps, state: initialState(steps, data), uiInstalled, demo, sending: false, sent: false })
+}
+
+// Abre solo, una vez por sesion y solo si el hook de arranque dijo `offer` (la primera vez en este proyecto). Cede ante una decision "Te toca"
+// abierta, ante autoOpen apagado, el modo demo y una terminal angosta (el panel mismo se niega a abrirse solo en menos de 144 columnas).
+async function checkWizard($) {
+  if (demoMode || !autoOpen || wizardOpened || wizard.open || wizardTicks >= WIZARD_TICKS) return
+  wizardTicks += 1
+  if (lastCols < OPEN_FIRST_COLS) return
+  const snap = await readSnapshot($, await $.clock.now())
+  if (snap.kind === 'ok' && visibleDecisions(snap).length > 0) return
+  const found = await readWizard($)
+  if (!found || found.data.offer !== true) return
+  startWizard(found.data, { uiInstalled: uiDetect.installed })
+  const res = await openPane($)
+  if (res && res.isPlaced === false) {
+    wizard.open = false // el motor lo dejo esperando: se vuelve a intentar en el proximo ciclo
+    return
+  }
+  wizardOpened = true
+  $.ui.invalidate('ui.render')
+}
+
+// `/pignolo-panel wizard [demo]`: lo abre a mano, sin importar `offer`. Devuelve lo que se muestra en la transcripcion.
+async function openWizardByUser($, demo) {
+  let found = null
+  if (demo) {
+    const r = readWizardDetect(String(await $.fs.read($.plugin.root + '/sample/wizard-detect.json')).trim())
+    found = r.ok ? { data: r.data } : null
+    if (!found) return { text: 'pignolo-panel: no pude leer los datos de muestra del asistente.' }
+  } else {
+    found = await readWizard($)
+    if (!found) return { text: 'pignolo-panel: no hay detección de este proyecto; corré /pignolo:init.' }
+  }
+  if (lastCols && lastCols < WIZARD_WIDTH + 2) return { text: 'pignolo-panel: el asistente necesita ' + (WIZARD_WIDTH + 2) + ' columnas y esta terminal tiene ' + lastCols + ' (faltan ' + (WIZARD_WIDTH + 2 - lastCols) + ').' }
+  const same = wizard.data && wizard.data.id === found.data.id && !wizard.sent && !wizard.demo && !demo
+  if (same) wizard.open = true
+  else startWizard(found.data, { uiInstalled: demo ? true : uiDetect.installed, demo })
+  await openPane($)
+  wizardOpened = true
+  $.ui.invalidate('ui.render')
+  return {}
+}
+
+// Cierra el asistente: el panel vuelve a ser el de siempre (el mod no suma ninguna llamada para cerrar el panel; Esc lo cierra).
+function closeWizard($, why) {
+  wizard.open = false
+  if (why === 'later') $.ui.toast('Cuando haya código, corré /pignolo:init · Esc cierra el panel')
+  $.ui.invalidate('ui.render')
+}
+
+// Aplicar: UN solo mensaje con las elecciones. Una vez aunque se pulse dos veces (`sending` se marca antes de cualquier await), releyendo
+// antes (si la deteccion cambio no se envia lo que se dibujo) y por `submitText` (una linea, sin invisibles). En el demo solo llena el prompt.
+async function submitWizard($) {
+  if (wizard.sending || wizard.sent) return
+  wizard.sending = true
+  $.ui.invalidate('ui.render')
+  const retry = () => { wizard.state = { ...wizard.state, done: false } }
+  try {
+    const cur = wizard.demo ? { data: wizard.data } : await readWizard($)
+    if (!cur || cur.data.id !== wizard.data.id) {
+      $.ui.toast('La detección cambió: mirá el asistente de nuevo')
+      if (cur) startWizard(cur.data, { uiInstalled: wizard.uiInstalled })
+      else retry()
+      return
+    }
+    const msg = choicesMessage(choicesOf(wizard.state, wizard.data, { uiInstalled: wizard.uiInstalled }))
+    if (msg === null) {
+      $.ui.toast('Elecciones inválidas: no se envía')
+      retry()
+      return
+    }
+    if (wizard.demo) {
+      await fillPrompt($, msg)
+      retry()
+      return
+    }
+    const ok = await submitText($, msg)
+    if (!ok) {
+      $.ui.toast('No pude enviar; corré /pignolo:init')
+      retry()
+      return
+    }
+    wizard.sent = true
+    closeWizard($)
+    $.ui.toast('Enviado: init te muestra la vista previa y te pide el sí')
+  } finally {
+    wizard.sending = false
+    $.ui.invalidate('ui.render')
+  }
+}
+
+// "No usar pignolo aca" (RW-02): UN mensaje fijo por `submitText` (el mismo guardian de una sola vez que submitWizard). Lo unico que `init`
+// escribe al recibirlo es la marca de rechazo bajo `.git/pignolo/`. En el demo solo llena el prompt.
+async function declineWizard($) {
+  if (wizard.sending || wizard.sent) return
+  wizard.sending = true
+  $.ui.invalidate('ui.render')
+  const retry = () => { wizard.state = { ...wizard.state, closed: null } }
+  try {
+    if (wizard.demo) {
+      await fillPrompt($, DECLINE_MESSAGE)
+      retry()
+      return
+    }
+    const ok = await submitText($, DECLINE_MESSAGE)
+    if (!ok) {
+      $.ui.toast('No pude enviar; corré /pignolo:init')
+      retry()
+      return
+    }
+    wizard.sent = true
+    closeWizard($)
+    $.ui.toast('Enviado: no te lo vuelvo a ofrecer acá · /pignolo:init sigue disponible')
+  } finally {
+    wizard.sending = false
+    $.ui.invalidate('ui.render')
+  }
+}
+
+// <press-handler:wizard> el UNICO sitio desde el que se llama a submitWizard: los botones del asistente (seguir en el ultimo paso, o crear en el
+// de un repo en blanco). Ni un evento, ni un temporizador, ni el refresco.
+async function wizardPress($, what, arg) {
+  if (!wizard.open || wizard.sending || wizard.sent) return
+  wizard.state = move(wizard.state, what, arg, wizard.data)
+  if (wizard.state.closed === 'decline') {
+    await declineWizard($)
+    return
+  }
+  if (wizard.state.closed) {
+    closeWizard($, wizard.state.closed)
+    return
+  }
+  if (wizard.state.done) {
+    await submitWizard($)
+    return
+  }
+  $.ui.invalidate('ui.render')
+}
+// </press-handler:wizard>
+
+function wizardBody($, e) {
+  const { Box, Text, Button } = $.ui.resolve(e)
+  const cols = (e.props && e.props.bodyColumns) || 80
+  if (e.viewport && e.viewport.columns) lastCols = e.viewport.columns
+  if (cols < WIZARD_WIDTH) {
+    return Text({ key: 'wz-narrow', wrap: 'wrap', children: ['El asistente necesita ' + WIZARD_WIDTH + ' columnas y este panel tiene ' + cols + ' (faltan ' + (WIZARD_WIDTH - cols) + '): ensanchá la terminal o cerrá otros paneles.'] })
+  }
+  const step = wizard.state.steps[wizard.state.i]
+  const view = stepView({ step, state: wizard.state, data: wizard.data, uiInstalled: wizard.uiInstalled, busy: wizard.sending })
+  return wizardTree({ Box, Text, Button }, view, {
+    color: 'claude',
+    pick: (letter) => wizardPress($, 'pick', letter),
+    next: () => wizardPress($, 'next'),
+    back: () => wizardPress($, 'back'),
+  })
+}
+
 async function paneTree($, e, next) {
   if (e.requestId !== PANE) return next(e)
+  if (wizard.open) return wizardBody($, e)
   const { Box, Text, Button } = $.ui.resolve(e)
   const cols = (e.props && e.props.bodyColumns) || 80
   if (e.viewport && e.viewport.columns) lastCols = e.viewport.columns
@@ -885,6 +1086,11 @@ export function register(on, options) {
     } catch {
       // sin registro: nada que anunciar
     }
+    try {
+      await checkWizard($) // el asistente de inicio: solo si el hook de arranque lo ofrecio (una vez por proyecto)
+    } catch {
+      // sin deteccion: nada que ofrecer
+    }
     await syncSuggest($)
     if (!timer) {
       // refresco liviano: lee un solo archivo; detecta decisiones nuevas y abre el panel si corresponde
@@ -895,6 +1101,11 @@ export function register(on, options) {
         } catch {
           // sin registro
         }
+        try {
+          await checkWizard($)
+        } catch {
+          // sin deteccion
+        }
         $.ui.invalidate('ui.render')
       })
     }
@@ -903,6 +1114,7 @@ export function register(on, options) {
 
   on('command.run', { command: 'pignolo-panel' }, async ($, e) => {
     const arg = String(e.args || '').trim().toLowerCase()
+    if (arg === 'wizard' || arg.startsWith('wizard ')) return openWizardByUser($, arg.slice(6).trim() === 'demo')
     if (arg.startsWith('demo')) {
       const rest = arg.slice(4).trim()
       demoMode = rest === 'off' ? null : rest === 'busy' ? 'busy' : 'idle'
@@ -992,6 +1204,12 @@ export function register(on, options) {
       $.ui.toast('✓ ' + rec.type + ' terminó')
       $.ui.invalidate('ui.render')
     }
+    return next(e)
+  })
+
+  // Un panel que se cierra (Esc, la persona o la descarga del mod): si era el asistente, ya no esta abierto.
+  on('ui.close', async ($, e, next) => {
+    if (e && e.id === PANE) wizard.open = false
     return next(e)
   })
 

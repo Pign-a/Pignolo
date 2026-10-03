@@ -1,7 +1,7 @@
 {
   "name": "pignolo-panel",
-  "version": "0.2.0",
-  "description": "Panel visual para pignolo: siguiente paso, decisiones tuyas, ramas, costo y, con pignolo-ui, una pestaña UI con recomendaciones. Requiere Claude Code 2.1.287 o más nuevo.",
+  "version": "0.3.0",
+  "description": "Panel visual para pignolo: siguiente paso, decisiones tuyas, ramas, costo, una pestaña UI con recomendaciones (con pignolo-ui) y un asistente de inicio para activar pignolo en un proyecto nuevo. Requiere Claude Code 2.1.287 o más nuevo.",
   "author": {
     "name": "Ignacio"
   },
@@ -15,7 +15,7 @@
     "autoOpen": {
       "type": "boolean",
       "title": "Abrir el panel solo",
-      "description": "Abre el panel una vez cuando aparece una decisión nueva tuya, si la terminal tiene 144 columnas o más (110 después de la primera vez). Apagalo para abrirlo vos con /pignolo-panel. Requiere Claude Code 2.1.287 o más nuevo.",
+      "description": "Abre el panel una vez cuando aparece una decisión nueva tuya, y el asistente de inicio la primera vez que abrís un proyecto sin pignolo, si la terminal tiene 144 columnas o más (110 después de la primera vez). Apagalo para abrirlo vos con /pignolo-panel. Requiere Claude Code 2.1.287 o más nuevo.",
       "default": true
     },
     "uiRecommendations": {

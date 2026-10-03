@@ -1,6 +1,7 @@
 'use strict';
-// Confianza del mod (T5 y etapa 2): el mod solo lee y dibuja, más `prompt.suggest`/`prompt.fill`, un único `prompt.submit` (en
-// `submitText`, al que llegan solo la respuesta de una decisión de "Te toca" y un atajo de la pestaña UI, cada uno desde un botón),
+// Confianza del mod (T5, etapa 2 y etapa 3): el mod solo lee y dibuja, más `prompt.suggest`/`prompt.fill`, un único `prompt.submit` (en
+// `submitText`, al que llegan solo la respuesta de una decisión de "Te toca", un atajo de la pestaña UI y las elecciones del asistente de
+// inicio, cada uno desde un botón),
 // `ui.copy` y una consulta a haiku (`model.complete`, solo al abrir la pestaña UI). Estático: no necesita Claude Code (salvo la lista
 // de `calls:` de `claude plugin validate`, que se lee si `claude` existe; si no, se deduce del código y se dice).
 const test = require('node:test');
@@ -90,12 +91,20 @@ function enclosing(text, at) {
 }
 const sitesOf = (text, re) => [...code(text).matchAll(re)].map((m) => m.index);
 
-test('trust: submitText is called only by submitAnswer and submitUiRequest', () => {
+test('trust: submitText is called only by submitAnswer, submitUiRequest, submitWizard and declineWizard', () => {
   const c = code(REGISTER);
   const callers = sitesOf(REGISTER, /submitText\(/g)
     .filter((i) => c.slice(i - 15, i) !== 'async function ')
     .map((i) => enclosing(c, i));
-  assert.deepStrictEqual(callers.sort(), ['submitAnswer', 'submitUiRequest']);
+  assert.deepStrictEqual(callers.sort(), ['declineWizard', 'submitAnswer', 'submitUiRequest', 'submitWizard']);
+});
+
+test('RW-02 trust: declineWizard is called only from the wizard press handler and sends the fixed message', () => {
+  const c = code(REGISTER);
+  const sites = [...c.matchAll(/declineWizard\(/g)].map((m) => m.index).filter((i) => c.slice(i - 15, i) !== 'async function ');
+  assert.strictEqual(sites.length, 1);
+  assert.strictEqual(enclosing(c, sites[0]), 'wizardPress');
+  assert.match(REGISTER, /submitText\(\$, DECLINE_MESSAGE\)/);
 });
 
 test('trust: submitUiRequest is referenced only inside the press handler of a UI tab button', () => {
@@ -213,4 +222,130 @@ test('trust: the package has no network access and no dependencies', () => {
     // los únicos imports son archivos del mismo paquete
     for (const m of read(f).matchAll(/^import[^'"]*['"]([^'"]+)['"]/gm)) assert.match(m[1], /^\.\//, `${path.basename(f)}: ${m[1]}`);
   }
+});
+
+// ---- etapa 3: el asistente de inicio -----------------------------------------------------------------------------------------------
+
+// La lista de `calls:` de 0.2.0 (la pestaña UI): el asistente no suma ninguna llamada al mod.
+const CALLS_0_2_0 = [
+  'clock.every', 'clock.now', 'command.list', 'command.register', 'fs.exists', 'fs.list', 'fs.read', 'model.complete', 'prompt.fill', 'prompt.submit',
+  'prompt.suggest', 'session.cwd', 'session.usage', 'settings.read', 'ui.copy', 'ui.invalidate', 'ui.open', 'ui.resolve', 'ui.toast',
+];
+
+test('trust: the wizard adds no call to the mod: the declared calls list equals the one of 0.2.0', (t) => {
+  const { source, calls } = declaredCalls();
+  t.diagnostic(`lista de calls: ${source}`);
+  assert.deepStrictEqual([...new Set(calls)].sort(), [...CALLS_0_2_0].sort());
+  // y en el código: ni una llamada `$.noun.verb` fuera de esa lista
+  const deduced = new Set();
+  for (const file of modFiles()) for (const x of code(read(file)).matchAll(/\$\.([a-z]+)\.([A-Za-z]+)/g)) deduced.add(`${x[1]}.${x[2]}`);
+  assert.deepStrictEqual([...deduced].filter((c) => c !== 'plugin.root' && !CALLS_0_2_0.includes(c)), []);
+});
+
+test('trust: the new mod files never reference fs.write, fs.remove, fs.mkdir, fs.append, process, spawn or exec and never touch $', () => {
+  const BAD = /\bprocess\b|\bspawn\b|\bexec\b|child_process|\$\.exec\b|fs\.(?:write|remove|mkdir|append|rename|copy)|writeFile|appendFile|mkdirSync/;
+  const names = modFiles().map((f) => path.basename(f));
+  for (const n of ['wizard-model.js', 'wizard-view.js']) {
+    assert.ok(names.includes(n), n);
+    const c = code(read(path.join(hooksDir, n)));
+    assert.doesNotMatch(c, BAD, n);
+    assert.doesNotMatch(c, /\$\./, `${n} no usa $ (no cruza imports)`);
+  }
+  // register.js: lo del asistente tampoco escribe ni ejecuta
+  const start = REGISTER.indexOf('// ---- asistente de inicio');
+  const end = REGISTER.indexOf('async function paneTree(');
+  assert.ok(start > 0 && end > start);
+  assert.doesNotMatch(code(REGISTER.slice(start, end)), BAD);
+});
+
+test('trust: submitWizard is called from one button handler only and never from an event, a timer or the refresh', () => {
+  const c = code(REGISTER);
+  const decl = c.indexOf('async function submitWizard(');
+  const sites = [...c.matchAll(/submitWizard\(/g)].map((m) => m.index).filter((i) => i !== decl + 'async function '.length);
+  assert.strictEqual(sites.length, 1, 'una sola llamada');
+  const open = REGISTER.indexOf('// <press-handler:wizard>');
+  const close = REGISTER.indexOf('// </press-handler:wizard>');
+  const callAt = REGISTER.indexOf('await submitWizard(');
+  assert.ok(open > 0 && close > open && callAt > open && callAt < close);
+  assert.match(REGISTER.slice(open, close), /async function wizardPress\(/);
+  assert.ok(close < REGISTER.indexOf('export function register('));
+  // a wizardPress solo llegan los botones del asistente (los manejadores que arma wizardBody)
+  const presses = [...c.matchAll(/wizardPress\(/g)].map((m) => enclosing(c, m.index)).filter((n) => n !== 'wizardPress');
+  assert.deepStrictEqual(presses, ['wizardBody', 'wizardBody', 'wizardBody']);
+  const reg = REGISTER.slice(REGISTER.indexOf('export function register('));
+  assert.ok(!/submitWizard|wizardPress/.test(reg), 'ningún evento ni temporizador envía');
+  for (const name of ['checkWizard', 'openWizardByUser', 'readWizard', 'findWizardRoot', 'startWizard', 'closeWizard', 'syncSuggest', 'checkNewDecisions', 'readSnapshot', 'bandTree']) {
+    const s = REGISTER.indexOf(`function ${name}(`);
+    assert.ok(s > 0, name);
+    assert.ok(!REGISTER.slice(s, REGISTER.indexOf('\n}\n', s)).includes('submitWizard'), `${name} no envía`);
+  }
+  // el abrir solo (temporizador y session.start) nunca llama a nada que envíe: checkWizard no llama a submitText ni a prompt.*
+  const cw = REGISTER.slice(REGISTER.indexOf('async function checkWizard('));
+  assert.doesNotMatch(cw.slice(0, cw.indexOf('\n}\n')), /submitText|prompt\./);
+});
+
+test('trust: the wizard message goes through submitText and is checked for line breaks and hidden characters before sending', () => {
+  const sw = REGISTER.slice(REGISTER.indexOf('async function submitWizard('));
+  const body = sw.slice(0, sw.indexOf('\n}\n'));
+  assert.match(body, /await submitText\(\$, msg\)/);
+  assert.match(body, /choicesMessage\(choicesOf\(/);
+  assert.match(body, /msg === null/);
+  // submitText rechaza saltos de línea (U+2028 y U+2029 incluidos) y caracteres invisibles
+  const st = REGISTER.slice(REGISTER.indexOf('async function submitText('));
+  assert.match(st.slice(0, st.indexOf('\n}\n')), /hasHiddenChars\(text\)/);
+  assert.match(st.slice(0, st.indexOf('\n}\n')), /\\r\\n/);
+  // y el modelo, antes de armar el mensaje, hace la misma comprobación
+  const model = code(read(path.join(hooksDir, 'wizard-model.js')));
+  assert.match(model, /hasHiddenChars\(msg\)/);
+  assert.match(model, /\\r\\n/);
+  // el demo no envía: solo llena el prompt
+  assert.match(body, /if \(wizard\.demo\) \{\s*await fillPrompt\(\$, msg\)/);
+});
+
+test('trust: the core hook and wizard-detect write only under .git/pignolo', () => {
+  const core = path.join(__dirname, '..', 'plugins', 'pignolo');
+  const hook = code(read(path.join(core, 'hooks', 'handlers', 'session-start.js')));
+  const s = hook.indexOf('function spawnWizard(');
+  const e = hook.indexOf('exports.run');
+  assert.ok(s > 0 && e > s);
+  const mine = hook.slice(s, e);
+  // el hook no escribe nada por su cuenta: lanza el verbo de init, que es quien escribe (y solo bajo .git/pignolo)
+  assert.doesNotMatch(mine, /writeFile|mkdirSync|rmSync|unlinkSync|renameSync|appendFile|copyFile/);
+  assert.match(mine, /'wizard-detect', '--write'/);
+  // el verbo solo escribe por writeFor / removeStale
+  const init = code(read(path.join(core, 'scripts', 'init.js')));
+  const v = init.indexOf("if (o.verb === 'wizard-detect')");
+  const ve = init.indexOf("if (o.verb === 'choices')");
+  assert.ok(v > 0 && ve > v);
+  assert.doesNotMatch(init.slice(v, ve), /writeFile|mkdirSync|rmSync|unlinkSync|renameSync|appendFile|atomicWrite/);
+  // y en lib/wizard-detect.js todo destino de escritura sale de la carpeta segura (bajo <main>/.git/pignolo)
+  const lib = code(read(path.join(core, 'lib', 'wizard-detect.js')));
+  const dests = [...lib.matchAll(/\b(?:fs\.)?(writeFileSync|mkdirSync|renameSync|rmSync)\(\s*([^,)]+)/g)].map((m) => m[2].trim());
+  assert.ok(dests.length >= 5);
+  for (const d of dests) assert.match(d, /^(safe\.dir|file|tmp|path\.join\(safe\.dir)/, d);
+  assert.match(lib, /path\.join\(git, 'pignolo'\)/);
+});
+
+test('trust: plugins/pignolo/hooks/hooks.json has no new event and no modules key', () => {
+  const h = JSON.parse(read(path.join(__dirname, '..', 'plugins', 'pignolo', 'hooks', 'hooks.json')));
+  assert.ok(!('modules' in h));
+  assert.deepStrictEqual(Object.keys(h).sort(), ['description', 'hooks']);
+  assert.deepStrictEqual(Object.keys(h.hooks), ['PreToolUse', 'SubagentStart', 'PostToolUse', 'PostToolUseFailure', 'SubagentStop', 'UserPromptSubmit', 'UserPromptExpansion', 'SessionStart']);
+  // el asistente se cuelga del SessionStart que ya existía: el mismo handler, el mismo evento
+  const starts = h.hooks.SessionStart.flatMap((m) => m.hooks.map((x) => x.args.join(' ')));
+  assert.ok(starts.every((a) => /session-start/.test(a)), starts.join(' | '));
+});
+
+test('versions: pignolo-panel is 0.3.0 and the core version is higher than on main, and both CHANGELOGs have the entry', () => {
+  const root = path.join(__dirname, '..');
+  const panel = JSON.parse(read(path.join(PANEL, '.claude-plugin', 'plugin.json'))).version;
+  const coreV = JSON.parse(read(path.join(root, 'plugins', 'pignolo', '.claude-plugin', 'plugin.json'))).version;
+  assert.strictEqual(panel, '0.3.0');
+  const num = (v) => v.split('.').map(Number);
+  const [a, b, c] = num(coreV);
+  assert.ok(a > 0 || b > 18 || (b === 18 && c > 0), `el núcleo (${coreV}) sube sobre el 0.18.0 de main`);
+  assert.match(read(path.join(PANEL, 'CHANGELOG.md')), new RegExp(`^## ${panel.replace(/\./g, '\\.')}\\b`, 'm'));
+  assert.match(read(path.join(root, 'CHANGELOG.md')), new RegExp(`^## ${coreV.replace(/\./g, '\\.')}\\b`, 'm'));
+  assert.match(read(path.join(PANEL, 'CHANGELOG.md')), /asistente de inicio/i);
+  assert.match(read(path.join(root, 'CHANGELOG.md')), /wizard-detect/);
 });
