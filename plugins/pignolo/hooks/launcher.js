@@ -18,8 +18,32 @@ const DEADLINES_MS = { 'session-start': 25000 };
 // un plazo vencido: motivo a stderr y exit 0.
 const FAIL_OPEN = new Set(['subagent-start']);
 
+// D-G3: al vencer el plazo, estos hooks de comando dejan pasar uno de solo lectura por estructura (lib/read-only.js). El
+// resto (private-reads, plan-audit-gate: limitan lo que lee un subagente) sigue negando. Una sola constante para el aviso.
+const READ_ONLY_PASS = new Set(['guard', 'scope-gate']);
+const DEADLINE_PASS_NOTE = 'pignolo: el análisis del comando venció el plazo interno; pasó porque solo lee (lista cerrada).';
+
+// PIGNOLO_DEADLINE_MS solo BAJA el plazo (entero >= 1): existe para probarlo sin esperar.
 function deadlineFor(name) {
-  return DEADLINES_MS[name] || DEFAULT_DEADLINE_MS;
+  const base = DEADLINES_MS[name] || DEFAULT_DEADLINE_MS;
+  const raw = process.env.PIGNOLO_DEADLINE_MS;
+  if (typeof raw === 'string' && /^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (n >= 1 && n < base) return n;
+  }
+  return base;
+}
+
+// ¿Este payload es un comando de solo lectura que puede pasar con el plazo vencido? Cualquier duda o error: false.
+function passesReadOnly(name, input) {
+  try {
+    if (!READ_ONLY_PASS.has(name)) return false;
+    const tool = String(input.tool_name || '').toLowerCase();
+    if (tool !== 'bash' && tool !== 'powershell') return false;
+    const command = input.tool_input && input.tool_input.command;
+    if (typeof command !== 'string') return false;
+    return require('../lib/read-only').isReadOnlyByStructure(command, tool === 'powershell' ? 'powershell' : 'bash');
+  } catch (_) { return false; }
 }
 
 function runInWorker() {
@@ -93,7 +117,15 @@ function main() {
   } catch (e) { /* sin atajo: sigue el camino de siempre */ }
 
   const ms = deadlineFor(name);
-  const timer = setTimeout(() => fail(`se venció el plazo interno de ${ms} ms; se niega por las dudas`), ms);
+  // Solo esta rama (plazo vencido) puede pasar; msg.error, worker.on('error') y worker.on('exit') siguen negando.
+  const timer = setTimeout(() => {
+    if (!done && passesReadOnly(name, input)) {
+      done = true;
+      process.stdout.write(JSON.stringify({ systemMessage: DEADLINE_PASS_NOTE }), () => process.exit(0));
+      return;
+    }
+    fail(`se venció el plazo interno de ${ms} ms; se niega por las dudas`);
+  }, ms);
   const worker = new Worker(__filename, {
     workerData: { name, input, env: { ...process.env }, deadline: Date.now() + ms },
     env: process.env,
