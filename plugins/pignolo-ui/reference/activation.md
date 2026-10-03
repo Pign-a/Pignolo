@@ -20,16 +20,16 @@ Question text in the user's language, short: what you are about to start ("Esto 
 
 ## Option descriptions
 
-Figures are measured ones: `pignolo-ui:ui-option` 0,06 a 0,09 USD per option, `pignolo-ui:ui-auditor` 0,27 a 0,31 USD (docs/benchmarks.md), the judgment reading about 0,3 USD (`costLine` of `run.mjs`). Say "≈" and never add a figure that is not here.
+Figures are measured ones: `pignolo-ui:ui-option` 0,06 a 0,09 USD per option, `pignolo-ui:ui-auditor` 0,27 a 0,31 USD (docs/benchmarks.md), the judgment reading about 0,3 USD (`costLine` of `run.mjs`). `new` and `improve` always dispatch `ui-auditor`, so the recommended option states its cost on top of the options. The 0,06 to 0,09 figure is for sonnet; with the `max` profile the options run on opus, which has no USD figure in the repo (only 10 to 17 % more tokens and 2 to 3 times the time, `docs/benchmarks.md` 2e): say so without a number. Say "≈" and never add a figure that is not here.
 
 ### new
 
-- "Usar pignolo-ui (Recomendado)": "Opciones en el lienzo del proyecto para elegir, ≈ 0,06 a 0,09 USD cada una (3 por defecto), y verificación al final".
+- "Usar pignolo-ui (Recomendado)": "Opciones en el lienzo del proyecto para elegir, ≈ 0,06 a 0,09 USD cada una (3 por defecto), y un auditor independiente al final ≈ 0,27 a 0,31 USD; con el perfil max las opciones van en opus (10 a 17 % más tokens y 2 a 3 veces más tiempo; sin cifra en USD)".
 - "Hacerlo directo": "Una sola versión, sin opciones ni revisión".
 
 ### improve
 
-- "Usar pignolo-ui (Recomendado)": "Versiones mejoradas en el lienzo, ≈ 0,06 a 0,09 USD cada una, y medidas de antes y después; con criterios de juicio suma una lectura del auditor ≈ 0,3 USD".
+- "Usar pignolo-ui (Recomendado)": "Versiones mejoradas en el lienzo, ≈ 0,06 a 0,09 USD cada una, medidas de antes y después y un auditor independiente ≈ 0,27 a 0,31 USD; con el perfil max las versiones van en opus (10 a 17 % más tokens y 2 a 3 veces más tiempo; sin cifra en USD); con criterios de juicio suma una lectura del auditor ≈ 0,3 USD".
 - "Hacerlo directo": "Cambio la pantalla sin versiones para elegir ni medidas de antes y después".
 
 ### audit
