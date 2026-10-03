@@ -2,7 +2,15 @@
 
 _Última actualización: 2026-10-02._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
 
-## Estado al 2026-10-02 (manda sobre lo de arriba si se contradicen)
+## Estado al 2026-10-03 (manda sobre todo lo de abajo)
+
+- **En `main` y en GitHub (`071892e`):** núcleo **0.15.0** (guardia sin confirmar push ni merge, `subagent-main` con R6; skills en lenguaje natural con confirmación por `AskUserQuestion`) y pignolo-ui **0.10.0** (4h definición inicial, etapa 2 del lienzo 0.8.0, 4i todo en el lienzo 0.9.0, lenguaje natural 0.10.0). Prueba de activación: `tests/evals/RESULTS-activacion.md`.
+- **Ramas sin unir:** `core/init-rapido` (falta revisión opus; su versión 0.15.0 choca y pasa a la siguiente libre), `ui/hito-4e-chequeos` (falta revisión opus), `plan/guardia-sin-tropiezos` (falta auditoría previa).
+- **Prototipo fuera de git:** `local/pignolo-panel/`, mod de Claude Code (≥ 2.1.287) con banda, panel `/pignolo-panel` (agentes, plan, costo) y fila del agente; validado y con 10 tests; falta que el autor lo vea en su terminal.
+- **Propuesto, sin OK del autor:** mensajes de la guardia en lenguaje llano para el usuario (`deny` en JSON con `systemMessage` corto y el detalle técnico solo para Claude).
+- **Decisiones abiertas del autor:** clave `brief` en el núcleo; si `entry` deriva la UI antes o después del piso de riesgo (gap de P-1); `test-paths` por defecto; G44.
+
+## Estado al 2026-10-02
 
 - **En `main`:** núcleo **0.14.0** (hitos 1 a 6, 7a, 8a, 8b y 8d) y pignolo-ui **0.7.5** (0.7.3 datos de muestra rotulados, 0.7.4 auditor con "cuándo aplica", tope de 3 y línea `keep`, 0.7.5 `PRODUCT.md`, brief sellado y pase de veredicto).
 - **Ramas sin unir:** `ui/hito-4e-chequeos` (olas 2 a 4 de 4e, construidas, falta su revisión opus) y `exp/lienzo2-x` / `exp/lienzo2-y` (los dos brazos del experimento de relevo, etapa 2 del lienzo; ficha en `tests/evals/RESULTS-relevo.md`; se une el que salga mejor).
