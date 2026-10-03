@@ -9,6 +9,13 @@ Lenguaje natural (decisión del autor, 2026-10-03). Número provisorio: hay rama
 - **`pignolo:entry`** manda un pedido de pantalla, componente, panel o diseño a la skill de pignolo-ui que corresponde cuando el plugin está instalado.
 - Tests: `tests/skill-natural-language.test.js`. Prueba de activación armada y sin correr: `tests/evals/RESULTS-activacion.md`.
 
+**Arreglos de la revisión (RNL-02 a RNL-05):**
+
+- `entry` deriva a pignolo-ui solo un pedido que autoriza un cambio (o un pedido explícito de auditar); una pregunta sobre una pantalla se responde en solo lectura (RNL-03). Si el usuario ya eligió "Hacerlo directo" para ese pedido, `entry` no lo manda de nuevo y se evita el bucle (RNL-02).
+- El paso 0 de `templates/activation-confirm.md`: si `AskUserQuestion` no está disponible (`claude -p`, un subagente sin ella) la skill no sigue sola: dice en una línea que necesita confirmación del humano y termina, salvo que la hayan invocado con `/` (RNL-04).
+- Specs actualizadas: `init`, `setup`, `status` y `close-session` ya no son solo humanas. Menores y decisiones pendientes en `docs/gaps.md` (G62 a G68).
+- Prueba de activación: la calificación mira todas las skills invocadas y cuenta `pignolo:entry` → la esperada como acierto; el control se extrae con `git worktree add --detach` (sin tar, que fallaba en Windows) y cada corrida guarda su salida cruda en `<out>/raw/` (RNL-05).
+
 ## 0.14.0 — 2026-10-02
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Se une después del hito 8d (0.13.1); en su rama llevó los números 0.13.0 y 0.13.1 (brainstorming), así que esta es la versión menor libre siguiente.

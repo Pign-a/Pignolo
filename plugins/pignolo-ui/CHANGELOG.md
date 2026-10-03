@@ -7,6 +7,7 @@
 - Se quitó `disable-model-invocation: true` de las cuatro skills.
 - Cada `description` empieza con "Use when the user asks to ..." e incluye frases típicas en castellano rioplatense y en inglés y cuándo no usarla (un arreglo chico de CSS, un bug o un cambio de texto van por el flujo normal); conserva que `new`, `improve` y `audit` necesitan `define` antes. Todas dentro del tope de 1536 caracteres.
 - Paso 0 de cada skill: si la skill se activó sola (el turno no trae la etiqueta `<command-name>`), pregunta con AskUserQuestion si se usa pignolo-ui (recomendado, con su costo medido) o se hace directo; en "directo" la skill termina y el agente sigue sin ella. Si el usuario escribió el comando, no pregunta. El texto está una sola vez en `reference/activation.md`.
+- Arreglos de la revisión: la opción recomendada de `new` y `improve` suma el costo del `ui-auditor` que esas skills despachan siempre (≈ 0,27 a 0,31 USD) y avisa que con el perfil `max` las opciones van en opus (10 a 17 % más tokens, 2 a 3 veces más tiempo, sin cifra en USD) (RNL-01). Sin `AskUserQuestion` el paso 0 termina sin actuar (RNL-04); la línea de "Hacerlo directo" queda como registro de la elección, que `pignolo:entry` respeta (RNL-02).
 - El chequeo de `lint-plugin` ya no exige `disable-model-invocation`. Prueba de activación armada y sin correr: `tests/evals/RESULTS-activacion.md`.
 
 ## 0.9.0 — sin publicar
