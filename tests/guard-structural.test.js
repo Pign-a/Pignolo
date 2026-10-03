@@ -76,15 +76,15 @@ const SINKS = [
   [`perl -E 'system("git reset --hard")'`, 'inline-code'],
   [`perl -e'system("git reset --hard")'`, 'inline-code'],
   [`ruby -e'system("git reset --hard")'`, 'inline-code'],
-  ["ruby -e 'puts `ls`'", 'inline-code'],
+  ["ruby -e 'puts `git status`'", 'inline-code'],
   [`python3 -c'import os; os.system("git reset --hard")'`, 'inline-code'],
   [`python3 -Ic "import os; os.system('git stash')"`, 'inline-code'],
-  [`php -r 'shell_exec("ls");'`, 'inline-code'],
+  [`php -r 'shell_exec("git status");'`, 'inline-code'],
   [`awk 'BEGIN{system("git reset --hard")}'`, 'inline-code'],
   [`awk '{ print | "sh" }' f`, 'inline-code'],
   ["sed -n '1e git reset --hard' a.txt", 'inline-code'],
   ["sed 's/.*/git reset --hard/e' a.txt", 'inline-code'],
-  ["python3 - <<'PY'\nimport subprocess\nsubprocess.run(['ls'])\nPY", 'inline-code'],
+  ["python3 - <<'PY'\nimport subprocess\nsubprocess.run(['git','status'])\nPY", 'inline-code'],
 ];
 
 for (const [cmd, rule] of SINKS) {
