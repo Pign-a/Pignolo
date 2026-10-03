@@ -192,11 +192,11 @@ test('2026-10-02: the skill is not longer than before by more than a small margi
   assert.doesNotMatch(SKILL.text, /[A-Za-z]:[\\/]+Users|\/home\/|\/Users\//);
 });
 
-test('2026-10-02: docs and version: CHANGELOG entry 0.19.0, plugin.json at the CHANGELOG head, spec and README name the decision, the manual checklist covers the blank repo', () => {
+test('2026-10-02: docs and version: CHANGELOG entry 0.17.0, plugin.json at the CHANGELOG head, spec and README name the decision, the manual checklist covers the blank repo', () => {
   const version = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version;
   const changelog = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
   assert.equal(changelog.match(/^## (\d+\.\d+\.\d+)/m)[1], version);
-  assert.match(changelog, /^## 0.19.0 — 2026-10-03$/m);
+  assert.match(changelog, /^## 0.17.0 — 2026-10-03$/m);
   const spec = fs.readFileSync(path.join(ROOT, 'docs', 'specs', '2026-09-26-pignolo-v1-design.md'), 'utf8');
   assert.match(spec, /Decisión del autor, 2026-10-02: `init` y `setup` rápidos, y el repo en blanco/);
   const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');

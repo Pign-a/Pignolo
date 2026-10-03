@@ -44,7 +44,7 @@ test('guard handler outside a repo does not fail', () => {
 test('takes a WIP snapshot before an allowed shell command in a dirty repo', () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, 'a.txt'), 'sin commitear\n');
-  runGuard(bash('npm test', repo));
+  runGuard(bash('rm a.txt', repo));
   assert.strictEqual(wipRefs(repo).length, 1);
 });
 
@@ -55,7 +55,7 @@ test('takes a WIP snapshot before an allowed shell command in a dirty repo', () 
 test('through the launcher, an allowed command in a dirty repo gets a snapshot or a systemMessage saying it failed', () => {
   const repo = makeRepo();
   fs.writeFileSync(path.join(repo, 'a.txt'), 'sin commitear\n');
-  const r = runLauncher('guard', bash('npm test', repo));
+  const r = runLauncher('guard', bash('rm a.txt', repo));
   assert.strictEqual(r.status, 0, r.stderr);
   const [ref] = wipRefs(repo);
   if (ref) assert.strictEqual(git(['show', `${ref}:a.txt`], repo), 'sin commitear');
@@ -71,13 +71,13 @@ test('a blocked command takes no snapshot (H7)', () => {
 
 test('the snapshot deadline leaves room inside the 3 s launcher deadline (H7)', () => {
   let got = null;
-  guard.run(bash('npm test', makeRepo()), { env: {}, snapshot: (o) => { got = o; } });
+  guard.run(bash('rm a.txt', makeRepo()), { env: {}, snapshot: (o) => { got = o; } });
   assert.ok(got && got.timeoutMs > 0 && got.timeoutMs <= 2000, JSON.stringify(got));
 });
 
 test('snapshot failure on an allowed command is reported with systemMessage, exit 0 (H7)', () => {
   const failing = () => { throw new Error('timeout simulado'); };
-  const r = guard.run(bash('git status', makeRepo()), { env: {}, snapshot: failing });
+  const r = guard.run(bash('rm a.txt', makeRepo()), { env: {}, snapshot: failing });
   assert.strictEqual(r.exit, 0);
   assert.match(JSON.parse(r.stdout).systemMessage, /instantánea WIP falló \(timeout simulado\)/);
   const ask = guard.run(bash('git push origin --delete x', makeRepo()), { env: {}, snapshot: failing });
@@ -135,14 +135,12 @@ test('checkout of a file that exists in cwd is blocked (cwd reaches the evaluato
 // sin commitear se recupera desde la instantánea tomada antes de correrlo.
 test('work destroyed by an allowed command is recoverable from refs/pignolo/wip', () => {
   const repo = makeRepo();
-  fs.mkdirSync(path.join(repo, 'tools'));
-  fs.writeFileSync(path.join(repo, 'tools', 'pisar.js'), "require('fs').writeFileSync('a.txt', 'pisado\\n');\n");
   fs.writeFileSync(path.join(repo, 'a.txt'), 'trabajo valioso\n');
-  const command = 'node tools/pisar.js';
+  const command = 'rm a.txt';
   const r = runGuard(bash(command, repo));
   assert.strictEqual(r.status, 0, 'the guard allows it');
-  spawnSync(process.execPath, ['tools/pisar.js'], { cwd: repo }); // el comando corre
-  assert.strictEqual(fs.readFileSync(path.join(repo, 'a.txt'), 'utf8'), 'pisado\n');
+  fs.rmSync(path.join(repo, 'a.txt')); // el comando corre
+  assert.ok(!fs.existsSync(path.join(repo, 'a.txt')));
   const [ref] = wipRefs(repo);
   assert.strictEqual(git(['show', `${ref}:a.txt`], repo), 'trabajo valioso');
 });
