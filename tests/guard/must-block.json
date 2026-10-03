@@ -1894,5 +1894,119 @@
   "command": "echo {} > \"$CLAUDE_CONFIG_DIR/settings.json\"",
   "expect": "block",
   "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "touch .pignolo/.dis*",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "mv .pignolo/disabled /tmp/x",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "mv .pig*/.disabled /tmp/x",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "touch */disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "cp /dev/null .pig*/.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "touch \"$D/.pignolo/disabled\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "powershell",
+  "command": "Remove-Item .pignolo\\.dis*",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "powershell",
+  "command": "Set-Content .pignolo\\.dis* x",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "rm .pignolo/.disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "mv x.txt .pignolo/disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "touch ../.pignolo/dis*",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "rm ~/.pig*/disabled",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "touch .pignolo/$f",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "rsync -a x .pignolo/.dis*",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "cp x.txt \"$D/disabled\"",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "truncate -s0 /*/.pignolo/disabled",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "rm -f $H/.pignolo/disa*",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "mv .pig*/.disabled \"$T/x\"",
+  "expect": "block",
+  "rule": "catastrophic-delete"
+ },
+ {
+  "shell": "bash",
+  "command": "tee .pignolo/.dis* < /dev/null",
+  "expect": "block",
+  "rule": "protected-flag"
  }
 ]

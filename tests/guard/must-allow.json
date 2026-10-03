@@ -394,5 +394,41 @@
  {
   "shell": "bash",
   "command": "cd repo && nproc; for i in 1 2 3 4; do node probe2.mjs kill > ../p$i.txt 2>&1 & done; wait; cat ../p1.txt ../p2.txt"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,5p .pignolo/state/*.md"
+ },
+ {
+  "shell": "bash",
+  "command": "cp .pignolo/tmp/task-*.md /tmp/"
+ },
+ {
+  "shell": "bash",
+  "command": "pytest tests/test_disabled*"
+ },
+ {
+  "shell": "bash",
+  "command": "for f in src/disabled-*.tsx; do wc -l $f; done"
+ },
+ {
+  "shell": "bash",
+  "command": "touch *disabled*"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,60p plugins/pignolo/scripts/$(ls plugins/pignolo/scripts | head -1)"
+ },
+ {
+  "shell": "powershell",
+  "command": "Copy-Item .pignolo\\tmp\\task-*.md ..\\out"
+ },
+ {
+  "shell": "bash",
+  "command": "touch \"$OUT/disabled.txt\""
+ },
+ {
+  "shell": "bash",
+  "command": "touch \"$f\""
  }
 ]

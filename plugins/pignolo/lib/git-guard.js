@@ -959,6 +959,38 @@ function checkWriteTarget(w, st, ctx, out) {
   else if (all.some((p) => isProtectedWrite(p, SHELL_LOCS(ctx)))) out.push(hit('protected-path'));
 }
 
+// ¿Puede esta palabra con comodín o variable nombrar el flag (`.pignolo/disabled` o `.pignolo/.disabled`, en el
+// proyecto o en el HOME)? Se compara segmento por segmento: un comodín no cruza `/` y puede casar un nombre con
+// punto; un tramo con variable, `..`, `~`, una raíz o una unidad cuenta como `**` (cualquier cantidad de tramos).
+// Un patrón de un solo tramo no llega, y uno que es solo variables tampoco (necesita un tramo que nombre algo).
+const FLAG_PATHS = [['.pignolo', 'disabled'], ['.pignolo', '.disabled'], ['pignolo', 'disabled'], ['pignolo', '.disabled']]; // como FLAG_RE
+function globSegment(seg) {
+  return new RegExp('^' + [...seg.replace(/\[[^\]]*\]/g, '?')].map((c) => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : c.replace(/[\\^$.+(){}|\]-]/g, '\\$&'))).join('') + '$', 'i');
+}
+function flagReachable(w) {
+  let segs = String(w.value).replace(/^[A-Za-z-]+=/, '').replace(/\\/g, '/').split('/');
+  const lead = segs[0] === '' || segs[0] === '~' || /^[A-Za-z]:$/.test(segs[0]) || /[$`]/.test(segs[0]) || segs.find((s) => s !== '' && s !== '.') === '..';
+  segs = segs.filter((s) => s !== '' && s !== '.').map((s) => (s === '..' || s === '~' || /^[A-Za-z]:$/.test(s) || /[$`]/.test(s) ? '**' : s));
+  if (lead && segs[0] !== '**') segs.unshift('**');
+  segs = segs.filter((s, i) => !(s === '**' && segs[i - 1] === '**'));
+  if (!segs.some((s) => s !== '**')) return false;
+  const res = segs.map((s) => (s === '**' ? null : globSegment(s)));
+  // Un tramo literal solo cuenta si casa con un nombre real del flag (`real`): los ancestros no se conocen (''
+  // casa con todo), pero `$W/keep/$f` no llega al flag solo porque `keep` pudiera ser el directorio del proyecto.
+  const match = (i, t, j, real) => {
+    if (i === res.length) return j === t.length && real;
+    if (res[i] === null) { for (let k = j; k <= t.length; k++) if (match(i + 1, t, k, real)) return true; return false; }
+    if (j >= t.length) return false;
+    if (t[j] === '') return match(i + 1, t, j + 1, real);
+    return res[i].test(t[j]) && match(i + 1, t, j + 1, true);
+  };
+  // Las partes de un nombre armado en una subexpresión (Join-Path .pignolo '.disabled') no son tramos: si el texto
+  // nombra pignolo y disabled, cuenta.
+  if (/[s()]/.test(String(w.value)) && /pignolo/i.test(w.value) && /disabled/i.test(w.value)) return true;
+  // Los ancestros del flag no se conocen; el patrón tiene que cubrir al menos hasta `.pignolo`.
+  return FLAG_PATHS.some((t) => { const full = ['', '', '', '', ...t]; for (let j = 0; j <= full.length - 2; j++) if (match(0, full, j, false)) return true; return false; });
+}
+
 // Argumentos de comandos que no solo leen: el flag del interruptor, y las rutas
 // protegidas para los comandos que escriben en sus operandos.
 function checkPathArgs(name, args, st, ctx, out) {
@@ -975,8 +1007,11 @@ function checkPathArgs(name, args, st, ctx, out) {
       continue;
     }
     if (w.dyn || w.glob) {
-      // El código de un intérprete no se mira por el flag (decisión c, §3.3).
-      if (!INTERP.has(name) && /pignolo|disabled/i.test(w.value)) { out.push(hit('protected-flag')); return; }
+      // T6 (R-11): solo programas que escriben o borran, de cp/install/ln solo el destino (las fuentes se leen;
+      // en mv la fuente se borra, así que cuenta), y solo si el patrón puede alcanzar el flag.
+      if (dest && w !== dest) continue;
+      if (!(WRITE_CMDS.has(name) || DISCARD_PROGS.has(name))) continue;
+      if (flagReachable(w)) { out.push(hit('protected-flag')); return; }
       continue;
     }
     const all = resolveAll(w.value, st, ctx);

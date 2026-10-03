@@ -246,7 +246,7 @@
   "cmd": "$wt='/tmp/x\\wt-ui3\\plugins\\pignolo-ui'; $P='/tmp/x\\review-ui3\\proj'\n$p = Start-Process -FilePath node -ArgumentList \"$wt\\scripts\\browser.mjs\",\"measure\",\"--project\",$P,\"--run\",\"$P\\.pignolo-ui\\runs\\r2\",\"--url\",\"http://127.0.0.1:48123/slow\",\"--platform\",\"mobile\" -PassThru -WindowStyle Hidden\nStart-Sleep -Seconds 5\n$before = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*pignolo-ui-browser-*' } | Select-Object ProcessId,Name\n\"browser procs before kill: $($before.Count)\"\nStop-Process -Id $p.Id -Force\nStart-Sleep -Seconds 10\n$after = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*pignolo-ui-browser-*' } | Select-Object ProcessId,Name\n\"browser procs 10s after killing node: $($after.Count)\"\nGet-ChildItem $env:TEMP -Directory -Filter 'pignolo-ui-browser-*' | Select-Object Name",
   "audit": "block:protected-flag",
   "base": "block:protected-flag",
-  "expect": "block:protected-flag"
+  "expect": "allow"
  },
  {
   "id": "ev-027",
@@ -255,7 +255,7 @@
   "cmd": "cd /tmp/x/wt-bench && ls plugins/pignolo plugins/pignolo/lib plugins/pignolo/scripts; cat tests/helpers.js; cat .gitignore; sed -n 1,60p plugins/pignolo/scripts/$(ls plugins/pignolo/scripts | head -1); ls tests/evals; claude --help | grep -iE -A3 \"bare|max-budget|allowedTools|output-format|no-session|setting-sources|model\"",
   "audit": "block:protected-flag",
   "base": "block:protected-flag",
-  "expect": "block:protected-flag"
+  "expect": "allow"
  },
  {
   "id": "ev-028",
@@ -813,7 +813,7 @@
   "cmd": "cd /tmp/x/wt-pu4e; cut -c1-600 tests/evals/RESULTS-lienzo.md | head -60; grep -n \"MOCKUP_BRIEF\" -r plugins/pignolo-ui/tests tests | head -5; grep -n \"^## \\|^### \" docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md | head -40; sed -n 1,40p docs/plans/2026-09-30-pignolo-ui-hito-4-flujos.md | cut -c1-400; grep -n \"option-craft\\|test(\" plugins/pignolo-ui/tests/option-craft.test.mjs | head; ls ../../ 2>/dev/null | head -0; git branch -a | grep 4c; sed -n 1,30p plugins/pignolo-ui/tests/fixtures/rules/MOTION-04/*/* 2>/dev/null | head -0; ls plugins/pignolo-ui/tests/fixtures/rules/MOTION-04 plugins/pignolo-ui/tests/fixtures/rules/MOTION-04/*",
   "audit": "block:protected-flag",
   "base": "block:protected-flag",
-  "expect": "block:protected-flag"
+  "expect": "allow"
  },
  {
   "id": "ev-090",
@@ -999,7 +999,7 @@
   "cmd": "cd /tmp/x/wt-fix4b && sed -i \"s|put(main, 'p.patch', BREAK);|put(main, '.pignolo/tmp/p.patch', BREAK);|; s|put(main, 'bad.patch'|put(main, '.pignolo/tmp/bad.patch'|; s|'--patch', 'p.patch'|'--patch', '.pignolo/tmp/p.patch'|g; s|'--patch', 'bad.patch'|'--patch', '.pignolo/tmp/bad.patch'|\" tests/flow-sabotage.test.js && sed -n 1,12p plugins/pignolo/templates/*gitignore* 2>/dev/null; grep -n \"tmp\" tests/helpers.js | head -3; node --test --test-reporter=dot tests/flow-sabotage.test.js 2>&1 | grep -m3 \"message\\|^ℹ\\|pass\\|fail\"",
   "audit": "block:protected-flag",
   "base": "block:protected-flag",
-  "expect": "block:protected-flag"
+  "expect": "allow"
  },
  {
   "id": "ev-110",
@@ -1615,7 +1615,7 @@
   "cmd": "cd repo && for f in plugins/pignolo/skills/*/SKILL.md plugins/pignolo-ui/skills/*/SKILL.md; do n=$(basename $(dirname $f)); d=$(grep -m1 \"^description:\" $f | cut -c14-230); echo \"$f|$d\"; done | sed 's#plugins/##; s#/skills/#:#; s#/SKILL.md##'; grep -n \"user-invocable\\|disable-model-invocation\" plugins/pignolo/skills/*/SKILL.md | cut -c1-120",
   "audit": "block:protected-flag",
   "base": "block:protected-flag",
-  "expect": "block:protected-flag"
+  "expect": "allow"
  },
  {
   "id": "ev-179",
