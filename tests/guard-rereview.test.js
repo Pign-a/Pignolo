@@ -24,7 +24,7 @@ for (const cmd of [
   });
 }
 
-// RR2 (importante, preexistente, declarado en G50): `analyzeCmd` no reconoce `/d/c` pegado. En PowerShell `cmd /d/c "…"` corre el comando
+// RR2 (importante, preexistente, declarado en G63): `analyzeCmd` no reconoce `/d/c` pegado. En PowerShell `cmd /d/c "…"` corre el comando
 // (probado en esta máquina) y la guardia da allow. El arreglo de R3 cubrió `//c` pero no esta variante.
 test('RR2: cmd /d/c se desenvuelve igual que cmd /d /c (PowerShell)', () => {
   const v = evaluate('cmd /d/c "git push -f origin main"', { shell: 'powershell', mode: 'bypassPermissions', cwd: onFeat, psTimeoutMs: 30000 });

@@ -1361,6 +1361,29 @@ function headOnMain(st, redir) {
   return dirs.some((d) => { const b = headBranchOf(d); return b === null || MAIN_REF.test(b); });
 }
 
+// Fuera de todo repo (el directorio existe y ningún `.git` lo cubre) un verbo de HEAD solo da error de git: no mueve main. Un
+// directorio que no existe o que no se lee sigue contando como main (cerrado).
+function outsideRepo(dir) {
+  try {
+    let d = path.resolve(dir);
+    if (!fs.statSync(d).isDirectory()) return false;
+    for (let i = 0; i < 64; i++) {
+      try { fs.statSync(path.join(d, '.git')); return false; } catch (_) { /* sigue hacia arriba */ }
+      const up = path.dirname(d);
+      if (up === d) return true;
+      d = up;
+    }
+  } catch (_) { return false; }
+  return false;
+}
+// Como headOnMain para pull/rebase/cherry-pick/reset: sin repo en ninguno de los directorios no hay rama que mover.
+function headVerbOnMain(st, redir) {
+  if (st.onMain) return true;
+  const dirs = headDirs(st, redir);
+  if (dirs === null || !dirs.length) return true;
+  return dirs.some((d) => { const b = headBranchOf(d); return b === null ? !outsideRepo(d) : MAIN_REF.test(b); });
+}
+
 // `push.default` distinto de simple/current hace que un push sin refspec lleve más que la rama actual (matching: todas las
 // que coinciden; upstream: la rama que HEAD siga, que puede ser main) (R4). Sin `=` o con valor que no se lee: no verificable.
 const SAFE_PUSH_DEFAULT = /^(simple|current)$/i;
@@ -1377,8 +1400,44 @@ function setsUnsafePushDefault(o) {
   return k >= 0 && Boolean(pos[k + 1]) && (pos[k + 1].dyn || !SAFE_PUSH_DEFAULT.test(pos[k + 1].value));
 }
 
+// Verbos que mueven la rama de HEAD como un merge (R6): con HEAD en main (o ilegible) un subagente no los corre.
+// `commit`, `revert` y `am` quedan fuera a propósito (decisión pendiente del autor, G62).
+const MERGE_LIKE = new Set(['pull', 'rebase', 'cherry-pick', 'reset']);
+// Un refspec `src:main` (sin `+`: con `+` ya pide confirmación `ref-move`/`fetch-force-head`) que escribe main local.
+const refspecToMain = (v) => {
+  if (v.startsWith('+')) return false;
+  const i = v.indexOf(':');
+  // Un comodín en el destino puede alcanzar main (`refs/heads/*:refs/heads/*`, `x:ma*`).
+  return i >= 0 && (MAIN_REF.test(v.slice(i + 1)) || /[*?[]/.test(v.slice(i + 1)));
+};
+function touchesMainRef(sub, o, st, redir) {
+  const pos = o.positionals;
+  if (sub === 'fetch' || sub === 'pull') {
+    // pos[0] es el remoto; el resto, refspecs. Uno dinámico en fetch no se puede leer: cerrado.
+    const specs = longIs(o, 'repo') ? pos : pos.slice(1);
+    if (sub === 'fetch' && specs.some((w) => w.dyn)) return true;
+    if (specs.some((w) => refspecToMain(w.value))) return true;
+    return sub === 'pull' && headVerbOnMain(st, redir);
+  }
+  if (sub === 'worktree') return Boolean(pos[0] && pos[0].value === 'add' && o.shorts.has('B') && (o.vals.some((x) => MAIN_REF.test(x)) || pos.some((w) => w.dyn)));
+  if (sub === 'rebase') {
+    // `rebase <upstream> main`: saca main y lo reescribe aunque HEAD esté en otra rama.
+    if (pos[1] && (pos[1].dyn || MAIN_REF.test(pos[1].value))) return true;
+    return headVerbOnMain(st, redir);
+  }
+  if (sub === 'reset') {
+    if (longIs(o, 'hard') || longIs(o, 'merge')) return false; // ya tiene su regla (reset-hard)
+    // Sin operando, solo `HEAD` o con `--` (rutas) no mueve la rama.
+    const revs = pos.filter((w) => w.dyn || w.value.toUpperCase() !== 'HEAD');
+    if (o.dd || !revs.length) return false;
+    return headVerbOnMain(st, redir);
+  }
+  return headVerbOnMain(st, redir); // cherry-pick
+}
+
 function touchesMain(sub, o, st, redir, cfg) {
   if (sub === 'merge') return headOnMain(st, redir);
+  if (MERGE_LIKE.has(sub) || sub === 'fetch' || sub === 'worktree') return touchesMainRef(sub, o, st, redir);
   if (sub === 'config') return setsUnsafePushDefault(o);
   if (sub !== 'push') return false;
   if (cfg.some(unsafePushDefault)) return true;
