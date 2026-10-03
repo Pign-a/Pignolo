@@ -12,7 +12,7 @@ test('new: frontmatter, size, Values block, scripts and referenced files exist',
   const { frontmatter, text, body } = readSkill('new');
   assert.equal(frontmatter.name, 'new');
   assert.match(frontmatter.description, /^".*"$/);
-  assert.equal(frontmatter['disable-model-invocation'], 'true');
+  assert.equal(frontmatter['disable-model-invocation'], undefined); // lenguaje natural: la activa el modelo (skill-activation.test.mjs)
   assert.ok(text.length <= 12000, `${text.length} characters`);
   const values = body.indexOf('## Values');
   const steps = body.indexOf('## Steps');

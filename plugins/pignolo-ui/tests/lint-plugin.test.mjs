@@ -86,10 +86,10 @@ test('no-agent-context-files: CLAUDE.md or AGENTS.md anywhere, any case', () => 
   assert.deepEqual(rules(makePlugin({ 'tests/fixtures/AGENTS.md': 'x\n' })), ['no-agent-context-files']);
 });
 
-test('skill-frontmatter: name, quoted description and disable-model-invocation', () => {
+test('skill-frontmatter: name and quoted description; disable-model-invocation is optional', () => {
   assert.deepEqual(rules(makePlugin({ 'skills/audit/SKILL.md': SKILL_OK.replace('name: audit', 'name: Audit') })), ['skill-frontmatter']);
   assert.deepEqual(rules(makePlugin({ 'skills/audit/SKILL.md': SKILL_OK.replace('description: "Audits one web screen and reports findings with evidence."', 'description: Audits one screen') })), ['skill-frontmatter']);
-  assert.deepEqual(rules(makePlugin({ 'skills/audit/SKILL.md': SKILL_OK.replace('disable-model-invocation: true\n', '') })), ['skill-frontmatter']);
+  assert.deepEqual(rules(makePlugin({ 'skills/audit/SKILL.md': SKILL_OK.replace('disable-model-invocation: true\n', '') })), []); // lenguaje natural: ya no se exige
   assert.deepEqual(rules(makePlugin({ 'skills/new/reference.md': 'x\n' })), ['skill-frontmatter']);
 });
 

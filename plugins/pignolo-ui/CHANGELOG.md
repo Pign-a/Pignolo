@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.10.0 — sin publicar
+
+**Lenguaje natural:** `new`, `improve`, `audit` y `define` se activan con una frase normal ("hagamos el panel de datos de la app"), no solo con `/pignolo-ui:...`. Decisión del autor, 2026-10-03. Sube de 0.9.0 a 0.10.0 porque cambia el contrato de las skills (ya no son solo humanas).
+
+- Se quitó `disable-model-invocation: true` de las cuatro skills.
+- Cada `description` empieza con "Use when the user asks to ..." e incluye frases típicas en castellano rioplatense y en inglés y cuándo no usarla (un arreglo chico de CSS, un bug o un cambio de texto van por el flujo normal); conserva que `new`, `improve` y `audit` necesitan `define` antes. Todas dentro del tope de 1536 caracteres.
+- Paso 0 de cada skill: si la skill se activó sola (el turno no trae la etiqueta `<command-name>`), pregunta con AskUserQuestion si se usa pignolo-ui (recomendado, con su costo medido) o se hace directo; en "directo" la skill termina y el agente sigue sin ella. Si el usuario escribió el comando, no pregunta. El texto está una sola vez en `reference/activation.md`.
+- El chequeo de `lint-plugin` ya no exige `disable-model-invocation`. Prueba de activación armada y sin correr: `tests/evals/RESULTS-activacion.md`.
+
 ## 0.9.0 — sin publicar
 
 Hito 4i: **todo en el lienzo y un brief corto**. Sube de 0.8.0 a 0.9.0 porque suma interfaz (`canvas-index.mjs build --row-title`, el `null` en `files` de `plan` y `reference/define-board.md`). La etapa 3 del lienzo (Design System) pasa a 0.10.0 y la etapa 4 (modo explorar) a 0.11.0.

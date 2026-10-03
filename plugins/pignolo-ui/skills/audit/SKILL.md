@@ -1,7 +1,6 @@
 ---
 name: audit
-description: "Audit one web screen: rule checks, browser measures and an independent auditor, with every finding citing its evidence. Needs the product and the design defined first (/pignolo-ui:define). Does not change any screen and does not block on findings."
-disable-model-invocation: true
+description: "Use when the user asks to audit, review or check a web screen for design, accessibility or quality problems, in Spanish or English: 'auditá la pantalla de login', 'revisá si la página cumple el diseño', 'fijate qué está mal en esta vista', 'audit this page', 'check the accessibility of the dashboard'. Runs rule checks, browser measures and an independent auditor; every finding cites its evidence. Changes no screen and does not block on findings. Needs the product and the design defined first (pignolo-ui:define). Do not use for a code review or a bug: those go through the normal flow (pignolo:entry)."
 ---
 
 # /pignolo-ui:audit
@@ -23,6 +22,8 @@ If a value above still starts with `${`, Claude Code did not substitute it: use 
 This skill does not work on a project whose product and design are not defined. Right after step 1 and before step 2, read `<repo>/PRODUCT.md` and `<repo>/DESIGN.md`, load `${CLAUDE_PLUGIN_ROOT}/reference/foundation.md` and follow it. If either is missing or undecided, stop and send the user to `/pignolo-ui:define`; go on without it only after the user asked for that explicitly, twice, as that file says, with the pending note in the project's `CLAUDE.md`. An "Ok" is not that request. A skipped gate is said in the report: the first line adds `sin definición inicial` and the `J-nn` findings go apart. Step 2 never starts before this gate is passed or explicitly skipped.
 
 ## Steps
+
+0. **Confirm (only if you chose this skill yourself).** If the turn carries a `<command-name>` tag for this skill, go to step 1. Otherwise run nothing yet and ask with AskUserQuestion, as `${CLAUDE_PLUGIN_ROOT}/reference/activation.md` (section `audit`) says: recommended first, "Usar pignolo-ui (Recomendado)", then "Hacerlo directo", which ends this skill.
 
 1. **Environment.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs" env`. The first line you print to the user is `pignolo-ui <pluginVersion>`. If `claude.ok` is false, say that this Claude Code cannot be relied on for subagents and mark the audit as "auditoría no independiente".
 2. **Prepare the run (only after the foundation gate).** Load `${CLAUDE_PLUGIN_ROOT}/reference/prepare-run.md` and follow it with command `audit`, replacing `<root>` and `<data>` with the values above. This step changes no file of the project. Keep the folder it creates (`<run>`). Load `${CLAUDE_PLUGIN_ROOT}/reference/context.md` and run `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.mjs" context --project <repo> --run <run> --values-file <run>/leak-values.json` (its first lines say how to create that file): say its `line` once when it is not null (a `PRODUCT.md` that is invalid is ignored and said). Audit never creates `PRODUCT.md` or `DESIGN.md`, and after a skipped gate it never proposes an extracted `DESIGN.md` as decided.

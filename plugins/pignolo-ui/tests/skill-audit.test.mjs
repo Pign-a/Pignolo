@@ -8,7 +8,7 @@ test('audit: frontmatter, size, scripts and referenced files exist, Values block
   const { frontmatter, text, body } = readSkill('audit');
   assert.equal(frontmatter.name, 'audit');
   assert.match(frontmatter.description, /^".*"$/);
-  assert.equal(frontmatter['disable-model-invocation'], 'true');
+  assert.equal(frontmatter['disable-model-invocation'], undefined); // lenguaje natural: la activa el modelo (skill-activation.test.mjs)
   assert.ok(text.length <= 12000, `${text.length} characters`);
   assertScriptsExist(scriptCalls(text));
   for (const ref of referencedFiles(text)) assert.doesNotThrow(() => readReference(ref), ref);
