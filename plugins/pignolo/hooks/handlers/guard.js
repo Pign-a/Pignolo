@@ -5,14 +5,12 @@
 // systemMessage sin cambiar la decisión.
 // Lo no verificable sale deny o ask según `permission_mode` (spec §8.3). Con
 // PIGNOLO_DISABLED=1 solo rige el conjunto catastrófico, que no se apaga nunca.
-const { evaluate, UNKNOWN_BRANCH } = require('../../lib/git-guard');
+const { evaluate } = require('../../lib/git-guard');
 const { readState } = require('../../lib/disabled');
 const { pignoloHome, userHomes, claudeDirs } = require('../../lib/home');
 const { snapshotWip } = require('../../lib/git-backup');
-const { currentBranch } = require('../../lib/git');
 
 const SNAPSHOT_DEADLINE_MS = 2000; // dentro del plazo de 3 s del launcher
-const BRANCH_TIMEOUT_MS = 1000;
 
 exports.SNAPSHOT_DEADLINE_MS = SNAPSHOT_DEADLINE_MS;
 
@@ -23,11 +21,8 @@ exports.run = (input, ctx = {}) => {
 
   const command = input.tool_input ? input.tool_input.command : undefined;
   const shell = String(input.tool_name || '').toLowerCase() === 'powershell' ? 'powershell' : 'bash';
-  // Si no se puede leer la rama (plazo vencido, HEAD suelto), merge pide confirmación.
-  const branch = !guardOff && typeof command === 'string' && /merge/i.test(command)
-    ? (currentBranch(cwd, { timeout: BRANCH_TIMEOUT_MS }) || UNKNOWN_BRANCH) : null;
   const v = evaluate(command, {
-    shell, branch, cwd, mode: input.permission_mode, home: userHomes(env)[0], claudeDirs: claudeDirs(env), pignoloHome: pignoloHome(env), onlyCatastrophic: guardOff,
+    shell, cwd, mode: input.permission_mode, home: userHomes(env)[0], claudeDirs: claudeDirs(env), pignoloHome: pignoloHome(env), onlyCatastrophic: guardOff,
     subagent: Boolean(input.agent_id), agentType: input.agent_type,
   });
   if (v.decision === 'block') {

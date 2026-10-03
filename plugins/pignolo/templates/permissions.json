@@ -99,17 +99,13 @@
       "PowerShell(Remove-Item .git *)"
     ],
     "ask": [
-      "Bash(git push *)",
       "Bash(git branch -d *)",
       "Bash(git branch --delete *)",
       "Bash(git tag -d *)",
       "Bash(git tag --delete *)",
       "Bash(git tag -f *)",
-      "Bash(git merge *)",
-      "PowerShell(git push *)",
       "PowerShell(git branch -d *)",
       "PowerShell(git tag -d *)",
-      "PowerShell(git merge *)",
       "Bash(git branch -D *)",
       "Bash(git branch -df *)",
       "Bash(git branch --delete --force *)",

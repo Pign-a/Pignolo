@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.14.1 — 2026-10-02
+
+Cambio de contrato de la guardia de git, por decisión del autor (2026-10-02): la confirmación en `git push` y en `git merge` sobre `main` frenaba demasiado la autonomía del agente y se quita.
+
+- **Ya no piden confirmación (pasan):** `git push` común, a cualquier remoto o rama y con `-u`, `--tags`, `--follow-tags` o `-n` (se retira la regla `push`); y `git merge`, sea cual sea la rama actual, incluida `main`, la que no se pudo leer y `git -C <dir> merge` (se retira la regla `merge-main`). El handler de la guardia ya no lee la rama actual antes de cada comando con `merge`.
+- **Siguen negando (deny):** `push --force`, `-f`, `+ref`, `--mirror`, `--prune`, `--force-with-lease` y `--force-if-includes` (`push-force`), `push --no-verify`, `git send-pack`, `reset --hard` y el resto de las reglas de pérdida de trabajo.
+- **Siguen pidiendo confirmación (ask):** borrar una rama remota (`push --delete`, `push -d`, `push origin :rama`; `push-delete`), borrar o pisar ramas locales y tags, `update-ref`, `checkout -B`/`switch -C`.
+- **Regla nueva `subagent-main` (deny, decisión del autor, 2026-10-02):** solo el hilo principal hace push y merge sobre `main`/`master`. Un subagente no puede `git push` de un ref que actualiza `main`/`master` (`main`, `HEAD:main`, `refs/heads/main`, `--all`, borrar `main`, ni un `push`/`push origin`/`push origin HEAD` con HEAD en main/master o ilegible) ni `git merge` con HEAD en main/master o ilegible; el mensaje dice que lo hace el hilo principal. La rama de HEAD se lee del directorio efectivo (`-C`, `cd`, `switch main` previo) y solo falla cerrado para subagentes: el hilo principal no lee nada extra. Push o merge de otras ramas desde un subagente pasan.
+- **Sin cambios para subagentes:** `pignolo-protected-refs` (un subagente no escribe `int/*`, `queue/*`, `cp/*` ni `contract/*`) y las demás reglas por subagente.
+- **Plantilla de permisos (decisión del autor, 2026-10-02):** `/pignolo:setup` ya no pone `git push *` ni `git merge *` en `ask` (commit a13dd6b); sigue pidiendo confirmación el borrado de ramas y tags. Texto de la skill `setup` y de la spec al día.
+
+Arreglos de la revisión de esta versión (cada uno con un test que falla sin el arreglo).
+
+- **R1, crítico:** una expansión de llaves de bash ya no esconde una opción o un refspec forzado. La guardia expande las llaves en literal (`git push {-f,origin} main`, `--mir{ror,}`, `origin {+main,feat}`, `git reset {--hard,HEAD}`) y evalúa cada regla sobre el resultado; lo que no puede expandir (comillas mezcladas, rangos raros, más de 64 palabras) queda dinámico y se niega en los verbos destructivos. Antes pasaba sin que nadie lo viera (también `reset --hard` en `main`).
+- **R2, crítico:** `git remote add --mirror` y `--mirror=push` se niegan con `push-force` (dejan `remote.<n>.mirror=true`, la clave que la guardia ya negaba por `git config` y por `-c`); `--mirror=fetch` pasa. `git clone --mirror` sigue permitido: decisión del autor (G62).
+- **R3, crítico (ya estaba en `main`):** `cmd //c "…"` se desenvuelve igual que `cmd /c` (en Git Bash la forma que funciona lleva dos barras).
+- **R4, `subagent-main`:** un subagente tampoco empuja a main con `@`, comodines (`refs/heads/*`, `m*:m*`), `heads/main`, `--branches`, `:` (ramas que coinciden), `--repo=<remoto> main`, otra capitalización, `-c push.default=<distinto de simple/current>`, `git config push.default <distinto de simple/current>` (también escrito en otra llamada), `env -C <dir>`/`--chdir`, ni con `GIT_DIR`/`GIT_WORK_TREE` puestas con `env`, asignadas, exportadas o con `$env:` (un push sin refspec se cierra; con un refspec que no es main pasa).
+- **R5, `subagent-main`:** `merge` sobre main con la rama que la guardia no veía: `switch -`/`checkout -`/`@{-N}` (HEAD puede quedar en main), `Main`/`MASTER` (sin distinguir mayúsculas), un directorio que todavía no existe (`git worktree add w main && cd w`, `git -C w merge`: ilegible, falla cerrado), `env -C`/`--chdir` y `Start-Process -WorkingDirectory` (cambian el directorio del comando, no el de la shell).
+- **R7, `subagent-main`:** `git switch main && git switch feat && git push` ya no se niega: solo `&&` baja la marca "HEAD en main" tras un cambio a una rama literal (con `;`, `||` o `&` el cambio pudo fallar y se sigue negando).
+- **RR1, `subagent-main` (re-revisión):** `git checkout main && git checkout @|HEAD && git merge|push` ya no pasa: solo un cambio a un nombre simple de rama, etiqueta o commit baja la marca "HEAD en main"; `HEAD`, `@`, `main~0`, `@{0}`, `HEAD^`, `refs/heads/main` y toda forma que no se sabe interpretar siguen contando como main.
+- **RR2 (re-revisión):** `cmd` se desenvuelve con cualquier combinación de opciones antes de `/c`, `/k` o `/r` (`/d/c`, `/q/d/c`, `/D /C`, `//s//c`, `/e:on/c`, comando pegado `/c"…"`); una opción sin reconocer antes del `/c` falla cerrada (`hidden-code`).
+- **R8 (test):** la fila `git -C "$d" merge` no podía fallar (la niega antes `pignolo-protected-refs`); ahora `git -C "$d" push` y `git --git-dir="$d" push` exigen `subagent-main`, y falla si el directorio sin resolver deja de cerrar.
+- **Menores:** `git-push --force` (la forma con guion descartaba el primer operando) conserva `push-force`; filas nuevas para las mutaciones M7, M9 y M12 de la revisión.
+- **R6, `subagent-main` (decisión del autor, 2026-10-03):** un subagente tampoco mueve main con los verbos que equivalen a un merge: con HEAD en main, `pull` (con `--rebase`, remoto o rama), `rebase x`, `cherry-pick x`, `reset --soft|--keep|--mixed x` y `reset x`; desde otra rama, `rebase x main`, `fetch . x:main`, `fetch origin x:main` y `worktree add -B main <dir> x`; también con `git -C <main>`, `cd <main> &&` y `env -C <main>`; un destino con comodín o dinámico falla cerrado. El hilo principal no cambia. `reset --hard` conserva `reset-hard`; fuera de todo repo no se niega nada.
+- **Abiertos (G62 y G63):** `commit`, `commit --amend`, `revert` y `am` sobre main por un subagente (decisión pendiente), `git clone --mirror`, y los menores sin arreglar.
+
 ## 0.14.0 — 2026-10-02
 
 Hito 7a: ramas y paralelismo, la parte determinista (sin skills ni evals; esas son del 7b). Se une después del hito 8d (0.13.1); en su rama llevó los números 0.13.0 y 0.13.1 (brainstorming), así que esta es la versión menor libre siguiente.

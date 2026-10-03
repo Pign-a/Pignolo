@@ -35,7 +35,7 @@ Guide the human through pignolo's setup. Speak to them in their language. Never 
    Write the choice with `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" config --profile <profile>` (optionally `--presentation ask|artifact|text` and `--language <language>`).
    When the profile is `economy` (just chosen, or already set per `check`), the JSON carries a `notice` with `plain` and `technical` text (measured figures, spec §7). Show it verbatim, plain first and then technical; for other profiles there is no `notice`.
 3. **Permissions.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" permissions --target user` (and again with `--target project` if they want it there). Nothing is written yet.
-   - Plain: what the rules do in simple terms (commands that lose work are blocked; push, merge and deleting branches ask first), and the question: for all projects, only this one, or none.
+   - Plain: what the rules do in simple terms (commands that lose work are blocked; deleting branches and tags asks first; push and merge do not ask, but a subagent cannot push or merge onto main), and the question: for all projects, only this one, or none.
    - Technical: the counts from the JSON (`add.deny.length`, `add.ask.length`, `already`), the target paths, the rules grouped by purpose, and the side effects (for example, the broad MCP `ask` rules).
    Only after an explicit yes from the human, in their own turn, run the same command with `--apply`. It writes a `.pignolo-bak-<timestamp>` backup first when the file exists and keeps every existing rule.
 4. **Rule conflicts.** Read `~/.claude/CLAUDE.md`, the project `CLAUDE.md` and `.claude/rules/*.md`, and compare them with `${CLAUDE_PLUGIN_ROOT}/rules/core.md`.
