@@ -393,11 +393,14 @@ function verify({ cwd, env, run }) {
   let tracked = false;
   try { git(['ls-files', '--error-unmatch', '.pignolo/.gitignore'], main); tracked = true; } catch (_) { tracked = false; }
   const trackedModified = tracked && dirty('.pignolo/.gitignore');
-  const files = ['.pignolo/project.md', '.gitattributes', 'SECURITY.md'].filter((f) => fs.existsSync(path.join(main, f)) && dirty(f));
-  if (trackedModified) files.push('.pignolo/.gitignore');
-  notes.push(...placesVerify({ main, config, env, run }));
   let blank = false;
   try { blank = blankProject({ root: main }).blank; } catch (_) { blank = false; }
+  // En un blanco el commit es el esqueleto (README de cada carpeta, nunca local/: es privada) y .gitattributes; fuera de un blanco, los tres archivos de init.
+  const skeletonReadmes = [...Object.entries(PLACE_DEFAULTS).filter(([k]) => k !== 'private').map(([, v]) => v), RECOMMENDED_REFERENCE].map((v) => `${v.replace(/\/$/, '')}/README.md`);
+  const candidates = blank ? ['.gitattributes', ...skeletonReadmes] : ['.pignolo/project.md', '.gitattributes', 'SECURITY.md'];
+  const files = candidates.filter((f) => fs.existsSync(path.join(main, f)) && dirty(f));
+  if (trackedModified) files.push('.pignolo/.gitignore');
+  notes.push(...placesVerify({ main, config, env, run }));
   return {
     ok: configError === null,
     blank,
