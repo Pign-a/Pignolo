@@ -20,7 +20,7 @@
 class ParseError extends Error {}
 
 function newWord() {
-  return { value: '', quoted: false, startsQuoted: false, dyn: false, dynAt: -1, glob: false, unq: '', kind: null, dqSub: false };
+  return { value: '', quoted: false, startsQuoted: false, dyn: false, dynAt: -1, glob: false, unq: '', kind: null, dqSub: false, brace: false, braceOnly: false, bracePos: -1 };
 }
 
 function newCmd(sub) {
@@ -54,7 +54,13 @@ function sequence(st, out, sub) {
   q.flush = (heredocs) => {
     const wd = q.word;
     if (!wd) return;
-    if (!wd.dyn && /\{[^{}]*(,|\.\.)[^{}]*\}/.test(wd.unq)) markDyn(wd); // expansión de llaves
+    // Expansión de llaves: dinámica desde la primera llave (una opción puede salir de ahí). `braceOnly`: es lo único
+    // dinámico de la palabra; la guardia la expande en literal (spliceBraces, git-guard.js).
+    if (/\{[^{}]*(,|\.\.)[^{}]*\}/.test(wd.unq)) {
+      const at = wd.bracePos >= 0 ? wd.bracePos : wd.value.length;
+      wd.brace = true;
+      if (!wd.dyn) { wd.dyn = true; wd.dynAt = at; wd.braceOnly = true; } else wd.dynAt = Math.min(wd.dynAt, at);
+    }
     if (q.cmd.pending) {
       const op = q.cmd.pending;
       q.cmd.pending = null;
@@ -203,6 +209,7 @@ function bashSeq(st, term, out, sub) {
     }
     const wd = q.w();
     if (c === '*' || c === '?' || c === '[') wd.glob = true;
+    if (c === '{' && wd.bracePos < 0) wd.bracePos = wd.value.length;
     wd.value += c;
     wd.unq += c;
     st.i++;

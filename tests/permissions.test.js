@@ -88,6 +88,7 @@ const BLOCK_SAMPLES = {
 const NOT_EXPRESSIBLE = {
   'invalid-input': 'no es un comando: no hay texto que una regla pueda comparar',
   'git-C': 'depende del subcomando: con lecturas se permite (F12)',
+  'subagent-main': 'depende de quién llama (subagente) y de la rama de HEAD del directorio efectivo: un prefijo de permiso no lo ve',
   'fetch-force-head': 'depende de la combinación de --update-head-ok con un refspec forzado',
   'dynamic-redirect': 'el destino sale de una variable; una regla solo ve el texto literal',
   'pignolo-run': 'depende del payload (agent_id): el hilo principal sí corre run.js; una regla de permisos no distingue',
