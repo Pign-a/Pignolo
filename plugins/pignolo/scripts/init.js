@@ -28,6 +28,7 @@ const { applySkeleton } = require('../lib/init-skeleton');
 const { blankProject, BLANK_STEPS } = require('../lib/init-blank');
 const { buildSummary } = require('../lib/init-summary');
 const WD = require('../lib/wizard-detect');
+const IC = require('../lib/init-choices');
 const SM = require('../lib/safe-move');
 const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
@@ -423,6 +424,30 @@ function verify({ cwd, env, run }) {
   };
 }
 
+// `choices --file`: valida las elecciones que el asistente del panel mandó (una línea JSON, ver lib/init-choices.js) contra la detección de
+// ahora y devuelve lo que la skill necesita para armar el plan. NO escribe nada. Con una entrada mala o que ya no corresponde al proyecto
+// dice `ok: false` y la skill sigue el flujo de siempre: no se adivina nada.
+function choicesOf({ cwd, env, file }) {
+  let line;
+  try {
+    const buf = fs.readFileSync(file);
+    if (buf.length > 4096) return { ok: false, reason: 'too-long' };
+    line = new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/\r?\n$/, '');
+  } catch (e) { return { ok: false, reason: e instanceof TypeError ? 'not-utf8' : 'unreadable' }; }
+  const parsed = IC.parseChoices(line);
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
+  const { choices } = parsed;
+  const main = resolveRoot(cwd);
+  const d = detect({ cwd, env });
+  if (Boolean(choices.blank) !== Boolean(d.blank)) return { ok: false, reason: 'blank-mismatch' };
+  const known = Object.keys(d.summary.recommendedPlaces || {});
+  const stray = Object.keys(choices.places || {}).filter((k) => !known.includes(k));
+  if (stray.length) return { ok: false, reason: `places-not-detected:${stray.join(',')}` };
+  const { approved, answers, extras } = IC.toAnswers(choices, { summary: d.summary });
+  const cmp = IC.compareId(choices, WD.buildWizardDetect({ main }).id);
+  return { ok: true, approved, answers, extras, idSame: cmp.same, ...(cmp.note ? { note: cmp.note } : {}) };
+}
+
 function main(argv, env = process.env) {
   const o = parse(argv);
   const cwd = o.cwd || process.cwd();
@@ -440,6 +465,7 @@ function main(argv, env = process.env) {
       return { body: { ok: true, skipped: 'failed', reason: e.message }, code: 0 };
     }
   }
+  if (o.verb === 'choices') return { body: choicesOf({ cwd, env, file: o.file }), code: 0 };
   if (o.verb === 'verify') {
     const body = verify({ cwd, env });
     if (body.ok) return { body, code: 0 };

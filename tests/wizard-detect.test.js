@@ -89,6 +89,7 @@ test('wizard-detect: folders that look like specs or plans appear as candidates 
   assert.equal(spec.from, 'specs/');
   assert.equal(spec.to, 'docs/specs/');
   assert.deepEqual(spec.moves, [{ from: 'specs/', to: 'docs/specs/' }]);
+  assert.deepEqual(spec.options, ['adopt', 'move', 'leave']);
   // una carpeta que ya está en su lugar no es candidata
   const ok = nodeRepo();
   write(ok, 'docs/specs/x.md', '# x\n');

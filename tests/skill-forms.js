@@ -10,7 +10,7 @@ const VERBS = {
   'run.js': ['start', 'task', 'renew', 'status', 'end'],
   'ledger.js': ['validate', 'plan', 'judgment', 'refute', 'build', 'repro', 'round', 'next', 'frozen', 'save'],
   'setup.js': ['check', 'models', 'permissions', 'config', 'conflicts'],
-  'init.js': ['detect', 'preview', 'apply', 'verify'],
+  'init.js': ['detect', 'preview', 'apply', 'verify', 'choices', 'wizard-detect'],
 };
 
 function readSkill(name) {

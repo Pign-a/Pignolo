@@ -107,7 +107,8 @@ function placeCandidates(placesDetection, summary) {
       from: oneLine(it.candidate.path),
       to: oneLine(it.recommended),
       decision,
-      canMove,
+      // lo que el humano puede elegir en el asistente: con dos carpetas del mismo tipo no se adivina, solo `leave`
+      options: it.ambiguous ? ['leave'] : it.options.filter((o) => o !== 'move' || canMove),
       moves: canMove ? [{ from: oneLine(it.candidate.path), to: oneLine(it.recommended) }] : [],
       note: it.ambiguous ? 'hay más de una carpeta de este tipo' : (it.moveBlockedBy ? 'solo se puede adoptar' : null),
     });
