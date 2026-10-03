@@ -113,6 +113,7 @@ function normalize(raw) {
       waiting: b.waiting === true,
       merged: b.merged === true,
     };
+    if (typeof b.sha === 'string' && /^[0-9a-f]{7,40}$/.test(b.sha)) out.sha = b.sha.slice(0, 12);
     if (isObj(b.costOk)) out.costOk = { ...(num(b.costOk.usd) !== null ? { usd: num(b.costOk.usd) } : {}), ok: b.costOk.ok === true };
     return out;
   });
@@ -397,7 +398,7 @@ function gitFacts(main, git, now, env) {
     else if (review === 'APPROVE') stage = suite === 'green' ? 'merge' : 'suite';
     else if (review === 'CHANGES') stage = 'fixes';
     else if (commits > 0) stage = 'review';
-    out.branches.push({ name, stage, review, suite, commits, waiting: false, merged: isMerged });
+    out.branches.push({ name, stage, review, suite, commits, waiting: false, merged: isMerged, sha: sha.slice(0, 12) });
   }
   out.branches.sort((a, b) => Number(a.merged) - Number(b.merged) || (a.name < b.name ? -1 : 1));
   return out;
