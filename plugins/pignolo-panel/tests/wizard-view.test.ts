@@ -211,12 +211,12 @@ test('wizard-view: the recommended option says recommended in its second column 
   expect(optionLines(v).map((l: string) => l.includes('recomendado'))).toEqual([false, true, false])
 })
 
-// Un $ minimo: resolve devuelve constructores que arman objetos planos; anota que elementos se pidieron.
-function fakeDollar() {
+// Elementos minimos: constructores que arman objetos planos; anotan cuales se pidieron (un Proxy: pedir `Raster` queda registrado).
+function fakeElements() {
   const asked: string[] = []
   const make = (type: string) => (props: any = {}) => ({ type, props, children: props.children || [] })
-  const $: any = { ui: { resolve: () => new Proxy({}, { get: (_t, name: string) => { asked.push(name); return make(name) } }) } }
-  return { $, asked }
+  const el: any = new Proxy({}, { get: (_t, name: string) => { asked.push(name); return make(name) } })
+  return { el, asked }
 }
 const walk = (n: any, f: (n: any) => void) => {
   if (n && typeof n === 'object') {
@@ -227,9 +227,10 @@ const walk = (n: any, f: (n: any) => void) => {
 
 test('wizard-view: the tree has no Raster element', async () => {
   for (const s of screens()) {
-    const { $, asked } = fakeDollar()
+    const { el, asked } = fakeElements()
     const calls: string[] = []
-    const tree = wizardTree($, {}, s.view, { color: 'claude', pick: (l: string) => calls.push('pick' + l), next: () => calls.push('next'), back: () => calls.push('back') })
+    const { Box, Text, Button } = el
+    const tree = wizardTree({ Box, Text, Button }, s.view, { color: 'claude', pick: (l: string) => calls.push('pick' + l), next: () => calls.push('next'), back: () => calls.push('back') })
     const types: string[] = []
     walk(tree, (n) => types.push(n.type))
     expect([s.name, types.includes('Raster'), asked.includes('Raster')]).toEqual([s.name, false, false])

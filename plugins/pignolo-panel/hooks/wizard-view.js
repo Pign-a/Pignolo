@@ -182,7 +182,7 @@ const STEP_VIEW = { project: projectStep, profile: profileStep, perms: permsStep
 
 // stepView({ step, state, data, uiInstalled }) -> { lines, rows, back, last }. `lines` son las lineas de texto (todas de WIDTH caracteres);
 // `rows` describe cada una para el arbol (cuerpo con estilo, opcion con su letra, pie).
-export function stepView({ step, state, data, uiInstalled }) {
+export function stepView({ step, state, data, uiInstalled, busy = false }) {
   const n = state.steps.length
   const s = (STEP_VIEW[step] || summaryStep)(data, state, uiInstalled)
   const isBlank = step === 'blank'
@@ -190,7 +190,7 @@ export function stepView({ step, state, data, uiInstalled }) {
   const last = state.i === n - 1
   const right = isBlank ? '' : 'paso ' + (state.i + 1) + ' de ' + n
   const footerL = first ? 'Esc cierra' : '← p atrás   Esc cierra'
-  const footerR = isBlank ? 'Enter crear →' : last ? 'Enter aplicar →' : 'Enter siguiente →'
+  const footerR = busy ? 'enviando…' : isBlank ? 'Enter crear →' : last ? 'Enter aplicar →' : 'Enter siguiente →'
   const rows = []
   if (!isBlank) rows.push({ type: 'progress', done: state.i + 1, total: n, text: progressBar(state.i, n) })
   rows.push({ type: 'body', parts: [{ t: line(s.question), bold: true }] }, ...s.rows)
@@ -202,10 +202,10 @@ export function stepView({ step, state, data, uiInstalled }) {
 
 // ---- arbol ------------------------------------------------------------------------------------------------------------
 
-// wizardTree($, e, view, h): h = { pick(letra), next(), back(), color }. Cada linea es el texto de `view.lines`: el marco, las filas y el
+// wizardTree({ Box, Text, Button }, view, h): el simbolo de dolar no cruza imports, asi que el que llama (register.js) resuelve los elementos con
+// la API de interfaz y los pasa. h = { pick(letra), next(), back(), color }. Cada linea es el texto de `view.lines`: el marco, las filas y el
 // pie son Text; las opciones y los dos botones del pie son Button (la letra elige, `p` vuelve, Enter sigue). Sin Raster.
-export function wizardTree($, e, view, h) {
-  const { Box, Text, Button } = $.ui.resolve(e)
+export function wizardTree({ Box, Text, Button }, view, h) {
   const color = h.color
   const dimT = (key, t) => Text({ key, dimColor: true, children: [t] })
   const out = []
