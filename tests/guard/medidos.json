@@ -81,7 +81,7 @@
   "cmd": "cd /tmp/x/exp-d77 && node -e \"const g=require('repo/plugins/pignolo/lib/git-guard.js');for(const c of ['git branch -D task/p/01-a','git update-ref --no-deref -d HEAD abcdef012345','git -C .tmp-int branch -d task/p/01-a','git update-ref -d refs/pignolo/backup/x abcdef012345'])console.log(c,'=>',JSON.stringify(g.evaluate(c,{cwd:process.cwd()})).slice(0,300))\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-009",
@@ -135,7 +135,7 @@
   "cmd": "cd \"/tmp/x/wt-14\" && S=$(node -e \"console.log(require('os').tmpdir())\") && echo $S && node tests/evals/review-cases.js --out \"$S/pignolo-t14-before\" && node -e \"\nconst fs=require('fs');const t=fs.readFileSync('repo/.superpowers/sdd/2026-09-30-hito-4-tests-sabotaje-holdout/task-14-brief.md','utf8');\nconst re=/^( *)\\`\\`\\`\\`(js|diff)\\n([\\s\\S]*?)\\n\\1\\`\\`\\`\\`$/gm;let m,i=0;const o=process.argv[1];\nwhile((m=re.exec(t))){const ind=m[1].length;const body=m[3].split('\\n').map(l=>l.slice(0,ind).trim()===''?l.slice(ind):l).join('\\n')+'\\n';fs.writeFileSync(o+'/blk'+(i++)+'.'+m[2],body);console.log(i-1,m[2],body.split('\\n')[0]);}\n\" \"$S\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-015",
@@ -162,7 +162,7 @@
   "cmd": "cd /tmp/x/wt-ui4/plugins/pignolo-ui && node - <<'XEOF'\nconst fs=require('fs');const f='tests/compare-cli.test.mjs';let s=fs.readFileSync(f,'utf8');\ns=s.replace(\"import { makeTempDir, writeTree, runScript, serveRoutes, BROWSER_SKIP } from './helpers.mjs';\",\"import { spawn } from 'node:child_process';\\nimport { makeTempDir, writeTree, runScript, serveRoutes, BROWSER_SKIP, PLUGIN_ROOT } from './helpers.mjs';\\n\\n// async variant: the served page lives in this process, so the child must not block the event loop\\nfunction runScriptAsync(script, args) {\\n  return new Promise((resolve) => {\\n    const child = spawn(process.execPath, [path.join(PLUGIN_ROOT, 'scripts', script), ...args], { windowsHide: true });\\n    let stdout = ''; let stderr = '';\\n    child.stdout.on('data', (d) => { stdout += d; });\\n    child.stderr.on('data', (d) => { stderr += d; });\\n    child.on('close', (status) => {\\n      let json = null;\\n      try { json = JSON.parse(stdout); } catch { /* not JSON */ }\\n      resolve({ status, stdout, stderr, json });\\n    });\\n  });\\n}\");\ns=s.replace(\"const r = await new Promise((resolve) => { resolve(runScript('compare.mjs', args, { timeout: 120000 })); });\",\"const r = await runScriptAsync('compare.mjs', args);\");\nfs.writeFileSync(f,s);\nXEOF\nnode --test --test-reporter=spec tests/fingerprint.test.mjs tests/compare-cli.test.mjs 2>&1 | grep -vE \"^\\s*$\" | grep -E \"✖|✔|ℹ (pass|fail|skip)|A-18|rror|actual|expected\" | head -50",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-018",
@@ -219,7 +219,7 @@
   "cmd": "cd /tmp/x/wt-uaj && node -e '\nconst fs=require(\"fs\");\nlet p=\"plugins/pignolo-ui/tests/evals/RESULTS-ui-hito-4.md\",s=fs.readFileSync(p,\"utf8\");\ns=s.replace(/^Estado: .*$/m,m=>m+\"\\n\\n**Actualización (2026-10-01, segunda corrida, pignolo-ui 0.6.3):** con la gravedad de juicio acotada (sección al final) `clean-2` y `clean-3` pasaron 5/5 y los casos de defecto medidos 5/5 y 3/3. Gasto total 21,85 USD de 22; quedan sin la corrida completa `defect-state-04`, `defect-color-03`, `defect-a11y-16` y `clean-1` (solo calibración 1/1 en esta versión; en la primera corrida color, campo y clean-1 habían dado 5/5).\");\ns+=`\n## Segunda corrida, con la gravedad de juicio acotada (pignolo-ui 0.6.3)\n\n**Qué cambió (decisión del autor, 2026-10-01):** un hallazgo de criterio de juicio (\\`J-nn\\`) sin evidencia de script o de medida del navegador vale a lo sumo \\`medio\\`. Está en la carta del auditor, en \\`norms/base.md\\` y en la spec §10, y \\`auditor-output\\` lo hace cumplir: un \\`J-nn\\` \\`alto\\` o \\`bloquea\\` sin una entrada \\`ui-check\\` o \\`browser\\` en \\`fail\\` se rechaza (\\`judgment-without-measure\\`; se rechaza y no se baja, como los otros incumplimientos). El grader \\`no-false-positive-judgment\\` se dejó igual: sigue teniendo sentido (acepta \\`J-nn\\` de cualquier gravedad y \\`no-false-positive-bloquea-alto\\` es el que fija el tope), y su test determinista no cambió. Mismo entorno que arriba (Git Bash, copia en ruta corta \\`/w\\\\pu2\\\\pignolo-ui\\`, \\`--keep-temp --no-publish --json\\`, \\`--max-cost-usd\\` en cada corrida). Los casos no se tocaron.\n\n| Etapa | Comando (resumen) | Costo (USD) | Resultado |\n|---|---|---|---|\n| Recalibración | \\`--tag auditor --runs 1 -j 2 --max-cost-usd 3.5\\` | 2,310 | 8/8 |\n| clean-3 | \\`--case ui-auditor-clean-3 --runs 5 -j 1\\` | 1,419 | 5/5 |\n| clean-2 | \\`--case ui-auditor-clean-2 --runs 5 -j 1\\` | 1,406 | 5/5 |\n| defect-j-01 | \\`--runs 5 -j 1\\` | 1,455 | 5/5 |\n| defect-layout-11 | \\`--runs 3 -j 1 --max-cost-usd 1.0\\` | 0,923 | 3/3 |\n\n(Un primer intento con dos \\`--case\\` en el mismo comando corrió solo el último; por eso \\`clean-3\\` salió antes que \\`clean-2\\`.) Total de esta corrida: **7,513 USD** (tope restante 7,66). Gasto acumulado: 21,85 USD de 22. Sin frenos ni cortes de sesión.\n\n| Caso | Aciertos / corridas | USD por corrida | Segundos | Antes |\n|---|---|---|---|---|\n| clean-2 | **5/5** | 0,281 | 117 | 1/5 |\n| clean-3 | **5/5** | 0,284 | 85 | 3/5 |\n| defect-j-01 | 5/5 | 0,291 | 92 | sin servicio |\n| defect-layout-11 | 3/3 (no se llegó a 5 por el tope) | 0,308 | 98 | sin servicio |\n| defect-state-04 | solo calibración 1/1 | 0,292 | 78 | sin servicio |\n| color-03, a11y-16, clean-1 | solo calibración 1/1 | 0,265–0,306 | 69–81 | 5/5 |\n\n**Verificado en las trazas** (hallazgos del auditor de cada corrida, leídos de los archivos de salida): en las 10 corridas limpias ningún \\`J-nn\\` pasó de \\`medio\\` (clean-2: J-06, J-08, J-11 en \\`medio\\` o \\`detalle\\`; clean-3: J-01, J-04, J-11 en \\`detalle\\` o \\`medio\\`), con \\`COLOR-02\\` y \\`LAYOUT-04\\` medios. En j-01 sigue hallando \\`J-01\\` (medio). En layout-11 hay \\`LAYOUT-11\\` \\`bloquea\\` con evidencia de navegador.\n\n**Pendiente (decide el autor):** la corrida completa de \\`defect-state-04\\` (nunca medido en 5) y completar \\`layout-11\\` a 5; recalibrar color-03, a11y-16 y clean-1 con 5 corridas si se quiere el umbral formal; la ablación no se corrió. Los temporales \\`claude-eval-*\\` se borraron tras leerlos.\n`;\nfs.writeFileSync(p,s);\np=\"README.md\";s=fs.readFileSync(p,\"utf8\");\ns=s.replace(/\\| Corrida parcial: `ui-option` 15 de 15;[^|]*\\|/,\"| Segunda corrida (0.6.3, gravedad de juicio acotada): `ui-option` 15 de 15; `ui-auditor` recalibración 8 de 8, páginas limpias 10 de 10 (antes 4 de 10), defecto `j-01` 5 de 5 y `layout-11` 3 de 3; `state-04` sin corrida completa. Gasto 21,85 USD de 22 |\");\nfs.writeFileSync(p,s);\np=\"docs/benchmarks.md\";s=fs.readFileSync(p,\"utf8\");\ns=s.replace(\"Corrida parcial: el límite de sesión cortó 14 corridas.\",\"Dos corridas: la primera quedó parcial (el límite de sesión cortó 14 corridas); la segunda, con la gravedad de juicio acotada (pignolo-ui 0.6.3), cerró las páginas limpias y dos de los tres casos cortados.\");\ns=s.replace(\"| `ui-auditor`, defectos sembrados (color, foco, ancho a 320 px, acción primaria, campo sin etiqueta) | color y campo 5/5; los otros tres sin medir | 0,27–0,31 USD | 80–87 s |\",\"| `ui-auditor`, defectos sembrados (color, foco, ancho a 320 px, acción primaria, campo sin etiqueta) | color y campo 5/5 (primera corrida); acción primaria 5/5 y ancho a 320 px 3/3 (segunda); foco sin corrida completa (1/1) | 0,27–0,31 USD | 69–98 s |\");\ns=s.replace(\"| `ui-auditor`, páginas limpias | 9/15 (5/5, 1/5, 3/5): marca como `alto` un criterio de juicio que el fixture no sembró | 0,28–0,30 USD | 82–95 s |\",\"| `ui-auditor`, páginas limpias | primera corrida 9/15 (5/5, 1/5, 3/5): marcaba `alto` un criterio de juicio que el fixture no sembró; con la regla \\\"`J-nn` sin medida vale a lo sumo `medio`\\\" (carta y validador) 10/10 en las dos páginas que fallaban | 0,28–0,30 USD | 82–117 s |\");\ns=s.replace(\"Falta cerrar tres casos de defecto y decidir qué hacer con la severidad de los criterios de juicio. Gasto: 14,34 USD.\",\"Falta la corrida completa de un caso de defecto (`state-04`). Gasto: 21,85 USD de 22.\");\nfs.writeFileSync(p,s);'\ngit diff --stat; grep -c \"Segunda corrida\" README.md docs/benchmarks.md; grep -n \"10 de 10\" README.md | head -2",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-024",
@@ -264,7 +264,7 @@
   "cmd": "cd /tmp/x/wt-bench && python3 - <<'EOF' 2>/dev/null || node -e \"\nconst fs=require('fs');const f='plugins/pignolo/lib/plan-check.js';let s=fs.readFileSync(f,'utf8');\ns=s.replace(\\\"const r = spawnSync(process.execPath, ['--test', rel], { cwd: copy, encoding: 'utf8', timeout: 60000, windowsHide: true });\\\",\\\"const r = spawnSync(process.execPath, ['--test', rel], { cwd: copy, env: cleanEnv(), encoding: 'utf8', timeout: 60000, windowsHide: true });\\\");\ns=s.replace('function nodeCheck(', \\\"// Sin NODE_TEST_CONTEXT: dentro de un 'node --test' el runner anidado no corre como runner.\\nfunction cleanEnv() {\\n  const env = { ...process.env };\\n  delete env.NODE_TEST_CONTEXT;\\n  return env;\\n}\\n\\nfunction nodeCheck(\\\");\nfs.writeFileSync(f,s);\"\nEOF\ngrep -n cleanEnv plugins/pignolo/lib/plan-check.js; node --test --test-reporter=dot tests/plan-check.test.js 2>&1 | tail -6",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-029",
@@ -318,7 +318,7 @@
   "cmd": "cd /tmp/x/audit-4a && node -e \"\nconst {spawnSync}=require('child_process');\nconst r=spawnSync(process.execPath,['-e','console.log(process.pid)'],{encoding:'utf8'});const pid=Number(r.stdout);\ntry{process.kill(pid,0);console.log('alive?',pid)}catch(e){console.log('dead',e.code)}\ntry{process.kill(process.pid,0);console.log('self alive')}catch(e){console.log(e.code)}\ntry{process.kill(4,0);console.log('pid4 alive')}catch(e){console.log('pid4',e.code)}\n\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-035",
@@ -372,7 +372,7 @@
   "cmd": "cd /tmp/x/wt-h5 && cat >> tests/hooks-smoke-hito-5.test.js <<'XEOF'\n\n// Prueba de que el atajo corre antes de cargar el handler: en una copia del launcher sin\n// handlers, un payload que se saltea sale con 0 y uno que no, falla porque no puede cargarlo.\ntest('the launcher skips before creating the Worker (no handler is loaded)', () => {\n  const { spawnSync } = require('node:child_process');\n  const copy = makeTempDir('pignolo-launcher-');\n  fs.mkdirSync(path.join(copy, 'hooks', 'handlers'), { recursive: true });\n  fs.mkdirSync(path.join(copy, 'lib'));\n  fs.copyFileSync(path.join(PLUGIN_ROOT, 'hooks', 'launcher.js'), path.join(copy, 'hooks', 'launcher.js'));\n  for (const f of ['hook-fastpath.js', 'plan-agents.js']) fs.copyFileSync(path.join(PLUGIN_ROOT, 'lib', f), path.join(copy, 'lib', f));\n  const go = (name, payload) => spawnSync(process.execPath, [path.join(copy, 'hooks', 'launcher.js'), name], { input: JSON.stringify(payload), encoding: 'utf8', timeout: 20000 });\n  const skipped = go('plan-audit-gate', { tool_name: 'Bash', tool_input: { command: 'ls' } });\n  assert.equal(skipped.status, 0, skipped.stderr);\n  assert.equal(skipped.stdout + skipped.stderr, '');\n  const merge = go('scope-gate', { tool_name: 'Bash', tool_input: { command: 'git merge x' } });\n  assert.equal(merge.status, 2, 'a gated payload does reach the Worker and fails to load the handler');\n  assert.equal(go('scope-gate', { tool_name: 'Bash', tool_input: { command: 'git status' } }).status, 0);\n});\nXEOF\nnode --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"\nP=plugins/pignolo; cp $P/hooks/launcher.js /tmp/l.bak; sed -i \"s/if (require('..\\/lib\\/hook-fastpath').skips(name, input))/if (false)/\" $P/hooks/launcher.js; node --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"; cp /tmp/l.bak $P/hooks/launcher.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "allow"
+  "expect": "block:pignolo-launcher"
  },
  {
   "id": "ev-041",
@@ -381,7 +381,7 @@
   "cmd": "cd /tmp/x/wt-h5 && node --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"\nP=plugins/pignolo; L=launcher; cp $P/hooks/$L.js /tmp/l.bak; sed -i \"s/if (require('..\\/lib\\/hook-fastpath').skips(name, input))/if (false)/\" $P/hooks/$L.js; node --test --test-reporter=dot tests/hooks-smoke-hito-5.test.js 2>&1 | grep -c \"✖\"; cp /tmp/l.bak $P/hooks/$L.js; git diff --stat $P/hooks/$L.js",
   "audit": "block:pignolo-launcher",
   "base": "block:pignolo-launcher",
-  "expect": "allow"
+  "expect": "block:pignolo-launcher"
  },
  {
   "id": "ev-042",
@@ -390,7 +390,7 @@
   "cmd": "cd /tmp/x/wt-h5 && node -e \"\nconst {runProbes}=require('./plugins/pignolo/lib/plan-probes');\nconst claims=[\n{id:'C1',task:'T1',claim:'\\`git apply --numstat\\` proves the patch applies',how:'run it'},\n{id:'C2',task:'T1',claim:'spawn(\\'npm\\', [\\'test\\']) runs without a shell on Windows',how:'run it'},\n{id:'C3',task:'T1',claim:'killing the child also kills its grandchild',how:'run it'},\n{id:'C4',task:'T1',claim:'spawnSync does not block the heartbeat timer',how:'run it'},\n{id:'C5',task:'T1',claim:'process.kill(pid, 0) throws only if the process is dead',how:'run it'}];\nconsole.log(JSON.stringify(runProbes({claims}),null,1).slice(0,2500));\n\"; sed -n 25,60p plugins/pignolo/scripts/approved-verify.js",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-043",
@@ -399,7 +399,7 @@
   "cmd": "cd /tmp/x/exp34/wt/tests/bench/revision; node - <<'EOF'\nconst fs=require('fs');\nlet s=fs.readFileSync('snapshot.js','utf8');\nconst a=s.indexOf('function leakMaterial');\nconst b=s.indexOf('function writeAll');\nconst repl=`// Candidate leak strings and hashes, computed once from git (the fix commits and their tests).\nfunction leakCandidates(repo, cases) {\n  const hashes = new Set();\n  const strings = [];\n  const seen = new Set();\n  const add = (text, kind, defect) => {\n    const t = text.trim();\n    if (t.length < 25 || seen.has(t)) return;\n    seen.add(t);\n    strings.push({ text: t, kind, defect });\n  };\n  for (const d of cases.defects) {\n    for (const c of new Set([d.fix, d.testFrom].filter(Boolean))) {\n      hashes.add(git(repo, ['rev-parse', c]).trim());\n      const subject = git(repo, ['log', '-1', '--format=%s', c]).trim();\n      add(subject, 'commit-message', d.id);\n      add(subject.replace(/^[a-z]+(\\\\([^)]*\\\\))?!?:\\\\s*/, ''), 'commit-message', d.id);\n    }\n    const testCommit = d.testFrom || d.fix;\n    for (const t of d.tests) {\n      const diff = git(repo, ['show', '--format=', '-U0', testCommit, '--', t.file]).split('\\\\n');\n      for (const l of diff) {\n        if (!/^\\\\+(?!\\\\+\\\\+)/.test(l)) continue;\n        const body = l.slice(1);\n        const title = /^\\\\s*(?:test|it|describe)\\\\(\\\\s*(['\"\\`])(.+)\\\\1/.exec(body);\n        if (title) add(title[2], 'test-title', d.id);\n        else add(body, 'test-line', d.id);\n      }\n    }\n  }\n  return { hashes: [...hashes], strings };\n}\n\n// What only exists in the future of this snapshot: candidates whose text is not already in its tree.\nfunction leakMaterial(cand, treeDir) {\n  const treeText = treeDir ? walkText(treeDir) : '';\n  return { hashes: cand.hashes, strings: cand.strings.filter((s) => !treeText.includes(s.text)) };\n}\n\n`;\ns=s.slice(0,a)+repl+s.slice(b);\ns=s.replace(\"  const used = new Map();\\n\",\"  const used = new Map();\\n  const cand = leakCandidates(repo, cases);\\n\");\ns=s.replace(\"JSON.stringify(leakMaterial(repo, cases, path.join(dir, 'tree')), null, 2)\",\"JSON.stringify(leakMaterial(cand, path.join(dir, 'tree')), null, 2)\");\ns=s.replace(\"buildCard, leakMaterial,\",\"buildCard, leakCandidates, leakMaterial,\");\nfs.writeFileSync('snapshot.js',s);\nEOF\nnode --check snapshot.js && grep -n \"leakMaterial\\|leakCandidates\" snapshot.js",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-044",
@@ -435,7 +435,7 @@
   "cmd": "node -e '\nconst fs=require(\"fs\");const inp=JSON.parse(fs.readFileSync(\"audit-input-68.json\"));\nconst L={\n0:[[[\"r09\"],\"\",\"protect-paths niega al test-writer el holdout\"],[[],\"extra-real\",\"p.diff dentro del repo ensucia el árbol (no es r04: no habla del candado ni del .gitignore)\"]],\n1:[[[\"r09\"],\"\",\"guardOff vs /pignolo:off\"],[[\"r02\"],\"\",\"canario con PIGNOLO_HOME\"],[[\"r02\"],\"\",\"canario rompe guard-explain-canaries\"],[[\"r04\"],\"\",\"candado/.gitignore ensucia el árbol\"],[[\"r04\"],\"\",\"sabotaje cortado en worktree de tarea: SessionStart no lo ve\"],[[\"r08\"],\"\",\"mutación contra HEAD en pre-merge sin tarea: vacío si está commiteado\"],[[\"r13\"],\"\",\"aserción de la lista de Glob\"],[[\"r13\"],\"\",\"clave desconocida en gates\"],[[\"r06\"],\"\",\"spawnSync bloquea las señales (experimento)\"],[[\"r03\"],\"\",\"npm/npx ENOENT con shell:false (experimento)\"]],\n2:[],\n3:[[[\"r06\"],\"\",\"spawnSync bloquea las señales (experimento)\"],[[\"r04\"],\"\",\"candado/.gitignore ensucia el árbol (experimento)\"],[[\"r03\"],\"\",\"npm/npx ENOENT con shell:false (experimento)\"],[[\"r02\"],\"\",\"canario con PIGNOLO_HOME + guard-explain-canaries\"],[[\"r09\"],\"\",\"guardOff vs /pignolo:off\"],[[],\"extra-real\",\"tests/protect-paths.test.js no existe: fuera de la verdad (como en M3/M4)\"]],\n4:[[[\"r04\"],\"\",\"candado/.gitignore ensucia el árbol\"],[[\"r03\"],\"\",\"npm/npx .cmd no arrancan sin shell\"],[[],\"wrong\",\"repos de test sin project.md: readProjectConfig da los test-paths por defecto (incluyen tests/), el rechazo sí se ejercita\"],[[\"r13\"],\"\",\"aserción de la lista de Glob\"],[[\"r06\"],\"\",\"child.kill deja huérfano al comando en Windows\"],[[],\"extra-real\",\"orden de la mutación respecto de treeAfter sin definir (subespecificación)\"],[[],\"wrong\",\"afirma que el nieto no sobrevive a child.kill: contradice r06\"]],\n5:[[[\"r02\"],\"\",\"canario con PIGNOLO_HOME\"],[[\"r02\"],\"\",\"canario rompe guard-explain-canaries\"],[[],\"extra-real\",\"node --test anidado hereda NODE_TEST_CONTEXT y sale 0\"],[[],\"extra-real\",\"systemMessage del repo sombra vuelve inestable el caso sin candado (como M5-opus)\"],[[\"r09\"],\"\",\"guardOff vs /pignolo:off\"],[[\"r08\"],\"\",\"mutación contra HEAD en pre-merge sin tarea\"],[[\"r13\",\"r02\"],\"\",\"aserción de la lista de Glob; Task 7: PIGNOLO_HOME del launcher\"],[[\"r13\"],\"\",\"clave desconocida en gates\"],[[\"r06\"],\"\",\"handler de SIGINT corre recién después de spawnSync (experimento)\"],[[\"r03\"],\"\",\"npm/npx/pnpm ENOENT/EINVAL sin shell (experimento)\"],[[],\"extra-real\",\"NODE_TEST_CONTEXT medido (experimento)\"],[[],\"extra-real\",\"worktree remove --force falla en Windows con un hijo vivo (no es r06: no habla de señales ni de child.kill)\"]],\n6:[[[\"r02\"],\"\",\"canario rompe guard-explain-canaries\"]],\n7:[[[],\"extra-real\",\"node --test anidado hereda NODE_TEST_CONTEXT (experimento)\"],[[\"r06\"],\"\",\"spawnSync bloquea las señales (experimento)\"],[[\"r02\"],\"\",\"canario con PIGNOLO_HOME (experimento)\"],[[\"r09\"],\"\",\"guardOff vs /pignolo:off\"],[[\"r13\"],\"\",\"aserción de la lista de Glob\"],[[\"r13\"],\"\",\"clave desconocida en gates\"],[[],\"wrong\",\"tag contract/hito-4a/v1 y ramas ya existen: artefacto del banco (refs creadas por la ejecución real posterior), no error del plan\"]]};\nconst out={runs:inp.runs.map((r,k)=>{if(L[k].length!==r.findings.length)throw new Error(\"len \"+k);\n const labels=L[k].map(([t,v,n],i)=>Object.assign({i,truth:t},v?{verdict:v}:{},{note:n}));\n const man=[...new Set(labels.flatMap(l=>l.truth))].sort();const auto=[...r.autoFound].sort();\n return {run:r.run,method:r.method,model:r.model,autoFound:auto,manualFound:man,falseAuto:auto.filter(x=>!man.includes(x)),missedAuto:man.filter(x=>!auto.includes(x)),probeOnly:[],extra:labels.filter(l=>l.verdict===\"extra-real\").length,wrong:labels.filter(l=>l.verdict===\"wrong\").length,labels};})};\nfs.writeFileSync(\"audit-output-68.json\",JSON.stringify(out,null,2));\nconst g={};for(const r of out.runs){const key=r.method+\"-\"+r.model;g[key]=g[key]||{m:0,a:0,w:0,n:0,fa:0,ma:0};g[key].m+=r.manualFound.length;g[key].a+=r.autoFound.length;g[key].w+=r.wrong;g[key].n++;g[key].fa+=r.falseAuto.length;g[key].ma+=r.missedAuto.length;console.log(r.run,\"man\",r.manualFound.join(\",\"),\"false\",r.falseAuto.join(\",\"),\"missed\",r.missedAuto.join(\",\"))}\nfor(const[k,v]of Object.entries(g))console.log(k,\"manual\",(100*v.m/(14*v.n)).toFixed(1),\"auto\",(100*v.a/(14*v.n)).toFixed(1),\"wrong\",v.w,\"falseAuto\",v.fa,\"missed\",v.ma);\n'",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-048",
@@ -444,7 +444,7 @@
   "cmd": "cd /tmp/x/wt-uoc2/plugins/pignolo-ui; python3 - <<'EOF'\nimport re\ncand=open('/tmp/x/ab-canvas/ui-option-candidate.md',encoding='utf8').read() if False else None\nEOF\nC=/tmp/x/ab-canvas/ui-option-candidate.md\ncp $C /tmp/cand.md\nnode - <<'EOF'\nconst fs=require('fs');\nlet t=fs.readFileSync('/tmp/cand.md','utf8').replace(/\\r\\n/g,'\\n');\nconst rep=(a,b)=>{ if(!t.includes(a)) throw new Error('missing '+a.slice(0,40)); t=t.replace(a,b); };\nrep(/1\\. Do not invent content\\.[^\\n]*\\n/.exec(t)[0],\n\"1. Use the data the brief provides literally. Data it does not provide (amounts, dates, item names, people, labels of content) is filled with realistic SAMPLE values: plausible and complete, so the screen can be judged. Mark every sample value with the attribute `data-sample` on its element. Never use real people, emails, phone numbers, companies, credentials or real brands, not even as samples; use neutral invented names and, if a contact is unavoidable, none at all. Do not write brand headlines or value propositions unless the brief gives them, and no invented testimonials, logos or press mentions.\\n\");\nrep(/4\\. Give content its real shape:[^\\n]*\\n/.exec(t)[0],\n\"4. Give content its real shape: the lengths, counts and groupings the brief describes, with complete sample values (rule 1) instead of lone brackets or filler; no lorem ipsum.\\n\");\nrep(/6\\. Skip the generic tropes:[^\\n]*\\n/.exec(t)[0],\n\"6. Skip the generic tropes: gradient washes, cards marked only by a left-border accent, emoji as icons, and the system default font look; choose a considered font stack and set a typeface on purpose (remote fonts only as the Output contract allows).\\n\");\n// output contract from main\nconst main=fs.readFileSync('agents/ui-option.md','utf8').replace(/\\r\\n/g,'\\n');\nconst oc=/# Output contract\\n[\\s\\S]*?(?=\\n# Reply)/.exec(main)[0];\nconst toc=/# Output contract\\n[\\s\\S]*?(?=\\n# Reply)/.exec(t)[0];\nt=t.replace(toc,oc.replace(\"- A visible strip labelled `Datos de ejemplo` on every screen says that the content is sample data.\",\"- Every screen that has sample values carries one small visible line `Datos de muestra` (a `<p>` or `<footer>` of the page, not hidden). Never put it in a comment or an attribute.\"));\nfs.writeFileSync('agents/ui-option.md',t);\nEOF\ngit diff --stat; wc -c agents/ui-option.md; grep -n \"Datos\\|data-sample\" agents/ui-option.md",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-049",
@@ -543,7 +543,7 @@
   "cmd": "cd /tmp/x/wt-03 && python3 - <<'EOF'\np='tests/gate.test.js'\ns=open(p,encoding='utf8').read()\ns=s.replace(\"\"\"function project(cwd, { type = 'code-tested', gate = 'node check.js', extra = '' } = {}) {\n  const q = JSON.stringify(gate);\n  const gates = gate === null ? '' : `gates:\\\\n  on-done: ${q}\\\\n  pre-merge: ${q}\\\\n  on-edit: ${q}\\\\n`;\"\"\",\"\"\"function project(cwd, { type = 'code-tested', gate = 'node check.js', extra = '', mutationCmd = null } = {}) {\n  const q = JSON.stringify(gate);\n  const mut = mutationCmd ? `  mutation: ${JSON.stringify(mutationCmd)}\\\\n` : '';\n  const gates = gate === null ? '' : `gates:\\\\n  on-done: ${q}\\\\n  pre-merge: ${q}\\\\n  on-edit: ${q}\\\\n${mut}`;\"\"\")\ns+='''\n// --- hito 4a, Task 3: debilitados, semilla ofrecida y mutación ---\n\ntest('semilla: seed 42 llega al comando por PIGNOLO_TEST_SEED y queda en seal.seedOffered; sin seed es un entero de 32 bits', () => {\n  const { cwd } = setup({ check: 'console.log(\"seed=\" + process.env.PIGNOLO_TEST_SEED);\\\\n' });\n  const s = real(cwd, { seed: 42 });\n  assert.equal(s.seedOffered, 42);\n  const log = fs.readFileSync(path.join(sealDir(process.env, repoIdFor({ cwd })), 'logs', `${s.logHash}.log`), 'utf8');\n  assert.match(log, /seed=42/);\n  const r = real(cwd);\n  assert.ok(Number.isInteger(r.seedOffered) && r.seedOffered >= 0 && r.seedOffered < 2 ** 32);\n});\n\ntest('debilitados: it.skip agregado por un test-writer da INTEGRITY con weakened[0].kind skip; con testAuthorization pasa', () => {\n  const { cwd, base } = setup();\n  write(cwd, 'tests/a.test.js', \"// t\\\\nit.skip('x', () => {});\\\\n\");\n  const t = { files: ['tests/a.test.js'], agents: ['pignolo:test-writer'] };\n  let s = gate(cwd, { task: task(cwd, base, t) });\n  assert.equal(s.status, 'INTEGRITY');\n  assert.equal(s.checks.weakened[0].kind, 'skip');\n  s = gate(cwd, { task: task(cwd, base, { ...t, testAuthorization: true }) });\n  assert.equal(s.status, 'PASS');\n});\n\ntest('debilitados sin tarea: .only sin commitear da INTEGRITY; commiteado solo con --base', () => {\n  const { cwd, base } = setup();\n  write(cwd, 'tests/a.test.js', \"// t\\\\nit.only('x', () => {});\\\\n\");\n  let s = gate(cwd);\n  assert.equal(s.status, 'INTEGRITY');\n  assert.equal(s.checks.weakened[0].kind, 'only');\n  commit(cwd, 'only');\n  s = gate(cwd);\n  assert.equal(s.status, 'PASS');\n  s = gate(cwd, { base });\n  assert.equal(s.status, 'INTEGRITY');\n});\n\ntest('noProtects: test nuevo sin Protects: se lista; con Protects: en la línea 1 no', () => {\n  const { cwd } = setup();\n  write(cwd, 'tests/new.test.js', \"it('x', () => {});\\\\n\");\n  write(cwd, 'tests/ok.test.js', \"// Protects: R1 · Breaks if: x\\\\nit('y', () => {});\\\\n\");\n  write(cwd, 'tests/data.json', '{}\\\\n');\n  const s = gate(cwd);\n  assert.equal(s.status, 'PASS');\n  assert.deepEqual(s.checks.noProtects, ['tests/new.test.js']);\n});\n\nfunction riskSetup(mutationCmd, { mutation = true, file = 'src/pay.js' } = {}) {\n  const extra = `mutation: ${mutation}\\\\nhigh-risk-paths:\\\\n  - src/pay.js\\\\n`;\n  const s = setup({ project: { extra, mutationCmd } });\n  write(s.cwd, file, 'module.exports = 7;\\\\n');\n  commit(s.cwd, 'cambio');\n  return s;\n}\nconst mutExec = (exitCode, calls = []) => (command, { logFile, env }) => {\n  calls.push({ command, env });\n  fs.appendFileSync(logFile, command === 'node mutate.js' ? 'mutantes\\\\n' : 'ok\\\\n');\n  return { exit: command === 'node mutate.js' ? exitCode : 0 };\n};\n\ntest('mutación en pre-merge: sin gates.mutation da NO_MUTATION_TOOL', () => {\n  const { cwd, base } = riskSetup(null);\n  const s = gate(cwd, { level: 'pre-merge', base });\n  assert.equal(s.status, 'NO_MUTATION_TOOL');\n});\n\ntest('mutación en pre-merge: exit 1 da MUTATION; exit 0 da PASS con files, la semilla y el log agregado', () => {\n  const { cwd, base } = riskSetup('node mutate.js');\n  let s = gate(cwd, { level: 'pre-merge', base, exec: mutExec(1) });\n  assert.equal(s.status, 'MUTATION');\n  const calls = [];\n  s = gate(cwd, { level: 'pre-merge', base, seed: 7, exec: mutExec(0, calls) });\n  assert.equal(s.status, 'PASS');\n  assert.deepEqual(s.checks.mutation, { files: ['src/pay.js'], exit: 0 });\n  assert.equal(calls[1].command, 'node mutate.js');\n  assert.equal(calls[1].env.PIGNOLO_MUTATE_FILES, 'src/pay.js');\n  assert.equal(calls[1].env.PIGNOLO_TEST_SEED, '7');\n  const log = fs.readFileSync(path.join(sealDir(process.env, repoIdFor({ cwd })), 'logs', `${s.logHash}.log`), 'utf8');\n  assert.match(log, /--- mutation ---\\\\nmutantes/);\n});\n\ntest('mutación: no corre si el comando de pre-merge falla, si el cambio no toca high-risk-paths ni en on-done', () => {\n  const { cwd, base } = riskSetup('node mutate.js');\n  const calls = [];\n  const failing = (command, o) => { calls.push(command); return { exit: command === 'node check.js' ? 1 : 0 }; };\n  let s = gate(cwd, { level: 'pre-merge', base, exec: failing });\n  assert.equal(s.status, 'FAIL');\n  assert.deepEqual(calls, ['node check.js']);\n  s = gate(cwd, { level: 'on-done', base, exec: mutExec(1) });\n  assert.equal(s.status, 'PASS');\n  assert.equal(s.checks.mutation, null);\n  const other = riskSetup('node mutate.js', { file: 'src/b.js' });\n  s = gate(other.cwd, { level: 'pre-merge', base: other.base, exec: mutExec(1) });\n  assert.equal(s.status, 'PASS');\n  assert.equal(s.checks.mutation, null);\n});\n\ntest('CLI: --seed inválido y --base inexistente salen 2', () => {\n  const { cwd } = setup();\n  let r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--seed', 'abc'], { encoding: 'utf8' });\n  assert.equal(r.status, 2);\n  r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--base', 'no-existe'], { encoding: 'utf8' });\n  assert.equal(r.status, 2);\n  r = spawnSync(process.execPath, [CLI, '--level', 'on-done', '--cwd', cwd, '--seed', '5'], { encoding: 'utf8' });\n  assert.equal(r.status, 0);\n  assert.equal(JSON.parse(r.stdout).seedOffered, 5);\n});\n'''\nopen(p,'w',encoding='utf8',newline='\\n').write(s)\n\np='tests/handback-gate.test.js'\ns=open(p,encoding='utf8').read()\ns=s.replace(\"\"\"  await t.test('I4: an existing test outside\"\"\",\"\"\"  await t.test('weakened test (it.skip) inside its card -> 2; testAuthorization lets it pass', () => {\n    const fx = flow({ taskOver: { files: ['tests/a.test.js'] } });\n    edit(fx, 'tests/a.test.js', \"require('../src/a');\\\\nit.skip('x', () => {});\\\\n\");\n    const r = call(fx, { agent: 'pignolo:test-writer' });\n    assert.strictEqual(r.exit, 2);\n    assert.match(r.stderr, /skip/);\n    assert.match(r.stderr, /tests\\\\/a\\\\.test\\\\.js/);\n    assert.match(r.stderr, /Alternativa:/);\n    const ok = flow({ taskOver: { files: ['tests/a.test.js'], testAuthorization: true } });\n    edit(ok, 'tests/a.test.js', \"require('../src/a');\\\\nit.skip('x', () => {});\\\\n\");\n    assert.strictEqual(call(ok, { agent: 'pignolo:test-writer' }).exit, 0);\n  });\n  await t.test('I4: an existing test outside\"\"\",1)\nopen(p,'w',encoding='utf8',newline='\\n').write(s)\nEOF\nnode --test --test-reporter=dot tests/gate.test.js tests/handback-gate.test.js 2>&1 | grep -E \"^ℹ (pass|fail)|^# (pass|fail)\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-060",
@@ -597,7 +597,7 @@
   "cmd": "cd /tmp/x/wt-h7 && node - <<'EOF'\nconst fs = require('fs');\nconst f = 'plugins/pignolo/lib/holdout.js';\nlet s = fs.readFileSync(f, 'utf8');\nconst a = s.indexOf('// Con shell, como defaultExec de lib/gate.js');\nconst b = s.indexOf('const tailOf =');\nif (a < 0 || b < 0) throw new Error('marcas');\ns = s.slice(0, a) + s.slice(b);\ns = s.replace(\"const { spawnSync } = require('node:child_process');\\n\", '');\ns = s.replace(\"const { readProjectConfig } = require('./project-config');\", \"const { readProjectConfig } = require('./project-config');\\nconst { installDeps, shellRun: shellExec } = require('./worktrees');\");\nconst old = `      const code = shellExec(config.depsInstall, { cwd: wt, timeoutMs, logFile });\n      if (code !== 0) {\n        result.exit = code;`;\nif (!s.includes(old)) throw new Error('deps');\ns = s.replace(old, `      const deps = installDeps({ cwd: wt, command: config.depsInstall, timeoutMs, logFile });\n      if (!deps.ok) {\n        result.exit = deps.code;`);\nfs.writeFileSync(f, s);\nEOF\ngit diff plugins/pignolo/lib/holdout.js | head -60; node --check plugins/pignolo/lib/holdout.js",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-066",
@@ -624,7 +624,7 @@
   "cmd": "cd /tmp/x/wt-h6 && node -e \"\nconst {gitRun,isGitFailure}=require('./plugins/pignolo/lib/git');\ntry{gitRun(['ls-files','--error-unmatch','--','x'],'.',{timeout:1})}catch(e){console.log(e.status,e.signal,e.code,isGitFailure(e))}\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-069",
@@ -678,7 +678,7 @@
   "cmd": "mkdir -p /tmp/kdbg && cd /tmp/kdbg && node -e \"const s=require('fs').readFileSync('$(cygpath -m /tmp/x/wt-m67/tests/bench/plans/probes.js)','utf8');const m=/const KILL_TREE = \\`([\\s\\S]*?)\\`;/.exec(s);require('fs').writeFileSync('p.js',m[1].replace(/\\\\\\\\\\\\\\\\n/g,'\\\\\\\\n'))\" ; cat p.js | head -5; grep -n \"includes\" p.js; cat child.js 2>/dev/null",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "block:quoted-substitution"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-075",
@@ -822,7 +822,7 @@
   "cmd": "cd /tmp/x; mkdir -p ab-canvas; node -e \"\nconst fs=require('fs');\nlet t=fs.readFileSync('wt-pu4e/plugins/pignolo-ui/agents/ui-option.md','utf8');\nconst anchor='8. Text contrast at least 4.5:1 and touch targets at least 44 px.';\nif(!t.includes(anchor)) throw new Error('anchor');\nconst add=[\n'9. Show states: every interactive control has a visible rest, focus and pressed style; when the screen has a list or a form, also draw the empty or error state the brief describes, as a visible sample block.',\n'10. Keep a spacing rhythm: tight inside a group, generous between groups, and more space above a heading than below it.',\n'11. Make the type scale visible: each level at least 1.25 times the previous one, running text in lines of 45 to 75 characters, and hierarchy carried by weight as well as size.',\n'12. Spend emphasis in one place: the accent color goes to the main action and to state; everything else stays neutral.',\n'13. Move only to show state: hover, focus and pressed transitions on a named property (never `all`), 100 to 200 ms, switched off under `@media (prefers-reduced-motion: reduce)`, and hover effects only inside `@media (hover: hover)`. No entrance animations.'\n].join('\\n');\nt=t.replace(anchor,anchor+'\\n'+add);\nfs.writeFileSync('ab-canvas/ui-option-candidate.md',t);\nconst m=/# Craft\\r?\\n([\\s\\S]*?)(?=\\r?\\n# )/.exec(t);console.log(m[1].split(/\\r?\\n/).length);\n\"; diff <(cat wt-pu4e/plugins/pignolo-ui/agents/ui-option.md) ab-canvas/ui-option-candidate.md | head -20",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "block:quoted-substitution"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-091",
@@ -954,7 +954,7 @@
   "cmd": "cd /tmp/x/rev6 && cp plugins/pignolo/lib/archive.js /tmp/archive.bak 2>/dev/null || cp plugins/pignolo/lib/archive.js ../exp/archive.bak; node -e \"\nconst fs=require('fs');const f='plugins/pignolo/lib/archive.js';let s=fs.readFileSync(f,'utf8');\ns=s.replace(/function gitOperationInProgress\\(main\\) \\{/, 'function gitOperationInProgress(main) {\\n  for (const [f, op] of OPERATIONS) if (fs.existsSync(path.join(main, \\\".git\\\", f))) return op;\\n  return null;\\n}\\nfunction _old(main) {');\nfs.writeFileSync(f,s);\"; node --test --test-reporter=dot tests/close-session.test.js tests/archive.test.js 2>&1 | tail -5; git checkout -- plugins/pignolo/lib/archive.js; git status --porcelain",
   "audit": "block:checkout-path",
   "base": "block:checkout-path",
-  "expect": "block:checkout-path"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-105",
@@ -1188,7 +1188,7 @@
   "cmd": "cd /tmp/x/wt-guard && sed -n 80,100p tests/permissions.test.js; node -e \"\nconst {evaluate}=require('./plugins/pignolo/lib/git-guard');\nfor (const c of ['git -C \\\"\\$d\\\" merge feat','git push --force origin feat']) console.log(c, JSON.stringify(evaluate(c,{subagent:true,agentType:'x',mode:'bypassPermissions',cwd:'.'})));\n\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-131",
@@ -1260,7 +1260,7 @@
   "cmd": "cd /tmp/x/wt-h8a/plugins/pignolo && node - <<'EOF'\nconst fs=require('fs');\nlet s=fs.readFileSync('lib/init-seed.js','utf8');\ns=s.replace(\"unused('opción no verificada contra la documentación del runner')\",\"unused('no verificado contra la documentación del runner')\");\nfs.writeFileSync('lib/init-seed.js',s);\nlet g=fs.readFileSync('lib/gate.js','utf8');\ng=g.replace(\"const { repoIdFor, writeSeal } = require('./seals');\",\"const { repoIdFor, writeSeal } = require('./seals');\\nconst { expandSeed } = require('./init-seed');\");\ng=g.replace(\"task: task ? task.id : null, noTestsReason: null, seedOffered,\",\"task: task ? task.id : null, noTestsReason: null, seedOffered, seedInCommand: command.includes('{seed}'),\");\ng=g.replace(\"seal.exit = exec(command, {\",\"seal.exit = exec(expandSeed(command, seedOffered), {\");\nfs.writeFileSync('lib/gate.js',g);\nlet q=fs.readFileSync('lib/seals.js','utf8');\nq=q.replace(\"  if (!isObj(o.checks)) errs.push('checks debe ser un objeto');\",\"  if (o.seedInCommand !== undefined && typeof o.seedInCommand !== 'boolean') errs.push('seedInCommand debe ser un booleano');\\n  if (!isObj(o.checks)) errs.push('checks debe ser un objeto');\");\nfs.writeFileSync('lib/seals.js',q);\nEOF\ngit diff --stat; sed -n 1,40p scripts/gate.js | head -50",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-139",
@@ -1317,7 +1317,7 @@
   "cmd": "cd /tmp/x/wt-4e/plugins/pignolo-ui && cat > ../../../ui4e-work/dbg1.test.mjs <<'EOF'\nEOF\nsed -i \"s|  const out = readOut(s.run).entries;\\n||\" tests/ui-check-measures.test.mjs; node -e \"\nconst {spawnSync}=require('child_process');\" ; ls ../../../ui4e-work/dbg1.test.mjs >/dev/null; rm ../../../ui4e-work/dbg1.test.mjs\nsed -i \"92s/.*/  const r0 = uiCheck(s, ['--files', 'src\\/a.css', '--design', 'DESIGN.md']); console.log(r0.status, r0.stderr.slice(0, 300), JSON.stringify(readOut(s.run).entries.map((x) => [x.id, x.status, x.reason])));/\" tests/ui-check-measures.test.mjs && node --test tests/ui-check-measures.test.mjs 2>&1 | grep -a \"^[0-9\\[]\" | head -5 | cut -c1-600",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-145",
@@ -1362,7 +1362,7 @@
   "cmd": "cd /tmp/x/wt-sgb && node -e \"\nconst fs=require('fs');\nlet f='plugins/pignolo/lib/scope-gate.js',s=fs.readFileSync(f,'utf8');\nconst a='        if (branchNames(c).length && currentIsMain(c)) hits.push(c);';\nif(!s.includes(a))throw 1;\ns=s.replace(a,'        // reset a una ref que no es de la forma HEAD~n: puede ser un sha, ORIG_HEAD... que lleve el plan (se resuelve despues)\\n        if (c.positionals.some((p) => !/^(?:HEAD|@)(?:[~^]\\\\\\\\d*)*\\$/.test(p)) && currentIsMain(c)) hits.push(c);');\nfs.writeFileSync(f,s);\nf='tests/scope-gate.test.js';s=fs.readFileSync(f,'utf8');\ns=s.replace(\\\"const r = dec(repo, cmd, { branch: 'task/a/01-x' });\\n    assert.ok(r, cmd);\\n    assert.deepEqual(r.plans, ['b'], cmd);\\\",\\\"const r = dec(repo, cmd, { branch: cmd.startsWith('git checkout') ? 'int/a' : 'main' });\\n    assert.ok(r, cmd);\\n    assert.deepEqual(r.plans, ['b'], cmd);\\\");\nfs.writeFileSync(f,s);\n\"; grep -n \"reset a una ref\" -A2 plugins/pignolo/lib/scope-gate.js; node --test tests/scope-gate.test.js 2>&1 | sed 's/\\x1b\\[[0-9;]*m//g' | grep -E \"✖|ℹ (pass|fail)\" | head",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-150",
@@ -1389,7 +1389,7 @@
   "cmd": "cd /tmp/x/wt-h8b && python3 - <<'EOF' 2>/dev/null || node - <<'EOF2'\nEOF\nconst fs=require('fs');\nlet f='tests/evals/debugger-cases.js', s=fs.readFileSync(f,'utf8');\ns=s.replace(\"const reportWithout = (name, forbidden) => ({\\n  name, type: 'regex', target: 'trace', flags: 'i',\\n  pattern: `${R.reportHead('debugger')}(?:(?!${forbidden})${CH})*\\\"`,\\n});\",\n\"const reportWithout = (name, forbidden) => ({\\n  name, type: 'regex', target: 'trace', flags: 'i',\\n  pattern: `${R.reportHead('debugger')}(?=${CH}*?${R.lastLine(FINALS)})(?:(?!${forbidden})${CH})*\\\"`,\\n});\");\ns=s.replace(\"const unmarkedCause = () => `(?:(?:(?!${CAUSE})${CH})*\\\"|${CH}*?${CAUSE}${CH}{0,60}?${MARK})`;\",\n\"// Va anclado al comienzo del informe (sin el `${CH}*?` de `said`): si no, el primer tramo podría saltar la mención.\\nconst unmarkedCause = () => ({\\n  name: 'no-unmarked-cause', type: 'regex', target: 'trace', flags: 'i',\\n  pattern: `${R.reportHead('debugger')}(?:(?:(?!${CAUSE})${CH})*\\\"|${CH}*?${CAUSE}${CH}{0,60}?${MARK})`,\\n});\");\ns=s.replace(\"saidI('no-unmarked-cause', unmarkedCause()),\",\"unmarkedCause(),\");\nfs.writeFileSync(f,s);\nf='tests/eval-debugger-cases.test.js'; s=fs.readFileSync(f,'utf8');\ns=s.replace(\"const nodeTest = (dir, file) => spawnSync(process.execPath, ['--test', file], { cwd: dir, encoding: 'utf8' });\",\n\"// Sin NODE_TEST_CONTEXT: heredado, el `node --test` hijo se comporta como un hijo del runner (sale 0 sin correr).\\nconst cleanEnv = (extra = {}) => { const e = { ...process.env, ...extra }; delete e.NODE_TEST_CONTEXT; return e; };\\nconst nodeTest = (dir, file, env) => spawnSync(process.execPath, ['--test', file], { cwd: dir, encoding: 'utf8', env: cleanEnv(env) });\");\ns=s.replace(\"const shifted = spawnSync(process.execPath, ['--test', 'tests/expiry.test.js'], { cwd: dir, encoding: 'utf8', env: { ...process.env, TZ: 'Pacific/Kiritimati' } });\",\"const shifted = nodeTest(dir, 'tests/expiry.test.js', { TZ: 'Pacific/Kiritimati' });\");\nfs.writeFileSync(f,s);\nEOF2\ngrep -c \"unmarkedCause()\" tests/evals/debugger-cases.js; node --test tests/eval-debugger-cases.test.js 2>&1 | grep -E \"✖|ℹ (pass|fail)|AssertionError\" | head -30",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-153",
@@ -1425,7 +1425,7 @@
   "cmd": "cd /tmp/x/wt-08 && node -e \"\nconst fs=require('fs');const p=require('child_process').execSync('cygpath -w /tmp/cl.txt').toString().trim();\nlet s=fs.readFileSync('CHANGELOG.md','utf8');const c=fs.readFileSync(p,'utf8');\ns=s.replace('# Changelog\\n\\n','# Changelog\\n\\n'+c);fs.writeFileSync('CHANGELOG.md',s)\" && head -5 CHANGELOG.md | cut -c1-80 && git diff --stat && npm test 2>&1 | grep -E \"^.\\[34mℹ (tests|pass|fail|skipped)\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-157",
@@ -1434,7 +1434,7 @@
   "cmd": "cd /tmp/x/wt-p7b/plugins/pignolo && node -e '\nconst g=require(\"./lib/git-guard.js\");\nfor (const c of [\"git update-ref --stdin\",\"node /x/scripts/cleanup.js apply --proposal abc\",\"node /x/scripts/cleanup.js report\"]) console.log(c, JSON.stringify(g.evaluate(c,{})))' 2>&1 | cut -c1-250; grep -n \"cleanup\" lib/git-guard.js | head -5",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-158",
@@ -1533,7 +1533,7 @@
   "cmd": "cd /tmp/x/wt-h6 && node - <<'EOF'\nconst fs=require('fs');\nlet f='tests/archive.test.js';let t=fs.readFileSync(f,'utf8');\nt=t.replace(\"  fs.writeFileSync(path.join(store.stateDir(main, 'work'), `${id(30, 'broken')}.md`), '---\\\\nid: x');\",\"  fs.mkdirSync(store.stateDir(main, 'work'), { recursive: true });\\n  fs.writeFileSync(path.join(store.stateDir(main, 'work'), `${id(30, 'broken')}.md`), '---\\\\nid: x');\");\nt=t.replace(\"  assert.ok(!status.includes(id(20, 'fresh')), 'la no versionada no toca el índice de git');\",\"  assert.ok(!status.split('\\\\n').some((l) => /^[RDAM]/.test(l) && l.includes(id(20, 'fresh'))), 'la no versionada no toca el índice de git (queda como ?? en su destino)');\");\nfs.writeFileSync(f,t);\nf='tests/close-session.test.js';t=fs.readFileSync(f,'utf8');\nt=t.replace(\"  assert.ok(!status.includes('-fresh'));\",\"  assert.ok(!status.split('\\\\n').some((l) => /^[RDAM]/.test(l) && l.includes('-fresh')), 'la no versionada queda como ?? en archive/');\");\nfs.writeFileSync(f,t);\nEOF\ntimeout 400 node --test --test-reporter=dot tests/archive.test.js tests/close-session.test.js 2>&1 | grep -E \"✖\" | head",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-169",
@@ -1551,7 +1551,7 @@
   "cmd": "cd /tmp/x/wt-bs; node -e \"\nconst fs=require('fs');const s=require('./tests/bench/brainstorm/summary.json');console.log(s.runs.reduce((a,r)=>a+r.oracleUsd,0).toFixed(2), s.runs.reduce((a,r)=>a+r.costUsd,0).toFixed(2));\nlet f='tests/evals/RESULTS-brainstorm.md';let t=fs.readFileSync(f,'utf8');\nconst a='En B1 y B2 el autor contestó \\\"Ok.\\\" y el brazo dio por confirmado todo lo que había supuesto, incluido el consentimiento por proyecto del diseño viejo: B1 lo escribió como decisión del autor con la cita \\\"Ok.\\\" y cerró con una sola pregunta.';\nif(!t.includes(a))throw new Error('no');\nt=t.replace(a,'En B1 y B2 el autor contestó \\\"Ok.\\\" a ese resumen, que suponía el consentimiento por proyecto del diseño viejo. B1 lo dio por confirmado: lo escribió como decisión del autor con la cita \\\"Ok.\\\" y cerró con una sola pregunta. B2 se salvó porque volvió a poner el mismo supuesto en el lote, y ahí el autor lo corrigió.');\nfs.writeFileSync(f,t);\nf='docs/benchmarks.md';t=fs.readFileSync(f,'utf8');\nconst sec='## 2f. Brainstorm antes del spec: el paso de hoy o una skill con árbol de decisiones (2026-10-01)\\n\\nUn pedido real con verdad conocida (el lienzo \\\"Design\\\" de pignolo-ui y 10 decisiones que el autor tomó después), un autor simulado que solo contesta lo que se le pregunta, opus, 3 corridas por brazo.\\n\\n| Brazo | Preguntas al autor | Palabras del autor | Decisiones posteriores cubiertas (de 10) | Contrarias sin marcar | USD por corrida | Minutos |\\n|---|---|---|---|---|---|---|\\n| Paso 2 de hoy (una línea) | 4,3 | 88 | 5,0 (4 a 6) | 0,3 | 0,95 | 3,1 |\\n| Borrador de la skill `brainstorm` (55 líneas) | 2,7 | 72 | 3,3 (1 a 6) | 1,7 | 1,28 | 3,9 |\\n\\n**Lectura:** el borrador no ganó: cubrió menos decisiones y costó ≈ 35 % más. Tomó un \\\"ok\\\" a su resumen como confirmación y trató decisiones viejas del repo como hechos; su lote de supuestos fue lo que más rindió. Ningún brazo preguntó algo que el repo ya contestaba. Se queda el paso de hoy más las reglas baratas, y el borrador se corrige antes de volver a medir.\\n\\n**Comparabilidad:** un solo pedido, un autor simulado y 3 corridas por brazo, con una dispersión mayor que la diferencia: orden de magnitud. Conteo validado a mano. Gasto: 6,74 USD. Evidencia: [\\`RESULTS-brainstorm.md\\`](../tests/evals/RESULTS-brainstorm.md).\\n\\n';\nif(!t.includes('## 3. Agentes que revisan'))throw new Error('no3');\nfs.writeFileSync(f,t.replace('## 3. Agentes que revisan',sec+'## 3. Agentes que revisan'));\n\"; git status --short; npm test 2>&1 | grep -E \"^. (tests|pass|fail) \" ",
   "audit": "block:quoted-substitution",
   "base": "block:quoted-substitution",
-  "expect": "block:quoted-substitution"
+  "expect": "block:inline-code"
  },
  {
   "id": "ev-171",
@@ -1631,6 +1631,6 @@
   "cmd": "ls -la /tmp/x/exp34/ /tmp/x/revl2/ 2>&1 | grep -v \"^total\" | cut -c30-140; cd repo && git log --oneline -2 review/lienzo2 2>/dev/null | cut -c1-90; S=~/.claude/projects/proj/uuid/subagents; for a in abcdef012345 abcdef012345; do node /tmp/x/exp/usage.js $S/agent-$a.jsonl | cut -c1-60; node -e \"const o=JSON.parse(require('child_process').execFileSync('node',['/tmp/x/exp/usage.js','$S/agent-$a.jsonl']));console.log('$a',o.minutes,'min',o.lastContext,'ctx',o.last)\"; done 2>&1 | grep \"min\"",
   "audit": "block:inline-code",
   "base": "block:inline-code",
-  "expect": "allow"
+  "expect": "block:inline-code"
  }
 ]

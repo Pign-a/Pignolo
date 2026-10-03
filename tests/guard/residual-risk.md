@@ -63,8 +63,7 @@ Arreglado: borrar desde `node -e`, `python -c`, `ruby -e`, `perl -e`, `php -r` o
 | `git clean -f -n` | no es un escape | `-n` gana sobre `-f`: git solo lista. |
 | `git stash -m x` | no es un escape | Stash con etiqueta: la regla del spec niega solo el stash sin etiqueta. |
 | `git stash push -m x --keep-index` | no es un escape | Igual que el anterior. |
-| `node $(ls plugins/pignolo/hooks/launch*) toggle` | fuera de alcance | Falsificación del interruptor (§11.6): la guardia ve el launcher con la ruta escrita literal, o con una palabra dinámica en una línea que lo nombra (T4, H4). Un nombre armado (`launch*`, `printf` + `xargs -a`) pasa. Antes (ronda 3) pasaba también `node "$(find . -name launcher.js)" toggle`: desde T4 se niega. |
-| `echo '{}' \| node plugins/pignolo/hooks/launch*.js toggle` | fuera de alcance | Igual que el anterior. Ronda 3. |
+| `node $(ls plugins/pignolo/hooks/launch*) toggle` | fuera de alcance | Falsificación del interruptor (§11.6): la guardia ve el launcher con la ruta escrita literal, o con una palabra dinámica en una línea que lo nombra (T4, H4). Un nombre armado por una sustitución (`$(ls …/launch*)`, `printf` + `xargs -a`) pasa; un comodín escrito en la palabra (`node …/hooks/launch*.js toggle`) se niega desde la pasada RT2-07. Antes (ronda 3) pasaba también `node "$(find . -name launcher.js)" toggle`: desde T4 se niega. |
 | `git mv -f a.txt b.txt` | construido sin procedencia realista | Pisa `b.txt`; el uso realista de `-f` es cambiar mayúsculas en Windows (`git mv -f File.txt file.txt`), y negarlo sería un deny falso. Cubierto por la instantánea previa. Ronda 3. |
 | `vim -es -c '!git reset --hard' -c q` | construido sin procedencia realista | Un editor usado como intérprete. Ronda 3. |
 | `sqlite3 :memory: '.shell git reset --hard'` | construido sin procedencia realista | Igual que el anterior. Ronda 3. |

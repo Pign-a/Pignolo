@@ -72,3 +72,37 @@ test('claude plugin disable|uninstall|remove targeting pignolo is protected-flag
     assert.strictEqual(rule(cmd), null, cmd);
   }
 });
+
+// Pasada de arreglos de la revisión de la etapa 2 (RT2-05 a RT2-07): lista blanca de lectores del launcher, de destinos
+// dinámicos (variable simple) y de programas inocuos con un comodín. Protects: apagar la guardia o escribir .git por una
+// forma que la etapa abrió · Breaks if: un programa que no es lector recibe el launcher y pasa, o un destino con
+// sustitución o valor por defecto pasa.
+test('RT2: launcher readers pass, any other program or wrapper that receives it is denied', () => {
+  const L = 'plugins/pignolo/hooks/launcher.js';
+  for (const cmd of [`cat ${L}`, `grep -n toggle ${L}`, `head -5 ${L}`, `sed -n 1,40p ${L}`, `wc -l ${L}`, `git diff ${L}`, `git show HEAD:${L}`,
+    `awk 'NR<5' ${L}`, `rg x ${L}`, 'find . -name launcher.js']) {
+    assert.strictEqual(rule(cmd), null, cmd);
+  }
+  for (const cmd of [`yarn node ${L} toggle`, `nvm exec 22 node ${L} toggle`, `pm2 start ${L} -- toggle`, `cp ${L} /tmp/l.js`, `sed -i s/a/b/ ${L}`,
+    `awk 'BEGIN{system("x")}' ${L}`, `rg --pre ./x a ${L}`, 'find . -name launcher.js -exec node {} toggle \\;', 'node plugins/pignolo/hooks/launch*.js toggle']) {
+    assert.strictEqual(rule(cmd), 'pignolo-launcher', cmd);
+  }
+});
+
+test('RT2: a dynamic destination passes only as a simple variable', () => {
+  for (const cmd of ['echo x > "$OUT/a.txt"', 'cp a "$DEST"', 'tee "$F" < /dev/null']) assert.strictEqual(rule(cmd), null, cmd);
+  for (const cmd of ['echo x > "$(git rev-parse --git-dir)/config"', 'echo x > "${GIT_DIR:-.git}/config"', 'cp x "$(echo .git)/config"',
+    'install -D x "${D:-.git}/hooks/pre-commit"', 'tee "$(echo .git)/config" < /dev/null', 'ln -sf x "$(git rev-parse --git-dir)/config"',
+    'echo x > "$CLAUDE_PLUGIN_ROOT/lib/git-guard.js"', 'echo x > "$XDG_CONFIG_HOME/git/config"']) {
+    assert.notStrictEqual(rule(cmd), null, cmd);
+  }
+});
+
+test('RT2: option-style destinations, find/xargs placeholders, cd into .pignolo and unknown writers with a wildcard reach the flag', () => {
+  for (const cmd of ['install -D /dev/null .pig*/.disabled', 'cp -d x "$P/.pignolo/.disabled"', 'ln -d x .pig*/.disabled',
+    'find . -name .pignolo -exec touch {}/.disabled \\;', 'echo .pignolo | xargs -I% touch %/.disabled', 'cd .pignolo && touch *disabled*',
+    'cd .pignolo && echo x > "$X.disabled"', 'rsync -a x .pig*/.disabled', 'sqlite3 .pig*/.disabled "select 1"', 'cmake -E touch .pig*/.disabled']) {
+    assert.notStrictEqual(rule(cmd), null, cmd);
+  }
+  for (const cmd of ['cat .pig*/project.md', 'ls .pignolo/*', 'cp x .pignolo/state/a.md']) assert.strictEqual(rule(cmd), null, cmd);
+});

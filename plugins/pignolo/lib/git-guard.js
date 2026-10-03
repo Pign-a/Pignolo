@@ -719,7 +719,7 @@ function unwrap(name, spec, args, out, onExec) {
   if (spec.needsCode) return { done: true };
   let rest = args.slice(i);
   if (!rest.length) return spec.empty ? { words: [word(spec.empty)] } : { done: true };
-  if (repl) rest = rest.map((w) => (w.value.includes(repl) ? { ...w, dyn: true, dynAt: Math.min(w.dyn ? w.dynAt : Infinity, w.value.indexOf(repl)) } : w));
+  if (repl) rest = rest.map((w) => (w.value.includes(repl) ? { ...w, value: w.value.split(repl).join('{}'), dyn: true, dynAt: Math.min(w.dyn ? w.dynAt : Infinity, w.value.indexOf(repl)) } : w));
   if (spec.appendDyn) rest = rest.concat(dynWord());
   if (spec.joined && rest.length > 1 && !rest.some((w) => w.dyn)) return { code: word(rest.map((w) => w.value).join(' ')) };
   return { words: rest, chdir, gitRedirect };
@@ -934,12 +934,21 @@ function isFlag(p, ctx) {
 // settings*.json, hooks.json y plugins/ son escritura protegida (protected-path: apagan la guardia en la
 // sesión siguiente).
 const DYN_FLAG = /(^|\/)(\.pignolo(\/|$)|\.?disabled$)/i;
+// Nombres que, aunque aparezcan solo en el literal o en el nombre de una variable, hacen sospechoso un destino dinámico.
+const DYN_SENSITIVE = /(^|[^\w])\.git(?![\w-])|\.gitconfig|\.pignolo|(^|\/)pignolo(\/|$)|CLAUDE_(?!JOB_DIR)|\bGIT_|XDG_CONFIG|\.claude|settings[^/]*\.json|hooks\.json|(^|\/)plugins(\/|$)|(^|\/)\.?disabled$|(^|\/)git\/(config|hooks)|\bAPPDATA\b/i;
 const DYN_PROTECTED = /(^|\/)(\.gitconfig$|\.claude(\/|$)|settings[^/]*\.json$|hooks\.json$|plugins\/)/i;
 // Destino de una redirección: flags, rutas protegidas y destinos dinámicos.
 function checkWriteTarget(w, st, ctx, out) {
   if (w.dyn) {
+    // Lista blanca (RT2-05): pasa solo si la parte dinámica es una variable simple ($X, ${X}, $env:X) y ni lo literal ni
+    // el nombre de la variable nombran nada protegido. Una sustitución, una expansión con valor por defecto o con
+    // operador, aritmética, ANSI-C o backtick no se pueden leer: se niega.
+    const dv = String(w.value);
+    if (/\$[({']|`|[<>]\(|\$\{(?![A-Za-z_]\w*\})/.test(dv)) { out.push(hit(/\.pignolo|disabled/i.test(dv) ? 'protected-flag' : 'protected-path')); return; }
     const lit = cleanPath(w.value);
+    if (/(^|[\\/])[^\\/]*\.?disabled$/i.test(dv) && cwdIsPignolo(st, ctx)) { out.push(hit('protected-flag')); return; }
     if (DYN_FLAG.test(lit)) { out.push(hit('protected-flag')); return; }
+    if (DYN_SENSITIVE.test(dv.replace(/\\/g, '/'))) { out.push(hit(/\.pignolo|disabled/i.test(dv) ? 'protected-flag' : 'protected-path')); return; }
     // Un destino dinámico que nombra .git sigue siendo deny (conjunto catastrófico).
     if (GIT_DIR_RE.test(lit) || DYN_PROTECTED.test(lit)) { out.push(hit('protected-path')); return; }
     const prefix = w.dynAt > 0 ? w.value.slice(0, w.dynAt).replace(/\\/g, '/') : '';
@@ -969,11 +978,13 @@ const FLAG_PATHS = [['.pignolo', 'disabled'], ['.pignolo', '.disabled'], ['pigno
 function globSegment(seg) {
   return new RegExp('^' + [...seg.replace(/\[[^\]]*\]/g, '?')].map((c) => (c === '*' ? '[^/]*' : c === '?' ? '[^/]' : c.replace(/[\\^$.+(){}|\]-]/g, '\\$&'))).join('') + '$', 'i');
 }
-function flagReachable(w) {
+function flagReachable(w, inPignolo) {
   let segs = String(w.value).replace(/^[A-Za-z-]+=/, '').replace(/\\/g, '/').split('/');
   const lead = segs[0] === '' || segs[0] === '~' || /^[A-Za-z]:$/.test(segs[0]) || /[$`]/.test(segs[0]) || segs.find((s) => s !== '' && s !== '.') === '..';
-  segs = segs.filter((s) => s !== '' && s !== '.').map((s) => (s === '..' || s === '~' || /^[A-Za-z]:$/.test(s) || /[$`]/.test(s) ? '**' : s));
+  segs = segs.filter((s) => s !== '' && s !== '.').map((s) => (s === '..' || s === '~' || /^[A-Za-z]:$/.test(s) || /[$`]/.test(s) || s.includes('{}') ? '**' : s));
   if (lead && segs[0] !== '**') segs.unshift('**');
+  // El cwd conocido es .pignolo (tras `cd .pignolo`): un patrón relativo cuelga de ahí (RT2-06c).
+  else if (inPignolo) segs.unshift('.pignolo');
   segs = segs.filter((s, i) => !(s === '**' && segs[i - 1] === '**'));
   if (!segs.some((s) => s !== '**')) return false;
   const res = segs.map((s) => (s === '**' ? null : globSegment(s)));
@@ -988,9 +999,14 @@ function flagReachable(w) {
   };
   // Las partes de un nombre armado en una subexpresión (Join-Path .pignolo '.disabled') no son tramos: si el texto
   // nombra pignolo y disabled, cuenta.
-  if (/[s()]/.test(String(w.value)) && /pignolo/i.test(w.value) && /disabled/i.test(w.value)) return true;
+  if (/[$()]/.test(String(w.value)) && /pignolo/i.test(w.value) && /disabled/i.test(w.value)) return true;
   // Los ancestros del flag no se conocen; el patrón tiene que cubrir al menos hasta `.pignolo`.
   return FLAG_PATHS.some((t) => { const full = ['', '', '', '', ...t]; for (let j = 0; j <= full.length - 2; j++) if (match(0, full, j, false)) return true; return false; });
+}
+
+// ¿El directorio actual (cualquiera de los posibles) es .pignolo, el del proyecto o el del HOME?
+function cwdIsPignolo(st, ctx) {
+  return resolveAll('.', st, ctx).some((p) => /(^|\/)\.?pignolo$/.test(p));
 }
 
 // Argumentos de comandos que no solo leen: el flag del interruptor, y las rutas
@@ -1000,10 +1016,16 @@ function checkPathArgs(name, args, st, ctx, out) {
   const writes = WRITE_CMDS.has(name);
   // Copiar solo escribe en el destino: leer de una ruta protegida (una transcripción
   // de ~/.claude/projects, .git/config) no es escribirla.
-  const dest = COPY_CMDS.has(name) ? copyDest(args) : null;
+  const dest = COPY_CMDS.has(name) ? copyDest(args, name) : null;
   if (dest && !args.includes(dest)) checkWriteTarget(dest, st, ctx, out); // --target-directory=<dir>
   for (const w of args) {
     if (w.kind === 'scriptblock' || w.kind === 'param') continue;
+    // T5 (RT2-05): el destino dinámico de cp/install/ln/tee/mv/Set-Content... pasa solo si es una variable simple.
+    if (w.dyn && !/^[<>]\(/.test(w.value) && DYN_DEST_CMDS.has(name) && (!dest || w === dest) && !(MOVE_CMDS.has(name) && w !== mvDest(args))) {
+      const before = out.length;
+      checkWriteTarget(w, st, ctx, out);
+      if (out.length > before) return;
+    }
     if (dest && w !== dest && !w.dyn && !w.glob) {
       if (resolveAll(w.value, st, ctx).some((p) => isFlag(p, ctx))) { out.push(hit('protected-flag')); return; }
       continue;
@@ -1012,8 +1034,10 @@ function checkPathArgs(name, args, st, ctx, out) {
       // T6 (R-11): solo programas que escriben o borran, de cp/install/ln solo el destino (las fuentes se leen;
       // en mv la fuente se borra, así que cuenta), y solo si el patrón puede alcanzar el flag.
       if (dest && w !== dest) continue;
-      if (!(WRITE_CMDS.has(name) || DISCARD_PROGS.has(name))) continue;
-      if (flagReachable(w)) { out.push(hit('protected-flag')); return; }
+      // La lista de escritores es la de lo que no se sabe inocuo (RT2-06): un programa desconocido con un comodín que
+      // alcanza el flag se niega; solo los inertes conocidos pasan.
+      if (INERT.has(name) || INTERP.has(name) || SHELLS.has(name) || PWSH.has(name)) continue; // el código de un intérprete lo mira el escáner inline
+      if (flagReachable(w, cwdIsPignolo(st, ctx))) { out.push(hit('protected-flag')); return; }
       continue;
     }
     const all = resolveAll(w.value, st, ctx);
@@ -1029,31 +1053,77 @@ function checkPathArgs(name, args, st, ctx, out) {
 // Destino de cp/install/ln/Copy-Item: -t/--target-directory/-Destination o el último
 // operando; null si no se puede saber (entonces todos los operandos cuentan).
 const COPY_CMDS = new Set(['cp', 'copy', 'copy-item', 'cpi', 'install', 'ln']);
-function copyDest(args) {
+// Programas cuyo operando (o su destino) se escribe: un destino dinámico pasa solo como variable simple (T5).
+const MOVE_CMDS = new Set(['mv', 'move', 'move-item', 'mi']);
+const DYN_DEST_CMDS = new Set([...COPY_CMDS, 'tee', 'set-content', 'sc', 'add-content', 'ac', 'out-file', 'new-item', 'ni', 'tee-object', 'truncate', ...MOVE_CMDS]);
+function mvDest(args) { const ops = operands(args); return ops.length > 1 ? ops[ops.length - 1] : null; }
+
+function copyDest(args, name) {
+  const psCopy = name === 'copy-item' || name === 'cpi' || name === 'copy';
   for (let i = 0; i < args.length; i++) {
     const v = args[i].value;
     if (args[i].dyn) continue;
-    if (/^(-t|--target-directory|-d|-de|-des|-dest|-desti|-destin|-destina|-destinat|-destinati|-destinatio|-destination)$/i.test(v)) return args[i + 1] || null;
+    if (/^(-t|--target-directory)$/.test(v)) return args[i + 1] || null;
+    // -d / -Destination son del Copy-Item de PowerShell; en cp, install y ln `-d` / `-D` son opciones sin valor (RT2-06).
+    if (psCopy && /^(-d|-de|-des|-dest|-desti|-destin|-destina|-destinat|-destinati|-destinatio|-destination)$/i.test(v)) return args[i + 1] || null;
     if (/^--target-directory=/.test(v)) return { ...args[i], value: v.slice(v.indexOf('=') + 1) };
   }
   const ops = operands(args);
   return ops.length > 1 ? ops[ops.length - 1] : null;
 }
 
-// Solo cuenta ejecutar el launcher, no leerlo (T4): el programa mismo es el launcher, o un programa que ejecuta
-// sus operandos (intérprete, shell, source, Start-Process...) lo recibe como operando. cat, sed, grep, git diff,
-// cp, wc o un for no lo ejecutan. `node --check` solo mira la sintaxis (R-18).
-const LAUNCHER_EXEC = new Set([...INTERP, ...SHELLS, ...PWSH, 'source', '.', 'tsx', 'ts-node', 'nodemon', 'electron',
-  'start-process', 'saps', 'start', 'invoke-item', 'ii', 'invoke-command', 'icm']);
+// Leer el launcher pasa solo con una lista blanca de lectores (T4, RT2-07); cualquier otro programa que lo reciba
+// (un intérprete, una shell, un envoltorio que no se desarma como yarn / nvm / volta / pm2, cp, ln...) o un comodín
+// que lo alcance se niega. `node --check` solo mira la sintaxis (R-18). Los lectores no ejecutan sus operandos; un
+// `for`, un `test` o un `echo` tampoco.
+const LAUNCHER_READERS = new Set(['cat', 'type', 'head', 'tail', 'less', 'more', 'grep', 'egrep', 'fgrep', 'rg', 'findstr', 'wc',
+  'get-content', 'gc', 'select-string', 'sls', 'diff', 'cmp', 'sha1sum', 'sha256sum', 'sha512sum', 'md5sum', 'file', 'stat', 'ls', 'dir',
+  'get-childitem', 'gci', 'for', 'case', 'select', 'test', '[', '[[', 'echo', 'printf', 'basename', 'dirname', 'realpath', 'readlink']);
+const LAUNCHER_GIT_READS = new Set(['show', 'diff', 'log', 'blame', 'add', 'status', 'ls-files', 'cat-file', 'grep']);
 const LAUNCHER_TEXT = /launcher\.js/i;
+// Un comodín o una variable que puede casar con `launcher.js` en el último tramo (con algún carácter literal) y cuyo
+// directorio es hooks o desconocido.
+function globReachesLauncher(w) {
+  if (!w.glob && !w.dyn) return false;
+  const segs = String(w.value).replace(/\\/g, '/').split('/');
+  const last = segs.pop().replace(/\$\{?[A-Za-z_]\w*\}?|\$\(\)|\$/g, '*');
+  if (!/[*?[]/.test(last) || !/[^*?[\]]/.test(last.replace(/\[[^\]]*\]/g, ''))) return false;
+  if (!globSegment(last).test('launcher.js')) return false;
+  return segs.length === 0 || segs.some((x) => x === '' || x === '.' || x === '..' || x === '~' || /[$*?[]/.test(x) || /^hooks$/i.test(x) || /^[A-Za-z]:$/.test(x) || globSegment(x).test('hooks'));
+}
+function launcherReadOk(name, words, w) {
+  const args = words.slice(1);
+  if (name === 'rg' && args.some((x) => /^--pre/.test(x.value))) return false;
+  if ((name === 'rg' || name === 'grep' || name === 'egrep' || name === 'fgrep') && args.some((x) => /^--(pre|exec)/.test(x.value))) return false;
+  if (LAUNCHER_READERS.has(name)) return true;
+  if (name === 'find') return !words.some((x) => DISCARD_FIND.has(x.value) || /^-(exec|ok)/.test(x.value));
+  if (name === 'git') {
+    const sub = args[0];
+    return Boolean(sub) && !sub.dyn && LAUNCHER_GIT_READS.has(sub.value) && !args.some((x) => /^--(output|ext-diff|open-files-in-pager|exec)/.test(x.value));
+  }
+  if (name === 'sed') {
+    const flags = args.filter((x) => !x.dyn && /^-[A-Za-z-]/.test(x.value));
+    if (!flags.length || !flags.some((x) => /^-[A-Za-z]*n/.test(x.value) && !x.value.startsWith('--')) || flags.some((x) => /^(--in-place|-[A-Za-z]*[iesf]|--expression|--file|--script)/.test(x.value))) return false;
+    const script = args.find((x) => !x.dyn && !x.value.startsWith('-'));
+    return Boolean(script) && script !== w && /^(\d+|\$)?(,(\d+|\$))?p$|^\/[^/;{}]*\/p$/.test(script.value);
+  }
+  if (AWK.has(name)) {
+    if (args.some((x) => x.dyn || /^-(f|i|e|E)|^--(file|include|source|exec|load)/.test(x.value))) return false;
+    const script = args.find((x) => !x.value.startsWith('-'));
+    return Boolean(script) && script !== w && !/system|getline|[|>]|close\s*\(|fflush/.test(script.value);
+  }
+  return false;
+}
 function checkLauncher(name, words, st, ctx, out) {
   const isLauncher = (w) => {
+    if (globReachesLauncher(w)) return true;
     const p = w.dyn ? null : resolveAt(w.value, st, ctx);
     return p === null ? /(^|[\\/])launcher\.js$/i.test(w.value) : LAUNCHER_RE.test(p);
   };
   for (let i = 0; i < words.length; i++) {
     const w = words[i];
-    if (!isLauncher(w) || !(i === 0 || LAUNCHER_EXEC.has(name))) continue;
+    if (!isLauncher(w)) continue;
+    if (i > 0 && launcherReadOk(name, words, w)) return;
     const statusForm = name === 'node' && words.length === 3 && w === words[1] && words[2].value === 'session-start' && !words[2].dyn;
     // node --check <launcher>: sin otra opción (un -r precargaría código) y con el launcher como último operando.
     const checkForm = (name === 'node' || name === 'nodejs') && i > 1 && i === words.length - 1 &&
