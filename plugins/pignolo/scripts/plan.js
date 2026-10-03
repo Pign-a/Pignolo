@@ -7,7 +7,8 @@
 //   claims set --file <claims.json> | --none-reason <texto>
 //   claims resolve --id <K> --status <estado> [--source <s>] [--by <quién>] [--note <t>] [--superseded]
 //   claims check                       (exit 1 si queda alguna sin cerrar)
-//   scope-card save --file <md> | approve --quote-file <f> | status
+//   scope-card save --file <md> | approve --quote-file <f> [--cap-usd <n>] | status
+//        (save deja la aprobación como decisión en "Te toca" del panel; approve la cierra y, con --cap-usd, guarda el tope de gasto del hito)
 //   decision add --id D-<n> --text-file <f> --quote-file <f> [--date AAAA-MM-DD]   (decisión de diseño del autor, con su cita)
 //   decision list                      (las decisiones registradas del plan)
 //   tasks set --file <tasks.json>
@@ -18,6 +19,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
+const { panelDo } = require('../lib/panel-hook');
 require('../lib/panel-hook').panelRefreshOnExit();
 const ps = require('../lib/plan-state');
 const decisions = require('../lib/decisions');
@@ -34,7 +36,7 @@ const VERBS = {
   'claims resolve': { value: ['plan', 'id', 'status', 'source', 'by', 'note', 'cwd'], bool: ['superseded'], need: ['plan', 'id', 'status'] },
   'claims check': { value: ['plan', 'cwd'], need: ['plan'] },
   'scope-card save': { value: ['plan', 'file', 'cwd'], need: ['plan', 'file'] },
-  'scope-card approve': { value: ['plan', 'quote-file', 'cwd'], need: ['plan', 'quote-file'] },
+  'scope-card approve': { value: ['plan', 'quote-file', 'cap-usd', 'cwd'], need: ['plan', 'quote-file'] },
   'scope-card status': { value: ['plan', 'cwd'], need: ['plan'] },
   'decision add': { value: ['plan', 'id', 'text-file', 'quote-file', 'date', 'cwd'], need: ['plan', 'id', 'text-file', 'quote-file'] },
   'decision list': { value: ['plan', 'cwd'], need: ['plan'] },
@@ -119,10 +121,21 @@ function run(verb, o, main) {
     case 'scope-card save': {
       const r = ps.saveScopeCard({ ...base, text: readText(o.file, '--file') });
       if (!r.ok) { out({ ok: false, errors: r.errors || [r.error] }); throw new Fail(r.error); }
+      panelDo(main, (panel) => panel.ask(main, {
+        key: `scope-card:${o.plan}`, question: `¿Aprobás la tarjeta de alcance de ${o.plan}?`,
+        options: [{ label: 'aprobar' }, { label: 'pedir cambios' }], recommended: 'aprobar',
+        context: 'Se aprueba con tus palabras en el chat; sin eso no se ejecuta nada.',
+      }));
       return out({ ok: true, state: ps.scopeCardState(base) });
     }
     case 'scope-card approve':
+      if (o['cap-usd'] !== undefined && !(Number(o['cap-usd']) > 0)) throw new Usage('--cap-usd debe ser un número mayor que 0');
       must(ps.approveScopeCard({ ...base, quote: readText(o['quote-file'], '--quote-file').trim() }));
+      // la tarjeta aprobada cierra su decisión del panel y guarda el tope de gasto que el autor aprobó con ella
+      panelDo(main, (panel) => {
+        panel.answer(main, { key: `scope-card:${o.plan}`, answer: 'aprobar' });
+        if (o['cap-usd'] !== undefined) panel.setBudget(main, { hito: o.plan, spent: 0, cap: Number(o['cap-usd']) });
+      });
       return out({ ok: true, state: ps.scopeCardState(base) });
     case 'scope-card status':
       must(ps.readPlan(base));

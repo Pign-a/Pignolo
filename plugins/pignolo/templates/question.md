@@ -26,3 +26,13 @@ the order they were found in. Each one says what happens, its cost and whether i
 - <"Context" label>: <at most 2 lines>.
 - <"Evidence" label>: <commands run, files and lines, script output (risk hits, gate status, ledger ids)>.
 - <"Cost and reversibility" label>: <per option, one line each>.
+
+<!--
+Panel (optional, the author's pignolo-panel mod): a question that ends your turn waiting for the human is also written to the
+panel, one line, so it shows under "Te toca":
+  node "<P>/scripts/panel.js" ask --key "<flow>:<short name>" --question "<the question, one line>" --option "<label 1>" --option "<label 2>" --recommended "<label 1>" --cwd "<main>"
+The question and each option are one line (at most 300 and 80 characters); the script refuses line breaks and control characters.
+When the human answers in the chat, close it:
+  node "<P>/scripts/panel.js" answer --key "<flow>:<same short name>" --answer "<the label they chose, or Otra>" --cwd "<main>"
+A message that starts with "Respuesta a la decisión Q-<n>" is the panel's own answer: a hook closes it, do not repeat it.
+-->

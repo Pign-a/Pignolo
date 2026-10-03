@@ -37,6 +37,17 @@ function panelEvidence(cwd, card, fields) {
   } catch (_) { /* idem */ }
 }
 
+// Escribe un evento en el registro desde un script de pignolo (una decisión, una respuesta, una rama que espera, el tope). Protegido
+// como el resto: un fallo del registro nunca cambia lo que el script hace ni su código de salida. `fn(panel, main)`.
+function panelDo(cwd, fn) {
+  try {
+    const { mainRoot } = require('./disabled');
+    const main = mainRoot(cwd || process.cwd());
+    if (!fs.existsSync(path.join(main, '.pignolo', 'project.md'))) return null;
+    return fn(require('./panel-state'), main);
+  } catch (_) { return null; }
+}
+
 // La tarjeta (id de tarea) cuyo worktree es `dir`, según run.json.
 function cardOfWorktree(cwd) {
   try {
@@ -49,4 +60,4 @@ function cardOfWorktree(cwd) {
   } catch (_) { return null; }
 }
 
-module.exports = { panelRefreshOnExit, panelEvidence, cardOfWorktree };
+module.exports = { panelRefreshOnExit, panelEvidence, panelDo, cardOfWorktree };

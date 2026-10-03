@@ -1,4 +1,5 @@
 'use strict';
+const fs = require('node:fs');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { readState, mainRoot } = require('../../lib/disabled');
@@ -127,6 +128,13 @@ exports.run = (input, ctx = {}) => {
       const { projectState } = require('../../lib/project');
       const proj = projectState({ cwd, env });
       if (proj.active) {
+        // Las decisiones que close-session dejó pospuestas vuelven a "Te toca" al empezar la sesión siguiente (RP-06). Callado.
+        if (['startup', 'resume', 'clear'].includes(input.source)) {
+          try {
+            const panel = require('../../lib/panel-state');
+            if (fs.existsSync(panel.fileOf(proj.main))) panel.reopenPostponed(proj.main);
+          } catch (_) { /* el registro nunca rompe el arranque */ }
+        }
         const line = require('../../lib/branch-cleanup').noticeLine({ main: proj.main, opts: ctx.cleanupOpts, budgetMs: ctx.cleanupBudgetMs });
         if (line) lines.push(line);
       }
