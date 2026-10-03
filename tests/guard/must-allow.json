@@ -318,5 +318,137 @@
  {
   "shell": "powershell",
   "command": "Select-String -Path plugins/pignolo/scripts/places.js -Pattern undo"
+ },
+ {
+  "shell": "bash",
+  "command": "cat -n plugins/pignolo/hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,60p hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "grep -n \"deadlineFor\" -A12 plugins/pignolo/hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "git diff main..HEAD -- plugins/pignolo/hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "git show HEAD:plugins/pignolo/hooks/launcher.js | head"
+ },
+ {
+  "shell": "bash",
+  "command": "wc -l hooks/launcher.js; head -5 hooks/launcher.js"
+ },
+ {
+  "shell": "bash",
+  "command": "for f in hooks/launcher.js hooks/handlers/guard.js; do wc -l $f; done"
+ },
+ {
+  "shell": "bash",
+  "command": "node --check hooks/launcher.js"
+ },
+ {
+  "shell": "powershell",
+  "command": "Get-Content plugins\\pignolo\\hooks\\launcher.js | Select-String deadline"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > $OUT"
+ },
+ {
+  "shell": "bash",
+  "command": "npm test > \"$LOG\" 2>&1"
+ },
+ {
+  "shell": "bash",
+  "command": "D=$(mktemp -d); echo x > $D/a"
+ },
+ {
+  "shell": "bash",
+  "command": "for f in a b; do git show HEAD:$f > $f; done"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$OUT/pignolo-notes.txt\""
+ },
+ {
+  "shell": "bash",
+  "command": "node build.js > \"$ROOT/out/build.log\" 2>&1"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x >> $LOG"
+ },
+ {
+  "shell": "powershell",
+  "command": "git status > $log"
+ },
+ {
+  "shell": "bash",
+  "command": "cd repo && nproc; for i in 1 2 3 4; do node probe2.mjs kill > ../p$i.txt 2>&1 & done; wait; cat ../p1.txt ../p2.txt"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,5p .pignolo/state/*.md"
+ },
+ {
+  "shell": "bash",
+  "command": "cp .pignolo/tmp/task-*.md /tmp/"
+ },
+ {
+  "shell": "bash",
+  "command": "pytest tests/test_disabled*"
+ },
+ {
+  "shell": "bash",
+  "command": "for f in src/disabled-*.tsx; do wc -l $f; done"
+ },
+ {
+  "shell": "bash",
+  "command": "touch *disabled*"
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 1,60p plugins/pignolo/scripts/$(ls plugins/pignolo/scripts | head -1)"
+ },
+ {
+  "shell": "powershell",
+  "command": "Copy-Item .pignolo\\tmp\\task-*.md ..\\out"
+ },
+ {
+  "shell": "bash",
+  "command": "touch \"$OUT/disabled.txt\""
+ },
+ {
+  "shell": "bash",
+  "command": "touch \"$f\""
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"const fs=require('fs');let s=fs.readFileSync('README.md','utf8');s=s.replace('use git status','use git status -sb');fs.writeFileSync('README.md',s)\""
+ },
+ {
+  "shell": "bash",
+  "command": "python3 - <<'EOF'\ns=open('a.py').read()\ns=s.replace('const x = git','const x = git2')\nopen('a.py','w').write(s)\nEOF"
+ },
+ {
+  "shell": "bash",
+  "command": "awk -F'|' '{print $2 \"|\" $3}' file.txt"
+ },
+ {
+  "shell": "powershell",
+  "command": "node -e \"const fs=require('fs');fs.writeFileSync('a.txt','use git status')\""
+ },
+ {
+  "shell": "bash",
+  "command": "sed -n 13,28p r.md | awk -F'|' '{print $2 \"|\" $(NF-3) \"|\" $(NF-2)}' | cut -c1-300"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"// execSync('git status') en un comentario\nconsole.log(1)\""
  }
 ]
