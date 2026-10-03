@@ -16,7 +16,8 @@ const DEADLINES_MS = { 'session-start': 25000 };
 // Hooks que nunca niegan (R-5 del hito 6): SubagentStart no puede bloquear según la doc del
 // host; un exit 2 solo mostraría un aviso engañoso y perdería la inyección. Ante un fallo o
 // un plazo vencido: motivo a stderr y exit 0.
-const FAIL_OPEN = new Set(['subagent-start']);
+// panel-answer (UserPromptSubmit) tampoco es una compuerta: solo anota la respuesta de una decisión del panel.
+const FAIL_OPEN = new Set(['subagent-start', 'panel-answer']);
 
 // D-G3: al vencer el plazo, estos hooks de comando dejan pasar uno de solo lectura por estructura (lib/read-only.js). El
 // resto (private-reads, plan-audit-gate: limitan lo que lee un subagente) sigue negando. Una sola constante para el aviso.

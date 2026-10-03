@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
 const { runGate, LEVELS, DEFAULT_TIMEOUT_MS } = require('../lib/gate');
 const { mainRoot } = require('../lib/disabled');
+require('../lib/panel-hook').panelRefreshOnExit();
 const { readRun, taskList, taskById } = require('../lib/project');
 
 const ALTERNATIVES = {
@@ -84,6 +85,8 @@ function main() {
     timeoutMs: o.timeoutMin ? o.timeoutMin * 60000 : DEFAULT_TIMEOUT_MS,
   });
   process.stdout.write(`${JSON.stringify(seal, null, 2)}\n`);
+  // Evidencia verde para el panel (una línea; no cambia nada del resultado).
+  if (seal.status === 'PASS' && task) require('../lib/panel-hook').panelEvidence(cwd, task.id, { green: `verde (${o.level})` });
   if (seal.status !== 'PASS') {
     if (seal.logTail) process.stderr.write(`${seal.logTail}\n`);
     const w = seal.status === 'INTEGRITY' && seal.checks.weakened[0];

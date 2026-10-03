@@ -261,3 +261,22 @@ test('I-3: on main, with the registry committed only in int/p1, next still finds
   assert.strictEqual(n.kind, 'plan-scope-card');
   assert.match(n.text, /El plan p1 está en la etapa scope-card/);
 });
+
+test('next.js: the JSON keeps kind, text and facts as before and adds suggest', () => {
+  const repo = makeRepo();
+  const r = spawnSync(process.execPath, [CLI, '--cwd', repo], { encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  const j = JSON.parse(r.stdout);
+  assert.deepStrictEqual([j.kind, j.text, j.facts, j.plans], ['nothing', '', [], []]);
+  assert.deepStrictEqual(j.suggest, { none: 'nothing' });
+  // con una rama sin revisar, suggest trae la regla y el texto; sigue sin crear archivos
+  git(['checkout', '-q', '-b', 'task/p/01-x'], repo);
+  fs.writeFileSync(path.join(repo, 'n.txt'), 'n');
+  git(['add', 'n.txt'], repo);
+  git(['commit', '-q', '-m', 'x'], repo);
+  git(['checkout', '-q', 'main'], repo);
+  const j2 = JSON.parse(spawnSync(process.execPath, [CLI, '--cwd', repo], { encoding: 'utf8' }).stdout);
+  assert.strictEqual(j2.suggest.rule, 'review');
+  assert.strictEqual(j2.suggest.prompt, 'revisá task/p/01-x');
+  assert.ok(!fs.existsSync(path.join(repo, '.pignolo')));
+});

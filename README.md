@@ -46,6 +46,10 @@ O dentro de Claude Code: `/plugin marketplace add Pign-a/Pignolo` y `/plugin ins
 
     npm test
 
+## Panel (opcional)
+
+`pignolo-panel` es un plugin aparte, de solo lectura, para Claude Code 2.1.287 o más nuevo: una banda sobre el prompt y un panel `/pignolo-panel` con el siguiente paso, las decisiones que son tuyas (se contestan desde el panel), las ramas y el costo. Lee `.pignolo/panel-state.json`, que escribe pignolo y no va a git. Sin el panel, pignolo anda igual y `/pignolo:status` muestra el mismo estado en texto. Detalles en `plugins/pignolo-panel/README.md`.
+
 ## Agentes y setup
 
 El plugin trae 18 agentes con herramientas, esfuerzo y modelo fijados por rol (`plugins/pignolo/lib/roles.js`). Los despachan las skills con una tarjeta de tarea; no se usan directo.

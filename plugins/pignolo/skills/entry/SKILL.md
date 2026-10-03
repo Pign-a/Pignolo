@@ -9,6 +9,10 @@ You are the orchestrator in the main conversation. Speak to the human in their l
 
 Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/templates/question.md`: first "in plain words" (1 to 3 lines, no jargon, no paths, no counts), then the technical detail. One step per message, at most one question, and every question carries one category from the closed list in that template. Every count, path and status you state comes from a script's JSON output, never from memory.
 
+## A panel answer
+
+A message that starts with `Respuesta a la decisión Q-<n>` is the human's own answer to a decision shown in the optional panel (a hook records it). Treat it as a literal quote of theirs, not as a new request: if it settles a design decision, `plan.js decision add` uses it as `--quote-file`; otherwise act on it as the answer to the question it carries and do not open a new lane for it.
+
 ## Steps
 
 1. **Is pignolo on here?** Find the project root: the nearest directory upward that holds `.pignolo/project.md` (stop at the first one that holds `.git`). If there is none, or `.pignolo/.disabled` exists there, pignolo is not active: say so in one line and handle the request normally, without pignolo's flows. Call that root `<main>` (for a git worktree, the main checkout that owns it).

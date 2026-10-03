@@ -94,7 +94,7 @@ test('applyIgnores: creates, completes a tracked file, is idempotent; tracked is
   const repo = makeRepo();
   const s = A.applyIgnores({ root: repo });
   assert.equal(s.status, 'done');
-  assert.deepEqual(s.added, ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/']);
+  assert.deepEqual(s.added, ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/', 'panel-state.json']);
   assert.equal(s.tracked, false);
   assert.throws(() => git(['add', '.pignolo/.gitignore'], repo), 'git add of the self-ignored file fails (C-07)');
   assert.deepEqual(A.applyIgnores({ root: repo }).added, []);
@@ -105,13 +105,13 @@ test('applyIgnores: creates, completes a tracked file, is idempotent; tracked is
   git(['add', '-f', '.pignolo/.gitignore'], tracked);
   git(['commit', '-q', '-m', 'ign'], tracked);
   const t = A.applyIgnores({ root: tracked });
-  assert.deepEqual(t.added, ['tmp/', 'worktrees/']);
+  assert.deepEqual(t.added, ['tmp/', 'worktrees/', 'panel-state.json']);
   assert.equal(t.tracked, true);
   assert.equal(t.trackedModified, true);
 });
 
 test('PIGNOLO_IGNORED is the former run.js list and run.js start does not touch an init-ed .gitignore', () => {
-  assert.deepEqual([...PIGNOLO_IGNORED], ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/']);
+  assert.deepEqual([...PIGNOLO_IGNORED], ['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/', 'panel-state.json']);
   const repo = makeRepo();
   A.applyIgnores({ root: repo });
   git(['add', '-f', '.pignolo/.gitignore'], repo);

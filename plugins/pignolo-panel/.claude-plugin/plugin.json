@@ -1,0 +1,23 @@
+{
+  "name": "pignolo-panel",
+  "version": "0.1.0",
+  "description": "Panel visual de solo lectura para pignolo: siguiente paso, decisiones tuyas, ramas y costo. Requiere Claude Code 2.1.287 o más nuevo.",
+  "author": {
+    "name": "Ignacio"
+  },
+  "userConfig": {
+    "demo": {
+      "type": "boolean",
+      "title": "Modo demo",
+      "description": "Muestra datos de muestra en vez de los del proyecto (Claude Code 2.1.287 o más nuevo)",
+      "default": false
+    },
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Abrir el panel solo",
+      "description": "Abre el panel una vez cuando aparece una decisión nueva tuya, si la terminal tiene 144 columnas o más (110 después de la primera vez). Apagalo para abrirlo vos con /pignolo-panel. Requiere Claude Code 2.1.287 o más nuevo.",
+      "default": true
+    }
+  },
+  "license": "MIT"
+}
