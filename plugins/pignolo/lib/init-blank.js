@@ -1,6 +1,6 @@
 'use strict';
 // ¿El proyecto está en blanco? (decisión del autor D-1, 2026-10-02). Conservador: solo es blanco si todo lo que hay en el
-// disco es una herramienta conocida (.git, .claude, .pignolo, .gitignore, .gitattributes), un documento simple de la raíz
+// disco es una herramienta conocida o archivo de editor/sistema (.git, .claude, .pignolo, .gitignore, .gitattributes, .vscode, .idea, .editorconfig, .DS_Store, Thumbs.db, desktop.ini, .gitkeep), un documento simple de la raíz
 // (README, LICENSE...) o un README del esqueleto de init. Todo lo demás (código, manifiestos, archivos o carpetas ocultos
 // desconocidos, carpetas desconocidas, enlaces, junctions, otros markdown) lo impide: ante la duda no es blanco (RI-01). No lee contenido
 // ni usa git (git no ve lo ignorado ni lo que no tiene commits). Si no puede leer la raíz, lanza: el que llama falla cerrado.
@@ -20,8 +20,9 @@ const BLANK_STEPS = Object.freeze(['ignores', 'gitattributes', 'reflog', 'skelet
 // Lo oculto que es de las herramientas, no del proyecto (sin distinguir mayúsculas). Estas carpetas no se recorren: el esqueleto de
 // pignolo y los ajustes locales no son código. Cualquier otro nombre con punto (.config, .scripts, .bashrc) cuenta como contenido.
 // Un enlace o una junction no es carpeta ni archivo para Dirent: tampoco es herramienta.
-const TOOL_DIRS = new Set(['.git', '.claude', '.pignolo']);
-const TOOL_FILES = new Set(['.gitignore', '.gitattributes', '.git']);
+// Lista cerrada, en un solo lugar (RR-01): archivos y carpetas de editor y sistema que no son del proyecto. Sirve a blankProject y a hasCodeOrManifest.
+const TOOL_DIRS = new Set(['.git', '.claude', '.pignolo', '.vscode', '.idea']);
+const TOOL_FILES = new Set(['.gitignore', '.gitattributes', '.git', '.editorconfig', '.ds_store', 'thumbs.db', 'desktop.ini', '.gitkeep']);
 const toolEntry = (e) => {
   const n = e.name.toLowerCase();
   return (e.isDirectory() && TOOL_DIRS.has(n)) || (e.isFile() && TOOL_FILES.has(n));
