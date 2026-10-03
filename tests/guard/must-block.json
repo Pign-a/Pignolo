@@ -2098,5 +2098,41 @@
   "command": "node -e \"import('child_process').then(m=>m.execSync('git reset --hard'))\"",
   "expect": "block",
   "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -c \"import os; os.system('node hooks/launcher.js toggle')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "node -e \"global['ev'+'al']('require(\\\"child_process\\\").execSync(\\\"git clean -fdx\\\")')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "python3 -c \"from os import system as s; s('git clean -fdx')\"",
+  "expect": "block",
+  "rule": "inline-code"
+ },
+ {
+  "shell": "bash",
+  "command": "touch .PIGNOLO/DIS*",
+  "expect": "block",
+  "rule": "protected-flag"
+ },
+ {
+  "shell": "bash",
+  "command": "echo x > \"$X/.GitConfig\"",
+  "expect": "block",
+  "rule": "protected-path"
+ },
+ {
+  "shell": "bash",
+  "command": "NODE HOOKS/LAUNCHER.JS toggle",
+  "expect": "block",
+  "rule": "pignolo-launcher"
  }
 ]

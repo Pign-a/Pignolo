@@ -25,15 +25,19 @@ const ROWS = [
   ['exec de Python (H6)', 'py', "exec('import os; os.system(\"git clean -fdx\")')", true],
   ['require con un nombre armado', 'js', "require(['child_','process'].join('')).execSync('git reset --hard')", true],
   ['comando armado por partes (g + it)', 'js', "require('child_process').execSync('g'+'it stash')", true],
+  ['from os import system as s', 'py', "from os import system as s; s('git clean -fdx')", true],
+  ['miembro por corchetes con nombre armado', 'js', "global['ev'+'al']('x'); // git", true],
+  ['sin procesos y sin git, import os pasa', 'py', "import os\nprint(os.getcwd())", false],
   ['proceso que no es git pasa', 'js', "require('child_process').execSync('npm test')", false],
   ['sin procesos, git solo en una cadena, pasa', 'js', "s.replace('use git status','x')", false],
+  ['llama a proceso y nombra el launcher', 'py', "import os; os.system('node hooks/launcher.js toggle')", true],
   ['lenguaje sin escáner: búsqueda ingenua', null, 'os.execute("git reset --hard")', true],
 ];
 
 test('inlineCallsGit: tabla del escáner', () => {
   const bad = [];
   for (const [what, lang, text, deny] of ROWS) {
-    const r = inlineCallsGit(text, lang);
+    const r = inlineCallsGit(text, lang, /launcher\.js/i);
     if (r.deny !== deny) bad.push(`${what}: ${r.deny} (${r.why}), esperado ${deny}`);
   }
   assert.deepStrictEqual(bad, []);

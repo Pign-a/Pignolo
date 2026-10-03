@@ -18,6 +18,11 @@ const LOADER_OPAQUE = /\b(require|__import__|import_module|import)\s*\(\s*(?!""\
 // Primer argumento de una llamada a proceso armado con + (o . en Perl/PHP): no se puede saber qué programa corre.
 const CONCAT_CMD = /\b(?:exec\w*|spawn\w*|system|popen|shell_exec|passthru)\s*\(\s*(?:""\s*[+.]|[A-Za-z_$][\w$.]*\s*\+)/;
 
+// Importar el módulo de procesos de Python (import os, from os import system as s) o un miembro por corchetes con
+// nombre armado (global['ev'+'al']): la llamada no se ve por su nombre.
+const PROC_IMPORT = /\b(?:from|import)\s+(?:os|subprocess|pty|posix)\b/;
+const COMPUTED_MEMBER = /\[\s*""\s*\+/;
+
 const JS = new Set(['js', 'ts']);
 const HASH = new Set(['py', 'rb', 'pl', 'php']);
 
@@ -80,17 +85,17 @@ function langOf(name) {
 
 // { deny, why }: niega si el texto usa procesos fuera de literales Y nombra git en cualquier lado.
 // Sin escáner o con texto que no se puede tokenizar, cae a la búsqueda ingenua: git nombrado o una llamada a proceso.
-function inlineCallsGit(text, lang) {
+function inlineCallsGit(text, lang, extraNames) {
   const raw = String(text);
   // Búsqueda ingenua (la de antes de T7, más los sumideros): git nombrado, una llamada a proceso o un sumidero.
-  const naive = (why) => ({ deny: mentionsGit(raw) || SPAWN_RE.test(raw) || SINK_RE.test(raw) || SPAWN_PERL_RUBY.test(raw), why });
+  const naive = (why) => ({ deny: mentionsGit(raw) || Boolean(extraNames && extraNames.test(raw)) || SPAWN_RE.test(raw) || SINK_RE.test(raw) || SPAWN_PERL_RUBY.test(raw), why });
   if (!lang) return naive('naive');
   const s = scan(raw, lang);
   if (!s) return naive('unscannable');
   const perlish = lang === 'rb' || lang === 'pl' || lang === 'php';
-  const procs = s.procModule || SPAWN_RE.test(s.outside) || SINK_RE.test(s.outside) || LOADER_OPAQUE.test(s.outside) || (perlish && SPAWN_PERL_RUBY.test(s.outside));
+  const procs = s.procModule || SPAWN_RE.test(s.outside) || SINK_RE.test(s.outside) || LOADER_OPAQUE.test(s.outside) || PROC_IMPORT.test(s.outside) || COMPUTED_MEMBER.test(s.outside) || (perlish && SPAWN_PERL_RUBY.test(s.outside));
   if (!procs) return { deny: false, why: 'no-procs' };
-  if (mentionsGit(raw)) return { deny: true, why: 'procs-and-git' };
+  if (mentionsGit(raw) || (extraNames && extraNames.test(raw))) return { deny: true, why: 'procs-and-git' };
   // El comando armado por partes ('g'+'it stash') no nombra git en el texto: un primer argumento que es una concatenación se niega.
   if (CONCAT_CMD.test(s.outside)) return { deny: true, why: 'concatenated-command' };
   return { deny: false, why: 'procs-no-git' };

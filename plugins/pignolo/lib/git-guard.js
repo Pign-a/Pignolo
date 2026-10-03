@@ -1872,7 +1872,7 @@ function pwshScript(rest, cmd, ctx, out, depth, st) {
 function inlineCheck(name, out, st, ctx) {
   const lang = langOf(name);
   return (text) => {
-    if (inlineCallsGit(text, lang).deny) out.push(hit('inline-code')); // T7 (R-9): uso de procesos fuera de literales y git nombrado
+    if (inlineCallsGit(text, lang, LAUNCHER_TEXT).deny) out.push(hit('inline-code')); // T7 (R-9): uso de procesos fuera de literales y git nombrado
     if (st && ctx) inlineDeletes(text, st, ctx, out);
   };
 }
