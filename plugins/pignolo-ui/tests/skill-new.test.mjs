@@ -25,7 +25,7 @@ test('new: frontmatter, size, Values block, scripts and referenced files exist',
 
 test('new: order of the steps of spec section 7, empty project goes through directions, caps', () => {
   const { text } = readSkill('new');
-  indexOrder(text, ['run.mjs" env', 'design-md.mjs', 'Brief, in text',
+  indexOrder(text, ['run.mjs" env', 'design-md.mjs', 'Brief, in chat and in a file',
     'options.md', 'present-and-choose.md', 'apply.md', '<run>/after', 'compare.mjs" approved', 'ui-auditor', 'report-check.mjs"', 'run.mjs" verdict']);
   assert.ok(text.includes('data-sample') && text.includes('Datos de muestra') && !text.includes('‹'));
   for (const gone of ['--kind direction', '--flow direction', 'templates/DESIGN.md', 'product-md.mjs']) assert.ok(!text.includes(gone), `moved to define (hito 4h): ${gone}`);
@@ -121,7 +121,7 @@ test('new: loads reference/context.md, calls run.mjs context, writes the brief w
   for (const lit of ['reference/context.md', 'run.mjs" context', '## First look', '## Do not touch', '--brief-file']) assert.ok(text.includes(lit), lit);
   assert.ok(/<run>\/after\/[^\n]*product\.md|product\.md[^\n]*<run>\/after\//.test(text) && text.includes('brief.md'), 'product.md and brief.md go to <run>/after/');
   assert.ok(text.includes('`PRODUCT.md` is not created here'), 'PRODUCT.md is created by define (hito 4h)');
-  assert.ok(text.indexOf('run.mjs" context') < text.indexOf('Brief, in text') && text.indexOf('Brief, in text') < text.indexOf('--brief-file'));
+  assert.ok(text.indexOf('run.mjs" context') < text.indexOf('Brief, in chat and in a file') && text.indexOf('Brief, in chat and in a file') < text.indexOf('--brief-file'));
 });
 
 test('present-and-choose.md, canvas per project (T9b): updating is the same loop, pages, never retranscribe, edited by hand stops and asks, refusals stop at the third', () => {
@@ -191,4 +191,47 @@ test('new: a Next screen step asks with AskUserQuestion and a yes opens a new ru
   const step = text.slice(text.indexOf('Next screen'));
   for (const lit of ['AskUserQuestion', 'same canvas', 'run.mjs" init', 'PRODUCT.md', 'recommended first']) assert.ok(step.includes(lit), lit);
   assert.ok(text.includes('refinement rounds') && /no fixed (cap|number)/.test(text), 'refinement rounds are apart from the one round of mockups');
+});
+
+// ---- hito 4i, T3: a short brief in the chat, the whole one in brief.md, less noise (G53) ----
+
+test('new: the version line is not printed in the chat', () => {
+  assert.ok(!readSkill('new').text.includes('pignolo-ui <pluginVersion>'));
+  assert.ok(!readSkill('define').text.includes('pignolo-ui <pluginVersion>'));
+  assert.ok(readSkill('audit').text.includes('pignolo-ui <pluginVersion>'), 'audit keeps its own (fixed by its test)');
+  assert.ok(readSkill('new').text.includes('report-line'), 'the version still goes in the first line of the report');
+});
+
+test('new: the brief in the chat has a one-line summary, the screens, a batch of at most 4 assumptions and at most 3 questions with the recommended first', () => {
+  const { text } = readSkill('new');
+  const step = text.slice(text.indexOf('Brief, in chat and in a file'), text.indexOf('4. **Options.**'));
+  for (const lit of ['Armo:', 'at most 4', 'at most 3', 'recommended', 'AskUserQuestion', 'at most 12 lines', 'its source', '¿van así o cambiás alguno?']) assert.ok(step.includes(lit), lit);
+});
+
+test('new: the full brief goes to brief.md and is not repeated in the chat', () => {
+  const { text } = readSkill('new');
+  assert.ok(text.includes('not repeated in the chat'));
+  for (const lit of ['<run>/brief.md', '## First look', '## Do not touch', '--brief <run>/brief.md', '<run>/provided.json', 'data-sample']) assert.ok(text.includes(lit), lit);
+  indexOrder(text, ['run.mjs" context', 'Brief, in chat and in a file', '--brief-file']);
+});
+
+test('context.md: First look and Do not touch come from PRODUCT.md and are shown only when they differ', () => {
+  const text = readReference('context.md');
+  assertNoVariables(text);
+  const part = text.slice(text.indexOf('2. **The brief of the screen.**'), text.indexOf('3. **Creating'));
+  for (const lit of ['What the chat shows', 'from `PRODUCT.md`', 'only when', 'differs', 'not repeated in the chat']) assert.ok(part.includes(lit), lit);
+});
+
+test('new: one line of notices at most', () => {
+  const { text } = readSkill('new');
+  assert.ok(text.includes('one line of notices'));
+  assert.ok(readReference('present-and-choose.md').includes('privados de tu cuenta de claude.ai'), 'the publication notice is untouched');
+});
+
+test('new: compare.mjs approved is said only when it finds a difference', () => {
+  const { text } = readSkill('new');
+  const at = text.indexOf('compare.mjs" approved');
+  assert.ok(at > 0);
+  assert.ok(/only when it finds a difference/.test(text.slice(at, at + 700)));
+  assert.ok(!text.includes('informational only'), 'no "informational only" line any more');
 });
