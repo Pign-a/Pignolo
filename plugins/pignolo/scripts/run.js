@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { mainRoot } = require('../lib/disabled');
+require('../lib/panel-hook').panelRefreshOnExit();
 const { readRun, validateRun, taskList } = require('../lib/project');
 const { readCounter, clearCounter, counterKey, NOTASK } = require('../lib/handback-counter');
 const { pignoloHome } = require('../lib/home');

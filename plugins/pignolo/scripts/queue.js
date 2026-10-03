@@ -8,6 +8,7 @@
 // ocupada (`busy`); 3 no se pudo dejar el estado consistente (`cp-missing`).
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
+require('../lib/panel-hook').panelRefreshOnExit();
 const Q = require('../lib/queue');
 const B = require('../lib/branches');
 

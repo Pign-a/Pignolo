@@ -21,6 +21,7 @@ const { headSha, workingTree } = require('../lib/changes');
 const { gitRun } = require('../lib/git');
 const { repoIdFor } = require('../lib/seals');
 const { pignoloHome } = require('../lib/home');
+require('../lib/panel-hook').panelRefreshOnExit({ only: ['save'] });
 
 const GIT_MS = 60000;
 const VALUE = ['level', 'profile', 'sha', 'out', 'ledger', 'id', 'cwd', 'judgment', 'round', 'kind'];

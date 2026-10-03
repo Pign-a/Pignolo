@@ -87,3 +87,32 @@ test('subagent-start and egress are registered exactly as expected', () => {
   const own = hooks.PreToolUse.find((m) => m.hooks.some((h) => h.args[1] === 'egress'));
   assert.strictEqual(own.hooks.length, 1);
 });
+
+// Panel (R-P4): UserPromptSubmit se suma y la guardia queda tal cual (guarda de regresión: la lista de 18f62d5).
+test('hooks.json: UserPromptSubmit is added and every guard hook it had before is still there unchanged', () => {
+  const before = [
+    ['PreToolUse', 'Bash|PowerShell', 'guard', 30],
+    ['PreToolUse', 'Read|Grep|Glob|Bash|PowerShell', 'private-reads', 30],
+    ['PreToolUse', 'Agent', 'agent-gate', 30],
+    ['PreToolUse', 'Edit|Write|MultiEdit|NotebookEdit', 'protect-paths', 30],
+    ['PreToolUse', 'SubagentHandback', 'handback-gate', 30],
+    ['PreToolUse', 'Bash|PowerShell', 'scope-gate', 30],
+    ['PreToolUse', 'Bash|PowerShell', 'plan-audit-gate', 30],
+    ['PreToolUse', 'Artifact', 'present-gate', 30],
+    ['PreToolUse', 'WebSearch|WebFetch|mcp__.*', 'egress', 30],
+    ['SubagentStart', '^pignolo:', 'subagent-start', 30],
+    ['PostToolUse', 'Agent', 'handback-gate', 30],
+    ['PostToolUse', 'Bash|PowerShell', 'plan-audit-gate', 30],
+    ['PostToolUseFailure', 'Bash|PowerShell', 'plan-audit-gate', 30],
+    ['SubagentStop', '^pignolo:(implementer|fixer|test-writer)$', 'handback-gate', 30],
+    ['SubagentStop', '^pignolo:plan-auditor$', 'plan-audit-gate', 30],
+    ['UserPromptExpansion', '', 'toggle', 30],
+    ['SessionStart', 'startup|resume|clear|compact|fork', 'session-start', 60],
+  ];
+  const now = [];
+  for (const event of Object.keys(hooks)) for (const h of handlersFor(event)) now.push([event, h.matcher, h.args[1], h.timeout]);
+  for (const row of before) assert.ok(now.some((r) => JSON.stringify(r) === JSON.stringify(row)), `falta o cambió: ${JSON.stringify(row)}`);
+  const added = now.filter((r) => !before.some((b) => JSON.stringify(b) === JSON.stringify(r)));
+  assert.deepStrictEqual(added, [['UserPromptSubmit', '', 'panel-answer', 30]]);
+  assert.ok(!('modules' in JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'hooks', 'hooks.json'), 'utf8'))), 'el núcleo no lleva modules (el mod es otro plugin)');
+});

@@ -10,4 +10,5 @@ Report pignolo's status to the user in their language:
    Relay its `systemMessage` verbatim.
 2. Read `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json` and report the `version`.
 3. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/places.js" report --cwd "<current directory>"`. If its `lines` is greater than 0, repeat its `summary`; otherwise say nothing about it.
+4. Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/panel.js" show --text --cwd "<current directory>"`. If it prints something, repeat it as plain text (plan, decisions waiting for the user, branches, next step); if it prints nothing, say nothing about it. It only reads.
 Do not change any state.

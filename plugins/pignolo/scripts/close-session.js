@@ -10,6 +10,7 @@
 //   archive [--days 14] [--dry-run]        mueve lo cerrado y viejo a archive/ (nunca borra)
 //   index                                  regenera INDEX.md
 //   prune                                  poda y gc de la sombra (necesita la sesión)
+//   panel                                  las decisiones pospuestas del panel vuelven a abiertas y se listan
 // Exit 0 (éxito, aun con entradas rechazadas una a una en refused: []), 1 (el verbo entero se
 // rechaza: { ok: false, refused: '<motivo>', reason }), 2 (uso). Todos los verbos se niegan con
 // refused 'merge-in-progress' si hay un merge, cherry-pick o rebase en el checkout principal.
@@ -24,11 +25,12 @@ const VERBS = {
   archive: { value: ['days'], bool: ['dry-run'], need: [] },
   index: { value: [], need: [] },
   prune: { value: [], need: [] },
+  panel: { value: [], need: [] },
 };
 const COMMON = ['cwd', 'session'];
 
 function usage(msg) {
-  process.stderr.write(`pignolo close-session: ${msg}\nuso: close-session.js <evidence|scan|decide|archive|index|prune> [--cwd <dir>] [--session <id>] [opciones]\n`);
+  process.stderr.write(`pignolo close-session: ${msg}\nuso: close-session.js <evidence|scan|decide|archive|index|prune|panel> [--cwd <dir>] [--session <id>] [opciones]\n`);
   process.exit(2);
 }
 
@@ -152,6 +154,12 @@ function prune({ main, env, session }) {
   return r;
 }
 
+// Decisiones del panel pospuestas con `z`: vuelven a abiertas (el mod no puede escribir; las persiste este verbo).
+function panel({ main }) {
+  const { reopenPostponed } = require('../lib/panel-state');
+  try { return { ok: true, reopened: reopenPostponed(main) }; } catch (e) { return { ok: true, reopened: [], warning: `registro del panel no disponible (${e.message})` }; }
+}
+
 function main() {
   const opts = parse(process.argv.slice(2));
   const env = process.env;
@@ -170,6 +178,7 @@ function main() {
     case 'decide': r = decide({ main: root, id: opts.id, answer: opts.answer, reserved: opts.reserved }); break;
     case 'archive': r = archive({ main: root, days: opts.days, dryRun: opts['dry-run'] }); break;
     case 'index': r = index({ main: root }); break;
+    case 'panel': r = panel({ main: root }); break;
     case 'prune': r = prune({ main: root, env, session: opts.session }); break;
     default: return usage(`verbo desconocido: ${opts.verb}`);
   }

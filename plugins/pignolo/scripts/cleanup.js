@@ -6,6 +6,7 @@
 // incorrecto (apply sin --proposal incluido); 3 no se pudo dejar el estado consistente (partial-remove).
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
+require('../lib/panel-hook').panelRefreshOnExit();
 const C = require('../lib/branch-cleanup');
 
 const VERBS = {

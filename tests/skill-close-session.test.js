@@ -15,7 +15,7 @@ const { readSkill, brokenReferences } = require('./skill-forms');
 const s = readSkill('close-session');
 const SCRIPT = fs.readFileSync(path.join(PLUGIN_ROOT, 'scripts', 'close-session.js'), 'utf8');
 const USAGE_VERBS = /uso: close-session\.js <([a-z|-]+)>/.exec(SCRIPT)[1].split('|');
-const VERBS = ['evidence', 'scan', 'decide', 'archive', 'index', 'prune'];
+const VERBS = ['evidence', 'scan', 'decide', 'archive', 'index', 'prune', 'panel'];
 
 test('frontmatter: model-invocable (natural language), real references', () => {
   assert.equal(s.data.name, 'close-session');

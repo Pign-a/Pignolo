@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { PLUGIN_ROOT, makeRepo, git } = require('./helpers');
+const { PLUGIN_ROOT, makeRepo, makeTempDir, git } = require('./helpers');
 const panel = require(path.join(PLUGIN_ROOT, 'lib', 'panel-state.js'));
 const ps = require(path.join(PLUGIN_ROOT, 'lib', 'plan-state.js'));
 
@@ -71,7 +71,7 @@ test('panel-state: sanitize keeps one line and replaces absolute paths and the u
   assert.ok(!out.includes('\n'));
   assert.ok(!out.includes(home) && !/[A-Za-z]:[\\/]/.test(out) && !out.includes('/var/log'));
   assert.ok(out.includes('a.js') && out.includes('c.log'));
-  const root = path.join(os.tmpdir(), 'proj').replace(/\\/g, '/');
+  const root = makeTempDir('pignolo-root-').replace(/\\/g, '/');
   assert.equal(panel.sanitize(`ver ${root}/src/x.js`, { root }), 'ver src/x.js');
   assert.equal(panel.sanitize('a'.repeat(50), { max: 10 }).length, 10);
   assert.equal(panel.sanitize('and/or y a/b/c quedan'), 'and/or y a/b/c quedan');
@@ -236,9 +236,22 @@ test('panel-state: the file stays under 64 KB with 200 branches', () => {
 
 test('panel-state: a .pignolo that points outside the project is refused', () => {
   const dir = makeRepo();
-  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-out-'));
+  const out = makeTempDir('pignolo-out-');
   try { fs.symlinkSync(out, path.join(dir, '.pignolo'), 'junction'); } catch (_) { return; }
   assert.throws(() => panel.ask(dir, { question: 'x', options: opts }), /fuera del proyecto/);
   assert.deepEqual(fs.readdirSync(out), []);
-  fs.rmSync(out, { recursive: true, force: true });
+});
+
+const untracked = (d) => git(['status', '--porcelain', '--untracked-files=all'], d).split('\n').filter((l) => l && !l.endsWith('project.md'));
+
+test('panel-state: the first write keeps panel-state.json and the lock out of git, even in a project whose .gitignore predates it', () => {
+  const dir = project();
+  fs.writeFileSync(path.join(dir, '.pignolo', '.gitignore'), 'run.json\n');
+  panel.ask(dir, { question: 'x', options: opts });
+  assert.deepEqual(untracked(dir), []);
+  assert.ok(fs.readFileSync(path.join(dir, '.pignolo', '.gitignore'), 'utf8').split('\n').includes('panel-state.json'));
+  // sin .gitignore previo tampoco deja nada sin ignorar
+  const other = project();
+  panel.ask(other, { question: 'x', options: opts });
+  assert.deepEqual(untracked(other), []);
 });

@@ -238,6 +238,8 @@ function writeFileAtomic(file, text) {
 // Un archivo ilegible se reconstruye vacío (las decisiones abiertas ilegibles se pierden: se avisa en stderr).
 function update(main, fn, { now = NOW() } = {}) {
   assertInside(main);
+  // El registro es local: que git no lo vea nunca (también en proyectos anteriores a esta versión, cuyo .gitignore no lo trae).
+  try { require('./pignolo-gitignore').ensureIgnored(main, ['.gitignore', 'panel-state.json', 'tmp/']); } catch (_) { /* sin ignore: el registro igual funciona */ }
   return withLock(main, () => {
     const { state, problems } = read(main);
     if (problems.length && !problems.includes('schema-unknown') && fs.existsSync(fileOf(main))) {

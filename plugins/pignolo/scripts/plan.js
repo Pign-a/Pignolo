@@ -18,6 +18,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { mainRoot } = require('../lib/disabled');
+require('../lib/panel-hook').panelRefreshOnExit();
 const ps = require('../lib/plan-state');
 const decisions = require('../lib/decisions');
 const { PROFILE_PARAMS } = require('../lib/roles');

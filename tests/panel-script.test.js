@@ -61,5 +61,5 @@ test('gitignore: panel-state.json is ignored by the pignolo ignore block', () =>
 
 test('panel script: ask refuses a free-text question given inline and a missing file', () => {
   const dir = project();
-  assert.equal(run(dir, ['ask', '--question-file', path.join(os.tmpdir(), 'no-existe-xyz.txt')]).status, 2);
+  assert.equal(run(dir, ['ask', '--question-file', path.join(PLUGIN_ROOT, 'no-existe-xyz.txt')]).status, 2);
 });
