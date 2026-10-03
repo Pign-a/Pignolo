@@ -255,3 +255,22 @@ test('panel-state: the first write keeps panel-state.json and the lock out of gi
   panel.ask(other, { question: 'x', options: opts });
   assert.deepEqual(untracked(other), []);
 });
+
+test('panel-state: a slow refresh does not starve concurrent writers nor overwrite what they wrote meanwhile', async () => {
+  const dir = planProject();
+  // un refresh con un git lento (2,5 s por llamada) en otro proceso: la parte lenta corre fuera del lock
+  const code = `const p=require(${JSON.stringify(LIB)});const { gitRun } = require(${JSON.stringify(path.join(PLUGIN_ROOT, 'lib', 'git.js'))});
+    const sleep=(ms)=>Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,ms);
+    p.refresh(${JSON.stringify(dir)},{git:(a,c)=>{sleep(2500);return gitRun(a,c);}});`;
+  const child = spawn(process.execPath, ['-e', code], { stdio: 'inherit' });
+  const done = new Promise((resolve) => child.on('exit', resolve));
+  await new Promise((r) => setTimeout(r, 1200)); // el hijo ya está en la parte lenta
+  const t0 = Date.now();
+  panel.ask(dir, { question: 'mientras tanto', options: ['x'] }); // con el cómputo dentro del lock esto vence a los 2 s (LOCKED)
+  panel.evidence(dir, { card: 'T1', red: 'falla: anotada mientras tanto', green: '1/1' });
+  assert.ok(Date.now() - t0 < 1500, `tardó ${Date.now() - t0} ms`);
+  assert.equal(await done, 0);
+  const s = panel.read(dir).state;
+  assert.equal(s.decisions.length, 1);
+  assert.equal(s.cards.find((c) => c.id === 'T1').red, 'falla: anotada mientras tanto'); // el refresh no la pisó
+});

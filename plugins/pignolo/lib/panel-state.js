@@ -404,15 +404,13 @@ function gitFacts(main, git, now, env) {
   return out;
 }
 
-// Reconstruye plan, ramas, tarjetas y `next` desde las fuentes de pignolo (R-P2). Lo que no existe en otro lado
-// (decisiones, evidencia, tope) se conserva del registro anterior. Sin escribir: `compute` sirve a `next.js`.
-function compute(main, { now = Date.now(), git = gitRun, env = process.env, prev } = {}) {
+// Parte lenta de `refresh` (lee planes, git, ledger y sellos): NO toma el lock del registro, así dos procesos no se
+// bloquean entre sí. `prev` solo aporta lo que se mantiene (tarjetas ya hechas, costOk y waiting de las ramas).
+function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev } = {}) {
   const previous = prev || read(main).state;
-  const s = JSON.parse(JSON.stringify(previous));
   const { readRun, taskList } = require('./project');
   const ps = require('./plan-state');
   const { deriveNext } = require('./next');
-  const { nextStep, toRegistry } = require('./next-steps');
 
   // plan abierto: el del flujo vigente o el más reciente sin cerrar
   let run = null;
@@ -426,7 +424,7 @@ function compute(main, { now = Date.now(), git = gitRun, env = process.env, prev
   } catch (_) { /* sin planes */ }
   open.sort((a, b) => (Date.parse(b.created) || 0) - (Date.parse(a.created) || 0) || (a.plan < b.plan ? -1 : 1));
   const plan = (run && run.plan && open.find((p) => p.plan === run.plan)) || open[0] || null;
-  s.plan = plan ? { slug: plan.plan, stage: plan.stage, request: sanitize(plan.request, { max: 160, root: main }) } : null;
+  const planOut = plan ? { slug: plan.plan, stage: plan.stage, request: sanitize(plan.request, { max: 160, root: main }) } : null;
 
   // tarjetas: las tareas del plan; "done" se mantiene una vez vista (una tarea que corría y ya no está en run.json terminó)
   const runIds = run ? taskList(run).map((t) => t.id) : [];
@@ -434,7 +432,7 @@ function compute(main, { now = Date.now(), git = gitRun, env = process.env, prev
   const old = new Map(previous.cards.map((c) => [c.id, c]));
   const ids = plan ? (plan.tasks || []).map((t) => t.id) : [];
   for (const id of runIds) if (!ids.includes(id)) ids.push(id);
-  s.cards = ids.map((id) => {
+  const cards = ids.map((id) => {
     const o = old.get(id) || {};
     const samePlan = !o.plan || !plan || o.plan === plan.plan;
     let status = 'todo';
@@ -442,47 +440,65 @@ function compute(main, { now = Date.now(), git = gitRun, env = process.env, prev
     else if (late || (samePlan && (o.status === 'done' || o.status === 'running'))) status = 'done';
     return { id, plan: plan ? plan.plan : '', title: o.title || '', status, red: o.red || '', green: o.green || '', evidence: o.evidence || '' };
   });
-  // evidencia de tarjetas que aún no están en el plan
-  for (const o of previous.cards) if (!s.cards.some((c) => c.id === o.id) && (o.red || o.green)) s.cards.push({ ...o });
 
   const gf = gitFacts(main, git, now, env);
-  const keep = new Map(previous.branches.map((b) => [b.name, b]));
-  s.branches = gf.branches.map((b) => {
-    const o = keep.get(b.name);
-    return o && o.costOk ? { ...b, costOk: o.costOk, waiting: o.waiting } : { ...b, waiting: o ? o.waiting : false };
+  let kind = 'nothing';
+  try { kind = deriveNext({ cwd: main, env, now }).kind; } catch (_) { kind = 'nothing'; }
+  return {
+    plan: planOut, cards, branches: gf.branches, main: gf.ahead === null ? null : { ahead: gf.ahead },
+    busy: BUSY_KINDS.includes(kind), attention: ATTENTION_KINDS.includes(kind) ? [kind] : [],
+  };
+}
+
+// Parte rápida (dentro del lock): vuelca lo derivado sobre el estado ACTUAL sin pisar lo que otro proceso anotó
+// mientras tanto (evidencia, decisiones), suma el aviso de tope y recalcula `next` con las decisiones vigentes.
+function applyDerived(cur, d, now) {
+  const { nextStep, toRegistry } = require('./next-steps');
+  cur.plan = d.plan;
+  const have = new Map(cur.cards.map((c) => [c.id, c]));
+  cur.cards = d.cards.map((c) => {
+    const o = have.get(c.id);
+    return o ? { ...c, title: o.title || c.title, red: o.red, green: o.green, evidence: o.evidence } : c;
   });
-  s.main = gf.ahead === null ? null : { ahead: gf.ahead };
+  // evidencia de tarjetas que aún no están en el plan
+  for (const o of have.values()) if (!cur.cards.some((c) => c.id === o.id) && (o.red || o.green)) cur.cards.push({ ...o });
+  const keep = new Map(cur.branches.map((b) => [b.name, b]));
+  cur.branches = d.branches.map((b) => {
+    const o = keep.get(b.name);
+    return { ...b, waiting: o ? o.waiting : false, ...(o && o.costOk ? { costOk: o.costOk } : {}) };
+  });
+  cur.main = d.main;
 
   // aviso de tope de gasto (una vez por hito)
-  for (const b of s.budget) {
+  for (const b of cur.budget) {
     if (b.warned || !(b.cap > 0) || b.spent < 0.8 * b.cap) continue;
-    addDecision(s, { question: `el hito ${b.hito} lleva ${money(b.spent)} de ${money(b.cap)} USD, ¿seguimos?`, options: ['seguir', 'parar'], recommended: 'seguir', context: 'Pasaste el 80 % del tope aprobado de este hito.', kind: 'budget', now: new Date(now).toISOString() });
+    addDecision(cur, { question: `el hito ${b.hito} lleva ${money(b.spent)} de ${money(b.cap)} USD, ¿seguimos?`, options: ['seguir', 'parar'], recommended: 'seguir', context: 'Pasaste el 80 % del tope aprobado de este hito.', kind: 'budget', now: new Date(now).toISOString() });
     b.warned = true;
   }
 
   // siguiente paso (R-P7)
-  let kind = 'nothing';
-  try { kind = deriveNext({ cwd: main, env, now }).kind; } catch (_) { kind = 'nothing'; }
-  const busy = BUSY_KINDS.includes(kind) || s.cards.some((c) => c.status === 'running');
-  const attention = ATTENTION_KINDS.includes(kind) ? [kind] : [];
-  const step = nextStep({
-    busy, attention, decisions: s.decisions, branches: s.branches, main: s.main, plan: s.plan, cards: s.cards,
-  });
-  s.next = toRegistry(step);
-  return s;
+  const busy = d.busy || cur.cards.some((c) => c.status === 'running');
+  cur.next = toRegistry(nextStep({ busy, attention: d.attention, decisions: cur.decisions, branches: cur.branches, main: cur.main, plan: cur.plan, cards: cur.cards }));
+  return cur;
+}
+
+// Lo mismo que hace `refresh` pero sin escribir: sirve a `next.js` (solo lectura).
+function compute(main, opts = {}) {
+  const prev = opts.prev || read(main).state;
+  const cur = JSON.parse(JSON.stringify(prev));
+  return applyDerived(cur, derive(main, { ...opts, prev }), opts.now || Date.now());
 }
 
 const stripVolatile = (s) => JSON.stringify({ ...s, updated: null });
 
 // Idempotente: si lo recalculado es igual a lo guardado no reescribe. Nunca tira hacia afuera.
 function refresh(main, opts = {}) {
+  const d = derive(main, { ...opts, prev: read(main).state }); // lento, sin lock
   let wrote = false;
   const state = update(main, (cur) => {
-    const next = compute(main, { ...opts, prev: cur });
-    if (stripVolatile(next) !== stripVolatile(cur) || !fs.existsSync(fileOf(main))) {
-      Object.assign(cur, next);
-      wrote = true;
-    }
+    const before = stripVolatile(cur);
+    applyDerived(cur, d, opts.now || Date.now());
+    wrote = stripVolatile(cur) !== before || !fs.existsSync(fileOf(main));
     return cur;
   }, { now: opts.now ? new Date(opts.now).toISOString() : undefined });
   return { ...state, wrote };
