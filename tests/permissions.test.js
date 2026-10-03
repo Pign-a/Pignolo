@@ -98,6 +98,7 @@ const NOT_EXPRESSIBLE = {
   'pignolo-queue': 'depende del payload (agent_id, agent_type): el hilo principal y el integrator sí corren queue.js',
   'pignolo-worktree-tools': 'depende del payload (agent_id): el hilo principal sí corre worktree.js create|tag-contract y cleanup.js apply',
   'pignolo-protected-refs': 'depende del payload (agent_id) y de la rama de HEAD: el hilo principal sí escribe esas refs',
+  'add-force': 'depende del payload (agent_id): solo se niega a un subagente, el hilo principal sí puede git add -f; una regla de permisos no distingue',
   'sabotage-lock': 'depende del estado del worktree (un candado de sabotaje en su git-dir): sin candado, commit y add pasan',
 };
 

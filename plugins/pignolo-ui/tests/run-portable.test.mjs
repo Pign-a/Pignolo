@@ -72,7 +72,7 @@ test('portable: relativiza el proyecto y su file://, el home pasa a ~ y una ruta
     a: path.join(project, 'src', 'a.css'),
     u: `${pathToFileURL(project).href}/index.html`,
     h: path.join(os.homedir(), 'otra', 'cosa.txt'),
-    p: path.join(os.tmpdir(), 'claude-profile-123'),
+    p: path.join(path.dirname(makeTempDir()), 'claude-profile-123'),
     n: ['texto normal', 4, null],
   }, project);
   assert.equal(out.a, './src/a.css');
