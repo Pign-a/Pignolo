@@ -138,7 +138,7 @@ test('wizard-detect: with .git as a file (worktree) nothing is written and the r
   const r = W.writeWizardDetect(dir, { schema: W.SCHEMA });
   assert.deepEqual(r, { skipped: 'git-is-a-file' });
   assert.deepEqual(fs.readdirSync(dir), ['.git']);
-  assert.equal(W.offerFirst(dir), false);
+  assert.equal(W.writeDecline(dir).ok, false);
   assert.deepEqual(fs.readdirSync(dir), ['.git']);
 });
 
@@ -148,9 +148,9 @@ test('wizard-detect: with .git/pignolo as a junction or symlink outside the proj
   try { fs.symlinkSync(outside, path.join(repo, '.git', 'pignolo'), process.platform === 'win32' ? 'junction' : 'dir'); } catch (e) { t.skip(`sin permiso para crear el enlace: ${e.code}`); return; }
   const r = W.writeWizardDetect(repo, { schema: W.SCHEMA, offer: true });
   assert.deepEqual(r, { skipped: 'link-in-path' });
-  assert.equal(W.offerFirst(repo), false);
+  assert.equal(W.writeDecline(repo).ok, false);
   assert.deepEqual(fs.readdirSync(outside), []);
-  assert.deepEqual(W.writeFor(repo), { skipped: 'unsafe' });
+  assert.deepEqual(W.writeFor(repo), { skipped: 'unsafe', offer: false, stale: 'kept' });
   assert.deepEqual(fs.readdirSync(outside), []);
 });
 
@@ -199,12 +199,75 @@ test('wizard-detect: a folder with accents, braces, spaces and quotes in its nam
   assert.equal(JSON.parse(c.stdout).idSame, true);
 });
 
-test('wizard-detect: offerFirst is true once and false afterwards', () => {
+// RW-02: se ofrece en cada sesión hasta que se active pignolo o se elija "no usar pignolo acá".
+test('RW-02 wizard-detect: it is offered again in the next session when pignolo was not activated, and writes no marker by offering', () => {
   const repo = nodeRepo();
-  assert.equal(W.offerFirst(repo), true);
-  assert.equal(W.offerFirst(repo), false);
-  assert.equal(W.offerFirst(repo), false);
-  assert.ok(fs.existsSync(path.join(repo, '.git', 'pignolo', 'wizard-offered')));
+  for (let i = 0; i < 3; i += 1) assert.equal(W.writeFor(repo).offer, true, `sesión ${i + 1}`);
+  assert.deepEqual(fs.readdirSync(path.join(repo, '.git', 'pignolo')), ['wizard-detect.json']);
+});
+
+test('RW-02 wizard-detect: with the decline mark it is not offered, the detection is still written and the mark is the only extra file', () => {
+  const repo = nodeRepo();
+  const before = git(['status', '--porcelain', '--untracked-files=all'], repo);
+  const r = W.writeDecline(repo);
+  assert.equal(r.ok, true);
+  assert.deepEqual(fs.readdirSync(path.join(repo, '.git', 'pignolo')), ['wizard-declined']);
+  assert.equal(fs.existsSync(path.join(repo, '.pignolo')), false);
+  const w = W.writeFor(repo);
+  assert.equal(w.offer, false);
+  assert.equal(JSON.parse(fs.readFileSync(FILE(repo), 'utf8')).offer, false);
+  assert.equal(git(['status', '--porcelain', '--untracked-files=all'], repo), before);
+});
+
+test('RW-02 wizard-detect: with .pignolo/project.md it is not offered', () => {
+  const repo = nodeRepo();
+  write(repo, '.pignolo/project.md', '---\ntype: code-tested\n---\n');
+  assert.equal(W.writeFor(repo).offer, false);
+});
+
+test('RW-02 init decline: the verb writes only the mark under .git/pignolo and never .pignolo; the session after it does not offer', () => {
+  const repo = nodeRepo();
+  const env = { ...process.env, PIGNOLO_HOME: makeTempDir('pignolo-home-') };
+  const run = (...a) => spawnSync(process.execPath, [INIT, ...a, '--cwd', repo], { encoding: 'utf8', timeout: 60000, env });
+  assert.equal(run('wizard-detect', '--write').status, 0);
+  assert.equal(JSON.parse(fs.readFileSync(FILE(repo), 'utf8')).offer, true);
+  const d = run('decline');
+  assert.equal(d.status, 0, d.stderr);
+  assert.equal(JSON.parse(d.stdout).ok, true);
+  assert.equal(fs.existsSync(path.join(repo, '.pignolo')), false);
+  assert.deepEqual(fs.readdirSync(path.join(repo, '.git', 'pignolo')).sort(), ['wizard-declined', 'wizard-detect.json']);
+  assert.equal(JSON.parse(run('wizard-detect', '--write').stdout).offer, false);
+  assert.equal(JSON.parse(fs.readFileSync(FILE(repo), 'utf8')).offer, false);
+  assert.equal(spawnSync(process.execPath, [INIT, 'decline', '--public', 'no', '--cwd', repo], { encoding: 'utf8' }).status, 2);
+});
+
+// RW-04: sin escritura no queda un archivo viejo que siga ofreciendo.
+test('RW-04 wizard-detect: when the write is skipped as too-big the old file is removed', () => {
+  const repo = nodeRepo();
+  fs.mkdirSync(path.join(repo, '.git', 'pignolo'), { recursive: true });
+  fs.writeFileSync(FILE(repo), '{"viejo":true,"offer":true}\n');
+  const big = () => ({ ...W.buildWizardDetect({ main: repo }), pad: 'x'.repeat(70 * 1024) });
+  const r = W.writeFor(repo, { build: big });
+  assert.deepEqual(r, { skipped: 'too-big', offer: false, stale: 'removed' });
+  assert.equal(fs.existsSync(FILE(repo)), false);
+});
+
+test('RW-04 wizard-detect: when the folder is a link nothing is deleted through it and the result says offer false', (t) => {
+  const repo = nodeRepo();
+  const outside = makeTempDir('pignolo-outside-');
+  fs.writeFileSync(path.join(outside, 'wizard-detect.json'), '{"viejo":true,"offer":true}\n');
+  try { fs.symlinkSync(outside, path.join(repo, '.git', 'pignolo'), process.platform === 'win32' ? 'junction' : 'dir'); } catch (e) { t.skip(`sin permiso para crear el enlace: ${e.code}`); return; }
+  const r = W.writeFor(repo);
+  assert.deepEqual(r, { skipped: 'unsafe', offer: false, stale: 'kept' });
+  assert.equal(fs.existsSync(path.join(outside, 'wizard-detect.json')), true);
+});
+
+test('RW-04 wizard-detect: an unwritable folder (a file where .git/pignolo should be) is skipped with offer false', () => {
+  const repo = nodeRepo();
+  fs.writeFileSync(path.join(repo, '.git', 'pignolo'), 'no soy una carpeta');
+  const r = W.writeFor(repo);
+  assert.equal(r.offer, false);
+  assert.ok(r.skipped);
 });
 
 test('wizard-detect: the verb never creates .pignolo and leaves git status clean', () => {
@@ -260,7 +323,7 @@ test('session-start: without project.md the detection is launched on startup and
   }
 });
 
-test('session-start: the launched detection writes the file on startup, says offer only the first time and survives the hook returning first', async () => {
+test('session-start: the launched detection writes the file on startup, keeps saying offer while pignolo is not activated and survives the hook returning first', async () => {
   const repo = nodeRepo();
   const r = startup(repo); // lanzamiento real, desacoplado
   assert.equal(r.exit, 0);
@@ -268,8 +331,10 @@ test('session-start: the launched detection writes the file on startup, says off
   const d = JSON.parse(fs.readFileSync(FILE(repo), 'utf8'));
   assert.equal(d.schema, 'pignolo-wizard-detect/1');
   assert.equal(d.offer, true); // la primera vez
+  fs.rmSync(FILE(repo));
   startup(repo, {}, 'resume');
-  assert.equal(await waitFor(() => readOffer(repo) === false), true, 'la segunda vez no se vuelve a ofrecer');
+  assert.ok(await waitFor(() => fs.existsSync(FILE(repo))), 'la segunda sesión vuelve a dejar el archivo');
+  assert.equal(readOffer(repo), true, 'la segunda sesión se ofrece otra vez');
 });
 
 test('session-start: with project.md present it writes nothing, launches nothing and the output is the same as before', () => {
@@ -292,14 +357,14 @@ test('session-start: a failing or slow detection leaves no file and the hook out
   assert.equal(withSpy.exit, 0);
   const noOp = ss.run({ source: 'startup', cwd: a }, { env: { PIGNOLO_HOME: makeTempDir('pignolo-home-') }, wizardSpawn: () => { throw new Error('no se pudo lanzar'); } });
   assert.deepEqual([noOp.exit, Object.keys(noOp.stdout ? JSON.parse(noOp.stdout) : {}).sort()], [withSpy.exit, Object.keys(withSpy.stdout ? JSON.parse(withSpy.stdout) : {}).sort()]);
-  // plazo agotado (0 ms): el proceso no deja archivo y borra el viejo; tampoco gasta el marcador de "ya se ofreció"
+  // plazo agotado (0 ms): el proceso no deja archivo y borra el viejo; ofrecer tampoco deja ninguna marca
   const repo = nodeRepo();
   fs.mkdirSync(path.join(repo, '.git', 'pignolo'), { recursive: true });
   fs.writeFileSync(FILE(repo), '{"viejo":true}\n');
   const r = startup(repo, { wizardBudgetMs: 0 });
   assert.equal(r.exit, 0);
   assert.equal(await waitFor(() => !fs.existsSync(FILE(repo))), true, 'el archivo viejo se borró');
-  assert.equal(fs.existsSync(path.join(repo, '.git', 'pignolo', 'wizard-offered')), false);
+  assert.equal(fs.existsSync(path.join(repo, '.git', 'pignolo', 'wizard-declined')), false);
 });
 
 test('session-start: with pignolo off nothing is launched or written', () => {

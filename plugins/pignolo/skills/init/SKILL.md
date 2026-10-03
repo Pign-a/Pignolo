@@ -1,6 +1,6 @@
 ---
 name: init
-description: "Use when the user asks to activate pignolo in a project, in Spanish or English: 'activá pignolo en este proyecto', 'iniciá pignolo acá', 'quiero usar pignolo en este repo', 'set up pignolo here', 'initialize pignolo in this project'. Deduces its settings from the project files and confirms each one with the human before anything is written. Do not use to change the model profile or the permissions of a project that already has pignolo (that is setup)."
+description: "Use when the user asks to activate pignolo in a project, in Spanish or English: 'activá pignolo en este proyecto', 'iniciá pignolo acá', 'quiero usar pignolo en este repo', 'set up pignolo here', 'initialize pignolo in this project'; or a message carrying `--decline`. Deduces its settings from the project files and confirms each one with the human before anything is written. Do not use to change the model profile or the permissions of a project that already has pignolo (that is setup)."
 ---
 
 Guide the human through activating pignolo in this project. Speak to them in their language. Everything that writes (`.pignolo/project.md`, the folder skeleton and any move of existing folders, `.gitattributes`, `.pignolo/.gitignore`, `SECURITY.md`, the git reflog policy, `.claude/settings.local.json`) is done by `${CLAUDE_PLUGIN_ROOT}/scripts/init.js`, only for the steps the human approved. You never edit those files or `.git/config` yourself, and you never push.
@@ -14,6 +14,8 @@ Guide the human through activating pignolo in this project. Speak to them in the
 - **Explicit yes.** Nothing is written without the human's explicit yes in their own turn. An option chosen in the selector counts as that yes only for the exact plan shown on that screen (the `preview` just run); if the plan changes, show it and ask again.
 
 ## Start
+
+**Decline.** A message carrying `--decline` (the panel wizard's "no usar pignolo acá") skips step 0 and all below: run `node "${CLAUDE_PLUGIN_ROOT}/scripts/init.js" decline` (it writes only a mark under `.git/pignolo/`), say in one plain line that the wizard will not offer itself again here and `/pignolo:init` still works, and stop.
 
 0. **Confirm (only if you chose this skill yourself).** If the turn carries a `<command-name>` tag for this skill, the user typed the command: carry on below. Otherwise run nothing yet: read `${CLAUDE_PLUGIN_ROOT}/templates/activation-confirm.md`, section `init`, and ask with AskUserQuestion (never plain chat text) with the recommended option first, "Activar pignolo en este proyecto (Recomendado)", and "No ahora". On "No ahora" end this skill and carry on with what the user was doing.
 

@@ -15,10 +15,11 @@ const { buildSummary } = require('./init-summary');
 const { samePath } = require('./places');
 const { proposeAdaptation } = require('./init-adapt');
 const { realNorm } = require('./real-path');
+const { readConfig } = require('./profiles');
 
 const SCHEMA = 'pignolo-wizard-detect/1';
 const FILE = 'wizard-detect.json';
-const MARKER = 'wizard-offered';
+const MARKER = 'wizard-declined';
 const MAX_BYTES = 64 * 1024;
 const TEMPLATE = path.join(__dirname, '..', 'templates', 'permissions.json');
 
@@ -88,10 +89,17 @@ function permissionGroups(readTemplate = () => JSON.parse(nodeFs.readFileSync(TE
 }
 
 const PROFILES = [
-  { id: 'balanced', label: 'balanceado', line: 'sonnet para construir, opus revisa', recommended: true },
-  { id: 'economy', label: 'económico', line: 'sonnet en lo seguro, el más barato', recommended: false },
-  { id: 'max', label: 'máximo', line: 'opus casi en todo, el más caro', recommended: false },
+  { id: 'balanced', label: 'balanceado', line: 'sonnet para construir, opus revisa' },
+  { id: 'economy', label: 'económico', line: 'sonnet en lo seguro, el más barato' },
+  { id: 'max', label: 'máximo', line: 'opus casi en todo, el más caro' },
 ];
+
+// RW-01: el perfil es global (PIGNOLO_HOME/config.json), no del proyecto. Se recomienda el que ya está configurado, como hace `setup`;
+// sin config, o con una config que no se puede leer, `balanced`.
+function currentProfile(env) {
+  try { const p = readConfig({ env }).profile; if (PROFILES.some((x) => x.id === p)) return p; } catch (_) { /* sin config legible: balanced */ }
+  return 'balanced';
+}
 
 const MOVABLE = ['spec', 'plan', 'research'];
 
@@ -126,7 +134,7 @@ function branchOf(run, main) {
 }
 
 // buildWizardDetect({ main, run, fs }) -> el resumen del asistente (sin `offer`: lo agrega quien lo escribe). Lanza si no puede leer.
-function buildWizardDetect({ main, run, fs = nodeFs, permissions } = {}) {
+function buildWizardDetect({ main, run, fs = nodeFs, permissions, env = process.env } = {}) {
   const git = run || ((args, o) => gitRun(args, (typeof o === 'string' ? o : o && o.cwd) || main, { timeout: 5000 }));
   const blank = blankProject({ root: main, fs });
   let data;
@@ -147,7 +155,7 @@ function buildWizardDetect({ main, run, fs = nodeFs, permissions } = {}) {
         tests: { cmd: onDone ? oneLine(onDone) : null, state: onDone ? 'declared' : (placeholder ? 'placeholder' : 'none') },
         main: branchOf(git, main),
       },
-      profiles: PROFILES.map((p) => ({ ...p })),
+      profiles: PROFILES.map((p) => ({ ...p, recommended: p.id === currentProfile(env) })),
       permissions: { groups: permissions || permissionGroups() },
       places: { candidates: placeCandidates(places, summary) },
     };
@@ -180,16 +188,31 @@ function writeWizardDetect(main, data, fs = nodeFs) {
   return { path: file };
 }
 
-// Verdadero solo la primera vez en este proyecto: el marcador se crea con `wx`, así que dos arranques a la vez no lo ven los dos.
-function offerFirst(main, fs = nodeFs) {
+// RW-02 (decisión del autor, 2026-10-03): el asistente se ofrece en cada sesión hasta que se active pignolo o se elija "no usar pignolo acá".
+// La marca de rechazo es el único archivo que se escribe por esa elección, y solo bajo <main>/.git/pignolo/ (nunca .pignolo/).
+function declined(main, fs = nodeFs) {
   const safe = safeDir(main, fs);
   if (!safe.ok) return false;
-  try { fs.mkdirSync(safe.dir, { recursive: true }); } catch (_) { return false; }
-  if (!safeDir(main, fs).ok) return false;
+  try { return fs.lstatSync(path.join(safe.dir, MARKER)).isFile(); } catch (_) { return false; }
+}
+
+function writeDecline(main, fs = nodeFs) {
+  const safe = safeDir(main, fs);
+  if (!safe.ok) return { ok: false, reason: safe.reason };
+  try { fs.mkdirSync(safe.dir, { recursive: true }); } catch (_) { return { ok: false, reason: 'unwritable' }; }
+  if (!safeDir(main, fs).ok) return { ok: false, reason: 'link-in-path' };
+  const file = path.join(safe.dir, MARKER);
   try {
-    fs.writeFileSync(path.join(safe.dir, MARKER), `${new Date().toISOString()}\n`, { flag: 'wx' });
-    return true;
-  } catch (_) { return false; }
+    fs.rmSync(file, { force: true }); // si era un enlace, se quita el enlace, no su destino
+    fs.writeFileSync(file, `${new Date().toISOString()}\n`, { flag: 'wx' });
+    return { ok: true, path: file };
+  } catch (_) { return { ok: false, reason: 'unwritable' }; }
+}
+
+// Se ofrece mientras no haya .pignolo/project.md ni marca de rechazo.
+function shouldOffer(main, fs = nodeFs) {
+  try { if (fs.existsSync(path.join(main, '.pignolo', 'project.md'))) return false; } catch (_) { return false; }
+  return !declined(main, fs);
 }
 
 // Borra un archivo viejo para que no engañe (solo ese archivo, y solo por una ruta segura).
@@ -201,15 +224,18 @@ function removeStale(main, fs = nodeFs) {
 
 // Todo el trabajo del hook: detectar con plazo propio, decidir `offer` y escribir. Lanza si no pudo (el hook lo calla y llama a
 // removeStale). Devuelve { path, offer } o { skipped }.
-function writeFor(main, { budgetMs = 3000, build = buildWizardDetect, fs = nodeFs } = {}) {
-  if (!safeDir(main, fs).ok) return { skipped: 'unsafe' };
+// RW-04: si la escritura se salta, un archivo viejo no puede seguir ofreciendo: se borra por una ruta segura (`stale: 'removed'`); si no
+// hay ruta segura (enlaces) no se toca nada y se informa `offer: false` y `stale: 'kept'`.
+function writeFor(main, { budgetMs = 3000, build = buildWizardDetect, fs = nodeFs, env = process.env } = {}) {
+  const skip = (reason) => ({ skipped: reason, offer: false, stale: removeStale(main, fs) ? 'removed' : 'kept' });
+  if (!safeDir(main, fs).ok) return skip('unsafe');
   const d = deadlineRun(main, budgetMs);
-  const data = build({ main, run: d.run, fs });
+  const data = build({ main, run: d.run, fs, env });
   if (d.state.expired || d.left() <= 0) throw new Error('se agotó el plazo de la detección');
-  data.offer = offerFirst(main, fs);
+  data.offer = shouldOffer(main, fs);
   const w = writeWizardDetect(main, data, fs);
-  if (w.skipped) return { skipped: w.skipped };
+  if (w.skipped) return skip(w.skipped);
   return { path: w.path, offer: data.offer };
 }
 
-module.exports = { SCHEMA, FILE, MARKER, MAX_BYTES, buildWizardDetect, writeWizardDetect, offerFirst, removeStale, writeFor, safeDir, idOf, permissionGroups };
+module.exports = { SCHEMA, FILE, MARKER, MAX_BYTES, buildWizardDetect, writeWizardDetect, declined, writeDecline, shouldOffer, removeStale, writeFor, safeDir, idOf, permissionGroups };

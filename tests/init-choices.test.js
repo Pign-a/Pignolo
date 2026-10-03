@@ -71,6 +71,16 @@ test('init-choices: toAnswers keeps the chosen places and fills the missing ones
   assert.equal(SUMMARY.recommendedPlaces.plan.decision, 'adopt');
 });
 
+test('RW-03 init-choices: with public answered no the places not chosen in the wizard take the private-repository recommendation', () => {
+  const summary = { ...SUMMARY, recommendedPlacesIfPrivate: { spec: { decision: 'adopt', from: 'specs/' }, plan: { decision: 'adopt', from: 'plans/' }, reference: { decision: 'adopt', from: 'refs/' } } };
+  const pub = IC.toAnswers({ ...GOOD, places: { spec: 'leave' } }, { summary, isPublic: true });
+  assert.equal(pub.answers.places.reference, undefined);
+  const priv = IC.toAnswers({ ...GOOD, places: { spec: 'leave' } }, { summary, isPublic: false });
+  assert.deepEqual(priv.answers.places.reference, { decision: 'adopt', from: 'refs/' });
+  assert.deepEqual(priv.answers.places.spec, { decision: 'leave' }); // lo que se eligió en el asistente manda
+  assert.equal(IC.toAnswers(GOOD, { summary }).answers.places.reference, undefined); // sin respuesta: como público
+});
+
 test('init-choices: blank true gives only the blank steps and no places', () => {
   const blankSummary = { recommended: ['ignores', 'gitattributes', 'reflog', 'skeleton'], recommendedPlaces: {} };
   const r = IC.toAnswers({ v: 1, id: ID, blank: true }, { summary: blankSummary });

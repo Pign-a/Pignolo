@@ -47,10 +47,12 @@ function parseChoices(line) {
 }
 
 // toAnswers(choices, { summary }) -> { approved, answers, extras }. `summary` es el de `init.js detect`. Lo no elegido toma lo recomendado.
-function toAnswers(choices, { summary }) {
+function toAnswers(choices, { summary, isPublic }) {
   if (choices.blank) return { approved: [...summary.recommended], answers: {}, extras: { blank: true, perms: null, ui: null, review: false } };
   const places = {};
-  for (const [kind, rec] of Object.entries(summary.recommendedPlaces || {})) places[kind] = { ...rec };
+  // RW-03: con `public` en no, las carpetas recomendadas son las del repo privado (como en el flujo rápido).
+  const base = isPublic === false ? summary.recommendedPlacesIfPrivate : summary.recommendedPlaces;
+  for (const [kind, rec] of Object.entries(base || {})) places[kind] = { ...rec };
   for (const [kind, decision] of Object.entries(choices.places || {})) {
     const from = places[kind] && places[kind].from;
     places[kind] = from !== undefined && decision !== 'leave' ? { decision, from } : { decision };
