@@ -87,6 +87,7 @@ const BLOCK_SAMPLES = {
 // no necesitan regla de capa 1: en modos interactivos la guardia pide confirmación.
 const NOT_EXPRESSIBLE = {
   'invalid-input': 'no es un comando: no hay texto que una regla pueda comparar',
+  'snapshot-required': 'depende de que la instantánea de esta llamada salga bien: un prefijo de permiso no lo ve',
   'git-C': 'depende del subcomando: con lecturas se permite (F12)',
   'subagent-main': 'depende de quién llama (subagente) y de la rama de HEAD del directorio efectivo: un prefijo de permiso no lo ve',
   'fetch-force-head': 'depende de la combinación de --update-head-ok con un refspec forzado',
