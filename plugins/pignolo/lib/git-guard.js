@@ -309,6 +309,7 @@ function evaluate(command, opts = {}) {
     locs: { root, home, pignoloHome, claudeDirs: Array.isArray(opts.claudeDirs) ? opts.claudeDirs : undefined },
     onlyCatastrophic: Boolean(opts.onlyCatastrophic),
     collect: Array.isArray(opts.collect) ? opts.collect : null, // solo gitCommands: una entrada por `git`
+    statPath: typeof opts.statPath === 'function' ? opts.statPath : diskStat(), // costura de disco (T1): 'file' | 'dir' | null
     subagent: Boolean(opts.subagent), // el payload trae agent_id
     agentType: typeof opts.agentType === 'string' ? opts.agentType : null, // agent_type del payload
     trace: [],
@@ -327,6 +328,19 @@ function evaluate(command, opts = {}) {
   if (Array.isArray(opts.rules)) opts.rules.push(...found.map((v) => v.rule));
   const list = opts.onlyCatastrophic ? found.filter((v) => v.cls === 'catastrophic') : found;
   return decide(list, ctx);
+}
+
+// Costura de disco: 'file' | 'dir' | null para un valor resuelto contra los directorios reales del estado.
+function diskStat() {
+  return (value, st) => {
+    for (const d of realDirs(st)) {
+      try {
+        const s = fs.statSync(path.resolve(d, value));
+        return s.isDirectory() ? 'dir' : 'file';
+      } catch (_) { /* no existe en este directorio */ }
+    }
+    return null;
+  };
 }
 
 function decisionOf(v, mode) {
@@ -1494,7 +1508,7 @@ function gitRulesBase(sub, o, args, ctx, st) {
         const p = pos[0];
         if (p.value === '.' || p.glob) return ['checkout-path'];
         if (p.dyn) return ['dynamic-argument'];
-        if (realDirs(st).some((d) => fs.existsSync(path.resolve(d, p.value)))) return ['checkout-path'];
+        if (ctx.statPath(p.value, st)) return ['checkout-path'];
         if (!has('b') && !has('B') && !long('orphan')) switchedTo(st, p.value);
       }
       if (has('B')) r.push('ref-move');
