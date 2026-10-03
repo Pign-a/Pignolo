@@ -20,6 +20,10 @@
 
 - **D-P1:** el mod solo lee y dibuja; no toca lo que dibuja Claude Code.
 - **D-P2 (2026-10-03, corrección posterior):** al contestar una pregunta de "Te toca" la respuesta **se envía** (no se pega en el prompt), con contexto. Formato exacto: `Respuesta a la decisión <id> ("<pregunta>"): <opción elegida>.` enviada con `$.prompt.submit({ text, asUser: true })`. **Solo** para las respuestas de "Te toca": el siguiente paso sigue siendo sugerencia (`prompt.suggest`) y sus botones siguen llenando el prompt sin enviar.
+- **D-P4 (Q1):** plugin aparte `plugins/pignolo-panel/`, con su entrada en `marketplace.json` al unir.
+- **D-P5 (Q2):** el panel **se abre solo** (`userConfig.autoOpen`, prendido por defecto, se apaga) cuando aparece una decisión nueva del usuario, solo donde la doc lo permite (terminal de ≥ 144 columnas; ≥ 110 si ya se abrió una vez), **una sola vez por decisión** (se recuerda el `id` abierto en memoria y en el registro) y nunca en bucle.
+- **D-P6 (Q3 a Q5):** el hook marca la respuesta; "Otra" llena el prompt; sin estimación de costo por agente.
+- **D-P7 (acciones nuevas):** (a) en "Te toca", `?` despliega bajo la pregunta lo que gana y pierde cada opción (`pros_contras` opcional por opción) y `z` pospone la decisión hasta el cierre de sesión (`pospuesta`; `close-session` la vuelve a mostrar); (b) aviso de tope de gasto como decisión al 80 % del tope aprobado del hito, una vez por hito; (c) `c` copia (`$.ui.copy`) la rama, el hash o la ruta del informe de la fila con foco; (d) sin nada corriendo y con lo pendiente solo del usuario, el siguiente paso es cerrar la sesión (`/pignolo:close-session`). **No** se suman acciones por rama ni vista de evidencia de tarjeta.
 - **D-P3:** la respuesta marca la decisión como respondida en el registro para que deje de aparecer (R-P4).
 
 ## Rulings técnicos (registrados)
@@ -29,10 +33,11 @@
 - **R-P3: formato `pignolo-panel-state/1`**, un objeto JSON, UTF-8 sin BOM, LF, máximo 64 KB (lo que pasa se recorta, nunca se rechaza todo):
   - `schema` (`"pignolo-panel-state/1"`), `updated` (ISO), `pluginVersion`.
   - `plan`: `{ slug, stage, request }` (`request` ≤ 160 caracteres) o `null`.
-  - `decisions[]`: `{ id, question, options[≤4], recommended, context, status: "open"|"answered", askedAt, answeredAt?, answer? }`. `id` es `Q-<n>` (pignolo asigna el siguiente libre; no se pisa con las `D-<n>` de diseño de `plan.js decision`).
+  - `decisions[]`: `{ id, question, options[≤4] (cada una `{ label, pros_contras? }`, `pros_contras` ≤ 200 caracteres, lo escribe quien crea la decisión), recommended, context, kind: "user"|"budget", status: "open"|"answered"|"postponed", postponedAt?, askedAt, answeredAt?, answer?, shown?: boolean }`. `id` es `Q-<n>` (pignolo asigna el siguiente libre; no se pisa con las `D-<n>` de diseño de `plan.js decision`).
   - `branches[]`: `{ name, stage: plan|execution|review|fixes|suite|merge, review: none|APPROVE|CHANGES, suite: none|green|red, commits, waiting, merged, costOk?: { usd?, ok } }`.
   - `cards[]`: `{ id, plan, title, status: todo|running|done|failed, red, green, evidence }` (`red` y `green` una línea de ≤ 80 caracteres, p. ej. `falla: comillas` / `12/12`).
-  - `main`: `{ ahead }` (commits de `main` sobre `origin/main`, o `null` si no se sabe).
+  - `budget[]`: `{ hito, spent, cap, warned }` (USD; `warned` evita repetir el aviso).
+- `main`: `{ ahead }` (commits de `main` sobre `origin/main`, o `null` si no se sabe).
   - `next`: `{ rule, key, text, prompt, costNote, why, alternatives[≤2] }` o `{ none: "busy"|"ambiguous"|"cost"|"attention"|"nothing" }`.
   - Sin datos privados: ninguna ruta absoluta, ni directorio del usuario, ni salida cruda de comandos (`sanitize` recorta a una línea y reemplaza rutas por su forma relativa); la fixture y los tests del repo son sintéticos (el repo es público). El archivo es local y está fuera de git.
 - **R-P4: cómo se marca "respondida" y quién escribe.** El mod no escribe. Al apretar el botón, el mod (a) envía el mensaje (D-P2) y (b) oculta la decisión en memoria al instante (feedback). El que **escribe** en el registro es un handler de `UserPromptSubmit` del núcleo (`hooks/handlers/panel-answer.js`): si el texto del prompt cumple `^Respuesta a la decisión (Q-\d+) \("(.*)"\): (.+)\.$`, el `id` existe y está `open`, y la respuesta es una de sus `options` (o la opción libre "Otra"), pone `status: "answered"`, `answer` y `answeredAt` (momento: cuando el prompt llega, antes de que el agente lo procese). *Por qué un hook y no el agente:* no depende de que el modelo obedezca; también marca si el usuario escribe a mano ese texto (es un acto suyo). Es **mejor esfuerzo y falla abierto** (nunca niega ni demora un prompt; no es parte de la guardia). Respaldo: la skill `entry` dice que un mensaje que empieza con `Respuesta a la decisión` es la respuesta del usuario y se la trata como cita literal (si era una decisión de diseño, `plan.js decision add` la usa como `--quote-file`).
@@ -40,6 +45,8 @@
   | Dato | Escribe | Cuándo |
   |---|---|---|
   | decisión abierta | `scripts/panel.js ask --question-file --option ... --recommended --context-file` (la llaman las skills y agentes cuando algo es del autor y no bloquea el chat: costo sin OK, hallazgo que depende de él) | al detectarlo |
+  | decisión pospuesta | el mod solo la oculta en memoria (no puede escribir ni enviar: R-P9); `panel.js postpone --id` la persiste y la llama `close-session` para las que el usuario dejó sin responder; el registro la guarda como `postponed` | al cerrar la sesión |
+  | aviso de tope | `refresh`: al llegar `spent` ≥ 80 % de `cap` del hito y `warned` falso, crea la decisión `kind: "budget"` ("el hito X lleva N de M USD, ¿seguimos?") y marca `warned` | una vez por hito |
   | decisión respondida | handler `UserPromptSubmit` (R-P4) | al enviarse la respuesta |
   | plan y etapa | `refresh` desde `plan.js advance`, `plan.js new` | en cada avance |
   | ramas y etapas | `refresh` desde `run.js start/end/task-end`, `queue.js` (entrada, `pre-merge`, revert), `review` (veredicto al guardar el ledger), `gate.js` (sello de suite), `cleanup.js` | al terminar cada comando |
@@ -47,8 +54,9 @@
   | ramas unidas | `refresh` (`merged` = `git branch --merged main`, solo lectura) | al unir por la cola |
   | `next` | `refresh` con `lib/next-steps.js` (R-P7) | siempre el último paso del `refresh` |
 - **R-P6: escritura atómica y concurrente.** Archivo temporal en el mismo directorio + `rename`; un lock corto `O_EXCL` (`.pignolo/tmp/panel.lock`, reintento hasta 2 s, vencido a los 10 s) para que dos tareas de una ola no se pisen; un archivo ilegible se reconstruye con `refresh` (las decisiones abiertas ilegibles se pierden: se avisa en stderr). Un fallo del registro **nunca** hace fallar el comando que lo llamó (try/catch, salida 0).
-- **R-P7: un solo lugar para las reglas del siguiente paso.** `lib/next-steps.js` (puro): recibe los hechos del `refresh` y devuelve `next`. Reemplaza `next-rules.js` del prototipo (el mod ya no tiene reglas: muestra `next` del registro). `deriveNext` (texto de `next.js`/`status`) se mantiene y sus `kind` se mapean: los de "algo corre" (`task-in-progress`, `wave-partial`, `queue-busy-dead`) dan `none: "busy"`; los de "algo anda mal" (`task-blocked`, `queue-conflict`, `run-malformed`, `sabotage-pending`, `flow-expired-task`, `plan-unreadable`) dan `none: "attention"` (se muestran en "Te toca" como texto, nunca como sugerencia para enviar); los `plan-<etapa>` y las ramas dan reglas. Niveles: 1 decisión abierta, 2 unir (APPROVE y suite verde), 3 revisar (rama con commits sin revisión), 4 push de `main`, 5 tarjeta siguiente. **No sugiere** cuando: hay algo corriendo (agente, tarea, lock de cola vivo, tarjeta `running`); hay dos candidatos en el mismo nivel (ambiguo); el paso cuesta plata y no hay `costOk.ok` (con OK lo dice en `costNote`); la rama espera al usuario; no hay evidencia suficiente (p. ej. `main.ahead` desconocido). La sugerencia solo *llena* el cuadro: nunca se envía.
+- **R-P7: un solo lugar para las reglas del siguiente paso.** `lib/next-steps.js` (puro): recibe los hechos del `refresh` y devuelve `next`. Reemplaza `next-rules.js` del prototipo (el mod ya no tiene reglas: muestra `next` del registro). `deriveNext` (texto de `next.js`/`status`) se mantiene y sus `kind` se mapean: los de "algo corre" (`task-in-progress`, `wave-partial`, `queue-busy-dead`) dan `none: "busy"`; los de "algo anda mal" (`task-blocked`, `queue-conflict`, `run-malformed`, `sabotage-pending`, `flow-expired-task`, `plan-unreadable`) dan `none: "attention"` (se muestran en "Te toca" como texto, nunca como sugerencia para enviar); los `plan-<etapa>` y las ramas dan reglas. Niveles: 1 decisión abierta, 2 unir (APPROVE y suite verde), 3 revisar (rama con commits sin revisión), 4 push de `main`, 5 tarjeta siguiente, 6 cerrar la sesión (D-P7d: nada corriendo y lo pendiente es solo del usuario; no pisa a los otros niveles). **No sugiere** cuando: hay algo corriendo (agente, tarea, lock de cola vivo, tarjeta `running`); hay dos candidatos en el mismo nivel (ambiguo); el paso cuesta plata y no hay `costOk.ok` (con OK lo dice en `costNote`); la rama espera al usuario; no hay evidencia suficiente (p. ej. `main.ahead` desconocido). La sugerencia solo *llena* el cuadro: nunca se envía.
 - **R-P8: costo por agente = tokens y minutos, sin plata inventada.** La API no da costo por agente; una tabla de precios en el repo queda vieja. El panel muestra tokens y minutos por agente y el costo real solo de la sesión (`session.usage`). Si el autor quiere una estimación, es otra decisión (Q5).
+- **R-P10: abrir solo.** El mod guarda en memoria el conjunto de `id` de decisiones ya "anunciadas"; al refrescar, si aparece un `id` abierto que no está, lo agrega y abre el panel una vez (solo si cumple el ancho de D-P5). Cerrar con `Esc` no lo reabre; un `id` ya anunciado nunca vuelve a abrirlo. Al cargar el mod, las decisiones que ya existen se marcan anunciadas sin abrir (si no, abriría al arrancar la sesión).
 - **R-P9: la respuesta se envía una sola vez y solo desde el botón.** `prompt.submit` vive en un único archivo (`hooks/answer.js`, función `submitAnswer`), que solo se llama desde el manejador de pulsación del botón de una opción de "Te toca". El texto sale del registro (pregunta recortada a 120 caracteres, sin saltos de línea ni comillas dobles, opción tal cual); la opción libre "Otra" **no se envía**: llena el prompt con `Respuesta a la decisión <id> ("<pregunta>"): ` para que el usuario escriba y envíe. Tras enviar: toast "Enviado", la decisión se oculta en memoria (R-P4) y no se reenvía si el registro todavía la trae abierta (clave `id` + `answeredAt` local).
 
 ## Dónde vive el mod (recomendación) y versión mínima
@@ -108,7 +116,7 @@
 
 ### T2 — quién escribe: llamadas desde los scripts, `UserPromptSubmit` y `/pignolo:status`
 
-- [ ] **Archivos:** llamadas de una línea (`panelRefresh(main)`, protegida) en `scripts/plan.js`, `scripts/run.js`, `scripts/queue.js`, `scripts/gate.js`, `scripts/sabotage.js`, `scripts/cleanup.js` y donde se guarda el ledger de revisión; `plugins/pignolo/hooks/handlers/panel-answer.js`, `hooks/launcher.js` (evento `panel-answer`), `hooks/hooks.json` (suma `UserPromptSubmit`; **convive** con los hooks actuales, no los toca), `skills/status/SKILL.md` (paso 4: `panel.js show --text`, solo si hay algo), `skills/entry/SKILL.md` (una línea: R-P4 respaldo), tests `tests/panel-writers.test.js`, `tests/panel-answer-hook.test.js`, `tests/hooks-json.test.js` (existente, se extiende).
+- [ ] **Archivos:** llamadas de una línea (`panelRefresh(main)`, protegida) en `scripts/plan.js`, `scripts/run.js`, `scripts/queue.js`, `scripts/gate.js`, `scripts/sabotage.js`, `scripts/cleanup.js` y donde se guarda el ledger de revisión; `plugins/pignolo/hooks/handlers/panel-answer.js`, `hooks/launcher.js` (evento `panel-answer`), `hooks/hooks.json` (suma `UserPromptSubmit`; **convive** con los hooks actuales, no los toca), `scripts/close-session.js` y `skills/close-session/SKILL.md` (vuelve a mostrar las `postponed` como abiertas y las lista al usuario), `skills/status/SKILL.md` (paso 4: `panel.js show --text`, solo si hay algo), `skills/entry/SKILL.md` (una línea: R-P4 respaldo), tests `tests/panel-writers.test.js`, `tests/panel-answer-hook.test.js`, `tests/hooks-json.test.js` (existente, se extiende).
 - [ ] **Casos de test:**
   - `writers: plan.js advance, run.js start, queue.js pre-merge and gate.js each leave panel-state.json refreshed` (uno por comando)
   - `writers: sabotage.js records the red line and gate.js the green line for the card of the task`
@@ -119,13 +127,18 @@
   - `panel-answer hook: it never denies, never rewrites the prompt and exits 0 on any input` (JSON roto, vacío, no UTF-8)
   - `panel-answer hook: the free option Otra is accepted as answer`
   - `hooks.json: UserPromptSubmit is added and every guard hook it had before is still there unchanged` (guarda de regresión: compara la lista previa)
+  - `panel script: postpone marks the decision postponed with postponedAt and keeps it out of next and out of autoOpen`
+  - `close-session: postponed decisions are listed and reopened`
+  - `refresh: at 80 percent of the approved cap of a milestone one budget decision appears with the text "el hito X lleva N de M USD, ¿seguimos?"`
+  - `refresh: the budget decision is not created twice for the same milestone, nor below 80 percent`
+  - `refresh: answering the budget decision does not reopen it`
   - `status skill: shows the panel text only when there is something and still only reads`
 - [ ] **Rojo:** hacer que el hook devuelva `deny` en un error; quitar un hook previo de `hooks.json`; sacar la llamada de `gate.js`.
 
 ### T3 — las reglas del siguiente paso en un solo lugar (`lib/next-steps.js`)
 
 - [ ] **Archivos:** `plugins/pignolo/lib/next-steps.js`, `plugins/pignolo/lib/next.js` (usa `kind` → regla, R-P7), `plugins/pignolo/scripts/next.js` (suma `suggest` al JSON), `tests/next-steps.test.js`, `tests/next.test.js` (extiende).
-- [ ] **Interfaz:** `nextStep(facts) -> { main, alternatives, none }` (puro; `facts`: `busy`, `decisions[]`, `branches[]`, `main`, `plan`, `cards[]`, `attention[]`); `suggestionText(step)`; niveles `decision < merge < review < push < card`.
+- [ ] **Interfaz:** `nextStep(facts) -> { main, alternatives, none }` (puro; `facts`: `busy`, `decisions[]`, `branches[]`, `main`, `plan`, `cards[]`, `attention[]`); `suggestionText(step)`; niveles `decision < merge < review < push < card < close-session`.
 - [ ] **Casos de test (uno por regla y por "no sugerir"):**
   - `next-steps rule decision: an open decision gives its question with the recommended answer`
   - `next-steps rule merge: APPROVE with a green suite gives "uní <rama> a main"`
@@ -139,14 +152,16 @@
   - `next-steps does not suggest a step with new cost and no approval, and says the cost when approved` (`none: "cost"`)
   - `next-steps does not suggest for a branch that waits for the user`
   - `next-steps: attention kinds (task-blocked, queue-conflict, run-malformed, sabotage-pending, flow-expired-task, plan-unreadable) never become a suggestion` (`none: "attention"`, una fila por `kind`)
+  - `next-steps rule close-session: nothing running and only user decisions pending gives "/pignolo:close-session"`
+  - `next-steps rule close-session: not suggested while anything runs, or when a card, branch or push step is still available`
   - `next-steps: the order is decision, merge, review, push, card and gives at most 2 alternatives`
   - `next.js: the JSON keeps kind, text and facts as before and adds suggest` (guarda de regresión de los tests existentes de `deriveNext`)
 - [ ] **Rojo:** invertir el orden de dos niveles; quitar el chequeo de `costOk`; tratar `ambiguous` como el primero.
 
 ### T4 — el mod pasa al repo como plugin `pignolo-panel`
 
-- [ ] **Archivos:** `plugins/pignolo-panel/.claude-plugin/plugin.json` (0.1.0, `userConfig.demo` y `userConfig.autoOpen` default `false`), `plugins/pignolo-panel/hooks/hooks.json` (`{"modules": ["./register.js"]}`), `hooks/register.js` (del prototipo, **sin** lectura de `.git`, `run.json` ni `plan.json`; lee solo `panel-state.json` y su `schema`), `hooks/model.js`, `hooks/state.js` (queda con `normalize` del registro, barras, etapas y minigráfico; `deriveGit`, `parseHead`, `parsePackedRefs`, `parseReflog` y `next-rules.js` **se borran**: viven en el núcleo), `plugins/pignolo-panel/sample/panel-state.json` (= la fixture de T1), `plugins/pignolo-panel/README.md`, `.claude-plugin/marketplace.json` (entrada **solo con OK del autor**, Q1: se publica en T7 únicamente si lo da), `tests/panel-plugin-layout.test.js`.
-- [ ] **Comportamiento:** banda y panel como en el prototipo (Ahora, Ramas, Costo; tecla `0` reabre, `Esc` cierra); "Siguiente" muestra `state.next` y deja `prompt.suggest` con su texto; sin `panel-state.json` o con una `schema` desconocida dibuja una sola línea "pignolo no está activo en este proyecto" (o "actualizá el panel", si la `schema` es mayor). El panel no se abre solo salvo `autoOpen` y terminal ancha (Q2).
+- [ ] **Archivos:** `plugins/pignolo-panel/.claude-plugin/plugin.json` (0.1.0, `userConfig.demo` y `userConfig.autoOpen` default `true`), `plugins/pignolo-panel/hooks/hooks.json` (`{"modules": ["./register.js"]}`), `hooks/register.js` (del prototipo, **sin** lectura de `.git`, `run.json` ni `plan.json`; lee solo `panel-state.json` y su `schema`), `hooks/model.js`, `hooks/state.js` (queda con `normalize` del registro, barras, etapas y minigráfico; `deriveGit`, `parseHead`, `parsePackedRefs`, `parseReflog` y `next-rules.js` **se borran**: viven en el núcleo), `plugins/pignolo-panel/sample/panel-state.json` (= la fixture de T1), `plugins/pignolo-panel/README.md`, `.claude-plugin/marketplace.json` (entrada de `pignolo-panel`, se suma al unir: D-P4), `tests/panel-plugin-layout.test.js`.
+- [ ] **Comportamiento:** banda y panel como en el prototipo (Ahora, Ramas, Costo; tecla `0` reabre, `Esc` cierra); "Siguiente" muestra `state.next` y deja `prompt.suggest` con su texto; sin `panel-state.json` o con una `schema` desconocida dibuja una sola línea "pignolo no está activo en este proyecto" (o "actualizá el panel", si la `schema` es mayor). El panel se abre solo con una decisión nueva si `autoOpen` está prendido (D-P5, R-P10).
 - [ ] **Casos de test:**
   - `layout: plugin.json has name, version 0.1.0 and no settings hooks` (`hooks/hooks.json` solo tiene `modules`)
   - `layout: the core hooks.json has no modules key` (guarda de que la guardia no comparte archivo con el mod)
@@ -155,14 +170,19 @@
   - `mod: an unknown or greater schema gives a one-line notice and does not throw`
   - `mod: the band shows plan, progress, agents, open decisions, cost and next step` (portados de los del prototipo)
   - `mod: next comes from the registry and the mod has no rule of its own` (no existe `next-rules.js`)
-  - `mod: auto-open is off by default and opens only with autoOpen on a wide terminal`
+  - `mod: autoOpen is on by default and userConfig can turn it off`
+  - `mod: a new decision opens the panel once when the terminal has 144 columns or more`
+  - `mod: after the first opening 110 columns are enough`
+  - `mod: below the threshold or with autoOpen off the panel does not open`
+  - `mod: the same decision never opens the panel twice, not even across refreshes or when closed with Esc` (nunca en bucle)
+  - `mod: a registry refresh without a new decision does not open the panel`
 - [ ] **Rojo:** volver a leer `.git` desde el mod; agregar `modules` al `hooks.json` del núcleo.
 
 ### T5 — responder desde "Te toca" y tests de confianza
 
 - [ ] **Archivos:** `plugins/pignolo-panel/hooks/answer.js` (único lugar con `prompt.submit`), `hooks/register.js` (botón por opción de cada decisión abierta; "Otra" llena el prompt), `plugins/pignolo-panel/tests/panel.test.ts` (portado: 37 del prototipo + los nuevos), `tests/panel-trust.test.js` (node:test, sin Claude Code).
 - [ ] **Interfaz:** `submitAnswer($, decision, option) -> Promise<boolean>`: arma el texto `Respuesta a la decisión <id> ("<pregunta>"): <opción>.` (R-P9) y llama a `$.prompt.submit({ text, asUser: true })`; `answered` en memoria evita el reenvío.
-- [ ] **Lista de `calls:` permitida** (lo que `claude plugin validate` debe mostrar, y nada más): `fs.read`, `fs.exists`, `fs.list`, `clock.now`, `clock.every`, la interfaz (`ui.*`, `session.cwd`, `plugin.root`), `prompt.suggest`, `prompt.fill`, `prompt.submit`, `session.usage`.
+- [ ] **Lista de `calls:` permitida** (lo que `claude plugin validate` debe mostrar, y nada más): `fs.read`, `fs.exists`, `fs.list`, `clock.now`, `clock.every`, la interfaz (`ui.*`, incluida `ui.copy`; `session.cwd`, `plugin.root`), `prompt.suggest`, `prompt.fill`, `prompt.submit`, `session.usage`.
 - [ ] **Casos de test de confianza (`node:test`, estáticos; el repo no necesita Claude Code para correrlos):**
   - `trust: the mod sources never reference process, http, fetch, shell, spawn, tool.check, tool.approve or tool.deny` (regex sobre todo `hooks/*.js`; falla si aparece alguno)
   - `trust: prompt.submit appears exactly once in the package, inside answer.js`
@@ -170,6 +190,13 @@
   - `trust: the declared calls list is a subset of the allowed list` (lee la salida de `claude plugin validate` si `claude` existe; si no, la deduce del código y lo dice)
   - `trust: the package has no network access and no dependencies` (sin `package.json` con `dependencies`)
 - [ ] **Casos de test en `claude plugin test` (`panel.test.ts`):**
+  - `te toca: ? unfolds under the question the pros and cons of each option and a second ? folds them`
+  - `te toca: an option without pros_contras shows nothing under ? and does not throw`
+  - `te toca: z hides the decision for the session, sends nothing and never answers it`
+  - `te toca: a decision hidden with z comes back after the mod reloads` (hasta que close-session la persista)
+  - `copy: c on a branch row copies the branch name with ui.copy`
+  - `copy: c on a card row copies the report path and on a commit the hash`
+  - `copy: c copies only what the focused row shows and never calls submit or suggest`
   - `answer: pressing an option sends the exact text with asUser true and calls submit once` (compara con la cadena literal `Respuesta a la decisión Q-1 ("¿...?"): plantilla corta.`)
   - `answer: the question is clipped to 120 characters and loses newlines and double quotes`
   - `answer: the option Otra fills the prompt and sends nothing`
@@ -177,7 +204,7 @@
   - `answer: turn, agent.spawn, agent end events and the clock tick never call submit` (espía en 0)
   - `answer: the next-step button and its alternatives fill or suggest and never call submit`
   - `answer: a prompt that cannot be submitted shows a toast and keeps the decision`
-- [ ] **Rojo:** llamar a `submit` desde el handler del botón del siguiente paso (rompe "never call submit" y el estático); poner `prompt.submit` en un segundo archivo.
+- [ ] **Rojo:** hacer que `c` llame a `prompt.submit` (rompe el estático); llamar a `submit` desde el handler del botón del siguiente paso (rompe "never call submit" y el estático); poner `prompt.submit` en un segundo archivo.
 
 ### T6 — correr los tests, y lo que el prototipo dejó sin resolver
 
@@ -212,10 +239,7 @@
 - **R-3: `claude plugin test` no verificado sin red** (S2). Mitigado: los tests de confianza son estáticos y el envoltorio se salta con motivo.
 - **R-4: Tab y `prompt.suggest`** pueden no comportarse como el prototipo supone; mitigado en T6 (no se promete).
 
-## Decisiones abiertas para el autor (recomendación primero)
+## Decisiones del autor tomadas (2026-10-03) y abierta
 
-- **Q1: ¿plugin aparte o dentro del núcleo?** Recomendado: **aparte** (`plugins/pignolo-panel/`). Alternativa: dentro de `plugins/pignolo/` con `modules` en `hooks.json`. También decide acá si se suma ya a `marketplace.json` (publicar es tuyo): recomendado **sí, al unir**, no antes.
-- **Q2: ¿el panel se abre solo en terminales anchas?** Recomendado: **no** por defecto; opción `autoOpen` apagada, y el botón y la tecla `0` alcanzan.
-- **Q3: ¿el hook `UserPromptSubmit` del núcleo marca la respuesta, o el agente?** Recomendado: **el hook** (no depende del modelo, falla abierto). Alternativa: solo la skill `entry` con `panel.js answer`.
-- **Q4: ¿"Otra" (respuesta libre) se envía o llena el prompt?** Recomendado: **llena** (el usuario escribe y envía él); una respuesta libre enviada sin que la vea sería la única que no eligió de una lista.
-- **Q5: ¿estimar el costo por agente con una tabla de precios?** Recomendado: **no** (queda vieja, mentiría); tokens y minutos.
+- Q1 a Q5: resueltas (D-P4 a D-P6): plugin aparte con entrada en el marketplace al unir; `autoOpen` prendido, una vez por decisión; el hook marca la respuesta; "Otra" llena el prompt; sin costo por agente estimado.
+- **Q6 (abierta): persistencia de `z después`.** El mod no puede escribir y `prompt.submit` solo vale para responder (R-P9). Recomendado: `z` oculta en la sesión y `close-session` la persiste y la vuelve a mostrar. Alternativa: que `z` envíe una línea al agente para que él la registre (cuesta un turno y suma un segundo envío al test de confianza).
