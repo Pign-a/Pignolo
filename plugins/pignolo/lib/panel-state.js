@@ -291,10 +291,12 @@ function addDecision(state, { question, options, recommended, context, kind = 'u
 
 // El texto que sale del panel como palabras del usuario se arma con esto: una sola línea, sin caracteres de control y con
 // tope de largo. Lo que no cumple se rechaza al escribir (RP-03), no se recorta en silencio.
-const BAD = /[\p{Cc}\p{Zl}\p{Zp}]/u;
+// Control, formato (ancho cero, RTL, "tag"), uso privado, sin asignar y separadores de línea (RR-01).
+const BAD = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+const hasHiddenChars = (v) => BAD.test(v);
 function lineProblem(what, v, max) {
   if (typeof v !== 'string') return null;
-  if (BAD.test(v)) return `${what} tiene saltos de línea o caracteres de control`;
+  if (hasHiddenChars(v)) return `${what} tiene saltos de línea, caracteres de control o caracteres invisibles`;
   if (v.length > max) return `${what} pasa de ${max} caracteres`;
   return null;
 }
@@ -329,6 +331,7 @@ function answer(main, { id, key, answer: text, question, strict = false, now } =
     if (strict && d.status !== 'open') return { ok: false, reason: 'not-open' };
     if (strict && question !== cleanQuestion(d.question)) return { ok: false, reason: 'question-differs' };
     const given = typeof text === 'string' ? text : '';
+    if (strict && (hasHiddenChars(String(d.question)) || hasHiddenChars(given))) return { ok: false, reason: 'hidden-chars' };
     if (!d.options.some((o) => o.label === given) && (strict || given !== 'Otra')) return { ok: false, reason: 'not-an-option' };
     d.status = 'answered';
     d.answer = given;

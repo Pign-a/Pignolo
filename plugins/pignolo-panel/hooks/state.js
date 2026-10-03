@@ -10,11 +10,15 @@ export const MARK = { done: '●', current: '◐', todo: '○', waiting: '⚑' }
 const str = (v) => (typeof v === 'string' ? v : v == null ? '' : String(v))
 // Una sola linea: saltos de linea y separadores Unicode pasan a espacio (igual que `sanitize` del nucleo).
 // Los caracteres de control que quedan se dibujan como `?` (el motor se niega a dibujarlos) y marcan la linea como invalida.
-export const oneLine = (v) => str(v).replace(/[\r\n\t\p{Zl}\p{Zp}]+/gu, ' ').replace(/\p{Cc}/gu, '?').replace(/\s{2,}/g, ' ').trim()
+// Control, formato (ancho cero, RTL, "tag"), uso privado y sin asignar: invisibles o ilegibles, nunca viajan como palabras del usuario (RR-01).
+const HIDDEN = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}]/u
+const HIDDEN_ALL = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}]/gu
+export const oneLine = (v) => str(v).replace(/[\r\n\t\p{Zl}\p{Zp}]+/gu, ' ').replace(HIDDEN_ALL, '?').replace(/\s{2,}/g, ' ').trim()
 // Caracteres de control (salvo los saltos, que oneLine aplana) o pasado del tope: no se envia como palabras del usuario.
 export const QUESTION_MAX = 300
 export const OPTION_MAX = 80
-const badLine = (v, max) => /\p{Cc}/u.test(str(v).replace(/[\r\n\t]/g, ' ')) || str(v).length > max
+export const hasHiddenChars = (v) => HIDDEN.test(str(v).replace(/[\r\n\t]/g, ' '))
+const badLine = (v, max) => hasHiddenChars(v) || str(v).length > max
 const arr = (v) => (Array.isArray(v) ? v : [])
 const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null)
 
