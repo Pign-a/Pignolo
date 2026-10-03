@@ -56,7 +56,7 @@ test('invokedSkill lists every Skill tool_use in order; grade accepts the pignol
 
 test('the control arm extracts the plugins of the control commit without tar (works on Windows paths)', () => {
   const { pluginsRoot, cleanupControl, CONTROL_COMMIT } = require('./evals/activation-run');
-  const tmp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'act-ctl-'));
+  const tmp = require('./helpers').makeTempDir('pignolo-act-ctl-');
   try {
     const root = pluginsRoot('control', tmp);
     assert.ok(fs.existsSync(path.join(root, 'pignolo-ui', 'skills', 'new', 'SKILL.md')));
