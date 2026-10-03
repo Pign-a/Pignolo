@@ -21,6 +21,6 @@ function ensureIgnored(root, entries) {
 
 // Líneas de .pignolo/.gitignore (un solo origen: run.js start e init): él mismo (sin commitear contaría
 // como un archivo más del diff), la marca, el flag, los temporales de las skills y sus worktrees.
-const PIGNOLO_IGNORED = Object.freeze(['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/']);
+const PIGNOLO_IGNORED = Object.freeze(['.gitignore', 'run.json', '.disabled', 'tmp/', 'worktrees/', 'panel-state.json']);
 
 module.exports = { ensureIgnored, PIGNOLO_IGNORED };
