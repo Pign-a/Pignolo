@@ -57,5 +57,13 @@ test('setup: toda opción y subcomando que nombra existe en setup.js; permission
 });
 
 test('setup: no es más larga que antes por más de un margen chico', () => {
-  assert.ok(SKILL.text.length <= 7900, String(SKILL.text.length));
+  assert.ok(SKILL.text.length <= 7300, String(SKILL.text.length));
+});
+
+test('setup: las reglas retiradas van en templates/setup-retired.md; sin escribir antes de la pantalla y --apply solo tras el sí', () => {
+  assert.match(SKILL.text, /templates\/setup-retired\.md/);
+  const tpl = fs.readFileSync(path.join(PLUGIN_ROOT, 'templates', 'setup-retired.md'), 'utf8');
+  assert.match(tpl, /setup\.js" retired`\. It writes nothing/);
+  assert.match(tpl, /Only after that yes run `setup\.js retired --apply`/);
+  assert.match(tpl, /run `--apply` only after an explicit yes from the human, in their own turn/);
 });
