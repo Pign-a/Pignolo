@@ -70,7 +70,7 @@ Y en el paso 8 (`Hand over`), al final: `If no lane can take the request, that i
 
 **Comando:** `node --test tests/entry-leave-flow.test.js tests/skill-lanes.test.js tests/review-nl.test.js tests/skill-natural-language.test.js tests/flow-lanes.test.js`. **Rojo:** los casos 1 a 6 fallan hoy (la línea no existe); se demuestra rompiendo cada cláusula como se indica.
 
-- [ ] T1 hecha
+- [x] T1 hecha
 
 ## T2: `entry` manda `.pignolo-ui/` a pignolo-ui (núcleo 0.23.0, pignolo-ui 0.12.0)
 
