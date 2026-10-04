@@ -57,3 +57,42 @@ test('LF-06: sin AskUserQuestion no se sigue: se dice que hace falta la confirma
   assert.strictEqual(LEAVE.length, 1);
   assert.match(LEAVE[0], /AskUserQuestion is not available[^\n]*stop/);
 });
+
+// Bloque 2: el blanco bajo `.pignolo-ui/` va a pignolo-ui, nunca a un carril de git (T2).
+
+const ACT = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'plugins', 'pignolo-ui', 'reference', 'activation.md'), 'utf8');
+const UI_BULLET = LINES.find((l) => /^\s+- If the files the request names/.test(l)) || '';
+
+test('LF-07: una viñeta manda `.pignolo-ui/` a improve o new, sin risk.js, porque git lo ignora', () => {
+  const line = LINES.find((l) => l.includes('.pignolo-ui/') && l.includes('pignolo-ui:improve') && l.includes('pignolo-ui:new'));
+  assert.ok(line, 'no hay viñeta de `.pignolo-ui/` con improve y new');
+  assert.match(line, /Do not run `risk\.js`/);
+  assert.match(line, /ignores/);
+});
+
+test('LF-08: sin pignolo-ui instalado la rama pasa por la pregunta de salida, no por el directo en silencio, y remite a NO-RUNS-COMMIT', () => {
+  assert.ok(UI_BULLET, 'no hay viñeta de `.pignolo-ui/`');
+  for (const s of ['LEAVE-FLOW', 'is not installed', 'NO-RUNS-COMMIT']) {
+    assert.ok(UI_BULLET.includes(s), `falta "${s}" en la viñeta`);
+  }
+});
+
+test('LF-09: la viñeta no junta `.pignolo-ui/` con commit, stage, git add ni back up', () => {
+  assert.ok(UI_BULLET, 'no hay viñeta de `.pignolo-ui/`');
+  const sinRemision = UI_BULLET.replace('NO-RUNS-COMMIT', ''); // la remisión a la regla es lo único permitido
+  for (const re of [/commit/i, /\bstage/i, /git add/i, /back ?up/i]) {
+    assert.doesNotMatch(sinRemision, re, `la viñeta contiene ${re}`);
+  }
+});
+
+test('LF-10: activation.md dice que "Hacerlo directo" vale solo para ese pedido y que uno posterior o mayor vuelve a preguntar', () => {
+  assert.ok(ACT.includes('that request only'), 'falta "that request only"');
+  assert.ok(ACT.includes('later or larger request'), 'falta "later or larger request"');
+});
+
+test('LF-11: la viñeta de `.pignolo-ui/` va antes del paso 3 y del piso de riesgo (el blanco ignorado nunca llega a risk.js)', () => {
+  const at = ENTRY.indexOf('If the files the request names');
+  assert.ok(at > 0, 'no hay viñeta');
+  assert.ok(at < ENTRY.indexOf('3. **Is another flow running?**'), 'la viñeta va antes del paso 3');
+  assert.ok(at < ENTRY.indexOf('5. **Risk floor.**'), 'la viñeta va antes del paso 5');
+});

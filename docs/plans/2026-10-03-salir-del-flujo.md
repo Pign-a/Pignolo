@@ -94,7 +94,7 @@ Y en el paso 8 (`Hand over`), al final: `If no lane can take the request, that i
 
 **Comando:** `node --test tests/entry-leave-flow.test.js tests/skills-no-runs-commit.test.js tests/review-fuga-leak-values.test.js tests/skill-natural-language.test.js tests/review-nl.test.js` y `npm run test:ui` (pignolo-ui toca `reference/activation.md`: corre sus tests de texto).
 
-- [ ] T2 hecha
+- [x] T2 hecha
 
 ## T3: `entry` entrega "armá un plan" al carril `plan` (núcleo 0.23.0)
 

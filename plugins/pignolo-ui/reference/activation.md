@@ -14,7 +14,7 @@ Loaded by step 0 of `new`, `improve`, `audit` and `define`. This file gets no su
 One question with the AskUserQuestion tool (never plain text in the chat), two options, the recommended one first and with "(Recomendado)" in its label. Each option's description says what it costs or what it changes, taken from the lines below. The user may write their own answer.
 
 - First option: "Usar pignolo-ui (Recomendado)". Go on with step 1.
-- Second option: "Hacerlo directo". End this skill: do not run any step of it, and carry on with what the user asked as in a normal session, without pignolo-ui. Say in one line that you are doing it directly: that line is the record of the choice in the conversation, and `pignolo:entry` honors it for that request (it does not send it back to pignolo-ui).
+- Second option: "Hacerlo directo". End this skill: do not run any step of it, and carry on with what the user asked as in a normal session, without pignolo-ui. Say in one line that you are doing it directly: that line is the record of the choice in the conversation, and `pignolo:entry` honors it for that request only (it does not send it back to pignolo-ui, and it asks again for a later or larger request).
 - A written answer that asks for something else: do that instead; if it is not clear, ask again once.
 
 Question text in the user's language, short: what you are about to start ("Esto arma pantallas con pignolo-ui. ¿Lo uso o lo hago directo?").
