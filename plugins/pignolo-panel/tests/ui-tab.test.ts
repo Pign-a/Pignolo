@@ -185,11 +185,12 @@ test('ui tab: shows up to three recommendations with their reason and letters a,
   await setup($, on)
   const ui = await $.ui.mount({ ...PANE })
   await ui.press({ key: 'tab-ui' })
-  expect(text(await ui.find({ type: 'Text', text: /Mejorar \"login\"/ }))).toContain('Mejorar \\"login\\"')
-  expect(text(await ui.find({ type: 'Text', text: /Auditar \"ventas\"/ }))).toContain('Auditar \\"ventas\\"')
-  expect(text(await ui.find({ type: 'Text', text: /Crear \"detalle\"/ }))).toContain('Crear \\"detalle\\"')
-  expect(JSON.stringify(await ui.find({ type: 'Text', text: /Mejorar \"login\"/ }))).toContain('"bold":true') // la recomendación va en negrita
-  for (const k of ['a', 'b', 'c']) expect(await ui.find({ type: 'Button', key: 'ui-rec-' + k })).toBeDefined()
+  // el título completo va en el botón (el motor dibuja "a: <título>"): la etiqueta no lleva la letra
+  const labels = []
+  for (const k of ['a', 'b', 'c']) labels.push((await ui.find({ type: 'Button', key: 'ui-rec-' + k })).props.label)
+  expect(labels).toEqual(['Mejorar "login"', 'Auditar "ventas"', 'Crear "detalle"'])
+  expect(text(await ui.find({ type: 'Button', key: 'ui-rec-a' }))).not.toContain('"dimColor":true') // la recomendación a todo color; los atajos, tenues
+  expect(text(await ui.find({ type: 'Button', key: 'ui-sc-n' }))).toContain('"dimColor":true')
   expect(await ui.find({ type: 'Button', key: 'ui-rec-d' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /contraste bajo en la tabla/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /nunca se auditó/ })).toBeDefined()
@@ -199,11 +200,15 @@ test('ui tab: shows up to three recommendations with their reason and letters a,
   await ui.unmount()
 })
 
-test('ui tab: the cost line shows consultas of the session and the cost or the estimate', async ($, on) => {
+test('ui tab: with an AI answer the right side of the title is empty: no haiku, no consultas, no cost', async ($, on) => {
   await setup($, on)
   const ui = await $.ui.mount({ ...PANE })
   await ui.press({ key: 'tab-ui' })
-  expect(text(await ui.find({ type: 'Text', text: /haiku/ }))).toContain('haiku · 1 consulta · ≈ 0,01 USD')
+  const head = text(await ui.find({ key: 'blk-ui-head' }))
+  expect(head).toContain('UI · proj')
+  expect(head).not.toMatch(/haiku|consulta|USD|por reglas|pensando/)
+  expect(await ui.find({ type: 'Text', text: /haiku|consulta|USD/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Button', key: 'ui-rec-a' })).toBeDefined() // y las recomendaciones de la IA llegaron
   await ui.unmount()
 })
 
@@ -214,7 +219,7 @@ test('ui tab: only define shows one line and the fixed shortcuts and no IA cost 
   const ui = await $.ui.mount({ ...PANE })
   await ui.press({ key: 'tab-ui' })
   expect(await ui.find({ type: 'Button', key: 'ui-rec-a' })).toBeDefined()
-  expect(text(await ui.find({ type: 'Text', text: /Definir producto y diseño/ }))).toContain('Definir producto y diseño')
+  expect((await ui.find({ type: 'Button', key: 'ui-rec-a' })).props.label).toBe('Definir producto y diseño')
   expect(await ui.find({ type: 'Button', key: 'ui-rec-b' })).toBeUndefined()
   expect(await ui.find({ type: 'Button', key: 'ui-sc-n' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /haiku|reglas|consulta/ })).toBeUndefined()
@@ -235,7 +240,7 @@ test('ui tab: while the model call is pending the rules are drawn with pensando 
   release()
   await pressing
   expect(await ui.find({ type: 'Text', text: /pensando/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /haiku/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', key: 'ui-rec-a' })).toBeDefined()
   await ui.unmount()
 })
 
@@ -372,4 +377,92 @@ test('ui tab: a hostile screen name from a file is never sent (safeName) and the
   expect(spy.submit.length).toBe(1)
   expect(spy.submit[0].text).toMatch(/^Mejorá la pantalla login\./)
   expect(spy.submit[0].text).not.toContain('borra')
+})
+
+// ---- distribución del bloque (panel 0.4.0) ----
+
+const nodes = (tree: any, pred: (n: any) => boolean, out: any[] = []) => {
+  if (tree && typeof tree === 'object') {
+    if (pred(tree)) out.push(tree)
+    for (const c of tree.children ?? []) nodes(c, pred, out)
+  }
+  return out
+}
+// bodyColumns de modo que el ancho interior del bloque (bodyColumns - 2 - 4) sea `inner`
+const paneAt = (inner: number) => ({ ...PANE, props: { ...PANE.props, bodyColumns: inner + 6 } })
+
+test('ui tab: each recommendation is one button with the whole title and no letter, the reason dimmed below it, indented to line up and wrapping, and a blank line after', async ($, on) => {
+  await setup($, on)
+  const ui = await $.ui.mount({ ...paneAt(60) })
+  await ui.press({ key: 'tab-ui' })
+  const tree = await ui.drawn()
+  const block = nodes(tree, (n) => n.props?.key === 'blk-ui')[0]
+  const order = (block.children as any[]).map((c: any) => c.props?.key ?? (c.type === 'Text' ? 'texto:' + c.children[0] : '?'))
+  const a = order.indexOf('ui-rec-a')
+  expect(order.slice(a, a + 3)).toEqual(['ui-rec-a', 'ui-why-box-a', 'texto: ']) // título, porqué y un renglón en blanco
+  expect(order.indexOf('ui-rec-b')).toBe(a + 3)
+  const why = nodes(tree, (n) => n.props?.key === 'ui-why-box-a')[0].children[0]
+  expect(why.props.wrap).toBe('wrap') // baja de renglón en vez de cortarse
+  expect(why.props.dimColor).toBe(true)
+  expect(nodes(tree, (n) => n.props?.key === 'ui-why-box-a')[0].props.paddingLeft).toBe(3) // "a: " ocupa 3 celdas
+  expect((await ui.find({ type: 'Button', key: 'ui-rec-a' })).props.label.startsWith('a')).toBe(false)
+  await ui.unmount()
+})
+
+test('ui tab: ATAJOS is a heading on its own line followed by the four buttons in aligned columns: one row of four from an inner width of 72', async ($, on) => {
+  await setup($, on)
+  const ui = await $.ui.mount({ ...paneAt(72) })
+  await ui.press({ key: 'tab-ui' })
+  const tree = await ui.drawn()
+  const rows = nodes(tree, (n) => /^ui-sc-row-/.test(n.props?.key ?? ''))
+  expect(rows.map((r: any) => r.children.map((c: any) => c.children[0].props.key))).toEqual([['ui-sc-n', 'ui-sc-m', 'ui-sc-u', 'ui-sc-d'], ['ui-retry']])
+  const block = nodes(tree, (n) => n.props?.key === 'blk-ui')[0]
+  const order = (block.children as any[]).map((c: any) => c.props?.key ?? (c.type === 'Text' ? 'texto:' + c.children[0] : '?'))
+  expect(order.indexOf('texto:ATAJOS')).toBeGreaterThan(0) // el titulo solo en su renglon, y los botones justo debajo
+  expect(order.indexOf('ui-sc-row-0')).toBe(order.indexOf('texto:ATAJOS') + 1)
+  expect((await ui.find({ type: 'Button', key: 'ui-sc-n' })).props.label).toBe('nueva pantalla')
+  expect((await ui.find({ type: 'Button', key: 'ui-retry' })).props.label).toBe('reconsultar')
+  await ui.unmount()
+})
+
+test('ui tab: below an inner width of 72 the shortcuts go two per row, the columns line up with r and nothing is wider than the frame at 60', async ($, on) => {
+  await setup($, on)
+  const ui = await $.ui.mount({ ...paneAt(60) })
+  await ui.press({ key: 'tab-ui' })
+  const tree = await ui.drawn()
+  const rows = nodes(tree, (n) => /^ui-sc-row-/.test(n.props?.key ?? ''))
+  expect(rows.map((r: any) => r.children.map((c: any) => c.children[0].props.key))).toEqual([['ui-sc-n', 'ui-sc-m'], ['ui-sc-u', 'ui-sc-d'], ['ui-retry']])
+  const widths = rows.map((r: any) => r.children.map((c: any) => c.props.width))
+  for (const w of widths) expect(w.reduce((s: number, x: number) => s + x, 0)).toBeLessThanOrEqual(60)
+  expect(widths[0][0]).toBe(widths[1][0]) // la primera columna alinea n, u y r
+  expect(widths[0][1]).toBe(widths[1][1])
+  const block = nodes(tree, (n) => n.props?.key === 'blk-ui')[0]
+  expect(block.props.width - 4).toBe(60)
+  await ui.unmount()
+})
+
+test('ui tab: a title longer than the frame is cut with an ellipsis inside it, and the reason is not cut', async ($, on) => {
+  const name = 'a'.repeat(40) // el largo maximo que deja safeName
+  const files = FILES()
+  files['design/approved/' + name + '/index.html'] = 'x'
+  const why = 'una razón larga para comprobar que baja de renglón y que no se corta nunca en el ancho del bloque'
+  await setup($, on, { files, reply: answer([{ action: 'improve', target: name, why, priority: 1 }]) })
+  const ui = await $.ui.mount({ ...paneAt(36) })
+  await ui.press({ key: 'tab-ui' })
+  const label = (await ui.find({ type: 'Button', key: 'ui-rec-a' })).props.label as string
+  expect(label.length).toBeLessThanOrEqual(33) // 36 menos "a: "
+  expect(label.endsWith('…')).toBe(true)
+  expect(text(await ui.find({ key: 'ui-why-box-a' }))).toContain(why)
+  await ui.unmount()
+})
+
+test('ui tab: no label of a plain Button with a hotkey starts with its own letter and two spaces, and the footer keeps the letters', async ($, on) => {
+  await setup($, on)
+  const ui = await $.ui.mount({ ...PANE })
+  await ui.press({ key: 'tab-ui' })
+  const buttons = nodes(await ui.drawn(), (n) => n.type === 'Button' && n.props?.plain && n.props?.hotkey)
+  expect(buttons.length).toBeGreaterThanOrEqual(9) // 4 pestañas, 3 recomendaciones, 4 atajos y r (menos nada)
+  for (const b of buttons) expect(String(b.props.label).startsWith(b.props.hotkey + '  '), `${b.props.key}: ${b.props.label}`).toBe(false)
+  expect(await ui.find({ type: 'Text', text: /a–c, n, m, u, d/ })).toBeDefined()
+  await ui.unmount()
 })

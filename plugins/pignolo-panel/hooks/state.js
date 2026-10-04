@@ -89,8 +89,23 @@ export function readState(raw) {
   snap.activity = arr(r.activity).map(Number).filter(Number.isFinite).slice(-48)
   snap.agents = arr(r.agents)
     .filter((a) => obj(a) && str(a.type))
-    .map((a) => ({ type: str(a.type), description: str(a.description), model: str(a.model), minutes: Number(a.minutes) || 0, tokens: Number(a.tokens) || 0, status: 'done' }))
+    .map((a) => ({
+      type: str(a.type), description: str(a.description), model: str(a.model), minutes: Number(a.minutes) || 0, tokens: Number(a.tokens) || 0, status: 'done',
+      // detalle por agente, tambien solo del modo demo; faltante o con otra forma: sin detalle, nunca tira
+      id: str(a.id), parentId: str(a.parentId), ctx: Number(a.ctx) || 0,
+      idleSec: a.idleSec !== null && a.idleSec !== undefined && Number.isFinite(Number(a.idleSec)) ? Number(a.idleSec) : null,
+      last: readLast(a.last),
+    }))
   return { kind: 'ok', snap }
+}
+
+// Lo ultimo que hizo un agente de muestra: { kind: 'text' } o { kind: 'tool', name, target }; otra forma, nada.
+function readLast(v) {
+  const o = obj(v)
+  if (!o) return null
+  if (o.kind === 'text') return { kind: 'text' }
+  if (!str(o.name)) return null
+  return { kind: 'tool', name: oneLine(o.name).slice(0, 40), target: oneLine(o.target).slice(0, 80) }
 }
 
 function readNext(n) {

@@ -10,8 +10,6 @@ export const SHORTCUTS = [
   { key: 'd', label: 'definir', action: 'define' },
 ]
 
-export const usdEs = (n) => n.toFixed(2).replace('.', ',')
-
 export function recLabel(r) {
   if (r.action === 'improve') return r.target ? 'Mejorar "' + r.target + '"' : 'Mejorar una pantalla'
   if (r.action === 'audit') return r.target ? 'Auditar "' + r.target + '"' : 'Auditar una pantalla'
@@ -19,9 +17,10 @@ export function recLabel(r) {
   return 'Definir producto y diseño'
 }
 
-// tabModel({ project, input, key, result, pending, canAsk, calls }) -> { title, right, mode, rows, shortcuts }
+// tabModel({ project, input, key, result, pending, canAsk }) -> { title, right, mode, rows, shortcuts }
 //   result: lo último que devolvió el recomendador; solo vale si es de las mismas entradas (`result.key === key`).
-export function tabModel({ project, input, key, result, pending, canAsk, calls }) {
+//   right: con una respuesta de la IA queda vacío (ya no se muestra "haiku · N consultas · costo").
+export function tabModel({ project, input, key, result, pending, canAsk }) {
   const rules = rulesFor(input)
   const mine = result && result.key === key ? result : null
   const recs = (mine ? mine.recs : rules.recs).slice(0, 3)
@@ -29,7 +28,7 @@ export function tabModel({ project, input, key, result, pending, canAsk, calls }
   let right = ''
   if (mode === 'normal') {
     if (pending) right = 'pensando…'
-    else if (mine && mine.source === 'ai') right = 'haiku · ' + calls + (calls === 1 ? ' consulta' : ' consultas') + ' · ' + (mine.cost && mine.cost.measured ? '' : '≈ ') + usdEs(mine.cost ? mine.cost.usd : 0.01) + ' USD'
+    else if (mine && mine.source === 'ai') right = ''
     else if (mine && mine.reason === 'cap') right = 'tope de consultas de la sesión'
     else right = 'por reglas'
     if (!canAsk && !pending) right = 'por reglas'
