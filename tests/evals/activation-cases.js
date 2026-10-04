@@ -42,6 +42,31 @@ const NEGATIVE = [
   'revisá este diff y decime si hay bugs',
 ];
 
+// Conjunto aparte para el carril `plan` (plan 2026-10-03-salir-del-flujo, T4): no toca las 30 frases ya medidas.
+const PLAN = 'pignolo:plan';
+const PLAN_POSITIVE = [
+  'armá un plan para el cambio grande del prototipo',
+  'armá un plan',
+  'hacé un plan de cómo migramos el login a otro proveedor',
+  'planificá la nueva pantalla de reportes antes de tocar nada',
+  'necesito un plan detallado para reescribir el módulo de facturación',
+  'escribí el plan y la especificación del buscador',
+  'make a plan for the checkout redesign',
+  "write up a plan to split the monolith, don't implement anything yet",
+  'plan this feature before we start: export to CSV',
+  'armemos el plan del cambio y después lo ejecutamos',
+];
+const PLAN_NEGATIVE = [
+  'qué dice el plan del hito 3 sobre los permisos?',
+  'resumime el plan que está en docs/plans',
+  'cambiá el nombre del plan "Básico" a "Starter" en la página de precios',
+  'el cálculo del plan mensual da mal en febrero, arreglalo',
+];
+const PLAN_CASES = [
+  ...PLAN_POSITIVE.map((prompt, i) => ({ id: `Q${String(i + 1).padStart(2, '0')}`, prompt, expect: PLAN })),
+  ...PLAN_NEGATIVE.map((prompt, i) => ({ id: `QN${i + 1}`, prompt, expect: null })),
+];
+
 const CASES = [
   ...POSITIVE.map(([prompt, expect], i) => ({ id: `P${String(i + 1).padStart(2, '0')}`, prompt, expect })),
   ...NEGATIVE.map((prompt, i) => ({ id: `N${String(i + 1).padStart(2, '0')}`, prompt, expect: null })),
@@ -76,4 +101,10 @@ function grade(expect, invoked) {
   return !list.some((s) => EIGHT.includes(s));
 }
 
-module.exports = { EIGHT, CASES, invokedSkill, grade };
+// Acierto en el conjunto `plan`: positivas = grade(PLAN, ...); negativas = `pignolo:plan` no aparece en ningún lugar.
+function gradePlan(expect, invoked) {
+  const list = Array.isArray(invoked) ? invoked : (invoked ? [invoked] : []);
+  return expect ? grade(PLAN, list) : !list.includes(PLAN);
+}
+
+module.exports = { EIGHT, CASES, PLAN, PLAN_CASES, invokedSkill, grade, gradePlan };

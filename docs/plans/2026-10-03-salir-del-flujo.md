@@ -143,7 +143,7 @@ Negativas (ninguna invoca `pignolo:plan`), ids `QN1`..`QN4`: `qué dice el plan 
 
 **Comando:** `node --test tests/eval-activation-cases.test.js tests/changelog-versions.test.js`.
 
-- [ ] T4 hecha. Fin del trabajo a costo cero.
+- [x] T4 hecha. Fin del trabajo a costo cero.
 
 ## T5: medición de la activación de `plan` (**gasta USD: requiere el OK del autor; no se asume**)
 

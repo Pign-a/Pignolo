@@ -84,3 +84,53 @@ test('the runner in --dry-run spends nothing and reports the number of runs; it 
   assert.equal(JSON.parse(run('--arm', 'control', '--reps', '1', '--dry-run').stdout).runs, 30);
   assert.equal(run('--dry-run').status, 2);
 });
+
+// Conjunto `plan` (plan 2026-10-03-salir-del-flujo, T4): "armá un plan" llega a pignolo:plan.
+// Protege: 10 positivas y 4 negativas únicas que no pisan las 30 ya medidas; la esperada existe y es invocable;
+// gradePlan; --set del runner (plan = 14 x 3 = 42 corridas, main sigue en 90).
+// Se rompe si: se duplica una frase, una positiva apunta a otra skill, gradePlan ignora lo previo o el runner pierde --set.
+const { PLAN_CASES, PLAN, gradePlan } = require('./evals/activation-cases');
+
+test('PL-01: PLAN_CASES tiene 10 positivas y 4 negativas, ids y frases únicos, y no pisan las 30 de CASES', () => {
+  assert.equal(PLAN_CASES.filter((c) => c.expect).length, 10);
+  assert.equal(PLAN_CASES.filter((c) => !c.expect).length, 4);
+  assert.equal(new Set(PLAN_CASES.map((c) => c.id)).size, 14);
+  assert.equal(new Set(PLAN_CASES.map((c) => c.prompt)).size, 14);
+  const main = new Set(CASES.flatMap((c) => [c.id, c.prompt]));
+  assert.deepEqual(PLAN_CASES.filter((c) => main.has(c.id) || main.has(c.prompt)).map((c) => c.id), []);
+});
+
+test('PL-02: cada positiva espera pignolo:plan y esa skill existe sin disable-model-invocation', () => {
+  assert.equal(PLAN, 'pignolo:plan');
+  for (const c of PLAN_CASES.filter((x) => x.expect)) assert.equal(c.expect, 'pignolo:plan', c.id);
+  const [plugin, name] = PLAN.split(':');
+  const text = fs.readFileSync(path.join(ROOT, 'plugins', plugin, 'skills', name, 'SKILL.md'), 'utf8');
+  assert.doesNotMatch(text.split('\n---')[0], /disable-model-invocation/);
+});
+
+test('PL-03: gradePlan acepta entry -> plan y nada más antes; una negativa falla solo si aparece pignolo:plan', () => {
+  assert.equal(gradePlan('pignolo:plan', ['pignolo:entry', 'pignolo:plan']), true);
+  assert.equal(gradePlan('pignolo:plan', ['pignolo:daily', 'pignolo:plan']), false);
+  assert.equal(gradePlan('pignolo:plan', ['pignolo:entry']), false);
+  assert.equal(gradePlan('pignolo:plan', []), false);
+  assert.equal(gradePlan(null, []), true);
+  assert.equal(gradePlan(null, ['pignolo:entry']), true);
+  assert.equal(gradePlan(null, ['pignolo:entry', 'pignolo:plan']), false);
+});
+
+test('PL-04: --set plan en --dry-run da 42 corridas (14 x 3) sin gastar; --set main sigue dando 90 y --set otra cosa se rechaza', () => {
+  const run = (...a) => spawnSync(process.execPath, [path.join(ROOT, 'tests', 'evals', 'activation-run.js'), ...a], { encoding: 'utf8' });
+  const plan = run('--arm', 'treatment', '--set', 'plan', '--dry-run');
+  assert.equal(plan.status, 0);
+  assert.equal(JSON.parse(plan.stdout).runs, 42);
+  assert.equal(JSON.parse(run('--arm', 'treatment', '--set', 'main', '--dry-run').stdout).runs, 90);
+  assert.equal(run('--arm', 'treatment', '--set', 'otro', '--dry-run').status, 2);
+});
+
+test('PL-05: sin --set el runner usa el conjunto main (90 corridas) y 2 turnos; con --set plan, 3 turnos salvo --max-turns', () => {
+  const { parseArgs } = require('./evals/activation-run');
+  assert.equal(JSON.parse(spawnSync(process.execPath, [path.join(ROOT, 'tests', 'evals', 'activation-run.js'), '--arm', 'treatment', '--dry-run'], { encoding: 'utf8' }).stdout).runs, 90);
+  assert.equal(parseArgs(['--arm', 'treatment']).maxTurns, 2);
+  assert.equal(parseArgs(['--arm', 'treatment', '--set', 'plan']).maxTurns, 3);
+  assert.equal(parseArgs(['--arm', 'treatment', '--set', 'plan', '--max-turns', '5']).maxTurns, 5);
+});

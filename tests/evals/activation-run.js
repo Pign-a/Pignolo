@@ -2,7 +2,7 @@
 'use strict';
 // Runner de la prueba de activación (tests/evals/RESULTS-activacion.md). NO se corrió: gastar es del autor.
 //   node tests/evals/activation-run.js --arm control|treatment [--reps 3] [--cap 20] [--model sonnet]
-//     [--max-turns 2] [--only P01,N03] [--probe] [--dry-run] [--out <dir>]
+//     [--max-turns 2] [--set main|plan] [--only P01,N03] [--probe] [--dry-run] [--out <dir>]
 // control = los plugins de `main` antes del cambio (un `git worktree add --detach` de CONTROL_COMMIT, sin tar:
 // en Windows tar toma "C:" como host remoto); treatment = este árbol.
 // Cada corrida es un `claude -p` de una frase, con solo la herramienta Skill, sin cargar ajustes de usuario;
@@ -13,13 +13,13 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync, execFileSync } = require('node:child_process');
-const { CASES, invokedSkill, grade } = require('./activation-cases');
+const { CASES, PLAN_CASES, invokedSkill, grade, gradePlan } = require('./activation-cases');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const CONTROL_COMMIT = '3882ded';
 
 function parseArgs(argv) {
-  const o = { arm: null, reps: 3, cap: 20, model: 'sonnet', maxTurns: 2, only: null, probe: false, dryRun: false, out: path.join(os.tmpdir(), 'claude-eval-activation') };
+  const o = { arm: null, reps: 3, cap: 20, model: 'sonnet', maxTurns: null, set: 'main', only: null, probe: false, dryRun: false, out: path.join(os.tmpdir(), 'claude-eval-activation') };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--probe') o.probe = true;
@@ -29,11 +29,15 @@ function parseArgs(argv) {
     else if (a === '--cap') o.cap = Number(argv[++i]);
     else if (a === '--model') o.model = argv[++i];
     else if (a === '--max-turns') o.maxTurns = Number(argv[++i]);
+    else if (a === '--set') o.set = argv[++i];
     else if (a === '--only') o.only = argv[++i].split(',');
     else if (a === '--out') o.out = argv[++i];
     else throw new Error(`argumento desconocido: ${a}`);
   }
   if (!['control', 'treatment'].includes(o.arm)) throw new Error('--arm control|treatment');
+  if (!['main', 'plan'].includes(o.set)) throw new Error('--set main|plan');
+  // el conjunto plan pasa por entry y después por plan: necesita dos invocaciones, así que 3 turnos por defecto
+  if (o.maxTurns === null) o.maxTurns = o.set === 'plan' ? 3 : 2;
   return o;
 }
 
@@ -77,9 +81,9 @@ function spentSoFar(out) {
 
 function main(argv) {
   const o = parseArgs(argv);
-  let cases = CASES;
+  let cases = o.set === 'plan' ? PLAN_CASES : CASES;
   if (o.only) cases = cases.filter((c) => o.only.includes(c.id));
-  if (o.probe) cases = cases.filter((c) => c.id === 'P01');
+  if (o.probe) cases = cases.filter((c) => c.id === (o.set === 'plan' ? 'Q01' : 'P01'));
   const reps = o.probe ? 1 : o.reps;
   const plan = cases.flatMap((c) => Array.from({ length: reps }, (_, r) => ({ ...c, rep: r + 1 })));
   if (o.dryRun) {
@@ -103,7 +107,7 @@ function main(argv) {
       const invoked = invokedSkill(stream);
       let cost = 0;
       for (const l of stream.split('\n')) { try { const e = JSON.parse(l); if (e.type === 'result') cost = Number(e.total_cost_usd) || 0; } catch (_) { /* no es JSON */ } }
-      const row = { arm: o.arm, id: c.id, rep: c.rep, expect: c.expect, invoked, ok: grade(c.expect, invoked), costUsd: cost, error: r.status === 0 ? null : `exit ${r.status}` };
+      const row = { arm: o.arm, id: c.id, rep: c.rep, expect: c.expect, invoked, ok: (o.set === 'plan' ? gradePlan : grade)(c.expect, invoked), costUsd: cost, error: r.status === 0 ? null : `exit ${r.status}` };
       fs.appendFileSync(file, `${JSON.stringify(row)}\n`);
     }
   } finally {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.23.0 — sin publicar
+
+Salir del flujo de pignolo se pregunta por pedido, `.pignolo-ui/` va por pignolo-ui y "armá un plan" llega al carril `plan`. **El número se renumera al unir.**
+
+- **Problema (uso real del autor, 2026-10-03, anónimo):** en un proyecto con pignolo activo, un cambio grande de interfaz sobre un prototipo se hizo con agentes genéricos en paralelo, sin tarjeta, sin tests primero y sin revisión; el plan quedó en el chat. Un "hacerlo directo" anterior, para un arreglo de una línea, se tomó como permiso para todo el trabajo.
+- **`entry`, línea `LEAVE-FLOW`:** un pedido no trivial que quedaría fuera de las skills de pignolo pregunta siempre, con opciones y diciendo en llano qué se pierde. El sí vale solo para ese pedido: no pasa a uno posterior ni a uno más grande, y "directamente" dentro del pedido no cuenta. Lo trivial, lo de solo lectura y lo que `entry` ya entrega a una skill no reciben la pregunta. Si un carril no puede hacer el trabajo, no se improvisa.
+- **`entry`, `.pignolo-ui/`:** lo que vive en esa carpeta (git la ignora a propósito) no lo ve ningún carril basado en git; el pedido va a `pignolo-ui:improve` o `pignolo-ui:new` sin pasar por `risk.js`. Sin pignolo-ui instalado, es salir del flujo con la razón real y "Instalar pignolo-ui" primero. `NO-RUNS-COMMIT` sigue igual.
+- **`entry`, planes:** "armá un plan", "hacé un plan", "make a plan" y variantes se entregan a `pignolo:plan`; el plan no se escribe en el chat. Ejecutar un plan ya escrito es otro pedido. La `description` de `plan` no cambia.
+- Tests: `tests/entry-leave-flow.test.js` (LF-01 a LF-15), `tests/eval-activation-cases.test.js` (conjunto `plan` de 14 frases y `--set plan` del runner; no se corrió la medición).
+
 ## 0.22.0 — sin publicar
 
 Reglas MCP de `ask` más precisas y `setup` que quita las viejas (uso real del autor, 2026-10-03). **El número se renumera al unir** (hay otra rama con 0.21.0); cambian solo `plugin.json`, este encabezado y el test de versiones.
