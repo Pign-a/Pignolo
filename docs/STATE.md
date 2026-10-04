@@ -2,7 +2,11 @@
 
 _Última actualización: 2026-10-03._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
 
-## Cierre del 2026-10-03 (manda sobre todo lo de abajo)
+## Cierre del 2026-10-03, segundo (manda sobre todo lo de abajo)
+
+- **Sin unir, lista salvo la suite:** rama `fix/panel-activo-y-rama` (núcleo 0.22.1, `pignolo-panel` 0.3.1; worktree `~/.claude/jobs/17b1dadf/tmp/wt-panelfix`). Arregla dos bugs de uso real: el panel decía "pignolo no está activo" tras un `init` a mitad de sesión (ahora decide por `.pignolo/project.md` y `init` escribe el registro) y sugería "push de main" en un repo con `master` o con cambios sin commitear. Revisión opus hecha y su hallazgo (texto de unir sin remoto) arreglado; tests afectados en verde. **Falta:** correr la suite completa una vez, unir a `main` y publicar. Primer paso al retomar.
+
+## Cierre del 2026-10-03
 
 - **En `main` y en GitHub (`db38704`):** núcleo **0.22.0**, pignolo-ui **0.11.0**, `pignolo-panel` **0.3.0**. Todo lo de las ramas listadas abajo como "falta revisión" ya está revisado, arreglado y unido: guardia sin confirmar push/merge (0.14.1), lenguaje natural (0.15.0), guardia sin tropiezos etapas 1 y 2 (0.16.0, 0.19.0), init rápido (0.17.0), panel (0.18.0, panel 0.1.0), pestaña UI (panel 0.2.0), asistente de inicio (0.20.0, panel 0.3.0), fuga de `leak-values.json` (0.21.0, ui 0.11.0) y reglas MCP de setup (0.22.0).
 - **Sigue (en orden):** etapa 3 de "guardia sin tropiezos" (T8 a T13; plan `docs/plans/2026-10-02-guardia-sin-tropiezos.md`) → mensajes llanos de la guardia (plan auditado en la rama `plan/guardia-mensajes-llanos`, a regenerar sobre el main nuevo; medición hasta 6 USD aprobada) → `ui/hito-4e-chequeos` (revisión opus) → etapas 3 y 4 del lienzo, 4g.
