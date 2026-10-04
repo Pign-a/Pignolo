@@ -107,3 +107,51 @@ La primera ronda cuesta el doble o más que las otras dos en ambos brazos (la ca
 ### Amenazas que siguen en pie
 
 Son las de la ficha y no se resolvieron: carpeta de proyecto vacía (la activación en un proyecto con `.pignolo/` y `CLAUDE.md` puede diferir), sonnet en vez de opus, frases escritas por quien escribió las descriptions (el 100 % de aciertos lo favorece; las negativas se escribieron cerca del límite y no hubo ninguna falsa activación), control como piso de 0 por construcción. Se suma que `--max-turns 2` mide la elección de la skill, no su ejecución. Queda pendiente la prueba manual del autor en una sesión interactiva (la pregunta de confirmación y la distinción entre `/comando` y activación sola).
+
+---
+
+# Activación de `plan` ("armá un plan")
+
+Ficha escrita y commiteada antes de la primera corrida (2026-10-03). Plan: `docs/plans/2026-10-03-salir-del-flujo.md`, T5. Gasto aprobado por el autor el 2026-10-03.
+
+## Pregunta e hipótesis
+
+¿Un pedido normal de plan ("armá un plan" y variantes) llega a `pignolo:plan`, directo o tras `pignolo:entry`? Hipótesis: en `main` (control) llega en menos de 8 de 10 frases (lo sugiere el incidente de uso real, E1); con el texto nuevo de `entry` llega en al menos 9 de 10, sin que las falsas activaciones pasen de 1 de 4.
+
+## Variable y lo fijo
+
+Cambia una sola cosa: el árbol de plugins. Control = `main` en `2771d5b` (`--control 2771d5b`). Tratamiento A = la rama `core/salir-del-flujo` (T1 a T3; la `description` de `plan` no cambia). Fijo: las 14 frases de `PLAN_CASES` (10 positivas, 4 negativas con la palabra "plan"), modelo sonnet, `--max-turns 3`, carpeta de proyecto vacía con `git init`, solo la herramienta Skill, `--setting-sources project`.
+
+## Brazos y repeticiones
+
+Control 14 frases x 3 = 42 corridas; tratamiento A 42 corridas. 84 en total, más una sonda.
+
+## Métricas
+
+Todas salen de `activation-run.js`, sin intervención manual: positivas que llegan a `pignolo:plan` por ronda (de 10); falsas activaciones por ronda (de 4); qué skill se invocó en vez de `plan`, o ninguna; costo por corrida y por brazo (`total_cost_usd`).
+
+## Regla de decisión
+
+El texto de `entry` se adopta si en el tratamiento A la mediana de las 3 rondas es >= 9/10, el mínimo >= 8/10, las falsas activaciones tienen mediana <= 1/4 y máximo <= 1/4, y los rangos no se pisan con el control. Si el control ya da mediana >= 9/10 con mínimo >= 8/10, la causa del incidente no es la activación: se anota "sin diferencia demostrada" y no se toca la `description` de `plan`. Si el tratamiento A queda por debajo de 9/10 de mediana o de 8/10 de mínimo, o las falsas activaciones pasan de 1/4, corresponde T6 (otro cambio y otro gasto, con otro OK del autor).
+
+## Presupuesto
+
+Estimación: 3,4 a 4,2 USD (rango 2,5 a 6), nivel E0 para el total: el costo por corrida (≈ 0,03 USD, ≈ 0,05 en la primera ronda) es E3 pero de otra carga, de un turno menos. Tope del runner: `--cap 8`. Si se agota a mitad, se corta, se anota hasta dónde llegó cada brazo y el resultado baja a E2.
+
+## Cómo correrla
+
+```
+node tests/evals/activation-run.js --arm treatment --set plan --probe --cap 8 --out <dir>
+node tests/evals/activation-run.js --arm control --set plan --reps 3 --cap 8 --control 2771d5b --out <dir>
+node tests/evals/activation-run.js --arm treatment --set plan --reps 3 --cap 8 --out <dir>
+```
+
+`<dir>` es una carpeta nueva (`%TEMP%\claude-eval-activation-plan`), para que el tope no cuente el gasto de la prueba anterior.
+
+## Amenazas a la validez
+
+Carpeta de proyecto vacía, sin `.pignolo/`: `entry` no puede comprobar que pignolo está activo, así que se mide la elección de skill y no el flujo completo. Sonnet y no opus, que es lo que usa el autor. Frases escritas por quien escribió el texto. No mide la pregunta al salir del flujo ni el ruteo de `.pignolo-ui/`: necesitan una sesión interactiva (`tests/manual/salir-del-flujo.md`).
+
+## Resultados
+
+Pendiente: se completa al terminar las corridas.
