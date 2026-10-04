@@ -20,7 +20,7 @@ test('next-steps rule decision: an open decision gives its question with the rec
 });
 
 test('next-steps rule merge: APPROVE with a green suite gives "uní <rama> a main"', () => {
-  const r = nextStep(facts({ branches: [br({ review: 'APPROVE', suite: 'green' })] }));
+  const r = nextStep(facts({ main: { name: 'main', ahead: null }, branches: [br({ review: 'APPROVE', suite: 'green' })] }));
   assert.equal(r.main.rule, 'merge');
   assert.equal(r.main.prompt, 'uní feat/x a main');
 });

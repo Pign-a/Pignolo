@@ -131,8 +131,10 @@ function normalize(raw) {
   }));
   s.budget = arr(raw.budget).filter((b) => isObj(b) && typeof b.hito === 'string' && b.hito && num(b.spent) !== null && num(b.cap) !== null)
     .map((b) => ({ hito: str(b.hito, 60), spent: num(b.spent), cap: num(b.cap), warned: b.warned === true }));
-  const ahead = isObj(raw.main) ? num(raw.main.ahead) : null;
-  s.main = ahead !== null ? { ahead: Math.max(0, Math.floor(ahead)) } : null;
+  const ahead = isObj(raw.main) && raw.main.ahead !== null && raw.main.ahead !== undefined ? num(raw.main.ahead) : null;
+  const named = isObj(raw.main) && typeof raw.main.name === 'string' && raw.main.name.trim() !== '';
+  // Sin remoto `ahead` es null, pero el nombre de la rama principal igual vale (el texto de unir lo usa).
+  s.main = ahead !== null || named ? { ahead: ahead === null ? null : Math.max(0, Math.floor(ahead)) } : null;
   if (s.main) {
     // La rama principal real y el estado del checkout (los usa la regla del push). Los registros viejos no los traen.
     if (typeof raw.main.name === 'string' && raw.main.name.trim()) s.main.name = str(raw.main.name, 120);
@@ -444,7 +446,7 @@ function gitFacts(main, git, now, env) {
   if (!out.mainName) return out;
   try { out.onMain = g(['symbolic-ref', '--short', 'HEAD']).trim() === out.mainName; } catch (_) { out.onMain = false; } // HEAD suelto = no está en la principal
   // Cambios sin commitear (lo que pignolo escribe solo en .pignolo/.gitignore no cuenta) y remoto configurado.
-  try { out.dirty = g(['status', '--porcelain', '--', '.', ':(exclude).pignolo/.gitignore']).trim() !== ''; } catch (_) { out.dirty = null; }
+  try { out.dirty = g(['status', '--porcelain', '--', '.', ':(exclude).pignolo']).trim() !== ''; } catch (_) { out.dirty = null; }
   try { out.remote = g(['remote']).trim() !== ''; } catch (_) { out.remote = null; }
   try {
     const n = Number(g(['rev-list', '--count', `origin/${out.mainName}..${out.mainName}`]));
@@ -526,7 +528,7 @@ function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev 
   let kind = 'nothing';
   try { kind = deriveNext({ cwd: main, env, now }).kind; } catch (_) { kind = 'nothing'; }
   return {
-    plan: planOut, cards, branches: gf.branches, main: gf.ahead === null ? null : { ahead: gf.ahead, name: gf.mainName, ...(gf.onMain === null ? {} : { onMain: gf.onMain }), ...(gf.dirty === null ? {} : { dirty: gf.dirty }), ...(gf.remote === null ? {} : { remote: gf.remote }) },
+    plan: planOut, cards, branches: gf.branches, main: gf.ahead === null && !gf.mainName ? null : { ahead: gf.ahead, name: gf.mainName, ...(gf.onMain === null ? {} : { onMain: gf.onMain }), ...(gf.dirty === null ? {} : { dirty: gf.dirty }), ...(gf.remote === null ? {} : { remote: gf.remote }) },
     busy: BUSY_KINDS.includes(kind), attention: ATTENTION_KINDS.includes(kind) ? [kind] : [],
   };
 }

@@ -83,7 +83,7 @@ export function readState(raw) {
       evidence: str(c.evidence),
     }))
   const main = obj(r.main)
-  snap.main = main && Number.isFinite(Number(main.ahead)) ? { ahead: Number(main.ahead) } : null
+  snap.main = main && main.ahead !== null && Number.isFinite(Number(main.ahead)) ? { ahead: Number(main.ahead) } : null
   snap.next = readNext(r.next)
   // solo para el modo demo (el registro real no los trae)
   snap.activity = arr(r.activity).map(Number).filter(Number.isFinite).slice(-48)

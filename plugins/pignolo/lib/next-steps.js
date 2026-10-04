@@ -31,8 +31,8 @@ function costOf(branch, base) {
   return { ok: true, note: base ? `${base} · ${usd}` : usd };
 }
 
-// La rama principal del proyecto tal como la registró el panel; sin dato, "main" solo para el texto de unir.
-const principal = (f) => (f.main && f.main.name) || 'main';
+// La rama principal del proyecto tal como la registró el panel; sin dato no hay nombre (y no se sugiere unir).
+const principal = (f) => (f.main && f.main.name) || null;
 
 const RULES = [
   {
@@ -47,7 +47,7 @@ const RULES = [
   },
   {
     id: 'merge',
-    find: (f) => f.branches.filter((b) => !b.merged && isApprove(b) && isGreen(b) && !b.waiting).map((b) => ({
+    find: (f) => (principal(f) ? f.branches : []).filter((b) => !b.merged && isApprove(b) && isGreen(b) && !b.waiting).map((b) => ({
       rule: 'merge', key: `m:${b.name}`, text: `uní ${b.name} a ${principal(f)}`, prompt: `uní ${b.name} a ${principal(f)}`, why: 'Revisión APPROVE y suite verde registradas.', branch: b,
     })),
   },
