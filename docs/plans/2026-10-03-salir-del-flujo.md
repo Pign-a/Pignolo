@@ -117,7 +117,7 @@ Y en el paso 7, en la viñeta `plan`, agregar al final: ` or the human asked for
 
 **Comando:** `node --test tests/entry-leave-flow.test.js tests/flow-lanes.test.js tests/skill-lanes.test.js` (`flow-lanes` ya protege que `entry` entregue a `pignolo:plan`).
 
-- [ ] T3 hecha
+- [x] T3 hecha
 
 ## T4: casos de activación de `plan`, versiones y CHANGELOG (cero costo)
 

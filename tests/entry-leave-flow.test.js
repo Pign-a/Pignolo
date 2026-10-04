@@ -96,3 +96,35 @@ test('LF-11: la viñeta de `.pignolo-ui/` va antes del paso 3 y del piso de ries
   assert.ok(at < ENTRY.indexOf('3. **Is another flow running?**'), 'la viñeta va antes del paso 3');
   assert.ok(at < ENTRY.indexOf('5. **Risk floor.**'), 'la viñeta va antes del paso 5');
 });
+
+// Bloque 3: "armá un plan" va al carril plan (T3).
+
+const PLAN_SENTENCE_LINE = LINES.find((l) => l.includes('armá un plan')) || '';
+
+test('LF-12: una misma línea de entry nombra "armá un plan", "make a plan", pignolo:plan y que el plan no se escribe en el chat', () => {
+  assert.ok(PLAN_SENTENCE_LINE, 'no hay oración de pedido de plan');
+  for (const s of ['make a plan', 'pignolo:plan', 'never write the plan in the chat']) {
+    assert.ok(PLAN_SENTENCE_LINE.includes(s), `falta "${s}" en la línea`);
+  }
+});
+
+test('LF-13: la viñeta plan del paso 7 cubre el pedido de un plan o de una especificación', () => {
+  const bullet = LINES.find((l) => /^\s+- `plan`:/.test(l));
+  assert.ok(bullet, 'no hay viñeta plan en el paso 7');
+  assert.ok(bullet.includes('asked for a plan or a spec'), 'falta "asked for a plan or a spec"');
+});
+
+test('LF-14: la oración del plan va antes del paso 3 y no menciona risk.js ni LEAVE-FLOW (un pedido de plan no recibe la pregunta de salida)', () => {
+  const at = ENTRY.indexOf('authorizes a plan, not code');
+  assert.ok(at > 0 && at < ENTRY.indexOf('3. **Is another flow running?**'), 'la oración va antes del paso 3');
+  const start = ENTRY.lastIndexOf('A request to plan or to write a spec', at);
+  const end = ENTRY.indexOf('as usual.', at) + 'as usual.'.length;
+  const sentence = ENTRY.slice(start, end);
+  assert.ok(sentence.includes('authorizes a plan, not code'));
+  assert.doesNotMatch(sentence, /risk\.js/);
+  assert.doesNotMatch(sentence, /LEAVE-FLOW/);
+});
+
+test('LF-15: ejecutar un plan que ya existe no se confunde con pedir uno', () => {
+  assert.ok(ENTRY.includes('Running a plan that already exists'), 'falta la cláusula');
+});
