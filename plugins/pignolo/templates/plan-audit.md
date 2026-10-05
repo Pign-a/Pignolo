@@ -14,6 +14,12 @@ The gate never changes: `plan.js advance --to audited` needs `APPROVE` tied to t
 - `minors` never block and are not written into the plan file: that changes its sha256 and the `APPROVE` goes stale. They stay in `plan.json` (`audit.minors`); say so in one line.
 - After a cut: `plan-audit.js end --plan <plan>`.
 
+## Less text in the conversation
+
+- **Reports.** The guard denies the `plan-auditor` every write outside the `scratch/` of its verify mode, so it cannot write its review report to a path of your choosing: you still save the report verbatim with Write and pass that path to `review-done` and `finish`. Do not retype or summarize it.
+- **Summary to the human, fixed form, after every round:** findings by severity (`CRITICAL n · IMPORTANT n · MINOR n`), each blocking finding in one line (id, plan reference, what is wrong), and what comes next in one line. No tables and no history of earlier rounds unless the human asks.
+- **Fix pass.** After `REQUEST_CHANGES` (or option 1 of the escalation below) write the blocking findings, with their ids, to `<main>/.pignolo/tmp/plan-findings-<plan>.json` with Write and dispatch one `pignolo:fixer` (`model: sonnet`) with that file and the plan path. Its card lists only the plan file: a plan fix pass has no tests and no RED/GREEN, and its real check is to reread each edited place against its finding. It edits only that file and reports each id with the lines it changed. Do not narrate the edits. If the dispatch is refused or it comes back BLOCKED, do the fix pass yourself in the main thread, still without narrating each edit.
+
 ## Blocking findings carry an id
 
 `finish` gives each blocking finding an id (`R1-1`, `R2-1`, `R2x1-1`), in `findings[].id` of its output.
