@@ -73,3 +73,23 @@ Las skills de pignolo-ui (ya usan `AskUserQuestion` donde preguntan). Cambiar qu
 3. ¿Quedó alguna skill, plantilla o test con la forma vieja ("one per message", 3/6/10, tres bloques de texto)?
 4. ¿Un informe del auditor que no es UTF-8 o trae `severity` rara frena?
 5. Cada afirmación del informe marcada "probado" o "no probado".
+
+## Agregado del 2026-10-05 (tras la revisión opus y un chat real del autor)
+
+Un chat real mostró cinco pasadas de auditoría seguidas sobre un plan de 48 tareas, con cada edición del plan y cada informe pasando por la conversación.
+
+- **D-3 (autor).** Entra en esta versión bajar lo que la auditoría vuelca al chat. Cita: "si".
+- **R-7.** Con `ESCALATE` por `reaudit-findings` la pregunta al humano ofrece: "Arreglar y re-auditar solo lo cambiado" (otra vuelta acotada en sonnet; cada vuelta extra pide su sí y se abre con una opción explícita del script), "Auditar de nuevo entero" (`end` y vuelta 1) y "Dejar el plan acá". Ninguna salta la compuerta.
+- **R-8 (RQ-01).** Las afirmaciones de la vuelta 1 que no quedaron verificadas pasan a la vuelta 2: se verifican o el veredicto es `ESCALATE`.
+- **R-9 (RQ-02).** Una vuelta nueva con el diff del plan vacío se niega; el sha256 del plan auditado se guarda siempre.
+- **R-10 (RQ-03).** Los menores no se escriben en el archivo del plan (lo dejarían `stale`): quedan en `plan.json` y se dicen en una línea.
+- **R-11 (RQ-04).** Cada hallazgo que frena lleva un id. El informe de una re-auditoría lista los ids que cerró; un id de la vuelta anterior que no está en esa lista cuenta como hallazgo que frena.
+- **R-12 (RQ-05).** La opción elegida en `AskUserQuestion` vale como el sí explícito de esa pregunta y de nada más; la cita que se registra es la pregunta y la etiqueta elegida, literales (o el texto libre del humano).
+- **R-13 (RQ-09).** La pregunta va al panel solo cuando queda esperando (respaldo en texto o fin de turno); con `AskUserQuestion` contestada en el momento no se escribe.
+
+### T5. Menos texto de la auditoría en la conversación
+
+- El `plan-auditor` escribe su informe en la ruta que le da el encargo y devuelve una línea (veredicto propio no: solo "informe en <ruta>, N hallazgos, M afirmaciones"). El hilo principal no lo copia ni lo reescribe: pasa la ruta a `review-done` / `finish`. Si la guardia no deja escribir ahí al subagente, se conserva la forma actual y se anota.
+- La pasada de arreglos del plan la hace un agente despachado con el archivo de hallazgos y la ruta del plan (edita solo ese archivo); si la guardia no lo permite, el hilo principal la hace sin narrar cada edición.
+- Resumen al humano tras cada vuelta, forma fija: hallazgos por gravedad, los que frenan en una línea cada uno, qué sigue. Sin tablas ni historia de vueltas salvo pedido.
+- Tests: la carta del auditor nombra la ruta del informe y la respuesta de una línea; la skill `plan` nombra el agente de arreglos, el resumen fijo y las tres opciones de R-7; por los scripts: R-8, R-9 y R-11 (un id sin cerrar frena; la vuelta extra solo con su opción).
