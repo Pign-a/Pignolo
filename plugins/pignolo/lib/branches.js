@@ -4,6 +4,8 @@ const path = require('node:path');
 
 const PLAN_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const ID_RE = PLAN_RE;
+// Id de una tarea registrada en run.json: el de la tarea del plan (T01), con mayúsculas; el slug de un plan no.
+const TASK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const NN_RE = /^\d{2}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -72,7 +74,7 @@ const taskWorktreePath = (main, plan, nn, slug) => path.join(main, '.pignolo', '
 const queueWorktreePath = (main, plan) => path.join(main, '.pignolo', 'worktrees', '_queue', checkPlan(plan));
 
 module.exports = {
-  PLAN_RE, ID_RE, SLUG_RE, NN_RE,
+  PLAN_RE, ID_RE, TASK_ID_RE, SLUG_RE, NN_RE,
   intBranch, queueBranch, taskBranch, dailyBranch, contractTag, cpTag, backupTag,
   parseBranch, nextCp, latestContract, taskWorktreePath, queueWorktreePath,
 };

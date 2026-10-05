@@ -16,7 +16,7 @@ const { repoIdFor } = require('../lib/seals');
 const { withDeadline } = require('../lib/git');
 const { readProjectConfig } = require('../lib/project-config');
 const { matchAny } = require('../lib/globs');
-const { ID_RE, PLAN_RE } = require('../lib/branches');
+const { ID_RE, PLAN_RE, TASK_ID_RE } = require('../lib/branches');
 const { readConfig } = require('../lib/profiles');
 const { PROFILE_PARAMS } = require('../lib/roles');
 
@@ -223,14 +223,35 @@ function taskCap(env) {
 }
 
 function task(o, main, env) {
-  if (!o.id || !ID_RE.test(o.id)) throw new Usage(`--id debe cumplir ${ID_RE}`);
+  if (!o.id || !TASK_ID_RE.test(o.id)) throw new Usage(`--id debe cumplir ${TASK_ID_RE}`);
   if (o.plan !== undefined && !PLAN_RE.test(o.plan)) throw new Usage(`--plan debe cumplir ${PLAN_RE}`);
   if (o.branch !== undefined && (o.branch === '' || o.branch.startsWith('-'))) throw new Usage(`--branch inválido: ${o.branch}`);
   withRunLock(main, () => taskLocked(o, main, env));
 }
 
+// Una corrida de un plan con tareas registradas (plan.js tasks set): el id es el de una de ellas, o el de una de ellas con un
+// sufijo para los reintentos y arreglos (T01-fix2). Así el panel y el plan hablan de la misma tarea. Sin plan, sin tareas
+// registradas o con el registro ilegible, como siempre. Falla cerrado con un mensaje.
+function checkPlanTaskId(main, plan, id) {
+  let ids = [];
+  try {
+    const r = require('../lib/plan-state').readPlan({ main, plan });
+    if (r.ok) ids = (r.plan.tasks || []).map((t) => t.id).filter((x) => typeof x === 'string');
+  } catch (_) { ids = []; }
+  if (!ids.length || ids.includes(id)) return;
+  if (ids.some((p) => id.startsWith(`${p}-`))) return;
+  const low = id.toLowerCase();
+  const near = ids.filter((p) => low === p.toLowerCase() || low.startsWith(`${p.toLowerCase()}-`));
+  const shown = ids.slice(0, 10).join(', ') + (ids.length > 10 ? `, … (${ids.length - 10} más)` : '');
+  const hint = near.length ? ` ¿Quisiste decir ${near.slice(0, 3).join(' o ')}? Registrá la tarea con el id del plan.` : '';
+  const msg = `el id ${id} no es una tarea del plan ${plan}. Ids válidos: ${shown}.${hint} Los reintentos y arreglos llevan el id del plan con un sufijo (por ejemplo ${ids[0]}-fix2).`;
+  out({ ok: false, kind: 'not-a-plan-task', id, plan, tasks: ids.slice(0, 10), ...(near.length ? { suggest: near[0] } : {}) });
+  throw new Fail(msg, { kind: 'not-a-plan-task', printed: true });
+}
+
 function taskLocked(o, main, env) {
   const st = current(main);
+  if (st.run.plan !== undefined) checkPlanTaskId(main, st.run.plan, o.id);
   if (o.plan !== undefined && st.run.plan !== undefined && st.run.plan !== o.plan) {
     throw new Fail(`--plan ${o.plan} no es el plan del flujo en curso (${st.run.plan})`);
   }
@@ -286,7 +307,7 @@ function taskLocked(o, main, env) {
 }
 
 function taskEnd(o, main, env) {
-  if (!o.id || !ID_RE.test(o.id)) throw new Usage(`--id debe cumplir ${ID_RE}`);
+  if (!o.id || !TASK_ID_RE.test(o.id)) throw new Usage(`--id debe cumplir ${TASK_ID_RE}`);
   withRunLock(main, () => {
     const st = current(main, { needRunning: false });
     if (!st.run) throw new Fail('no hay un flujo; corré "run.js start --flow <flujo>"');

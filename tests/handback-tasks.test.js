@@ -187,3 +187,12 @@ test('gate.js --task con dos tareas: sin --id sale 2 con ambiguous-task; con --i
   const r1 = spawnSync(process.execPath, [GATE_CLI, '--level', 'on-done', '--task'], { cwd: one.main, encoding: 'utf8', env: { ...process.env, PIGNOLO_HOME: one.env.PIGNOLO_HOME }, timeout: 60000 });
   assert.strictEqual(JSON.parse(r1.stdout).task, 'a');
 });
+
+test('Task: con el id de una tarea del plan en mayúsculas (T01) se resuelve a esa tarea', () => {
+  const fx = flow(['T01', 'T02']);
+  edit(fx, 'T01', 'src/T01.js', 'module.exports = 2;\n');
+  seal(fx, 'T01');
+  assert.strictEqual(call(fx, 'T01', { msg: 'Task: T01\nlisto\nDONE' }).exit, 0);
+  const wrong = call(fx, 'T02', { msg: 'Task: T01\nlisto\nDONE' });
+  assert.ok(!/no está registrada/.test(wrong.stderr), 'T01 existe: no es una tarea desconocida');
+});
