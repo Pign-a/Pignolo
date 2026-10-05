@@ -1280,7 +1280,7 @@ export function register(on, options) {
   // Tokens de cada pedido de un subagente (y la actividad del minigrafico)
   on('turn.step', async function* ($, e, next) {
     const rec = e.agentId ? reg.byId.get(e.agentId) : undefined
-    if (rec) reopen(rec)
+    if (rec) reopen(rec, await $.clock.now())
     const result = yield* next(e)
     if (rec && result && result.usage) {
       addUsage(rec, result.usage)

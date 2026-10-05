@@ -105,7 +105,7 @@ function readLast(v) {
   if (!o) return null
   if (o.kind === 'text') return { kind: 'text' }
   if (!str(o.name)) return null
-  return { kind: 'tool', name: oneLine(o.name).slice(0, 40), target: oneLine(o.target).slice(0, 80) }
+  return { kind: 'tool', name: Array.from(oneLine(o.name)).slice(0, 40).join(''), target: Array.from(oneLine(o.target)).slice(0, 80).join('') }
 }
 
 function readNext(n) {

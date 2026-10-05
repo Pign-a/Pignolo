@@ -46,8 +46,8 @@ export function addAgent(reg, a) {
   const rec = {
     id: a.id,
     toolUseId: a.toolUseId,
-    type: a.type || 'agent',
-    description: a.description || '',
+    type: clean(a.type) || 'agent', // texto del modelo: una linea, sin control ni invisibles (Live, Costo y el aviso lo dibujan)
+    description: clean(a.description),
     model: a.model || '',
     background: Boolean(a.background),
     startedAt: a.startedAt,
@@ -85,7 +85,7 @@ export function noteStep(rec, result, now) {
   if (u && typeof u === 'object') rec.ctx = (Number(u.input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0)
   const uses = Array.isArray(result.toolUses) ? result.toolUses : []
   const t = uses[uses.length - 1]
-  if (t && typeof t === 'object' && typeof t.name === 'string' && t.name) rec.last = { kind: 'tool', name: clean(t.name).slice(0, 40), target: toolTarget(t.name, t.input) }
+  if (t && typeof t === 'object' && typeof t.name === 'string' && t.name) rec.last = { kind: 'tool', name: Array.from(clean(t.name)).slice(0, 40).join(''), target: toolTarget(t.name, t.input) }
   else rec.last = { kind: 'text' }
 }
 
@@ -96,10 +96,11 @@ export function finish(rec, now, failed) {
 }
 
 // un agente que vuelve a pedir al modelo (SendMessage) vuelve a correr
-export function reopen(rec) {
+export function reopen(rec, now) {
   if (rec && rec.status !== 'running') {
     rec.status = 'running'
     rec.endedAt = null
+    if (Number.isFinite(now)) rec.lastAt = now // el silencio se mide desde que vuelve, no desde el paso del tramo anterior
   }
 }
 
@@ -198,16 +199,25 @@ export function demoView(a, now, i) {
   }
 }
 
-export function agentFlags(a, now) {
-  const stalled = now - (a.lastAt ?? a.startedAt) > STALL_MS
+// waiting: tiene un agente hijo corriendo; espera a su hijo, no esta parado.
+export function agentFlags(a, now, waiting = false) {
+  const stalled = !waiting && now - (a.lastAt ?? a.startedAt) > STALL_MS
   const ctxHigh = (a.ctx || 0) >= CTX_HIGH
   return { stalled, ctxHigh, attention: stalled || ctxHigh }
 }
 
 // Primero los que piden atencion, despues el mas reciente; cada hijo justo despues de su padre.
+const isRunning = (a) => a.status !== 'done' && a.status !== 'error'
+const waitingOn = (list) => {
+  const w = new Set()
+  for (const k of list) if (k.parentId && k.parentId !== k.id && isRunning(k)) w.add(k.parentId)
+  return w
+}
+
 export function orderAgents(list, now) {
   const ids = new Set(list.map((a) => a.id))
-  const flag = new Map(list.map((a) => [a, agentFlags(a, now).attention]))
+  const wait = waitingOn(list)
+  const flag = new Map(list.map((a) => [a, agentFlags(a, now, wait.has(a.id)).attention]))
   const cmp = (x, y) => (flag.get(y) - flag.get(x)) || y.startedAt - x.startedAt
   const kids = (p) => list.filter((a) => a.parentId === p.id && a !== p).sort(cmp)
   const out = []
@@ -240,7 +250,8 @@ export function compactRows(entries, rest) {
 // -> { mode: 'roomy' | 'compact', entries: [{ agent, flags, nested, lines, gapAfter }], rest, columns, summary: { count, tokens, longest } }
 export function layoutAgents(list, { rows, cols, now }) {
   const ordered = orderAgents(list, now)
-  const flags = new Map(ordered.map((a) => [a, agentFlags(a, now)]))
+  const wait = waitingOn(ordered)
+  const flags = new Map(ordered.map((a) => [a, agentFlags(a, now, wait.has(a.id))]))
   const summary = { count: ordered.length, tokens: ordered.reduce((n, a) => n + (a.tokens || 0), 0), longest: ordered.reduce((m, a) => Math.max(m, now - a.startedAt), 0) }
   const columns = columnsFor(cols)
   const make = (shown, mode) => {

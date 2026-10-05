@@ -211,3 +211,15 @@ test('the demo sample has four running agents with the detail: one stalled, one 
   assert.strictEqual(lay.entries.filter((e) => e.nested).length, 1);
   assert.ok(views.every((v) => v.last && v.last.kind === 'tool'));
 });
+
+test('agentFlags: an agent with a running child is waiting on it, not stalled; without one (or once the child ended) it is', async () => {
+  const { agentFlags, layoutAgents } = await load('model.js');
+  assert.strictEqual(agentFlags(ag({ lastAt: NOW - 120_000 }), NOW, true).stalled, false);
+  assert.strictEqual(agentFlags(ag({ lastAt: NOW - 120_000 }), NOW).stalled, true);
+  const quiet = { lastAt: NOW - 120_000 };
+  const lay = (child) => layoutAgents([ag({ id: 'P', ...quiet }), ag({ id: 'C', parentId: 'P', ...child })], { rows: 40, cols: 80, now: NOW });
+  assert.strictEqual(lay({}).entries.find((e) => e.agent.id === 'P').flags.stalled, false);
+  assert.strictEqual(lay({ status: 'done' }).entries.find((e) => e.agent.id === 'P').flags.stalled, true);
+  // el hijo en si no queda exento: si no da pasos, sigue parado
+  assert.strictEqual(lay({ lastAt: NOW - 120_000 }).entries.find((e) => e.agent.id === 'C').flags.stalled, true);
+});
