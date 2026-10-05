@@ -262,7 +262,8 @@ function taskLocked(o, main, env) {
   let cfg;
   try { cfg = readProjectConfig({ root: worktree, ref, run: git }); } catch (e) { throw new Fail(`no se pudo leer .pignolo/project.md en ${ref}: ${e.message}`); }
   if (!cfg.found || !cfg.gates['on-done']) {
-    throw new Fail(`la base ${ref} no tiene .pignolo/project.md commiteado con gates.on-done; commitealo antes de registrar la tarea`);
+    const why = cfg.found ? '' : require('../lib/project-ignored').whyMissing({ main });
+    throw new Fail(`la base ${ref} no tiene .pignolo/project.md commiteado con gates.on-done; commitealo antes de registrar la tarea.${why}`);
   }
 
   const t = { id: o.id, worktree, base };

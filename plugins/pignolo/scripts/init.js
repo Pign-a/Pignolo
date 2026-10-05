@@ -33,6 +33,7 @@ const IC = require('../lib/init-choices');
 const SM = require('../lib/safe-move');
 const RS = require('../lib/ref-scan');
 const { PIGNOLO_IGNORED } = require('../lib/pignolo-gitignore');
+const PI = require('../lib/project-ignored');
 
 const STEP_IDS = ['ignores', 'gitattributes', 'reflog', 'adapt', 'skeleton', 'project-md', 'security-md', 'auto-memory-off'];
 const BLANK_MARKER = ['.pignolo', 'tmp', 'init-blank.json'];
@@ -249,6 +250,26 @@ function finalPlaces({ plan, adapt, skeleton }) {
   return out;
 }
 
+// Paso `ignores`: .pignolo/.gitignore y, si git ignora .pignolo/project.md, la regla del .gitignore de la raíz que lo hace (mismo sí).
+// Una regla que vive en otro lado (.git/info/exclude, un excludes global) no se toca: se dice dónde está. Un fallo de esta parte
+// nunca tira el paso.
+function ignoresStep({ main, git, env, dry, notes }) {
+  const step = A.applyIgnores({ root: main, run: git, dry });
+  let fix;
+  try { fix = PI.applyFix({ main, run: git, env, dry }); } catch (e) { fix = { status: 'refused', reason: `unexpected: ${e.message}` }; }
+  if (fix.status === 'none' || fix.status === 'unknown') return step;
+  if (fix.status === 'external') {
+    const where = { 'git-info-exclude': '.git/info/exclude', global: 'tu excludes global de git', 'other-gitignore': fix.source, link: '.gitignore (es un enlace)' }[fix.where] || fix.source;
+    notes.push(`git ignora .pignolo/project.md por una regla en ${where} (${fix.source}:${fix.line} \`${fix.pattern}\`) y init no la toca: sacala a mano o el proyecto no viajará a las worktrees`);
+    return { ...step, projectMdIgnored: { status: 'external', where: fix.where, source: fix.source, line: fix.line, pattern: fix.pattern } };
+  }
+  const { status, ...rest } = fix;
+  const projectMdIgnored = { status, ...rest };
+  if (status === 'refused') return { ...step, projectMdIgnored };
+  const { reason, ...base } = step;
+  return { ...base, status: step.status === 'skipped' ? (dry ? 'would-do' : 'done') : step.status, projectMdIgnored };
+}
+
 function runSteps({ cwd, env, run, plan, dry }) {
   const main = resolveRoot(cwd, run);
   const blank = blankOf(main).blank;
@@ -268,7 +289,7 @@ function runSteps({ cwd, env, run, plan, dry }) {
     if (adaptFailed) { steps.push({ id, status: 'skipped', reason: 'adapt-failed' }); continue; }
     let step;
     try {
-      if (id === 'ignores') step = A.applyIgnores({ root: main, run: git, dry });
+      if (id === 'ignores') step = ignoresStep({ main, git, env, dry, notes });
       else if (id === 'gitattributes') step = A.applyGitattributes({ root: main, main, env, dry });
       else if (id === 'reflog') step = A.applyReflog({ root: main, run: git, dry });
       else if (id === 'adapt') {
@@ -414,6 +435,8 @@ function verify({ cwd, env, run }) {
   const files = candidates.filter((f) => fs.existsSync(path.join(main, f)) && dirty(f));
   if (trackedModified) files.push('.pignolo/.gitignore');
   notes.push(...placesVerify({ main, config, env, run }));
+  const ignoredLine = PI.noticeLine({ main, run: git });
+  if (ignoredLine) notes.push(ignoredLine);
   return {
     ok: configError === null,
     blank,
