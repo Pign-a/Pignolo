@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.22.1 — sin publicar
+
+Dos errores del panel vistos en uso real (2026-10-03). Va con `pignolo-panel` 0.3.1.
+
+- **El registro del panel ya no espera al próximo arranque.** Tras activar pignolo a mitad de sesión el panel decía "no está activo" hasta correr `panel.js refresh` a mano. Ahora `init.js apply` (al terminar) y `init.js verify` (si falta) escriben el registro cuando existe `.pignolo/project.md`, y `SessionStart` lo genera si hay `project.md` y no hay registro. Protegido: un fallo del registro nunca cambia el resultado ni el código de salida de `init`.
+- **El siguiente paso nombra la rama principal real.** Salía "hacé push de main" en un repo cuya rama era `master` y con cambios sin commitear. La rama principal es la de `origin/HEAD` (si existe como rama local), si no `main` o `master`; el registro guarda `main.name`, `main.onMain`, `main.dirty` y `main.remote` (opcionales; los registros viejos siguen leyéndose). La regla del push exige nombre conocido, parado en esa rama, sin cambios sin commitear (lo que pignolo escribe solo en `.pignolo/.gitignore` no cuenta) y con remoto; "uní X a <rama>" también usa el nombre real. Un registro viejo sin nombre no sugiere push hasta el próximo `refresh`.
+- Tests: `tests/next-steps.test.js` (master adelantado, nombre faltante, cambios sin commitear, sin remoto, fuera de la principal), `tests/panel-state.test.js` (repo real con `master` y remoto), `tests/init-cli.test.js` (apply y verify dejan el registro), `tests/e2e-hito-6a.test.js` (SessionStart sin registro).
+
 ## 0.22.0 — sin publicar
 
 Reglas MCP de `ask` más precisas y `setup` que quita las viejas (uso real del autor, 2026-10-03). **El número se renumera al unir** (hay otra rama con 0.21.0); cambian solo `plugin.json`, este encabezado y el test de versiones.

@@ -276,3 +276,49 @@ test('panel-state: a slow refresh does not starve concurrent writers nor overwri
   assert.equal(s.decisions.length, 1);
   assert.equal(s.cards.find((c) => c.id === 'T1').red, 'falla: anotada mientras tanto'); // el refresh no la pisó
 });
+
+// ---- rama principal real, sin cambios sin commitear, con remoto (bug del push de "main" en un repo con master) ----
+
+function masterRepoAhead() {
+  const dir = makeTempDir('pignolo-master-');
+  git(['init', '-q', '-b', 'master'], dir);
+  for (const [k, v] of [['user.name', 'pignolo-test'], ['user.email', 'test@example.invalid'], ['commit.gpgsign', 'false'], ['core.autocrlf', 'false']]) git(['config', k, v], dir);
+  fs.mkdirSync(path.join(dir, '.pignolo'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.pignolo', 'project.md'), '# p\n');
+  fs.writeFileSync(path.join(dir, 'a.txt'), 'uno\n');
+  git(['add', 'a.txt', '.pignolo/project.md'], dir);
+  git(['commit', '-q', '-m', 'inicial'], dir);
+  const bare = makeTempDir('pignolo-bare-');
+  git(['init', '-q', '--bare', '-b', 'master'], bare);
+  git(['remote', 'add', 'origin', bare], dir);
+  git(['push', '-q', 'origin', 'master'], dir);
+  fs.writeFileSync(path.join(dir, 'b.txt'), 'dos\n');
+  git(['add', 'b.txt'], dir);
+  git(['commit', '-q', '-m', 'adelantado'], dir);
+  return dir;
+}
+
+test('panel-state refresh: a repo whose principal branch is master and is ahead suggests "hacé push de master"', () => {
+  const dir = masterRepoAhead();
+  const s = panel.refresh(dir);
+  assert.equal(s.main.name, 'master');
+  assert.equal(s.next.prompt, 'hacé push de master');
+  assert.equal(panel.read(dir).state.main.name, 'master'); // el registro lo conserva
+});
+
+test('panel-state refresh: uncommitted changes, no remote or being off the principal branch do not suggest push', () => {
+  const dirty = masterRepoAhead();
+  fs.writeFileSync(path.join(dirty, 'a.txt'), 'cambiado\n');
+  const d = panel.refresh(dirty);
+  assert.ok(!d.next.prompt || !/push/.test(d.next.prompt), JSON.stringify(d.next));
+
+  const noRemote = masterRepoAhead();
+  git(['remote', 'remove', 'origin'], noRemote);
+  const n = panel.refresh(noRemote);
+  assert.ok(!n.next.prompt || !/push/.test(n.next.prompt), JSON.stringify(n.next));
+
+  const off = masterRepoAhead();
+  git(['checkout', '-q', '-b', 'otra'], off);
+  const o = panel.refresh(off);
+  assert.ok(!o.next.prompt || !/push/.test(o.next.prompt), JSON.stringify(o.next));
+});

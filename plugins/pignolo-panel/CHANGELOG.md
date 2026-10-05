@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — sin publicar
+
+Con el núcleo 0.22.1. "Activo" lo decide `.pignolo/project.md` (lo que usa el núcleo), no el registro: con `project.md` y sin registro (pignolo se activó a mitad de sesión) o con un registro ilegible, el panel dice "pignolo está activo; el panel se completa en unos segundos" en vez de "pignolo no está activo en este proyecto", y lo vuelve a leer con el reloj de siempre (cada 3 s) hasta que aparece. Sin `project.md` sigue diciendo que no está activo. Cero llamadas nuevas (solo `fs.exists`/`fs.read`); sigue sin `process` ni `http`.
+
 ## 0.3.0 — sin publicar
 
 **Asistente de inicio** (decisión del autor, 2026-10-03): al abrir Claude Code en un proyecto que todavía no usa pignolo (sin `.pignolo/project.md`), el panel se abre solo con un asistente de pocos pasos: cada uno con lo que pignolo detectó y la opción recomendada marcada. Va con el núcleo 0.20.0 (que deja la detección y valida las elecciones).

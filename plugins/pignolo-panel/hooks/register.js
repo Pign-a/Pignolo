@@ -67,15 +67,27 @@ const WIZARD_TICKS = 40
 
 // ---- lectura (unico archivo: .pignolo/panel-state.json) ----
 
-async function findState($) {
+// Sube desde el cwd buscando `rel` (hasta 12 niveles); la ruta completa o null.
+async function findUp($, rel) {
   let dir = String(await $.session.cwd()).replace(/\\/g, '/').replace(/\/+$/, '')
   for (let i = 0; i < 12 && dir; i += 1) {
-    if (await $.fs.exists(dir + '/.pignolo/panel-state.json')) return dir + '/.pignolo/panel-state.json'
+    if (await $.fs.exists(dir + rel)) return dir + rel
     const up = dir.replace(/\/[^/]*$/, '')
     if (up === dir || up === '') break
     dir = up
   }
   return null
+}
+
+const findState = ($) => findUp($, '/.pignolo/panel-state.json')
+
+// "Activo" lo dice project.md (lo mismo que usa el nucleo), no el registro: el registro puede tardar o faltar. 'pending' = activo sin datos.
+async function idleKind($) {
+  try {
+    return (await findUp($, '/.pignolo/project.md')) ? 'pending' : 'none'
+  } catch {
+    return 'none'
+  }
 }
 
 function emptySnap(kind) {
@@ -84,8 +96,9 @@ function emptySnap(kind) {
 
 async function realSnapshot($) {
   const file = await findState($)
-  if (!file) return emptySnap('none')
+  if (!file) return emptySnap(await idleKind($))
   const { kind, snap } = readState(parseJson(String(await $.fs.read(file))))
+  if (kind === 'none' || kind === 'unknown') return emptySnap(await idleKind($)) // registro ilegible o de otra forma: no es "pignolo apagado"
   return { ...snap, kind, demo: false }
 }
 
@@ -101,7 +114,7 @@ async function readSnapshot($, now) {
   try {
     value = demoMode ? await demoSnapshot($) : await realSnapshot($)
   } catch {
-    value = emptySnap('none')
+    value = emptySnap(await idleKind($))
   }
   for (const c of value.cards) {
     if (prevCards.size && c.status === 'done' && prevCards.get(c.id) && prevCards.get(c.id) !== 'done') $.ui.toast('✓ tarjeta ' + c.id + ' terminada')
@@ -229,7 +242,8 @@ function block($, e, { key, title, right, body, foot, width }) {
 }
 
 function notActive(kind) {
-  return kind === 'newer' ? 'pignolo-panel: el registro es de una versión más nueva; actualizá el panel (/plugin update)' : 'pignolo no está activo en este proyecto'
+  if (kind === 'newer') return 'pignolo-panel: el registro es de una versión más nueva; actualizá el panel (/plugin update)'
+  return kind === 'pending' ? 'pignolo está activo; el panel se completa en unos segundos' : 'pignolo no está activo en este proyecto'
 }
 
 async function bandTree($, e, next) {
@@ -680,8 +694,8 @@ function slashes(p) {
 // Raiz del proyecto: donde esta .pignolo/panel-state.json si lo hay; si no, el cwd. En demo, el arbol de muestra del plugin.
 async function uiRoot($) {
   if (demoMode) return slashes($.plugin.root) + '/sample/ui'
-  const file = await findState($)
-  return file ? file.replace(/\/\.pignolo\/panel-state\.json$/, '') : slashes(await $.session.cwd())
+  const file = (await findState($)) || (await findUp($, '/.pignolo/project.md'))
+  return file ? file.replace(/\/\.pignolo\/(panel-state\.json|project\.md)$/, '') : slashes(await $.session.cwd())
 }
 
 // Lector de archivos para ui-input.js: funciones que cierran sobre `$.fs` (el motor no deja pasar `$` a otro archivo).

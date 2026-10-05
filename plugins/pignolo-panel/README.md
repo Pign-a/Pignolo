@@ -22,7 +22,7 @@ Panel visual **opcional** para pignolo. Es un mod de Claude Code (**2.1.287 o m�
 
 ## De dónde saca los datos
 
-De un solo archivo: `.pignolo/panel-state.json` (formato `pignolo-panel-state/1`), que escribe el núcleo `pignolo` y no va a git. El mod no lee `.git` (salvo el archivo del asistente de inicio, `.git/pignolo/wizard-detect.json`, que deja el hook de arranque del núcleo en un proyecto sin pignolo), ni `run.json`, ni los planes. Sin ese archivo dibuja una sola línea ("pignolo no está activo en este proyecto"); con un registro de una versión más nueva pide actualizar el panel.
+De un solo archivo: `.pignolo/panel-state.json` (formato `pignolo-panel-state/1`), que escribe el núcleo `pignolo` y no va a git. El mod no lee `.git` (salvo el archivo del asistente de inicio, `.git/pignolo/wizard-detect.json`, que deja el hook de arranque del núcleo en un proyecto sin pignolo), ni `run.json`, ni los planes. Sin ese archivo dibuja una sola línea: "pignolo no está activo en este proyecto" si no hay `.pignolo/project.md`, o "pignolo está activo; el panel se completa en unos segundos" si lo hay; con un registro de una versión más nueva pide actualizar el panel.
 
 ## Qué puede hacer el mod (y nada más)
 
