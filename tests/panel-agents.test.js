@@ -77,12 +77,13 @@ test('layoutAgents: attention first, then the most recently started', async () =
 
 test('layoutAgents: a nested agent goes right after its parent, and it is nested only when the parent is running', async () => {
   const { layoutAgents } = await load('model.js');
-  const p = ag({ id: 'P', startedAt: 500_000 });
+  const p = ag({ id: 'P', startedAt: 700_000 });
+const r = ag({ id: 'R', startedAt: 500_000 });
   const q = ag({ id: 'Q', startedAt: 900_000 });
   const c = ag({ id: 'C', parentId: 'P', startedAt: 950_000 });
-  const lay = layoutAgents([q, c, p], { rows: 40, cols: 80, now: NOW });
-  assert.deepStrictEqual(ids(lay), ['Q', 'P', 'C']);
-  assert.deepStrictEqual(lay.entries.map((e) => e.nested), [false, false, true]);
+  const lay = layoutAgents([q, c, r, p], { rows: 40, cols: 80, now: NOW });
+  assert.deepStrictEqual(ids(lay), ['Q', 'P', 'C', 'R']);
+  assert.deepStrictEqual(lay.entries.map((e) => e.nested), [false, false, true, false]);
   const orphan = layoutAgents([ag({ id: 'X', parentId: 'gone' })], { rows: 40, cols: 80, now: NOW });
   assert.strictEqual(orphan.entries[0].nested, false);
   // un ciclo de padres no pierde a nadie ni se cuelga

@@ -473,7 +473,7 @@ function copyButtons($, e) {
   })
 }
 
-// ---- Ahora ---------------------------------------------------------------------------
+// ---- Live ---------------------------------------------------------------------------
 
 function inProgressBlock($, e, snap, cols, width) {
   const { Box, Text, Button } = $.ui.resolve(e)
