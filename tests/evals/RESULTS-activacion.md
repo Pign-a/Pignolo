@@ -154,4 +154,35 @@ Carpeta de proyecto vacía, sin `.pignolo/`: `entry` no puede comprobar que pign
 
 ## Resultados
 
-Pendiente: se completa al terminar las corridas.
+Corrida el 2026-10-05, sonnet, `--max-turns 3`, los tres comandos de la ficha sin desvíos. Datos crudos en `%TEMP%/claude-eval-activation-plan/` (no se versionan); las cifras se recalcularon desde los `metrics.jsonl`.
+
+### Por ronda (E3: dos brazos, una sola variable, 3 repeticiones, criterio fijado antes)
+
+| Brazo | Medida | Ronda 1 | Ronda 2 | Ronda 3 | Mediana | Rango |
+|---|---|---|---|---|---|---|
+| Control (`2771d5b`) | Positivas (de 10) | 0 | 0 | 0 | 0 | 0 a 0 |
+| Control | Falsas activaciones (de 4) | 0 | 0 | 0 | 0 | 0 a 0 |
+| Tratamiento A | Positivas (de 10) | 2 | 1 | 2 | **2** | 1 a 2 |
+| Tratamiento A | Falsas activaciones (de 4) | 0 | 0 | 0 | **0** | 0 a 0 |
+
+La sonda (Q01, una corrida, sin skill invocada) no cuenta en las rondas.
+
+### Regla de decisión aplicada
+
+Mediana 2/10 (pide >= 9) y mínimo 1/10 (pide >= 8): **no cumple**. Falsas activaciones 0: cumple. Los rangos no se pisan con el control (1 a 2 contra 0), así que el texto nuevo mejora, pero muy lejos del umbral. Según la ficha **corresponde T6** (otro cambio y otro gasto, con otro OK del autor). El texto de `entry` no queda "adoptado" por esta medición.
+
+### Qué se invocó en las positivas (30 corridas por brazo)
+
+- Control: ninguna skill 14, solo `pignolo:entry` 13, `entry` y después `status` 2, `update-config` 1. Nunca `pignolo:plan`.
+- Tratamiento A: ninguna skill 18, solo `pignolo:entry` 6, `entry` → `plan` 5 (los cinco aciertos; uno siguió con otras skills hasta el corte de turnos), `entry` → `status` 1. Aciertos por frase: Q01 2 de 3, Q06, Q07 y Q09 1 de 3, las otras seis 0 de 3.
+
+Lectura (E1, de la salida cruda de dos corridas): cuando no invoca nada, el modelo contesta con una pregunta ("¿un plan de qué?") porque el proyecto está vacío. Cuando pasa por `entry`, el texto nuevo lo lleva a `plan` en 5 de 12 (control: 0 de 16). El fallo dominante es anterior a `entry`: el modelo no invoca ninguna skill. Coincide con la primera amenaza de la ficha (carpeta vacía, sin `.pignolo/`, donde "un proyecto con pignolo activo" no se cumple), así que esta prueba no separa "la description de `plan` no alcanza" de "el montaje no parece un proyecto con pignolo". Un T6 debería medir con un proyecto que tenga `.pignolo/project.md`.
+
+### Costo
+
+| Brazo | USD (E3, `total_cost_usd`) |
+|---|---|
+| Control | 1,71 (0,71 / 0,67 / 0,33 por ronda) |
+| Tratamiento A | 1,75 (0,76 / 0,68 / 0,30) más 0,05 de la sonda |
+
+**Gasto total: 3,51 USD** (estimado 3,4 a 4,2; tope 8).
