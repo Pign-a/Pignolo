@@ -55,7 +55,9 @@ function parseReview(text) {
     ids.add(c.id);
     if (!isStr(c.claim) || !isStr(c.how)) return bad(`la afirmación ${c.id} necesita claim y how no vacíos`);
   }
-  return { findings: v.findings, claims: v.claims };
+  // `closed` (R-11): ids de la vuelta anterior que el revisor da por cerrados; solo en una re-auditoría.
+  if (v.closed !== undefined && (!Array.isArray(v.closed) || !v.closed.every(isStr))) return bad('closed debe ser una lista de ids (texto no vacío)');
+  return { findings: v.findings, claims: v.claims, closed: v.closed || [] };
 }
 
 function parseVerification(text, claims) {
@@ -190,7 +192,11 @@ function stopDecision({ mode, lastMessage, attempt = 1 }) {
 function buildAudit({ review, probe, verification, mode }) {
   const claims = (review && review.claims) || [];
   const closed = new Set((probe && probe.closed) || []);
-  const findings = [...((review && review.findings) || []), ...((probe && probe.findings) || [])];
+  // Solo `severity: "MINOR"` exacto no frena; ausente, desconocida o un hallazgo que no es objeto frena (R-6).
+  // Las sondas fijas y los experiment-false cuentan siempre como importantes.
+  const reviewed = (review && review.findings) || [];
+  const minors = reviewed.filter((f) => f && typeof f === 'object' && f.severity === 'MINOR');
+  const findings = [...reviewed.filter((f) => !minors.includes(f)), ...((probe && probe.findings) || [])];
   const entries = (verification && verification.entries) || [];
   for (const e of entries.filter((x) => x.verdict === 'false')) {
     const c = claims.find((x) => x.id === e.id) || {};
@@ -201,16 +207,110 @@ function buildAudit({ review, probe, verification, mode }) {
     });
   }
   const incomplete = Boolean(mode && mode.incomplete);
-  if (findings.length) return { verdict: 'REQUEST_CHANGES', findings, incomplete };
+  if (findings.length) return { verdict: 'REQUEST_CHANGES', findings, minors, incomplete };
   const unverified = claims.filter((c) => !closed.has(c.id)).some((c) => {
     const e = entries.find((x) => x.id === c.id);
     return !e || e.verdict === 'inconclusive';
   });
-  if (unverified || incomplete) return { verdict: 'ESCALATE', findings, incomplete: true, reason: 'claims-not-verified' };
-  return { verdict: 'APPROVE', findings, incomplete: false };
+  if (unverified || incomplete) return { verdict: 'ESCALATE', findings, minors, incomplete: true, reason: 'claims-not-verified' };
+  return { verdict: 'APPROVE', findings, minors, incomplete: false };
+}
+
+// Vueltas de la auditoría (D-2, R-7): round.json guarda la vuelta (1 o 2), su veredicto, los hallazgos que
+// frenaron (con id), las afirmaciones sin verificar que pasan a la vuelta siguiente (`carry`) y `extra`
+// (vueltas extra pedidas con --extra-round; la vuelta sigue siendo 2). Ausente = sin historia; sin `round`
+// (estado viejo) = vuelta 1; un `round` que no es 1 ni 2, un `extra` inválido o JSON roto = error con mensaje.
+const roundFile = (main, plan) => path.join(auditDir(main, plan), 'round.json');
+function readRound({ main, plan }) {
+  let text;
+  try { text = fs.readFileSync(roundFile(main, plan), 'utf8'); } catch (_) { return { round: 0 }; }
+  const reset = 'corré plan-audit.js end para empezar de cero';
+  let v;
+  try { v = JSON.parse(text); } catch (e) { return { round: 0, error: `round.json no parsea (${e.message}); ${reset}` }; }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return { round: 0, error: `round.json no es un objeto; ${reset}` };
+  const has = (k) => Object.prototype.hasOwnProperty.call(v, k);
+  if (has('round') && v.round !== 1 && v.round !== 2) return { round: 0, error: `round.json tiene un round inválido (${JSON.stringify(v.round)}; solo 1 o 2); ${reset}` };
+  if (has('extra') && !(Number.isInteger(v.extra) && v.extra >= 0)) return { round: 0, error: `round.json tiene un extra inválido (${JSON.stringify(v.extra)}); ${reset}` };
+  for (const k of ['carry', 'findings']) if (has(k) && !Array.isArray(v[k])) return { round: 0, error: `round.json: ${k} no es una lista; ${reset}` };
+  if (has('carry') && v.carry.some((c) => !c || typeof c !== 'object' || Array.isArray(c))) return { round: 0, error: `round.json: un elemento de carry no es un objeto; ${reset}` };
+  return { ...v, round: has('round') ? v.round : 1, extra: v.extra || 0, carry: has('carry') ? v.carry : [], findings: has('findings') ? v.findings : [] };
+}
+
+// R-11: cada hallazgo que frena lleva un id. Los de una vuelta nueva se numeran con `prefix`; un `not-closed`
+// conserva el de la vuelta anterior; el `id` que haya puesto el revisor pasa a `ref`.
+function assignIds(findings, prefix) {
+  let n = 0;
+  const used = new Set();
+  const reserved = new Set((findings || []).filter((f) => f && f.kind === 'not-closed' && isStr(f.id)).map((f) => f.id));
+  return (findings || []).map((f) => {
+    const obj = f && typeof f === 'object' && !Array.isArray(f) ? f : { kind: 'malformed', text: JSON.stringify(f) };
+    if (obj.kind === 'not-closed' && isStr(obj.id) && !used.has(obj.id)) { used.add(obj.id); return obj; }
+    const { id, ...rest } = obj;
+    n += 1;
+    while (used.has(`${prefix}-${n}`) || reserved.has(`${prefix}-${n}`)) n += 1;
+    used.add(`${prefix}-${n}`);
+    return { id: `${prefix}-${n}`, ...(id !== undefined ? { ref: id } : {}), ...rest };
+  });
+}
+// Hallazgos de una vuelta anterior sin id (estado viejo): se numeran L1, L2...; los que ya tienen id lo conservan.
+const withIds = (findings) => (findings || []).map((f, i) => {
+  const obj = f && typeof f === 'object' && !Array.isArray(f) ? f : { kind: 'malformed', text: JSON.stringify(f) };
+  return isStr(obj.id) ? obj : { ...obj, id: `L${i + 1}` };
+});
+const roundPrefix = (round, extra) => (round === 1 ? 'R1' : extra ? `R2x${extra}` : 'R2');
+
+// R-11: de los hallazgos que frenaron la vuelta anterior, los que el informe no da por cerrados: el id falta en
+// `closed`, o el informe lo vuelve a nombrar (en `id` o `ref` de cualquier hallazgo, también un MINOR). Si ya lo
+// devuelve un hallazgo que frena, ese frena por sí solo y no se agrega otro igual.
+const norm = (s) => String(s).trim().toUpperCase();
+function notClosed({ previous, closed, findings }) {
+  const named = new Set();
+  const blocking = new Set();
+  for (const f of findings || []) {
+    if (!f || typeof f !== 'object') continue;
+    for (const k of ['id', 'ref']) if (isStr(f[k])) { named.add(norm(f[k])); if (f.severity !== 'MINOR') blocking.add(norm(f[k])); }
+  }
+  const done = new Set((closed || []).filter(isStr).map(norm));
+  return (previous || []).filter((p) => p && isStr(p.id) && (!done.has(norm(p.id)) || named.has(norm(p.id))) && !blocking.has(norm(p.id)))
+    .map((p) => ({ id: p.id, kind: 'not-closed', severity: 'IMPORTANT', text: `the finding ${p.id} from the previous round is not listed as closed`, previous: p }));
+}
+const writeRound = ({ main, plan, data }) => writeAtomic(roundFile(main, plan), `${JSON.stringify(data, null, 2)}\n`);
+function endRounds({ main, plan }) {
+  for (const f of ['round.json', 'plan-round1.md', 'plan-round2.md', 'reaudit.diff', 'reaudit-findings.json']) fs.rmSync(path.join(auditDir(main, plan), f), { force: true });
+}
+
+// Diff de líneas (-/+) entre dos textos, sin git: recorta prefijo y sufijo comunes y resuelve el medio con
+// LCS; si el medio es enorme, lo marca entero como quitado y agregado.
+function lineDiff(before, after) {
+  const a = String(before).split(/\r?\n/);
+  const b = String(after).split(/\r?\n/);
+  let lo = 0;
+  while (lo < a.length && lo < b.length && a[lo] === b[lo]) lo += 1;
+  let ea = a.length;
+  let eb = b.length;
+  while (ea > lo && eb > lo && a[ea - 1] === b[eb - 1]) { ea -= 1; eb -= 1; }
+  const x = a.slice(lo, ea);
+  const y = b.slice(lo, eb);
+  const out = [];
+  if (x.length * y.length > 4e6) {
+    x.forEach((l) => out.push(`- ${l}`));
+    y.forEach((l) => out.push(`+ ${l}`));
+  } else {
+    const t = Array.from({ length: x.length + 1 }, () => new Uint32Array(y.length + 1));
+    for (let i = x.length - 1; i >= 0; i -= 1) {
+      for (let j = y.length - 1; j >= 0; j -= 1) t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
+    }
+    let i = 0;
+    let j = 0;
+    while (i < x.length || j < y.length) {
+      if (i < x.length && j < y.length && x[i] === y[j]) { i += 1; j += 1; } else if (i < x.length && (j === y.length || t[i + 1][j] >= t[i][j + 1])) { out.push(`- ${x[i]}`); i += 1; } else { out.push(`+ ${y[j]}`); j += 1; }
+    }
+  }
+  return `${out.join('\n')}\n`;
 }
 
 module.exports = {
+  assignIds, withIds, roundPrefix, notClosed, readRound, writeRound, endRounds, lineDiff,
   MAX_CLAIMS, MAX_BLOCKS, TTL_MIN, auditDir, parseReview, parseVerification,
   beginMode, readMode, readCounters, recordExperiment, recordStop, markIncomplete, endMode, stopDecision, buildAudit,
 };

@@ -98,6 +98,8 @@ Todo lo demás. Cada decisión no trivial → `.pignolo/state/decisions/` (qué,
 
 ### 4.4 Preguntas al humano
 Cada pregunta lleva una **categoría** de esta lista cerrada (nombres en inglés en el código; el texto al humano los acompaña con su nombre en su idioma): las 8 reservadas, en el orden de §4.1 (`identity`, `scope`, `costs`, `dependencies`, `irreversible`, `security`, `contract`, `rule-conflict`) + `scope-card`, `test-authorization`, `needs-review-batch`, `judge-conflict`, `live-check-input`, `quota`, `rule-conflict`. Contenido: contexto en 2 líneas, opciones completas sin resumir, con la **recomendada primera y marcada** (las demás conservan el orden en que se encontraron; decisión del autor, 2026-10-01), recomendación con evidencia, costo y reversibilidad. Se agrupan por plan cuando es posible. Confirmaciones rutinarias (push a una rama `task/` propia con compuertas en verde) en lote; `main`, force, borrados y migraciones, una por una.
+**Preguntas interactivas (decisión del autor, 2026-10-05, 0.24.0; no reemplaza el texto anterior).** Las skills del núcleo que preguntan usan la herramienta `AskUserQuestion` (hasta 4 preguntas por llamada; las independientes van juntas, la que depende de otra va en la llamada siguiente); la categoría va en el `header` y en el registro; la plantilla de texto queda como respaldo sin la herramienta (`claude -p`, subagentes). "Una pregunta por mensaje" deja de ser regla. El presupuesto de preguntas de `plan` pasa de 3/6/10 a 2/4/6.
+
 
 ### 4.5 Tarjeta de alcance (`scope-card`)
 La genera el `spec-reviewer` (sin contexto de la sesión) a partir del **pedido original literal** más el spec. Una pantalla:
@@ -123,6 +125,8 @@ La genera el `spec-reviewer` (sin contexto de la sesión) a partir del **pedido 
 ### 4.6 Presentación visual (tarjetas, decisiones y resúmenes)
 
 **Dos capas en todo texto al humano** (decisión del autor, 2026-09-29, tras la primera corrida real de `/pignolo:setup`): cada paso o sección va primero "en pocas palabras" (1 a 3 líneas sin jerga, sin rutas ni conteos: qué significa para el humano y qué tiene que decidir) y debajo el "detalle técnico" (comandos, archivos, conteos, reglas agrupadas por propósito). Un paso por mensaje, con a lo sumo una pregunta. Vale para `setup`, `init`, las preguntas de §4.4 y los resúmenes de cierre.
+
+**Nota (decisión del autor, 2026-10-05, 0.24.0).** "Un paso por mensaje, con a lo sumo una pregunta" cede ante §4.4: las preguntas van por `AskUserQuestion`, las independientes juntas; el detalle técnico solo si el humano lo pide.
 
 Todo lo que pignolo le presenta al humano para decidir (scope-card, preguntas de §4.4, `needs-review-batch`, resumen de cierre) puede mostrarse como **texto** o como **artifact** (página publicada con la herramienta Artifact de Claude Code). Gasta más tokens que el texto, pero se usa cuando hace la decisión más clara.
 

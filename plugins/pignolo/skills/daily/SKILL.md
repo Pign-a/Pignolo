@@ -3,11 +3,11 @@ name: daily
 description: Entered only through pignolo:entry, when it picked the daily lane. Runs one task in its own branch and worktree - test-writer, red proved by you, implementer, sealed gate, review by risk - then merges into the origin branch with the human's confirmation.
 ---
 
-You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill; `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human as the entry skill says: two layers (`<P>/templates/question.md`), one step per message, a category on every question, facts only from script output.
+You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill; `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human as the entry skill says: two layers (`<P>/templates/question.md`), a category on every question, ask with the `AskUserQuestion` tool (independent questions in one call, text form without it), facts only from script output. An option chosen in `AskUserQuestion` is the explicit yes for that question only, never for a later or changed one; what you record as the human's words is the question and the chosen label, literal, or their free text.
 
 ## Rules that hold in every step
 
-- **Panel.** A question that ends your turn also goes to the panel: `node "<P>/scripts/panel.js" ask --key "daily:<name>" …`, and `panel.js answer` when they reply. Command, limits and notes: `<P>/templates/question.md`.
+- **Panel.** A question that stays pending (asked in text form, or the turn ends waiting) also goes to the panel; one answered at once through `AskUserQuestion` does not: `node "<P>/scripts/panel.js" ask --key "daily:<name>" …`, and `panel.js answer` when they reply. Command, limits and notes: `<P>/templates/question.md`.
 - **Only you run `run.js`.** Subagents cannot (the guard blocks them). You register the task before every writer dispatch, renew the flow before every dispatch, and run `status` after every writer.
 - **A report is not proof.** After each writer returns, run `node "<P>/scripts/run.js" status --cwd "<main>"`. The writer is accepted only if `handback.accepted` is true. Otherwise the task is BLOCKED whatever the report says; the reason is in `handback.lastReason`.
 - **Continue at most twice.** Compare the report with the task-card. If items are still open and the writer named no block, register the task again with the same `run.js task` command (that resets its handback counter) and dispatch the same writer once more, naming the open items. At most 2 automatic continuations per writer; after that, ask the human (category `scope`, or the reserved category if that is what blocks).
