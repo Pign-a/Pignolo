@@ -90,7 +90,8 @@ function run(verb, o, main) {
         let before;
         try { before = fs.readFileSync(path.join(dir, `plan-round${prev.round}.md`), 'utf8'); } catch (_) { throw new Fail('falta la copia del plan de la vuelta anterior: corré plan-audit.js end y empezá de cero'); }
         const diff = pa.lineDiff(before, read(o['plan-file'], '--plan-file'));
-        if (diff.trim() === '') throw new Fail(`el plan no cambió desde ${label} (el diff queda vacío; solo cambió el fin de línea): arreglalo antes de re-auditar`);
+        const flat = (s) => String(s).replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.replace(/\s+$/, '')).join('\n').replace(/\n+$/, '');
+        if (diff.trim() === '' || flat(before) === flat(read(o['plan-file'], '--plan-file'))) throw new Fail(`el plan no cambió desde ${label} (el diff queda vacío o solo cambian el BOM, el fin de línea o los espacios al final): arreglalo antes de re-auditar`);
         round = 2;
         extra = wantExtra ? (prev.extra || 0) + 1 : 0;
         carry = prev.carry;
@@ -118,7 +119,16 @@ function run(verb, o, main) {
       // R-8: las afirmaciones de la vuelta anterior que quedaron sin verificar se verifican ahora (o el veredicto es ESCALATE).
       const carried = cur.round === 2 ? cur.carry.filter((c) => c && typeof c === 'object' && typeof c.id === 'string') : [];
       const carriedIds = new Set(carried.map((c) => c.id));
-      const claims = [...carried.map((c) => ({ ...c, carried: true })), ...r.claims.map((c) => (carriedIds.has(c.id) ? { ...c, id: `${c.id}-new` } : c))];
+      // RR-02: el renombrado no puede chocar con un id del revisor ni con otro ya asignado.
+      const taken = new Set([...carriedIds, ...r.claims.map((c) => c.id)]);
+      const fresh = r.claims.map((c) => {
+        if (!carriedIds.has(c.id)) return c;
+        let id = `${c.id}-new`;
+        while (taken.has(id)) id += '-new';
+        taken.add(id);
+        return { ...c, id };
+      });
+      const claims = [...carried.map((c) => ({ ...c, carried: true })), ...fresh];
       writeJson(path.join(dir, 'review.json'), { findings: r.findings, claims, closed: r.closed, planSha256 });
       fs.rmSync(path.join(dir, 'probes.json'), { force: true });
       return out({ ok: true, findings: r.findings.length, claims: claims.length, carried: carried.length });
@@ -147,6 +157,7 @@ function run(verb, o, main) {
       try { probe = JSON.parse(fs.readFileSync(path.join(dir, 'probes.json'), 'utf8')); } catch (_) { /* sin sondas */ }
       const cur = pa.readRound({ main, plan: o.plan });
       if (cur.error) throw new Fail(cur.error);
+      // RR-01: finish solo sirve con una vuelta abierta; ya cerrada, no puede cambiar el veredicto guardado.
       const round = cur.round === 2 ? 2 : 1;
       const extra = round === 2 ? cur.extra : 0;
       // check.json no se suma al veredicto: el revisor lo recibió como evidencia y repite en sus
@@ -168,7 +179,9 @@ function run(verb, o, main) {
         if (!Array.isArray(previous)) throw new Fail('reaudit-findings.json no es una lista: corré plan-audit.js end y empezá de cero');
         reopened = pa.notClosed({ previous, closed: review.closed, findings: review.findings });
       }
-      let built = pa.buildAudit({ review: { ...review, findings: [...review.findings, ...reopened] }, probe, verification, mode: { incomplete } });
+      // RR-04: el kind not-closed solo lo pone el script.
+      const own = review.findings.map((f) => (f && f.kind === 'not-closed' ? { ...f, kind: 'reviewer' } : f));
+      let built = pa.buildAudit({ review: { ...review, findings: [...own, ...reopened] }, probe, verification, mode: { incomplete } });
       built = { ...built, findings: pa.assignIds(built.findings, pa.roundPrefix(round, extra)) };
       // R-8: lo que no quedó verificado (y no es falso) pasa a la vuelta siguiente.
       const carry = remaining.filter((c) => {
@@ -178,6 +191,7 @@ function run(verb, o, main) {
       }).map(({ carried, ...c }) => c);
       // Vuelta 2: los hallazgos que frenan van al humano, nunca a otra vuelta (D-2). La compuerta no cambia: solo APPROVE abre audited.
       if (round === 2 && built.verdict === 'REQUEST_CHANGES') built = { ...built, verdict: 'ESCALATE', reason: 'reaudit-findings', incomplete: true };
+      if (cur.phase === 'done' && built.verdict !== cur.verdict) throw new Fail(`la vuelta ya terminó con ${cur.verdict}; un finish repetido no puede cambiarlo a ${built.verdict}: abrí otra vuelta con begin-review`);
       const audit = { ...built, round, at: new Date().toISOString(), planSha256: review.planSha256 };
       const rec = ps.recordAudit({ main, plan: o.plan, audit });
       pa.endMode({ main, plan: o.plan });

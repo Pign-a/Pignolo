@@ -231,18 +231,24 @@ function readRound({ main, plan }) {
   const has = (k) => Object.prototype.hasOwnProperty.call(v, k);
   if (has('round') && v.round !== 1 && v.round !== 2) return { round: 0, error: `round.json tiene un round inválido (${JSON.stringify(v.round)}; solo 1 o 2); ${reset}` };
   if (has('extra') && !(Number.isInteger(v.extra) && v.extra >= 0)) return { round: 0, error: `round.json tiene un extra inválido (${JSON.stringify(v.extra)}); ${reset}` };
-  return { ...v, round: has('round') ? v.round : 1, extra: v.extra || 0, carry: Array.isArray(v.carry) ? v.carry : [], findings: Array.isArray(v.findings) ? v.findings : [] };
+  for (const k of ['carry', 'findings']) if (has(k) && !Array.isArray(v[k])) return { round: 0, error: `round.json: ${k} no es una lista; ${reset}` };
+  if (has('carry') && v.carry.some((c) => !c || typeof c !== 'object' || Array.isArray(c))) return { round: 0, error: `round.json: un elemento de carry no es un objeto; ${reset}` };
+  return { ...v, round: has('round') ? v.round : 1, extra: v.extra || 0, carry: has('carry') ? v.carry : [], findings: has('findings') ? v.findings : [] };
 }
 
 // R-11: cada hallazgo que frena lleva un id. Los de una vuelta nueva se numeran con `prefix`; un `not-closed`
 // conserva el de la vuelta anterior; el `id` que haya puesto el revisor pasa a `ref`.
 function assignIds(findings, prefix) {
   let n = 0;
+  const used = new Set();
+  const reserved = new Set((findings || []).filter((f) => f && f.kind === 'not-closed' && isStr(f.id)).map((f) => f.id));
   return (findings || []).map((f) => {
     const obj = f && typeof f === 'object' && !Array.isArray(f) ? f : { kind: 'malformed', text: JSON.stringify(f) };
-    if (obj.kind === 'not-closed' && isStr(obj.id)) return obj;
-    n += 1;
+    if (obj.kind === 'not-closed' && isStr(obj.id) && !used.has(obj.id)) { used.add(obj.id); return obj; }
     const { id, ...rest } = obj;
+    n += 1;
+    while (used.has(`${prefix}-${n}`) || reserved.has(`${prefix}-${n}`)) n += 1;
+    used.add(`${prefix}-${n}`);
     return { id: `${prefix}-${n}`, ...(id !== undefined ? { ref: id } : {}), ...rest };
   });
 }
@@ -256,15 +262,16 @@ const roundPrefix = (round, extra) => (round === 1 ? 'R1' : extra ? `R2x${extra}
 // R-11: de los hallazgos que frenaron la vuelta anterior, los que el informe no da por cerrados: el id falta en
 // `closed`, o el informe lo vuelve a nombrar (en `id` o `ref` de cualquier hallazgo, también un MINOR). Si ya lo
 // devuelve un hallazgo que frena, ese frena por sí solo y no se agrega otro igual.
+const norm = (s) => String(s).trim().toUpperCase();
 function notClosed({ previous, closed, findings }) {
   const named = new Set();
   const blocking = new Set();
   for (const f of findings || []) {
     if (!f || typeof f !== 'object') continue;
-    for (const k of ['id', 'ref']) if (isStr(f[k])) { named.add(f[k]); if (f.severity !== 'MINOR') blocking.add(f[k]); }
+    for (const k of ['id', 'ref']) if (isStr(f[k])) { named.add(norm(f[k])); if (f.severity !== 'MINOR') blocking.add(norm(f[k])); }
   }
-  const done = new Set(closed || []);
-  return (previous || []).filter((p) => p && isStr(p.id) && (!done.has(p.id) || named.has(p.id)) && !blocking.has(p.id))
+  const done = new Set((closed || []).filter(isStr).map(norm));
+  return (previous || []).filter((p) => p && isStr(p.id) && (!done.has(norm(p.id)) || named.has(norm(p.id))) && !blocking.has(norm(p.id)))
     .map((p) => ({ id: p.id, kind: 'not-closed', severity: 'IMPORTANT', text: `the finding ${p.id} from the previous round is not listed as closed`, previous: p }));
 }
 const writeRound = ({ main, plan, data }) => writeAtomic(roundFile(main, plan), `${JSON.stringify(data, null, 2)}\n`);
