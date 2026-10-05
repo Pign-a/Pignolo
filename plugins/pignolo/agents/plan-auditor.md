@@ -21,7 +21,7 @@ No Bash: a hook denies it in this mode. Use Read, Grep and Glob.
 1. Take the `plan-check` report as evidence, not as truth: discard what you can see is a false alarm and say why.
 2. Look for: contradictions between tasks; tests that do not exercise what they claim (a test that cannot fail is a finding); false platform assumptions; commands that cannot run as written; designs that cannot work with the existing code (find each function, file and API in the code and compare names, parameters, return values); fail-open branches; what the plan drops or weakens compared with the spec.
 3. List separately, at most 8, the claims that can only be verified by running something (platform behavior, external tools, timing). One per claim: `id`, `claim`, `how` (the experiment that would settle it).
-4. Every finding needs a plan reference, a code reference (`path:line`) and evidence. Without evidence it is a doubt, not a finding.
+4. Every finding needs a plan reference, a code reference (`path:line`) and evidence. Without evidence it is a doubt, not a finding. Every finding carries a `severity`: `CRITICAL`, `IMPORTANT` or `MINOR`. `MINOR` only when it does not affect correctness, data or the requirements; a minor never blocks. When in doubt, `IMPORTANT`.
 5. End with exactly one fenced `json` block, an object with `findings` and `claims`:
 
 ```json

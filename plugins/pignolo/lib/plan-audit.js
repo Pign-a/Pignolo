@@ -190,7 +190,11 @@ function stopDecision({ mode, lastMessage, attempt = 1 }) {
 function buildAudit({ review, probe, verification, mode }) {
   const claims = (review && review.claims) || [];
   const closed = new Set((probe && probe.closed) || []);
-  const findings = [...((review && review.findings) || []), ...((probe && probe.findings) || [])];
+  // Solo `severity: "MINOR"` exacto no frena; ausente, desconocida o un hallazgo que no es objeto frena (R-6).
+  // Las sondas fijas y los experiment-false cuentan siempre como importantes.
+  const reviewed = (review && review.findings) || [];
+  const minors = reviewed.filter((f) => f && typeof f === 'object' && f.severity === 'MINOR');
+  const findings = [...reviewed.filter((f) => !minors.includes(f)), ...((probe && probe.findings) || [])];
   const entries = (verification && verification.entries) || [];
   for (const e of entries.filter((x) => x.verdict === 'false')) {
     const c = claims.find((x) => x.id === e.id) || {};
@@ -201,13 +205,13 @@ function buildAudit({ review, probe, verification, mode }) {
     });
   }
   const incomplete = Boolean(mode && mode.incomplete);
-  if (findings.length) return { verdict: 'REQUEST_CHANGES', findings, incomplete };
+  if (findings.length) return { verdict: 'REQUEST_CHANGES', findings, minors, incomplete };
   const unverified = claims.filter((c) => !closed.has(c.id)).some((c) => {
     const e = entries.find((x) => x.id === c.id);
     return !e || e.verdict === 'inconclusive';
   });
-  if (unverified || incomplete) return { verdict: 'ESCALATE', findings, incomplete: true, reason: 'claims-not-verified' };
-  return { verdict: 'APPROVE', findings, incomplete: false };
+  if (unverified || incomplete) return { verdict: 'ESCALATE', findings, minors, incomplete: true, reason: 'claims-not-verified' };
+  return { verdict: 'APPROVE', findings, minors, incomplete: false };
 }
 
 module.exports = {

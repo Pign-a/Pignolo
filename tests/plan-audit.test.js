@@ -189,3 +189,44 @@ test('buildAudit', () => {
   });
   assert.strictEqual(probed.verdict, 'REQUEST_CHANGES');
 });
+
+test('buildAudit: gravedad (MINOR no frena; ausente o desconocida frena; experiment-false frena)', () => {
+  const claims = [claim('C1')];
+  const noClaims = { review: { findings: [], claims: [] }, probe: { closed: [], findings: [] }, verification: { entries: [], missing: [] }, mode: { incomplete: false } };
+  const fnd = (severity) => ({ ...(severity === undefined ? {} : { severity }), plan: 'Task 1', code: 'lib/x.js:1', text: 't', evidence: 'e' });
+  const withFindings = (list) => pa.buildAudit({ ...noClaims, review: { findings: list, claims: [] } });
+
+  const onlyMinor = withFindings([fnd('MINOR')]);
+  assert.strictEqual(onlyMinor.verdict, 'APPROVE');
+  assert.strictEqual(onlyMinor.minors.length, 1);
+  assert.strictEqual(onlyMinor.findings.length, 0);
+
+  const mixed = withFindings([fnd('MINOR'), fnd('IMPORTANT')]);
+  assert.strictEqual(mixed.verdict, 'REQUEST_CHANGES');
+  assert.strictEqual(mixed.findings.length, 1);
+  assert.strictEqual(mixed.minors.length, 1);
+
+  for (const sev of [undefined, 'LOW', 'minor ', 'minor', null, 3]) {
+    const r = withFindings([fnd(sev)]);
+    assert.strictEqual(r.verdict, 'REQUEST_CHANGES', String(sev));
+    assert.strictEqual(r.minors.length, 0);
+  }
+  assert.strictEqual(withFindings([null]).verdict, 'REQUEST_CHANGES');
+  assert.strictEqual(withFindings([fnd('CRITICAL')]).verdict, 'REQUEST_CHANGES');
+
+  // un menor con afirmaciones abiertas sigue la regla de siempre
+  const open = pa.buildAudit({ ...noClaims, review: { findings: [fnd('MINOR')], claims }, verification: { entries: [], missing: ['C1'] } });
+  assert.strictEqual(open.verdict, 'ESCALATE');
+
+  // las sondas fijas cuentan siempre como importantes, aunque traigan severity MINOR
+  const probe = pa.buildAudit({ ...noClaims, probe: { closed: [], findings: [{ ...fnd('MINOR'), kind: 'probe x' }] } });
+  assert.strictEqual(probe.verdict, 'REQUEST_CHANGES');
+  assert.strictEqual(probe.findings.length, 1);
+
+  // un experiment-false frena aunque el revisor no haya dado hallazgos
+  const ef = pa.buildAudit({
+    ...noClaims, review: { findings: [], claims }, verification: { entries: [{ id: 'C1', verdict: 'false', experiment: 'x', evidence: 'boom' }], missing: [] },
+  });
+  assert.strictEqual(ef.verdict, 'REQUEST_CHANGES');
+  assert.strictEqual(ef.findings[0].kind, 'experiment-false');
+});
