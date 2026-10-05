@@ -6,12 +6,13 @@
 // (`submitText`), al que llegan solo tres botones: la respuesta de una decision de "Te toca" (`submitAnswer`), el atajo de la
 // pestaña UI (`submitUiRequest`) y las elecciones del asistente de inicio (`submitWizard`). No aprueba ni niega nada.
 import {
-  SYMBOL, COLOR, shortModel, minutes, tokens, usd, plural,
-  newRegistry, addAgent, addUsage, finish, reopen, running, elapsed, sorted,
+  SYMBOL, COLOR, minutes, tokens, usd, plural,
+  newRegistry, addAgent, addUsage, noteStep, finish, reopen, running, elapsed, sorted,
+  agentView, demoView, layoutAgents, ago, minutesEs, kilo,
   parseJson,
 } from './model.js'
 import {
-  readState, suggestionText, answerPrefix, answerText, answerInvalid, hasHiddenChars, oneLine, pickColor, progress, bar, stageLine, sparkText, sparkCells, MARK,
+  readState, suggestionText, answerPrefix, answerText, answerInvalid, hasHiddenChars, oneLine, pickColor, progress, bar, stageLine, sparkText, MARK,
 } from './state.js'
 import { readUiInput, hashInput, knownScreen } from './ui-input.js'
 import { createRecommender } from './ui-recs.js'
@@ -23,15 +24,16 @@ import { readWizardDetect, stepsFor, initialState, move, choicesOf, choicesMessa
 import { WIDTH as WIZARD_WIDTH, stepView, wizardTree } from './wizard-view.js'
 
 const PANE = 'pignolo-panel'
-const TABS_BASE = [['now', '1', 'Ahora'], ['branches', '2', 'Ramas'], ['cost', '3', 'Costo']]
+const TABS_BASE = [['now', '1', 'Live'], ['branches', '2', 'Ramas'], ['cost', '3', 'Costo']]
 const UI_TAB = ['ui', '4', 'UI']
 const SPARK_N = 24
 const POLL_MS = 3000
 // Ancho minimo del terminal para abrir el panel solo (D-P5): 144 la primera vez, 110 despues.
 const OPEN_FIRST_COLS = 144
 const OPEN_NEXT_COLS = 110
-// Letras de las respuestas (una por opcion en todo el panel). Se saltan las de acciones: c copiar, h hash, p pros y contras, z despues.
-const LETTERS = 'abdefgijklmnoqrstuvwxy'.split('')
+// Letras de las respuestas (una por opcion en todo el panel). Se saltan las de acciones: c copiar, h hash, p pros y contras, s resumen, z despues.
+const LETTERS = 'abdefgijklmnoqrtuvwxy'.split('')
+const SUMMARY_TEXT = 'Resumime en pocas líneas qué está haciendo cada agente ahora y si alguno necesita algo de mí.'
 
 let reg = newRegistry()
 let tab = 'now'
@@ -104,7 +106,7 @@ async function realSnapshot($) {
 
 async function demoSnapshot($) {
   const { snap } = readState(parseJson(String(await $.fs.read($.plugin.root + '/sample/panel-state.json'))))
-  return { ...snap, kind: 'ok', demo: true, agents: snap.agents.map((a, i) => ({ ...a, status: demoMode === 'busy' && i === 0 ? 'running' : 'done' })) }
+  return { ...snap, kind: 'ok', demo: true, agents: snap.agents.map((a) => ({ ...a, status: demoMode === 'busy' ? 'running' : 'done' })) }
 }
 
 // Estado completo, con cache corta. Avisa (toast) cuando una tarjeta pasa a hecha.
@@ -204,9 +206,10 @@ function cell(Box, Text, w, text, props) {
   return Box({ width: w, flexShrink: 0, children: [Text({ wrap: 'truncate-end', ...props, children: [String(text)] })] })
 }
 
-function allAgents(snap, now) {
-  const mine = sorted(reg).map((r) => ({ type: r.type, description: r.description, model: shortModel(r.model), min: minutes(elapsed(r, now)), tok: tokens(r.usage), status: r.status }))
-  const extra = snap.agents.map((a) => ({ type: a.type, description: a.description, model: shortModel(a.model), min: a.minutes.toFixed(1) + ' min', tok: tokens({ input: a.tokens }), status: a.status }))
+// Los agentes que corren ahora: los de la sesion (registro del mod) y, en el modo demo, los de muestra.
+function runningViews(snap, now) {
+  const mine = sorted(reg).filter((r) => r.status === 'running').map(agentView)
+  const extra = snap.agents.map((a, i) => demoView(a, now, i)).filter((a) => a.status === 'running')
   return [...mine, ...extra]
 }
 
@@ -259,7 +262,6 @@ async function bandTree($, e, next) {
     const line = Text({ key: 'band-off', dimColor: true, wrap: 'truncate-end', children: ['◆ ' + notActive(snap.kind)] })
     return Box({ flexDirection: 'column', children: theirs0 ? [line, theirs0] : [line] })
   }
-  const steps = stepOf(snap)
   const pending = visibleDecisions(snap)
   const u = await $.session.usage()
   const parts = [Text({ color: 'claude', children: ['◆'] }), ' ', snap.plan ? Text({ bold: true, children: [snap.plan.slug] }) : Text({ dimColor: true, children: ['sin plan'] })]
@@ -274,15 +276,8 @@ async function bandTree($, e, next) {
   parts.push(sep(Text), Text({ dimColor: true, children: [usd(u.cost && u.cost.usd) + ' USD · ctx ' + (u.context && u.context.percent != null ? u.context.percent : '—') + ' %'] }))
   // Botón de la banda: con el prompt vacío, escribir 0 (y esperar) abre el panel.
   const open = Button({ key: 'band-open', hotkey: '0', plain: true, dimColor: true, label: 'panel', onPress: () => openPaneByUser($) })
+  // una sola linea: el siguiente paso vive en el bloque SIGUIENTE del panel y como sugerencia tenue en el prompt
   const lines = [Box({ flexDirection: 'row', columnGap: 2, children: [Text({ wrap: 'truncate-end', children: parts }), open] })]
-  if (steps) {
-    lines.push(
-      Text({
-        wrap: 'truncate-end',
-        children: [Text({ color: 'claude', children: ['→ '] }), 'siguiente: ', Text({ bold: true, children: [steps.text] }), steps.costNote ? Text({ dimColor: true, children: [' (' + steps.costNote + ')'] }) : ''],
-      }),
-    )
-  }
   const theirs = await next(e)
   return Box({ flexDirection: 'column', children: theirs ? [...lines, theirs] : lines })
 }
@@ -335,7 +330,7 @@ function optionButton($, Button, d, o, i, letter) {
   return Button({
     key: 'ans-' + d.id + '-' + i,
     hotkey: letter || undefined,
-    label: letter + '  ' + o.label + (rec ? '  · recomendada' : ''),
+    label: o.label + (rec ? '  · recomendada' : ''), // la letra la dibuja el motor ("a: ...")
     plain: true,
     dimColor: !rec,
     onPress: async () => {
@@ -377,7 +372,7 @@ function otherButton($, Button, d, i, letter) {
   return Button({
     key: 'ans-' + d.id + '-other',
     hotkey: letter || undefined,
-    label: letter + '  Otra…',
+    label: 'Otra…',
     plain: true,
     dimColor: true,
     onPress: () => fillPrompt($, answerPrefix(d)),
@@ -414,8 +409,8 @@ function decisionsBlock($, e, snap, width) {
   })
   const range = letters.length > 1 ? letters[0] + '–' + letters[letters.length - 1] : letters[0] || 'a'
   const actions = [
-    Button({ key: 'toggle-pros', hotkey: 'p', label: 'p  ' + (unfolded ? 'ocultar' : 'ver') + ' pros y contras', plain: true, dimColor: true, onPress: () => { unfolded = !unfolded; $.ui.invalidate('ui.render') } }),
-    Button({ key: 'postpone', hotkey: 'z', label: 'z  dejar la 1 para después', plain: true, dimColor: true, onPress: () => { postponeFirst($) } }),
+    Button({ key: 'toggle-pros', hotkey: 'p', label: (unfolded ? 'ocultar' : 'ver') + ' pros y contras', plain: true, dimColor: true, onPress: () => { unfolded = !unfolded; $.ui.invalidate('ui.render') } }),
+    Button({ key: 'postpone', hotkey: 'z', label: 'dejar la 1 para después', plain: true, dimColor: true, onPress: () => { postponeFirst($) } }),
   ]
   body.push(Text({ key: 'ta', children: [' '] }), Box({ key: 'te-actions', flexDirection: 'row', columnGap: 3, children: actions }))
   return block($, e, {
@@ -472,13 +467,13 @@ function copyButtons($, e) {
     flexDirection: 'row',
     columnGap: 3,
     children: [
-      Button({ key: 'copy', hotkey: 'c', label: 'c  copiar la fila elegida', plain: true, dimColor: true, onPress: (press) => copySelected($, press, 'main') }),
-      Button({ key: 'copy-hash', hotkey: 'h', label: 'h  copiar su hash', plain: true, dimColor: true, onPress: (press) => copySelected($, press, 'hash') }),
+      Button({ key: 'copy', hotkey: 'c', label: 'copiar la fila elegida', plain: true, dimColor: true, onPress: (press) => copySelected($, press, 'main') }),
+      Button({ key: 'copy-hash', hotkey: 'h', label: 'copiar su hash', plain: true, dimColor: true, onPress: (press) => copySelected($, press, 'hash') }),
     ],
   })
 }
 
-// ---- Ahora ---------------------------------------------------------------------------
+// ---- Live ---------------------------------------------------------------------------
 
 function inProgressBlock($, e, snap, cols, width) {
   const { Box, Text, Button } = $.ui.resolve(e)
@@ -535,29 +530,129 @@ function inProgressBlock($, e, snap, cols, width) {
   return block($, e, { key: 'blk-encurso', title: 'EN CURSO', right, body, foot: footer([['Tab', 'elegir fila'], ['Enter', 'marcarla'], ['c', 'copiar']]), width })
 }
 
-function workingBlock($, e, snap, now, width) {
-  const { Box, Text } = $.ui.resolve(e)
-  const warn = pickColor(e.theme, 'warning', 'claude')
-  const agents = allAgents(snap, now).filter((a) => a.status === 'running')
-  const samples = snap.demo ? snap.activity : activity
-  const body = []
-  if (agents.length === 0) body.push(Text({ dimColor: true, children: ['○ nada corriendo'] }))
-  else {
-    body.push(Text({ wrap: 'truncate-end', children: [Text({ color: warn, children: ['● '] }), plural(agents.length, 'agente', 'agentes') + '  ', Text({ dimColor: true, children: [agents.map((a) => a.type).join(', ')] })] }))
-    if (samples.length) {
-      body.push(
-        e.surface === 'terminal'
-          ? Raster$(Box, $, e, samples)
-          : Text({ color: warn, children: [sparkText(samples, SPARK_N)] }),
-      )
-    }
-  }
-  return block($, e, { key: 'blk-trabajando', title: 'TRABAJANDO', right: agents.length ? plural(agents.length, 'agente', 'agentes') : '', body, width })
+// Anchos de las columnas de cada agente (en celdas). El resto es de la tarea.
+const W_GLYPH = 2
+const W_NEST = 4
+const W_MODEL = 9
+const W_TIME = 9
+const W_TOK = 8
+const W_CTX = 8
+const W_AGO = 16
+const DIM = { dimColor: true }
+
+// Lo que hace un agente ahora (linea 2): la ultima herramienta de su ultimo paso, o que escribe la respuesta, o que empieza.
+function activityOf(a, now) {
+  if (!a.last) return 'empezando…'
+  if (a.last.kind === 'text') return 'escribiendo la respuesta'
+  return a.last.name + (a.last.target ? '  ' + a.last.target : '')
 }
 
-function Raster$(Box, $, e, samples) {
-  const { Raster } = $.ui.resolve(e)
-  return Raster({ key: 'activity', columns: SPARK_N, rows: 2, cells: sparkCells(samples, SPARK_N, 0xe0a030) })
+// Una linea de agente: glifo, tarea en negrita (y su tipo tenue), modelo, tiempo, tokens y ctx segun las columnas que entran.
+function agentLine($, e, en, cols, inner, now) {
+  const { Box, Text } = $.ui.resolve(e)
+  const warn = pickColor(e.theme, 'warning', 'claude')
+  const a = en.agent
+  const pad = en.nested ? W_NEST : 0
+  const taskW = Math.max(8, inner - pad - W_GLYPH - (cols.model ? W_MODEL : 0) - W_TIME - (cols.tokens ? W_TOK : 0) - W_CTX)
+  const task = a.description || a.type
+  const showType = a.description && a.type && a.type !== 'general-purpose'
+  const children = []
+  if (pad) children.push(cell(Box, Text, pad, '  └ ', { dimColor: true }))
+  children.push(
+    cell(Box, Text, W_GLYPH, en.flags.stalled ? '◌' : '●', en.flags.stalled ? { color: warn } : {}),
+    Box({ width: taskW, flexShrink: 0, children: [Text({ wrap: 'truncate-end', children: [Text({ bold: true, children: [task] }), showType ? Text({ dimColor: true, children: ['  ' + a.type] }) : ''] })] }),
+  )
+  if (cols.model) children.push(cell(Box, Text, W_MODEL, a.model || '—', { dimColor: true }))
+  children.push(cell(Box, Text, W_TIME, minutesEs(now - a.startedAt).padStart(W_TIME - 1) + ' ', {}))
+  if (cols.tokens) children.push(cell(Box, Text, W_TOK, kilo(a.tokens).padStart(W_TOK - 1) + ' ', { dimColor: true }))
+  children.push(cell(Box, Text, W_CTX, kilo(a.ctx).padStart(W_CTX - 1) + ' ', en.flags.ctxHigh ? { color: warn, bold: true } : {}))
+  return Box({ key: 'ag-' + a.id, flexDirection: 'row', children })
+}
+
+// La segunda linea (tenue, sangrada): que hace y hace cuanto termino ese paso; parado, en el color de aviso.
+function agentDetail($, e, en, cols, inner, now) {
+  const { Box, Text } = $.ui.resolve(e)
+  const warn = pickColor(e.theme, 'warning', 'claude')
+  const a = en.agent
+  const lead = (en.nested ? W_NEST : 0) + W_GLYPH
+  const since = now - (a.lastAt ?? a.startedAt)
+  const showAgo = cols.ago && !en.flags.stalled && a.last && a.lastAt != null
+  const textW = Math.max(8, inner - lead - (showAgo ? W_AGO : 0))
+  const stalled = en.flags.stalled
+  const children = [
+    Box({ width: lead, flexShrink: 0, children: [Text({ children: [' '] })] }),
+    Box({ width: textW, flexShrink: 0, children: [Text({ wrap: 'truncate-end', dimColor: !stalled, color: stalled ? warn : undefined, children: [stalled ? 'sin actividad ' + ago(since) : activityOf(a, now)] })] }),
+  ]
+  if (showAgo) children.push(cell(Box, Text, W_AGO, ago(since).padStart(W_AGO), { dimColor: true }))
+  return Box({ key: 'ag-' + a.id + '-2', flexDirection: 'row', children })
+}
+
+// Una linea sola (modo compacto, sin avisos): glifo, tarea, herramienta, tiempo y ctx.
+function agentShort($, e, en, inner, now) {
+  const { Box, Text } = $.ui.resolve(e)
+  const a = en.agent
+  const pad = en.nested ? W_NEST : 0
+  const rest = Math.max(16, inner - pad - W_GLYPH - W_TIME - W_CTX)
+  const taskW = Math.floor(rest * 0.4)
+  const children = []
+  if (pad) children.push(cell(Box, Text, pad, '  └ ', { dimColor: true }))
+  children.push(
+    cell(Box, Text, W_GLYPH, '●', {}),
+    cell(Box, Text, taskW, a.description || a.type, { bold: true }),
+    cell(Box, Text, rest - taskW, activityOf(a, now), { dimColor: true }),
+    cell(Box, Text, W_TIME, minutesEs(now - a.startedAt).padStart(W_TIME - 1) + ' ', {}),
+    cell(Box, Text, W_CTX, kilo(a.ctx).padStart(W_CTX - 1) + ' ', {}),
+  )
+  return Box({ key: 'ag-' + a.id, flexDirection: 'row', children })
+}
+
+// TRABAJANDO: un renglon por agente (tarea, modelo, tiempo, tokens, ctx y lo que hace ahora). `rows`: las filas que el bloque puede usar.
+function workingBlock($, e, snap, now, width, rows) {
+  const { Box, Text, Button } = $.ui.resolve(e)
+  const warn = pickColor(e.theme, 'warning', 'claude')
+  const agents = runningViews(snap, now)
+  if (agents.length === 0) return block($, e, { key: 'blk-trabajando', title: 'TRABAJANDO', right: '', body: [Text({ dimColor: true, children: ['○ nada corriendo'] })], width })
+  const inner = width - 4
+  const lay = layoutAgents(agents, { rows, cols: inner, now })
+  const cols = lay.columns
+  const gap = (k) => Text({ key: 'ag-gap-' + k, children: [' '] })
+  const body = []
+  if (lay.mode === 'roomy') {
+    const samples = snap.demo ? snap.activity : activity
+    body.push(samples.length ? Text({ key: 'activity', color: warn, children: [sparkText(samples, SPARK_N)] }) : gap('s'), gap('h1'))
+    const taskW = Math.max(8, inner - W_GLYPH - (cols.model ? W_MODEL : 0) - W_TIME - (cols.tokens ? W_TOK : 0) - W_CTX)
+    const head = [cell(Box, Text, W_GLYPH, ' ', {}), cell(Box, Text, taskW, 'tarea', DIM)]
+    if (cols.model) head.push(cell(Box, Text, W_MODEL, 'modelo', DIM))
+    head.push(cell(Box, Text, W_TIME, 'tiempo'.padStart(W_TIME - 1) + ' ', DIM))
+    if (cols.tokens) head.push(cell(Box, Text, W_TOK, 'tokens'.padStart(W_TOK - 1) + ' ', DIM))
+    head.push(cell(Box, Text, W_CTX, 'ctx'.padStart(W_CTX - 1) + ' ', DIM))
+    body.push(Box({ key: 'ag-head', flexDirection: 'row', children: head }), gap('h2'))
+  } else body.push(gap('h1'))
+  lay.entries.forEach((en, i) => {
+    const full = lay.mode === 'roomy' || en.lines === 2
+    if (full) body.push(agentLine($, e, en, cols, inner, now), agentDetail($, e, en, cols, inner, now))
+    else body.push(agentShort($, e, en, inner, now))
+    if (en.gapAfter) body.push(gap(i))
+  })
+  if (lay.rest > 0) body.push(Text({ key: 'ag-rest', dimColor: true, wrap: 'truncate-end', children: ['+ ' + lay.rest + ' más, trabajando sin avisos'] }))
+  if (lay.mode === 'compact') body.push(gap('c'))
+  // llena el prompt con el pedido de resumen; nunca lo envia
+  body.push(Button({ key: 'summary', hotkey: 's', label: 'resumen', plain: true, dimColor: true, onPress: () => fillPrompt($, SUMMARY_TEXT) }))
+  const right = plural(lay.summary.count, 'agente', 'agentes') + ' · ' + kilo(lay.summary.tokens) + ' · ' + minutesEs(lay.summary.longest)
+  return block($, e, { key: 'blk-trabajando', title: 'TRABAJANDO', right, body, width })
+}
+
+// Filas que puede usar TRABAJANDO: las que muestra el panel menos una estimacion simple de lo que ocupan los otros bloques de la
+// pestaña (pestañas y huecos, SIGUIENTE, TE TOCA, EN CURSO y los botones de copiar). No es exacta; con piso de 8 filas.
+function workingRows(e, snap) {
+  const total = Number(e.props && e.props.scroll && e.props.scroll.bodyRows) || 30
+  let other = 2 + (snap.demo ? 1 : 0)
+  if (stepOf(snap)) other += 8
+  const list = visibleDecisions(snap)
+  if (list.length) other += 7 + list.reduce((n, d) => n + 2 + (d.context ? 1 : 0) + (d.options.length + 1) * (unfolded ? 2 : 1), 0)
+  if (snap.plan) other += 6 + (snap.cards.length ? 2 + 2 * snap.cards.length - 1 : 1)
+  if (snap.cards.length) other += 2
+  return Math.max(8, total - other)
 }
 
 function nowBody($, e, snap, now, cols, width) {
@@ -587,7 +682,7 @@ function nowBody($, e, snap, now, cols, width) {
   }
   if (visibleDecisions(snap).length) out.push(decisionsBlock($, e, snap, width), gap(2))
   if (snap.plan) out.push(inProgressBlock($, e, snap, cols, width), gap(3))
-  out.push(workingBlock($, e, snap, now, width))
+  out.push(workingBlock($, e, snap, now, width, workingRows(e, snap)))
   if (snap.cards.length) out.push(gap(4), copyButtons($, e))
   return out
 }
@@ -781,13 +876,14 @@ async function openPaneByUser($) {
 }
 
 // <press-handler:ui> el UNICO sitio desde el que se llama a submitUiRequest: el boton de una recomendacion o de un atajo.
-function uiButton($, { Box, Text, Button }, { key, letter, label, action, target, bold }) {
-  const press = Button({
+function uiButton($, { Button }, { key, letter, label, action, target, rec, max }) {
+  return Button({
     key,
     hotkey: letter,
-    label: bold ? letter : letter + '  ' + label,
+    // sin la letra: el motor dibuja "a: <label>". La recomendacion va a todo color y el atajo fijo atenuado (el boton no tiene negrita).
+    label: label.length > max ? label.slice(0, max - 1) + '…' : label,
     plain: true,
-    dimColor: !bold,
+    dimColor: !rec,
     onPress: async () => {
       if (uiSending) return // un pedido se envia una sola vez: el envio espera a la sesion y otra pulsacion no encola otro
       if (uiRequestText(action, target, '') === null) {
@@ -816,9 +912,6 @@ function uiButton($, { Box, Text, Button }, { key, letter, label, action, target
       }
     },
   })
-  // la recomendacion va en negrita al lado de su letra; el atajo fijo es un solo boton atenuado
-  if (!bold) return press
-  return Box({ key: key + '-row', flexDirection: 'row', columnGap: 2, children: [press, Text({ key: key + '-title', bold: true, wrap: 'truncate-end', children: [label] })] })
 }
 // </press-handler:ui>
 
@@ -829,26 +922,27 @@ async function uiBody($, e, width) {
   const key = await hashInput(input)
   const canAsk = uiAsk && !demoMode
   const project = oneLine(root.split('/').filter(Boolean).pop() || 'proyecto').slice(0, 30)
-  const m = tabModel({ project, input, key, result: uiResult, pending: uiPending, canAsk, calls: recommender.stats().calls })
+  const m = tabModel({ project, input, key, result: uiResult, pending: uiPending, canAsk })
+  const inner = width - 4
+  const gap = (k) => Text({ key: 'ui-gap-' + k, children: [' '] })
   const body = [Text({ key: 'ui-h', bold: true, dimColor: true, children: [uiSending ? 'RECOMENDADO · enviando…' : 'RECOMENDADO'] })]
-  if (m.rows.length === 0) body.push(Text({ key: 'ui-none', dimColor: true, wrap: 'truncate-end', children: ['  Todavía no hay nada para recomendar: usá un atajo.'] }))
+  if (m.rows.length === 0) body.push(Text({ key: 'ui-none', dimColor: true, wrap: 'truncate-end', children: ['  Todavía no hay nada para recomendar: usá un atajo.'] }), gap('n'))
+  // titulo en el boton ("a: Mejorar ...": 3 celdas de letra) y, debajo, el porque tenue y sangrado para alinearlo con el titulo; hueco entre recomendaciones
   m.rows.forEach((r) => {
     body.push(
-      uiButton($, ui, { key: 'ui-rec-' + r.letter, letter: r.letter, label: r.label, action: r.action, target: r.target, bold: true }),
-      Text({ key: 'ui-why-' + r.letter, dimColor: true, wrap: 'truncate-end', children: ['     ' + r.why] }),
+      uiButton($, ui, { key: 'ui-rec-' + r.letter, letter: r.letter, label: r.label, action: r.action, target: r.target, rec: true, max: inner - 3 }),
+      Box({ key: 'ui-why-box-' + r.letter, paddingLeft: 3, children: [Text({ key: 'ui-why-' + r.letter, dimColor: true, wrap: 'wrap', children: [r.why] })] }),
+      gap(r.letter),
     )
   })
-  body.push(Text({ key: 'ui-g', children: [' '] }))
-  body.push(
-    Box({
-      key: 'ui-shortcuts',
-      flexDirection: 'row',
-      columnGap: 3,
-      children: [Text({ key: 'ui-sc-h', bold: true, dimColor: true, children: ['ATAJOS'] }), ...SHORTCUTS.map((s) => uiButton($, ui, { key: 'ui-sc-' + s.key, letter: s.key, label: s.label, action: s.action, target: '', bold: false }))],
-    }),
-  )
-  if (canAsk && m.mode === 'normal') {
-    body.push(Box({ key: 'ui-retry-row', flexDirection: 'row', paddingLeft: 7, children: [Button({ key: 'ui-retry', hotkey: 'r', label: 'r  reconsultar', plain: true, dimColor: true, onPress: () => enterUiTab($, { retry: true }) })] }))
+  // atajos en columnas alineadas: cuatro por fila desde 72 de ancho interior, dos por fila si no; `r` queda en la primera columna
+  const items = SHORTCUTS.map((s) => ({ w: s.label.length + 3, node: uiButton($, ui, { key: 'ui-sc-' + s.key, letter: s.key, label: s.label, action: s.action, target: '', rec: false, max: inner - 3 }) }))
+  if (canAsk && m.mode === 'normal') items.push({ w: 'reconsultar'.length + 3, node: Button({ key: 'ui-retry', hotkey: 'r', label: 'reconsultar', plain: true, dimColor: true, onPress: () => enterUiTab($, { retry: true }) }) })
+  const perRow = inner >= 72 ? 4 : 2
+  const colW = Array.from({ length: perRow }, (_, c) => Math.max(...items.filter((_it, i) => i % perRow === c).map((it) => it.w), 0) + 5)
+  body.push(Text({ key: 'ui-sc-h', bold: true, dimColor: true, children: ['ATAJOS'] }))
+  for (let r = 0; r * perRow < items.length; r += 1) {
+    body.push(Box({ key: 'ui-sc-row-' + r, flexDirection: 'row', children: items.slice(r * perRow, (r + 1) * perRow).map((it, c) => Box({ key: 'ui-sc-cell-' + r + '-' + c, width: colW[c], flexShrink: 0, children: [it.node] })) }))
   }
   return [block($, e, { key: 'blk-ui', title: m.title, right: m.right, body, foot: footer([['a–c, n, m, u, d', 'envía el pedido a Claude']]), width })]
 }
@@ -1076,7 +1170,7 @@ async function paneTree($, e, next) {
   const demo = snap.demo ? [Text({ color: pickColor(e.theme, 'warning', 'claude'), children: ['MODO DEMO · datos de muestra (/pignolo-panel demo off para salir)'] })] : []
   return Box({
     flexDirection: 'column',
-    children: [tabs, ...demo, Text({ key: 'g0', children: [' '] }), ...body, Text({ key: 'g9', children: [' '] }), Text({ dimColor: true, wrap: 'truncate-end', children: [footer([['Esc', 'cerrar'], ['1', 'ahora'], ['2', 'ramas'], ['3', 'costo'], ...(uiDetect.installed ? [['4', 'UI']] : [])])] })],
+    children: [tabs, ...demo, Text({ key: 'g0', children: [' '] }), ...body],
   })
 }
 
@@ -1175,6 +1269,7 @@ export function register(on, options) {
         description: e.description,
         model: res.model || e.model,
         background: e.background,
+        parentId: e.parentAgentId,
         startedAt: await $.clock.now(),
       })
       $.ui.invalidate('ui.render')
@@ -1185,12 +1280,13 @@ export function register(on, options) {
   // Tokens de cada pedido de un subagente (y la actividad del minigrafico)
   on('turn.step', async function* ($, e, next) {
     const rec = e.agentId ? reg.byId.get(e.agentId) : undefined
-    if (rec) reopen(rec)
+    if (rec) reopen(rec, await $.clock.now())
     const result = yield* next(e)
     if (rec && result && result.usage) {
       addUsage(rec, result.usage)
       activity = [...activity, Number(result.usage.output_tokens || 0) + Number(result.usage.input_tokens || 0)].slice(-SPARK_N)
     }
+    if (rec && result) noteStep(rec, result, await $.clock.now()) // que hizo y cuando: solo se dibuja
     return result
   })
 
