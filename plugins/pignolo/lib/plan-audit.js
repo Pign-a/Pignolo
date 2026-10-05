@@ -214,7 +214,54 @@ function buildAudit({ review, probe, verification, mode }) {
   return { verdict: 'APPROVE', findings, minors, incomplete: false };
 }
 
+// Vueltas de la auditoría (D-2): round.json guarda la vuelta (1 o 2), su veredicto y los hallazgos que
+// frenaron. Ausente = sin historia; sin `round` (estado viejo) = vuelta 1; JSON roto = error con mensaje.
+const roundFile = (main, plan) => path.join(auditDir(main, plan), 'round.json');
+function readRound({ main, plan }) {
+  let text;
+  try { text = fs.readFileSync(roundFile(main, plan), 'utf8'); } catch (_) { return { round: 0 }; }
+  let v;
+  try { v = JSON.parse(text); } catch (e) { return { round: 0, error: `round.json no parsea (${e.message}); corré plan-audit.js end para empezar de cero` }; }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return { round: 0, error: 'round.json no es un objeto; corré plan-audit.js end para empezar de cero' };
+  return { ...v, round: v.round === 2 ? 2 : 1 };
+}
+const writeRound = ({ main, plan, data }) => writeAtomic(roundFile(main, plan), `${JSON.stringify(data, null, 2)}\n`);
+function endRounds({ main, plan }) {
+  for (const f of ['round.json', 'plan-round1.md', 'plan-round2.md', 'reaudit.diff', 'reaudit-findings.json']) fs.rmSync(path.join(auditDir(main, plan), f), { force: true });
+}
+
+// Diff de líneas (-/+) entre dos textos, sin git: recorta prefijo y sufijo comunes y resuelve el medio con
+// LCS; si el medio es enorme, lo marca entero como quitado y agregado.
+function lineDiff(before, after) {
+  const a = String(before).split(/\r?\n/);
+  const b = String(after).split(/\r?\n/);
+  let lo = 0;
+  while (lo < a.length && lo < b.length && a[lo] === b[lo]) lo += 1;
+  let ea = a.length;
+  let eb = b.length;
+  while (ea > lo && eb > lo && a[ea - 1] === b[eb - 1]) { ea -= 1; eb -= 1; }
+  const x = a.slice(lo, ea);
+  const y = b.slice(lo, eb);
+  const out = [];
+  if (x.length * y.length > 4e6) {
+    x.forEach((l) => out.push(`- ${l}`));
+    y.forEach((l) => out.push(`+ ${l}`));
+  } else {
+    const t = Array.from({ length: x.length + 1 }, () => new Uint32Array(y.length + 1));
+    for (let i = x.length - 1; i >= 0; i -= 1) {
+      for (let j = y.length - 1; j >= 0; j -= 1) t[i][j] = x[i] === y[j] ? t[i + 1][j + 1] + 1 : Math.max(t[i + 1][j], t[i][j + 1]);
+    }
+    let i = 0;
+    let j = 0;
+    while (i < x.length || j < y.length) {
+      if (i < x.length && j < y.length && x[i] === y[j]) { i += 1; j += 1; } else if (i < x.length && (j === y.length || t[i + 1][j] >= t[i][j + 1])) { out.push(`- ${x[i]}`); i += 1; } else { out.push(`+ ${y[j]}`); j += 1; }
+    }
+  }
+  return `${out.join('\n')}\n`;
+}
+
 module.exports = {
+  readRound, writeRound, endRounds, lineDiff,
   MAX_CLAIMS, MAX_BLOCKS, TTL_MIN, auditDir, parseReview, parseVerification,
   beginMode, readMode, readCounters, recordExperiment, recordStop, markIncomplete, endMode, stopDecision, buildAudit,
 };

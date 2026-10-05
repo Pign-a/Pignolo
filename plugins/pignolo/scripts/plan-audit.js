@@ -69,8 +69,27 @@ function run(verb, o, main) {
       return out({ applies: true, problems: problemCount(res), findings: toFindings(res) });
     }
     case 'begin-review': {
-      const m = pa.beginMode({ main, plan: o.plan, mode: 'review', claims: [], planSha256: sha(o['plan-file']) });
-      return out({ ok: true, mode: m.mode, expires: m.expires, dir });
+      const planSha256 = sha(o['plan-file']);
+      const prev = pa.readRound({ main, plan: o.plan });
+      if (prev.error) throw new Fail(prev.error);
+      if (prev.round === 2) throw new Fail('la auditoría ya tuvo su re-auditoría; decide el humano (para empezar de cero: plan-audit.js end)');
+      let round = 1;
+      let reaudit = null;
+      if (prev.round === 1 && prev.verdict === 'REQUEST_CHANGES') {
+        if (prev.planSha256 === planSha256) throw new Fail('el plan no cambió desde la vuelta 1 (mismo sha256): arreglalo antes de re-auditar');
+        round = 2;
+        reaudit = { diff: path.join(dir, 'reaudit.diff'), findings: path.join(dir, 'reaudit-findings.json') };
+        let before;
+        try { before = fs.readFileSync(path.join(dir, 'plan-round1.md'), 'utf8'); } catch (_) { throw new Fail('falta la copia del plan de la vuelta 1: corré plan-audit.js end y empezá de cero'); }
+        fs.writeFileSync(reaudit.diff, pa.lineDiff(before, read(o['plan-file'], '--plan-file')));
+        writeJson(reaudit.findings, prev.findings || []);
+      }
+      const m = pa.beginMode({ main, plan: o.plan, mode: 'review', claims: [], planSha256 });
+      fs.rmSync(path.join(dir, 'review.json'), { force: true });
+      fs.rmSync(path.join(dir, 'probes.json'), { force: true });
+      fs.copyFileSync(o['plan-file'], path.join(dir, `plan-round${round}.md`));
+      pa.writeRound({ main, plan: o.plan, data: { round, phase: 'running', planSha256 } });
+      return out({ ok: true, mode: m.mode, expires: m.expires, dir, round, ...(reaudit ? { reaudit: true, diff: reaudit.diff, findings: reaudit.findings } : {}) });
     }
     case 'review-done': {
       const r = pa.parseReview(read(o['report-file'], '--report-file'));
@@ -112,16 +131,23 @@ function run(verb, o, main) {
       // Reclamos sin ningún experimento corrido (el hook cuenta las llamadas a Bash del modo):
       // un informe con `holds` solo de palabra no alcanza para APPROVE.
       const noExperiments = remaining.length > 0 && counters.experiments < remaining.length;
-      const built = pa.buildAudit({ review, probe, verification, mode: { incomplete: counters.incomplete || noExperiments } });
-      const audit = { ...built, at: new Date().toISOString(), planSha256: review.planSha256 };
+      let built = pa.buildAudit({ review, probe, verification, mode: { incomplete: counters.incomplete || noExperiments } });
+      const cur = pa.readRound({ main, plan: o.plan });
+      if (cur.error) throw new Fail(cur.error);
+      const round = cur.round === 2 ? 2 : 1;
+      // Vuelta 2: los hallazgos que frenan van al humano, nunca a otra vuelta (D-2). La compuerta no cambia: solo APPROVE abre audited.
+      if (round === 2 && built.verdict === 'REQUEST_CHANGES') built = { ...built, verdict: 'ESCALATE', reason: 'reaudit-findings', incomplete: true };
+      const audit = { ...built, round, at: new Date().toISOString(), planSha256: review.planSha256 };
       const rec = ps.recordAudit({ main, plan: o.plan, audit });
       pa.endMode({ main, plan: o.plan });
-      out({ verdict: built.verdict, findings: built.findings, incomplete: built.incomplete, reason: built.reason, recorded: rec.ok });
+      pa.writeRound({ main, plan: o.plan, data: { round, phase: 'done', verdict: built.verdict, findings: built.findings, planSha256: review.planSha256 } });
+      out({ verdict: built.verdict, round, findings: built.findings, minors: built.minors, incomplete: built.incomplete, reason: built.reason, recorded: rec.ok });
       if (!rec.ok) throw new Fail(`no se pudo registrar la auditoría: ${rec.error}`);
       return undefined;
     }
     default: // end
       pa.endMode({ main, plan: o.plan });
+      pa.endRounds({ main, plan: o.plan });
       return out({ ok: true });
   }
 }
