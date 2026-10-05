@@ -55,7 +55,9 @@ function parseReview(text) {
     ids.add(c.id);
     if (!isStr(c.claim) || !isStr(c.how)) return bad(`la afirmación ${c.id} necesita claim y how no vacíos`);
   }
-  return { findings: v.findings, claims: v.claims };
+  // `closed` (R-11): ids de la vuelta anterior que el revisor da por cerrados; solo en una re-auditoría.
+  if (v.closed !== undefined && (!Array.isArray(v.closed) || !v.closed.every(isStr))) return bad('closed debe ser una lista de ids (texto no vacío)');
+  return { findings: v.findings, claims: v.claims, closed: v.closed || [] };
 }
 
 function parseVerification(text, claims) {
@@ -214,16 +216,56 @@ function buildAudit({ review, probe, verification, mode }) {
   return { verdict: 'APPROVE', findings, minors, incomplete: false };
 }
 
-// Vueltas de la auditoría (D-2): round.json guarda la vuelta (1 o 2), su veredicto y los hallazgos que
-// frenaron. Ausente = sin historia; sin `round` (estado viejo) = vuelta 1; JSON roto = error con mensaje.
+// Vueltas de la auditoría (D-2, R-7): round.json guarda la vuelta (1 o 2), su veredicto, los hallazgos que
+// frenaron (con id), las afirmaciones sin verificar que pasan a la vuelta siguiente (`carry`) y `extra`
+// (vueltas extra pedidas con --extra-round; la vuelta sigue siendo 2). Ausente = sin historia; sin `round`
+// (estado viejo) = vuelta 1; un `round` que no es 1 ni 2, un `extra` inválido o JSON roto = error con mensaje.
 const roundFile = (main, plan) => path.join(auditDir(main, plan), 'round.json');
 function readRound({ main, plan }) {
   let text;
   try { text = fs.readFileSync(roundFile(main, plan), 'utf8'); } catch (_) { return { round: 0 }; }
+  const reset = 'corré plan-audit.js end para empezar de cero';
   let v;
-  try { v = JSON.parse(text); } catch (e) { return { round: 0, error: `round.json no parsea (${e.message}); corré plan-audit.js end para empezar de cero` }; }
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return { round: 0, error: 'round.json no es un objeto; corré plan-audit.js end para empezar de cero' };
-  return { ...v, round: v.round === 2 ? 2 : 1 };
+  try { v = JSON.parse(text); } catch (e) { return { round: 0, error: `round.json no parsea (${e.message}); ${reset}` }; }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return { round: 0, error: `round.json no es un objeto; ${reset}` };
+  const has = (k) => Object.prototype.hasOwnProperty.call(v, k);
+  if (has('round') && v.round !== 1 && v.round !== 2) return { round: 0, error: `round.json tiene un round inválido (${JSON.stringify(v.round)}; solo 1 o 2); ${reset}` };
+  if (has('extra') && !(Number.isInteger(v.extra) && v.extra >= 0)) return { round: 0, error: `round.json tiene un extra inválido (${JSON.stringify(v.extra)}); ${reset}` };
+  return { ...v, round: has('round') ? v.round : 1, extra: v.extra || 0, carry: Array.isArray(v.carry) ? v.carry : [], findings: Array.isArray(v.findings) ? v.findings : [] };
+}
+
+// R-11: cada hallazgo que frena lleva un id. Los de una vuelta nueva se numeran con `prefix`; un `not-closed`
+// conserva el de la vuelta anterior; el `id` que haya puesto el revisor pasa a `ref`.
+function assignIds(findings, prefix) {
+  let n = 0;
+  return (findings || []).map((f) => {
+    const obj = f && typeof f === 'object' && !Array.isArray(f) ? f : { kind: 'malformed', text: JSON.stringify(f) };
+    if (obj.kind === 'not-closed' && isStr(obj.id)) return obj;
+    n += 1;
+    const { id, ...rest } = obj;
+    return { id: `${prefix}-${n}`, ...(id !== undefined ? { ref: id } : {}), ...rest };
+  });
+}
+// Hallazgos de una vuelta anterior sin id (estado viejo): se numeran L1, L2...; los que ya tienen id lo conservan.
+const withIds = (findings) => (findings || []).map((f, i) => {
+  const obj = f && typeof f === 'object' && !Array.isArray(f) ? f : { kind: 'malformed', text: JSON.stringify(f) };
+  return isStr(obj.id) ? obj : { ...obj, id: `L${i + 1}` };
+});
+const roundPrefix = (round, extra) => (round === 1 ? 'R1' : extra ? `R2x${extra}` : 'R2');
+
+// R-11: de los hallazgos que frenaron la vuelta anterior, los que el informe no da por cerrados: el id falta en
+// `closed`, o el informe lo vuelve a nombrar (en `id` o `ref` de cualquier hallazgo, también un MINOR). Si ya lo
+// devuelve un hallazgo que frena, ese frena por sí solo y no se agrega otro igual.
+function notClosed({ previous, closed, findings }) {
+  const named = new Set();
+  const blocking = new Set();
+  for (const f of findings || []) {
+    if (!f || typeof f !== 'object') continue;
+    for (const k of ['id', 'ref']) if (isStr(f[k])) { named.add(f[k]); if (f.severity !== 'MINOR') blocking.add(f[k]); }
+  }
+  const done = new Set(closed || []);
+  return (previous || []).filter((p) => p && isStr(p.id) && (!done.has(p.id) || named.has(p.id)) && !blocking.has(p.id))
+    .map((p) => ({ id: p.id, kind: 'not-closed', severity: 'IMPORTANT', text: `the finding ${p.id} from the previous round is not listed as closed`, previous: p }));
 }
 const writeRound = ({ main, plan, data }) => writeAtomic(roundFile(main, plan), `${JSON.stringify(data, null, 2)}\n`);
 function endRounds({ main, plan }) {
@@ -261,7 +303,7 @@ function lineDiff(before, after) {
 }
 
 module.exports = {
-  readRound, writeRound, endRounds, lineDiff,
+  assignIds, withIds, roundPrefix, notClosed, readRound, writeRound, endRounds, lineDiff,
   MAX_CLAIMS, MAX_BLOCKS, TTL_MIN, auditDir, parseReview, parseVerification,
   beginMode, readMode, readCounters, recordExperiment, recordStop, markIncomplete, endMode, stopDecision, buildAudit,
 };

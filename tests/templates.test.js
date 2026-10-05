@@ -75,3 +75,8 @@ test('question.md: the recommended option goes first and marked; the others keep
   assert.match(opts[0], /recommended mark/i);
   assert.doesNotMatch(opts.slice(1).join('\n'), /recommended/i);
 });
+
+test('plan-audit.md: the gate, minors outside the plan file, ids, the closed list and sonnet for the re-audit', () => {
+  const t = tpl('plan-audit.md');
+  for (const re of [/sha256 of the current plan file/, /not written into the plan file/, /`audit\.minors`/, /`R2x1-1`/, /"closed": \[ids\]/, /`model: sonnet`/, /carried/]) assert.match(t, re);
+});

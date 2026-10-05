@@ -269,14 +269,14 @@ test('finish (I3 of 5b) does not add the plan-check findings: the reviewer took 
 });
 
 // ---- Tope de vueltas (D-2): una auditoría, una re-auditoría acotada, después el humano ----
-const NO_CLAIMS = (findings) => J({ findings, claims: [] });
+const NO_CLAIMS = (findings, closed) => J({ findings, claims: [], ...(closed ? { closed } : {}) });
 const IMPORTANT = { severity: 'IMPORTANT', plan: 'Task 1', code: 'lib/a.js:1', text: 'falta algo', evidence: 'leí lib/a.js' };
 const MINOR = { severity: 'MINOR', plan: 'Task 1', code: 'lib/a.js:1', text: 'nombre feo', evidence: 'leí lib/a.js' };
 // Corre begin-review + review-done + probes + finish para un informe sin afirmaciones.
-function round(repo, planFile, findings) {
+function round(repo, planFile, findings, closed) {
   const br = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
   assert.strictEqual(br.status, 0, br.stderr);
-  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(NO_CLAIMS(findings))]).status, 0);
+  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(NO_CLAIMS(findings, closed))]).status, 0);
   assert.strictEqual(audit(repo, ['probes', '--plan', 'p1']).status, 0);
   return { br, fin: audit(repo, ['finish', '--plan', 'p1']) };
 }
@@ -313,7 +313,7 @@ test('round 2 with an important is ESCALATE reaudit-findings, never REQUEST_CHAN
   const { repo, main, planFile } = setup();
   round(repo, planFile, [IMPORTANT]);
   edit(planFile);
-  const { fin } = round(repo, planFile, [IMPORTANT]);
+  const { fin } = round(repo, planFile, [IMPORTANT], ['R1-1']);
   assert.strictEqual(fin.out.verdict, 'ESCALATE');
   assert.strictEqual(fin.out.reason, 'reaudit-findings');
   assert.strictEqual(fin.out.round, 2);
@@ -326,7 +326,7 @@ test('round 2 clean is APPROVE and advance --to audited passes with the sha256 o
   const { repo, main, planFile } = setup();
   round(repo, planFile, [IMPORTANT]);
   edit(planFile);
-  const { fin } = round(repo, planFile, [MINOR]);
+  const { fin } = round(repo, planFile, [MINOR], ['R1-1']);
   assert.strictEqual(fin.out.verdict, 'APPROVE');
   assert.strictEqual(fin.out.minors.length, 1);
   assert.strictEqual(ps.auditState({ main, plan: 'p1', planFile }), 'ok');

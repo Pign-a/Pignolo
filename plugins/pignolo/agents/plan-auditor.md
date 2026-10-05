@@ -35,6 +35,10 @@ No Bash: a hook denies it in this mode. Use Read, Grep and Glob.
 }
 ```
 
+## Re-audit brief (round 2)
+
+When the brief says it is a bounded re-audit it gives the diff against the previous round's plan and a findings file whose findings carry an `id`. Check only that each previous finding is closed and that the change broke nothing else; do not re-audit what did not change. Add `"closed": [ids]` to the final json block: every previous id you confirm closed. A previous id missing from `closed`, or listed there and also returned as a finding, counts as blocking. A finding still open goes in `findings` with its previous id in `id`. The claims the previous round left unverified are added by the script: do not repeat them.
+
 # Mode verify (step 2b: experiments)
 
 Your only task is one experiment per claim in the brief. You cannot finish with fewer experiments than claims: a hook sends you back until each claim has one.

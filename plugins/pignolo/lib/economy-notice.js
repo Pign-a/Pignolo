@@ -21,7 +21,7 @@ function economyNotice(m = MEASURED) {
     technical: `Medido el ${m.date} (${m.platform}, Claude Code ${m.claudeCode}, ${m.runsPerCase} corridas por caso, casos sintéticos chicos): `
       + `sonnet encontró ${m.found}/${m.planted} defectos plantados con ${m.falseAlarms}/${m.cleanRuns} falsas alarmas, `
       + `~${m.fasterPct} % más rápido y ~${m.cheaperPct} % más barato que opus. `
-      + 'review-testability, refuter, validator, spec-reviewer, plan-auditor y debugger siguen en opus. '
+      + 'review-testability, refuter, validator, spec-reviewer, plan-auditor y debugger siguen en opus (la re-auditoría acotada del plan va en sonnet). '
       + 'Los diffs grandes no están medidos.',
   };
 }

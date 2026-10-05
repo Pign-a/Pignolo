@@ -7,7 +7,7 @@ You are the orchestrator in the main conversation. Speak to the human in their l
 
 ## Talking to the human
 
-Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/templates/question.md`: first "in plain words" (1 to 3 lines, no jargon, no paths, no counts), then the technical detail. Ask with the `AskUserQuestion` tool, independent questions in one call (text form without the tool; the template says how), and every question carries one category from the closed list in that template. Every count, path and status you state comes from a script's JSON output, never from memory.
+Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/templates/question.md`: first "in plain words" (1 to 3 lines, no jargon, no paths, no counts), then the technical detail. Ask with the `AskUserQuestion` tool, independent questions in one call (text form without the tool; the template says how), and every question carries one category from the closed list in that template. Every count, path and status you state comes from a script's JSON output, never from memory. An option chosen in `AskUserQuestion` is the explicit yes for that question only, never for a later or changed one; what you record as the human's words is the question and the chosen label, literal, or their free text.
 
 ## A panel answer
 
