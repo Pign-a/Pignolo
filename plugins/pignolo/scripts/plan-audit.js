@@ -165,7 +165,8 @@ function run(verb, o, main) {
       if (round === 2) {
         let previous;
         try { previous = JSON.parse(fs.readFileSync(path.join(dir, 'reaudit-findings.json'), 'utf8')); } catch (_) { throw new Fail('falta reaudit-findings.json: corré plan-audit.js end y empezá de cero'); }
-        reopened = pa.notClosed({ previous: Array.isArray(previous) ? previous : [], closed: review.closed, findings: review.findings });
+        if (!Array.isArray(previous)) throw new Fail('reaudit-findings.json no es una lista: corré plan-audit.js end y empezá de cero');
+        reopened = pa.notClosed({ previous, closed: review.closed, findings: review.findings });
       }
       let built = pa.buildAudit({ review: { ...review, findings: [...review.findings, ...reopened] }, probe, verification, mode: { incomplete } });
       built = { ...built, findings: pa.assignIds(built.findings, pa.roundPrefix(round, extra)) };

@@ -140,6 +140,22 @@ test('R-11: a previous finding returned as still open (blocking, with its id) bl
   assert.strictEqual(fin.out.findings[0].ref, 'R1-1');
 });
 
+test('R-11: finish in round 2 fails closed, with a message, when reaudit-findings.json is missing, broken or not a list', () => {
+  const { repo, main, planFile } = setup();
+  round(repo, planFile, [IMPORTANT]);
+  edit(planFile);
+  audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(J({ findings: [], claims: [], closed: ['R1-1'] }))]);
+  const target = path.join(pa.auditDir(main, 'p1'), 'reaudit-findings.json');
+  for (const body of [null, '{broken', '{"a":1}', '"x"']) {
+    if (body === null) fs.rmSync(target, { force: true }); else fs.writeFileSync(target, body);
+    const f = audit(repo, ['finish', '--plan', 'p1']);
+    assert.strictEqual(f.status, 1, String(body));
+    assert.match(f.stderr, /reaudit-findings\.json/);
+    assert.doesNotMatch(f.stderr, /\n\s+at /);
+  }
+});
+
 test('R-11: a closed list that is not a list of ids fails closed with a message', () => {
   const { repo, planFile } = setup();
   assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
