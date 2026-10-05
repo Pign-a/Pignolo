@@ -267,3 +267,128 @@ test('finish (I3 of 5b) does not add the plan-check findings: the reviewer took 
   assert.strictEqual(audit(repo2, ['probes', '--plan', 'p1']).status, 0);
   assert.strictEqual(audit(repo2, ['finish', '--plan', 'p1']).out.verdict, 'REQUEST_CHANGES');
 });
+
+// ---- Tope de vueltas (D-2): una auditoría, una re-auditoría acotada, después el humano ----
+const NO_CLAIMS = (findings, closed) => J({ findings, claims: [], ...(closed ? { closed } : {}) });
+const IMPORTANT = { severity: 'IMPORTANT', plan: 'Task 1', code: 'lib/a.js:1', text: 'falta algo', evidence: 'leí lib/a.js' };
+const MINOR = { severity: 'MINOR', plan: 'Task 1', code: 'lib/a.js:1', text: 'nombre feo', evidence: 'leí lib/a.js' };
+// Corre begin-review + review-done + probes + finish para un informe sin afirmaciones.
+function round(repo, planFile, findings, closed) {
+  const br = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(br.status, 0, br.stderr);
+  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(NO_CLAIMS(findings, closed))]).status, 0);
+  assert.strictEqual(audit(repo, ['probes', '--plan', 'p1']).status, 0);
+  return { br, fin: audit(repo, ['finish', '--plan', 'p1']) };
+}
+const edit = (planFile) => fs.writeFileSync(planFile, `${fs.readFileSync(planFile, 'utf8')}\n- Arreglo: linea nueva del arreglo\n`);
+
+test('round 1 with an important: REQUEST_CHANGES; begin-review with the plan changed opens round 2 with a diff and the findings', () => {
+  const { repo, planFile } = setup();
+  const { br, fin } = round(repo, planFile, [IMPORTANT, MINOR]);
+  assert.strictEqual(br.out.round, 1);
+  assert.strictEqual(br.out.reaudit, undefined);
+  assert.strictEqual(fin.out.verdict, 'REQUEST_CHANGES');
+  assert.strictEqual(fin.out.round, 1);
+  assert.strictEqual(fin.out.findings.length, 1);
+  assert.strictEqual(fin.out.minors.length, 1);
+  edit(planFile);
+  const b2 = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(b2.status, 0, b2.stderr);
+  assert.strictEqual(b2.out.reaudit, true);
+  assert.strictEqual(b2.out.round, 2);
+  assert.ok(fs.readFileSync(b2.out.diff, 'utf8').includes('+ - Arreglo: linea nueva del arreglo'));
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(b2.out.findings, 'utf8')).map((f) => f.text), ['falta algo']);
+});
+
+test('begin-review after a REQUEST_CHANGES with the plan unchanged is refused', () => {
+  const { repo, main, planFile } = setup();
+  assert.strictEqual(round(repo, planFile, [IMPORTANT]).fin.out.verdict, 'REQUEST_CHANGES');
+  const again = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(again.status, 1);
+  assert.match(again.stderr, /el plan no cambió/);
+  assert.strictEqual(pa.readRound({ main, plan: 'p1' }).round, 1, 'the round did not advance');
+});
+
+test('round 2 with an important is ESCALATE reaudit-findings, never REQUEST_CHANGES, and audited stays closed', () => {
+  const { repo, main, planFile } = setup();
+  round(repo, planFile, [IMPORTANT]);
+  edit(planFile);
+  const { fin } = round(repo, planFile, [IMPORTANT], ['R1-1']);
+  assert.strictEqual(fin.out.verdict, 'ESCALATE');
+  assert.strictEqual(fin.out.reason, 'reaudit-findings');
+  assert.strictEqual(fin.out.round, 2);
+  assert.strictEqual(fin.out.findings.length, 1);
+  assert.notStrictEqual(ps.auditState({ main, plan: 'p1', planFile }), 'ok');
+  assert.strictEqual(run(PLAN, repo, ['advance', '--plan', 'p1', '--to', 'audited', '--plan-file', planFile]).status, 1);
+});
+
+test('round 2 clean is APPROVE and advance --to audited passes with the sha256 of the new plan; with the plan edited after, it does not', () => {
+  const { repo, main, planFile } = setup();
+  round(repo, planFile, [IMPORTANT]);
+  edit(planFile);
+  const { fin } = round(repo, planFile, [MINOR], ['R1-1']);
+  assert.strictEqual(fin.out.verdict, 'APPROVE');
+  assert.strictEqual(fin.out.minors.length, 1);
+  assert.strictEqual(ps.auditState({ main, plan: 'p1', planFile }), 'ok');
+  assert.strictEqual(ps.readPlan({ main, plan: 'p1' }).plan.audit.planSha256, ps.sha256(fs.readFileSync(planFile)));
+  const audited = fs.readFileSync(planFile);
+  edit(planFile);
+  assert.strictEqual(run(PLAN, repo, ['advance', '--plan', 'p1', '--to', 'audited', '--plan-file', planFile]).status, 1, 'plan changed after the audit');
+  fs.writeFileSync(planFile, audited);
+  assert.strictEqual(run(PLAN, repo, ['advance', '--plan', 'p1', '--to', 'audited', '--plan-file', planFile]).status, 0);
+});
+
+test('a third begin-review without end is refused; after end it is round 1 again', () => {
+  const { repo, main, planFile } = setup();
+  round(repo, planFile, [IMPORTANT]);
+  edit(planFile);
+  round(repo, planFile, [IMPORTANT]);
+  edit(planFile);
+  const third = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(third.status, 1);
+  assert.match(third.stderr, /ya tuvo su re-auditoría; decide el humano/);
+  assert.strictEqual(audit(repo, ['end', '--plan', 'p1']).status, 0);
+  assert.strictEqual(pa.readRound({ main, plan: 'p1' }).round, 0);
+  const fresh = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(fresh.status, 0, fresh.stderr);
+  assert.strictEqual(fresh.out.round, 1);
+  assert.strictEqual(fresh.out.reaudit, undefined);
+});
+
+test('an old audit state (no round.json, or one without round) reads as round 1 and does not throw; a broken one fails closed with a message', () => {
+  const { repo, main, planFile } = setup();
+  const dir = pa.auditDir(main, 'p1');
+  // estado viejo: un begin-review de antes de 0.24 no dejó round.json; finish lee la vuelta 1
+  assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
+  fs.rmSync(path.join(dir, 'round.json'));
+  assert.strictEqual(audit(repo, ['review-done', '--plan', 'p1', '--report-file', file(NO_CLAIMS([IMPORTANT]))]).status, 0);
+  const fin = audit(repo, ['finish', '--plan', 'p1']);
+  assert.strictEqual(fin.status, 0, fin.stderr);
+  assert.strictEqual(fin.out.verdict, 'REQUEST_CHANGES');
+  assert.strictEqual(fin.out.round, 1);
+  // round.json sin `round`: vuelta 1
+  fs.writeFileSync(path.join(dir, 'round.json'), JSON.stringify({ verdict: 'APPROVE' }));
+  assert.strictEqual(pa.readRound({ main, plan: 'p1' }).round, 1);
+  const ok = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(ok.status, 0, ok.stderr);
+  assert.strictEqual(ok.out.round, 1);
+  // JSON roto: sale con 1 y el motivo, sin traza; end lo limpia
+  fs.writeFileSync(path.join(dir, 'round.json'), '{roto');
+  const broken = audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]);
+  assert.strictEqual(broken.status, 1);
+  assert.match(broken.stderr, /round\.json no parsea/);
+  assert.doesNotMatch(broken.stderr, /\n\s+at /);
+  assert.strictEqual(audit(repo, ['finish', '--plan', 'p1']).status, 1);
+  assert.strictEqual(audit(repo, ['end', '--plan', 'p1']).status, 0);
+  assert.strictEqual(audit(repo, ['begin-review', '--plan', 'p1', '--plan-file', planFile]).status, 0);
+});
+
+test('lineDiff: marks the changed lines and nothing else', () => {
+  assert.strictEqual(pa.lineDiff('a\nb\nc', 'a\nB\nc'), '- b\n+ B\n');
+  assert.strictEqual(pa.lineDiff('a', 'a'), '\n');
+});
+
+test('the plan skill names reaudit, sonnet, reaudit-findings and AskUserQuestion (D-2)', () => {
+  const t = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', 'plan', 'SKILL.md'), 'utf8');
+  for (const re of [/reaudit/, /sonnet/, /reaudit-findings/, /AskUserQuestion/]) assert.match(t, re);
+});

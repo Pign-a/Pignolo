@@ -17,6 +17,15 @@ test('question.md: dos capas, la lista cerrada de categorías completa, recomend
   assert.match(t, /Recommendation/);
 });
 
+test('question.md: AskUserQuestion call, "(Recomendado)" and the text fallback; the 14 categories stay', () => {
+  const t = tpl('question.md');
+  assert.match(t, /AskUserQuestion/);
+  assert.match(t, /\(Recomendado\)/);
+  assert.match(t, /Without `AskUserQuestion`[^\n]*text form/);
+  assert.doesNotMatch(t, /One question per message/i);
+  for (const c of CATEGORIES) assert.ok(t.includes(c), c);
+});
+
 test('task-card.md: worktree, archivos, gate con --task, cierre con las tres palabras', () => {
   const t = tpl('task-card.md');
   for (const re of [/Worktree:/, /Files you may touch/, /gate\.js" --level on-done --task/, /DONE, BLOCKED or NEEDS_CONTEXT/, /forward slashes/]) {
@@ -65,4 +74,9 @@ test('question.md: the recommended option goes first and marked; the others keep
   const opts = [...t.matchAll(/^\d\. .*$/gm)].map((m) => m[0]);
   assert.match(opts[0], /recommended mark/i);
   assert.doesNotMatch(opts.slice(1).join('\n'), /recommended/i);
+});
+
+test('plan-audit.md: the gate, minors outside the plan file, ids, the closed list and sonnet for the re-audit', () => {
+  const t = tpl('plan-audit.md');
+  for (const re of [/sha256 of the current plan file/, /not written into the plan file/, /`audit\.minors`/, /`R2x1-1`/, /"closed": \[ids\]/, /`model: sonnet`/, /carried/]) assert.match(t, re);
 });

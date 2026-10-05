@@ -20,7 +20,7 @@ const step3 = lines.slice(to, lines.findIndex((l, i) => i > to && /^4\. \*\*/.te
 test('plan step 2: it is found, and the skill stays compact', () => {
   assert.ok(from > 0 && to > from, 'no encontré el paso 2');
   assert.ok(step2.length <= 5200, `el paso 2 mide ${step2.length} caracteres`);
-  assert.ok(text.length <= 13000, `la skill mide ${text.length} caracteres`);
+  assert.ok(text.length <= 14000, `la skill mide ${text.length} caracteres`);
   assert.deepStrictEqual(brokenReferences(text), []);
   assert.doesNotMatch(text, /pignolo:brainstorm|pignolo:grill/); // no hay skill nueva
 });
@@ -45,17 +45,19 @@ test('plan step 2: the seven classes of open point', () => {
   assert.match(step2, /in doubt[^.]*author's/i);
 });
 
-test('plan step 2: one reserved question per message, recommended option first, low-risk batch', () => {
-  assert.match(step2, /one per message/);
+test('plan step 2: reserved questions through AskUserQuestion, recommended option first, low-risk batch', () => {
+  assert.match(step2, /`AskUserQuestion`/);
+  assert.doesNotMatch(step2, /one per message|one question per message/);
   assert.match(step2, /recommended option first/);
-  assert.match(step2, /low-risk, reversible points in one numbered batch of assumptions with one question/);
-  assert.match(step2, /¿van así, o cambiás alguno\?/);
+  assert.match(step2, /low-risk, reversible points in one numbered batch of assumptions, one question/);
+  assert.match(step2, /"Van así" and "Cambio alguno"/);
 });
 
-test('plan step 2: budget 3 / 6 / 10 and the "suficiente" exit with its exception', () => {
-  assert.match(step2, /3 for a small request/);
-  assert.match(step2, /\b6\b[^.]*medium/);
-  assert.match(step2, /\b10\b[^.]*large/);
+test('plan step 2: budget 2 / 4 / 6 and the "suficiente" exit with its exception', () => {
+  assert.match(step2, /2 for a small request/);
+  assert.match(step2, /\b4\b[^.]*medium/);
+  assert.match(step2, /\b6\b[^.]*large/);
+  assert.doesNotMatch(step2, /3 for a small request|\b10\b[^.]*large/);
   assert.match(step2, /`suficiente`/);
   assert.match(step2, /declared assumption `S<n>`/);
   assert.match(step2, /irreversible, cost or security/);
@@ -108,4 +110,12 @@ test('CREDITS attributes one-question-at-a-time to superpowers, and the spec-rev
   assert.match(t.find((l) => /Vincent/.test(l)), /one question at a time/);
   const agent = fs.readFileSync(path.join(PLUGIN_ROOT, 'agents', 'spec-reviewer.md'), 'utf8');
   assert.match(agent, /pending question[^.\n]*`Reserved decisions`/);
+});
+
+test('the seven core skills that ask name AskUserQuestion and none keeps "one per message"', () => {
+  for (const n of ['plan', 'daily', 'review', 'trivial', 'present', 'close-session', 'entry']) {
+    const t = fs.readFileSync(path.join(PLUGIN_ROOT, 'skills', n, 'SKILL.md'), 'utf8');
+    assert.match(t, /AskUserQuestion/, n);
+    assert.doesNotMatch(t, /one per message|one question per message/i, n);
+  }
 });

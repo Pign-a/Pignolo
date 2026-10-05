@@ -4,7 +4,7 @@ description: Entered only through pignolo:entry, when it picked the trivial lane
 ---
 
 
-You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill. Talk to the human as the entry skill says: two layers (`${CLAUDE_PLUGIN_ROOT}/templates/question.md`), one step per message, a category on every question, facts only from script output.
+You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill. Talk to the human as the entry skill says: two layers (`${CLAUDE_PLUGIN_ROOT}/templates/question.md`), a category on every question, ask with the `AskUserQuestion` tool (independent questions in one call, text form without it), facts only from script output. An option chosen in `AskUserQuestion` is the explicit yes for that question only, never for a later or changed one; what you record as the human's words is the question and the chosen label, literal, or their free text.
 
 NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pignolo-ui/ and .pignolo/local/ hold the author's private data (leak-values.json has the user name, home folder and email) and are ignored on purpose. For a backup or WIP commit, commit only code paths by name and leave the ignored folders out.
 

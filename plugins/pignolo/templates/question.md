@@ -1,6 +1,14 @@
 <!--
 pignolo question template (spec §4.4 and §4.6). Fill it in the human's language: every
-heading and sentence below is translated, the structure is kept. One question per message.
+heading, sentence, label and description is translated, the structure is kept.
+
+How to ask: with the `AskUserQuestion` tool, up to 4 questions per call. Independent questions go in the same call; one that depends on another's answer goes in the next call. Before the call, one line of context; the technical detail only if the human asks for it.
+- `header`: the category, by its name in the human's language, 12 characters at most (the English name goes in the record: `plan.js decision add`, `panel.js ask`).
+- `question`: one line. `options`: 2 to 4. The recommended option goes first, with "(Recomendado)" (in the human's language) at the end of its `label`; the others keep the order they were found in.
+- `description` of each option, one line: what happens, its cost and whether it can be undone. Options are complete, never summarized.
+- An option chosen in `AskUserQuestion` is the human's explicit yes for that question only, never for a later or changed one. What you record as their words (`--quote-file`, `decision add`) is the question and the chosen label, literal, or their free text.
+- More than 4 options: group them into two questions, or use the text form with a numbered list.
+- Without `AskUserQuestion` (`claude -p`, a subagent): use the short text form below.
 
 Category: exactly one of the closed list, by its English name, followed by its name in the
 human's language:
@@ -8,7 +16,7 @@ human's language:
   scope-card, test-authorization, needs-review-batch, judge-conflict, live-check-input, quota
 A question without a category is a failure (spec §0 c).
 
-Options: complete, never summarized. The recommended option goes first and is marked; the others keep
+Text form (fallback): the recommended option goes first and is marked; the others keep
 the order they were found in. Each one says what happens, its cost and whether it can be undone.
 -->
 **<"In plain words" heading>**
@@ -29,7 +37,7 @@ the order they were found in. Each one says what happens, its cost and whether i
 
 <!--
 Panel (optional, the author's pignolo-panel mod). Skills point here from their "Panel" rule.
-- A question that ends your turn waiting for the human is also written to the panel, one line, so it shows under "Te toca":
+- A question that stays pending (asked in text form, or the turn ends waiting for the human) is also written to the panel, one line, so it shows under "Te toca"; one answered at once through `AskUserQuestion` is not:
   node "<P>/scripts/panel.js" ask --key "<flow>:<short name>" --question "<the question, one line>" --option "<label 1>" --option "<label 2>" --recommended "<label 1>" --cwd "<main>"
   The question and each option are one line (at most 300 and 80 characters, at most 4 options). The script refuses line breaks, control characters and invisible characters (zero width, right-to-left, "tag" characters, private use, unassigned), writes nothing, and never fails the step.
 - When the human answers in the chat, close it:
