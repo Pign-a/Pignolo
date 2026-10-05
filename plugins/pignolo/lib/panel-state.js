@@ -514,14 +514,24 @@ function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev 
   const late = plan ? ['validating', 'final-review', 'closed'].includes(plan.stage) : false;
   const old = new Map(previous.cards.map((c) => [c.id, c]));
   const ids = plan ? (plan.tasks || []).map((t) => t.id) : [];
-  for (const id of runIds) if (!ids.includes(id)) ids.push(id);
+  const planTitle = new Map(plan ? (plan.tasks || []).filter((t) => t && typeof t.title === 'string').map((t) => [t.id, sanitize(t.title, { max: 120, root: main })]) : []);
+  // Una tarea en curso cuyo id no es el del plan pero lo nombra (t01-tooling por T01: otra capitalización o el id más un sufijo tras - _ .)
+  // marca la tarjeta del plan como en curso en vez de sumar una suelta. Con dos candidatas no se adivina: queda suelta.
+  const planOf = (rid) => {
+    if (ids.includes(rid)) return rid;
+    const low = rid.toLowerCase();
+    const hit = ids.filter((p) => low === p.toLowerCase() || (low.startsWith(p.toLowerCase()) && /[-_.]/.test(low[p.length])));
+    return hit.length === 1 ? hit[0] : rid;
+  };
+  const runOn = new Set(runIds.map(planOf));
+  for (const id of runOn) if (!ids.includes(id)) ids.push(id);
   const cards = ids.map((id) => {
     const o = old.get(id) || {};
     const samePlan = !o.plan || !plan || o.plan === plan.plan;
     let status = 'todo';
-    if (runIds.includes(id)) status = 'running';
+    if (runOn.has(id)) status = 'running';
     else if (late || (samePlan && (o.status === 'done' || o.status === 'running'))) status = 'done';
-    return { id, plan: plan ? plan.plan : '', title: o.title || '', status, red: o.red || '', green: o.green || '', evidence: o.evidence || '' };
+    return { id, plan: plan ? plan.plan : '', title: o.title || planTitle.get(id) || '', status, red: o.red || '', green: o.green || '', evidence: o.evidence || '' };
   });
 
   const gf = gitFacts(main, git, now, env);

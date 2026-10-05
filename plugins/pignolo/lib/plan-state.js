@@ -259,7 +259,14 @@ function advance({ main, plan, to, reopen, planFile }) {
   });
 }
 
-// Tareas del plan: [{ id, added: ['A1', ...] }] (las A<n> de la tarjeta de las que dependen).
+const TITLE_MAX = 120;
+// Título de una tarjeta del panel: una línea, sin caracteres de control, cortado a TITLE_MAX.
+function cleanTitle(v) {
+  const s = String(v).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return s.length > TITLE_MAX ? `${s.slice(0, TITLE_MAX - 1)}…` : s;
+}
+
+// Tareas del plan: [{ id, title?, added: ['A1', ...] }] (las A<n> de la tarjeta de las que dependen; title: una línea para la tarjeta del panel).
 function setTasks({ main, plan, tasks }) {
   return update({ main, plan }, (p) => {
     if (!Array.isArray(tasks)) return { error: 'tasks debe ser una lista' };
@@ -268,9 +275,13 @@ function setTasks({ main, plan, tasks }) {
       if (!t || typeof t.id !== 'string' || !t.id) return { error: 'cada tarea necesita un id' };
       if (ids.has(t.id)) return { error: `id de tarea repetido: ${t.id}` };
       ids.add(t.id);
+      if (t.title !== undefined && t.title !== null && typeof t.title !== 'string') return { error: `la tarea ${t.id}: title debe ser un texto` };
       if (t.added !== undefined && !(Array.isArray(t.added) && t.added.every((a) => /^A\d+$/.test(a)))) return { error: `la tarea ${t.id}: added debe ser una lista de A<n>` };
     }
-    p.tasks = tasks.map((t) => ({ id: t.id, added: t.added || [] }));
+    p.tasks = tasks.map((t) => {
+      const title = typeof t.title === 'string' ? cleanTitle(t.title) : '';
+      return { id: t.id, ...(title ? { title } : {}), added: t.added || [] };
+    });
     return null;
   });
 }
