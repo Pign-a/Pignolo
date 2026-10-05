@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.24.1 — sin publicar
+
+Tres errores vistos en un uso real del autor (2026-10-05, anónimo): un `project.md` que git ignoraba, tareas de un plan registradas con otro id y un panel con las 48 tarjetas sin título y "todo".
+
+- **`init` y el `project.md` ignorado.** Un `.gitignore` que ignoraba toda la carpeta `.pignolo/` dejaba `project.md` fuera de git, y la primera tarea del plan se negaba a registrarse sin decir por qué. Ahora el paso `ignores` mira con `git check-ignore` si git ignora `.pignolo/project.md`: si la regla vive en el `.gitignore` de la raíz, el preview muestra el cambio exacto (por ejemplo `.pignolo/` pasa a `**/.pignolo/*` más `!.pignolo/project.md` y `!.pignolo/.gitignore`) y `apply` lo hace con el mismo sí; el resto de `.pignolo/` sigue ignorado, las demás líneas del archivo quedan idénticas byte a byte (CRLF y bytes no UTF-8 incluidos), hay respaldo fuera del repo y, si git sigue ignorándolo, se deja el archivo como estaba. Una regla en `.git/info/exclude`, en un excludes global o en el `.gitignore` de otra carpeta no se toca: se dice dónde está. Nunca commit. `init.js verify`, `/pignolo:status` y `SessionStart` avisan en una línea ("corré /pignolo:init") solo cuando `project.md` existe y git lo ignora, y un fallo de la comprobación nunca cambia un código de salida. El rechazo de una tarea cuya base no tiene `project.md` nombra la causa (ignorado o sin commitear) y el arreglo.
+- **Una tarea de un plan se registra con el id del plan.** `run.js task --id` no aceptaba mayúsculas, así que la tarea `T01` del plan no se podía registrar y el orquestador usó `t01-tooling`. Ahora el id de una tarea acepta mayúsculas (también la línea `Task:` del informe del escritor) y, en una corrida de un plan con tareas registradas, un id que no es de ninguna de ellas se rechaza con la lista de ids válidos (hasta 10) y, si difiere por mayúsculas o prefijo, la sugerencia. Los ids de reintento y arreglo con el id del plan y un sufijo (`T01-fix2`) siguen valiendo. Sin plan o sin tareas registradas, igual que antes. La skill `plan` lo dice.
+- **Títulos de tarjeta con las tareas.** `plan.js tasks set` acepta un `title` por tarea (una línea, sin caracteres de control, hasta 120 caracteres) y el panel lo usa cuando la tarjeta no tiene uno cargado a mano; los `plan.json` viejos sin título se leen igual.
+- **El panel no dice "todo" cuando no sabe.** Una tarea en curso registrada como `t01-tooling` marca la tarjeta `T01` en curso (otra capitalización, o el id del plan más un sufijo tras `-`, `_` o `.`) en vez de sumar una suelta; con dos candidatas queda suelta.
+- Tests: `tests/project-ignored.test.js`, `tests/plan-task-id.test.js`, `tests/panel-card-titles.test.js`, `tests/handback-tasks.test.js` (id en mayúsculas). Queda sin hacer: la evidencia roja de los tests nuevos se sigue cargando a mano (G118).
+
 ## 0.23.0 — sin publicar
 
 Salir del flujo de pignolo se pregunta por pedido, `.pignolo-ui/` va por pignolo-ui y "armá un plan" llega al carril `plan`.
