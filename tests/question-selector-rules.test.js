@@ -58,3 +58,10 @@ test('RQ-03: the plan skill no longer tells to write the minors into the plan; t
   assert.doesNotMatch(read('skills', 'plan', 'SKILL.md'), /note them at the end of the plan/);
   assert.match(read('templates', 'plan-audit.md'), /minors` never block and are not written into the plan file/);
 });
+
+test('R-7: the template offers the three options of an ESCALATE reaudit-findings and the extra round only with its flag; the skill names them', () => {
+  const t = read('templates', 'plan-audit.md');
+  for (const re of [/"Arreglar y re-auditar solo lo cambiado \(Recomendado\)"/, /"Auditar de nuevo entero"/, /"Dejar el plan acá"/, /--extra-round/, /only after the human chose this option/, /own question and its own flag/, /None of the three skips the gate/]) assert.match(t, re);
+  const skill = read('skills', 'plan', 'SKILL.md');
+  assert.match(skill, /reaudit-findings[^.]*`AskUserQuestion`: fix and re-audit only what changed, audit again in full, or leave the plan/);
+});

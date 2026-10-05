@@ -27,3 +27,13 @@ The gate never changes: `plan.js advance --to audited` needs `APPROVE` tied to t
 - A finding that is still open goes in `findings` with its previous id in `id`.
 - Claims carried over from the previous round are added by the script and verified in step 4: do not repeat them. One that stays unverified makes the verdict `ESCALATE`.
 - The fixed probes run as usual; `verify` also covers the carried claims.
+
+## ESCALATE with `reason: reaudit-findings` (R-7)
+
+The re-audit still has blocking findings. Show them with their ids and ask with `AskUserQuestion` (category `costs`, three options, the first recommended):
+
+1. "Arreglar y re-auditar solo lo cambiado (Recomendado)": fix the plan, then `plan-audit.js begin-review --plan <plan> --plan-file "<path>" --extra-round`: one more bounded round on `sonnet`. Pass `--extra-round` only after the human chose this option in this question; each extra round needs its own question and its own flag (without the flag the script refuses a third `begin-review`).
+2. "Auditar de nuevo entero": `plan-audit.js end --plan <plan>`, then round 1 again in opus (the full cost).
+3. "Dejar el plan acá": stop; `audited` stays closed and the plan waits for the human.
+
+None of the three skips the gate: only `APPROVE` against the sha256 of the current plan opens `audited`.
