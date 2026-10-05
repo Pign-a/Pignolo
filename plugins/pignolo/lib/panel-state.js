@@ -42,8 +42,11 @@ function sanitize(text, { max = 200, root } = {}) {
     const last = p.split('/').filter(Boolean).pop() || '';
     return `…/${last}${suffix}`;
   });
-  s = s.replace(/[\r\n\t\u2028\u2029]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+  s = s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/g, '').replace(/\s{2,}/g, ' ').trim();
+  if (s.length <= max) return s;
+  let cut = s.slice(0, max - 1);
+  if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1); // no cortar un par sustituto por la mitad
+  return `${cut}…`;
 }
 
 const str = (v, max) => sanitize(v, { max });
@@ -517,13 +520,17 @@ function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev 
   const planTitle = new Map(plan ? (plan.tasks || []).filter((t) => t && typeof t.title === 'string').map((t) => [t.id, sanitize(t.title, { max: 120, root: main })]) : []);
   // Una tarea en curso cuyo id no es el del plan pero lo nombra (t01-tooling por T01: otra capitalización o el id más un sufijo tras - _ .)
   // marca la tarjeta del plan como en curso en vez de sumar una suelta. Con dos candidatas no se adivina: queda suelta.
+  // Solo vale si la corrida es de ESTE plan: una tarea de un flujo daily (o trivial) nunca marca una tarjeta del plan.
+  const ofPlan = !!(run && plan && run.plan === plan.plan);
   const planOf = (rid) => {
+    if (!ofPlan) return rid;
     if (ids.includes(rid)) return rid;
     const low = rid.toLowerCase();
     const hit = ids.filter((p) => low === p.toLowerCase() || (low.startsWith(p.toLowerCase()) && /[-_.]/.test(low[p.length])));
     return hit.length === 1 ? hit[0] : rid;
   };
-  const runOn = new Set(runIds.map(planOf));
+  const planIds = new Set(ids);
+  const runOn = new Set(runIds.map(planOf).filter((id) => ofPlan || !planIds.has(id)));
   for (const id of runOn) if (!ids.includes(id)) ids.push(id);
   const cards = ids.map((id) => {
     const o = old.get(id) || {};
@@ -531,7 +538,8 @@ function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev 
     let status = 'todo';
     if (runOn.has(id)) status = 'running';
     else if (late || (samePlan && (o.status === 'done' || o.status === 'running'))) status = 'done';
-    return { id, plan: plan ? plan.plan : '', title: o.title || planTitle.get(id) || '', status, red: o.red || '', green: o.green || '', evidence: o.evidence || '' };
+    // El título lo da el plan; uno cargado a mano (evidence --title) del MISMO plan vale solo mientras el plan no da ninguno.
+    return { id, plan: plan ? plan.plan : '', title: planTitle.get(id) || (samePlan && o.title) || '', status, red: o.red || '', green: o.green || '', evidence: o.evidence || '' };
   });
 
   const gf = gitFacts(main, git, now, env);
@@ -540,6 +548,7 @@ function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev 
   return {
     plan: planOut, cards, branches: gf.branches, main: gf.ahead === null && !gf.mainName ? null : { ahead: gf.ahead, name: gf.mainName, ...(gf.onMain === null ? {} : { onMain: gf.onMain }), ...(gf.dirty === null ? {} : { dirty: gf.dirty }), ...(gf.remote === null ? {} : { remote: gf.remote }) },
     busy: BUSY_KINDS.includes(kind), attention: ATTENTION_KINDS.includes(kind) ? [kind] : [],
+    planTitles: planTitle,
   };
 }
 
@@ -551,7 +560,9 @@ function applyDerived(cur, d, now) {
   const have = new Map(cur.cards.map((c) => [c.id, c]));
   cur.cards = d.cards.map((c) => {
     const o = have.get(c.id);
-    return o ? { ...c, title: o.title || c.title, red: o.red, green: o.green, evidence: o.evidence } : c;
+    // título: el del plan; uno cargado a mano entre medio solo si es del mismo plan y el plan no da ninguno
+    const title = d.planTitles && d.planTitles.has(c.id) ? c.title : ((o && (!o.plan || !c.plan || o.plan === c.plan) && o.title) || c.title);
+    return o ? { ...c, title, red: o.red, green: o.green, evidence: o.evidence } : c;
   });
   // evidencia de tarjetas que aún no están en el plan
   for (const o of have.values()) if (!cur.cards.some((c) => c.id === o.id) && (o.red || o.green)) cur.cards.push({ ...o });

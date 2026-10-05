@@ -108,9 +108,9 @@ test('run task t0 (a prefix that is not up to a separator) stays a loose card; b
 });
 
 test('an ambiguous match (two candidates) stays loose', () => {
-  const dir = project([{ id: 'api' }, { id: 'API' }]);
-  writeRun(dir, ['api-x']);
-  assert.deepEqual(view(panel.refresh(dir)), [['api', 'todo'], ['API', 'todo'], ['api-x', 'running']]);
+  const dir = project([{ id: 'T01' }, { id: 'T01-b' }]);
+  writeRun(dir, ['T01-b-fix2']);
+  assert.deepEqual(view(panel.refresh(dir)), [['T01', 'todo'], ['T01-b', 'todo'], ['T01-b-fix2', 'running']]);
 });
 
 test('a run task that matches nothing in the plan is still a loose card (old behavior)', () => {

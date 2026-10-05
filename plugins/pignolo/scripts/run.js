@@ -240,6 +240,13 @@ function checkPlanTaskId(main, plan, id) {
   } catch (_) { ids = []; }
   if (!ids.length || ids.includes(id)) return;
   if (ids.some((p) => id.startsWith(`${p}-`))) return;
+  const bad = ids.filter((x) => !TASK_ID_RE.test(x));
+  if (bad.length) {
+    // Un plan guardado antes de 0.24.1 con ids que `run.js task` no acepta (T1.1, T_02, con espacios...): no es culpa del id pedido.
+    const msg = `el plan ${plan} tiene tareas registradas con ids que run.js task no acepta (${bad.slice(0, 5).map((x) => JSON.stringify(x)).join(', ')}). Volvé a registrar las tareas con plan.js tasks set usando ids como T01 (letras, números y guiones, ${TASK_ID_RE}) y repetí.`;
+    out({ ok: false, kind: 'plan-task-ids-invalid', id, plan, invalid: bad.slice(0, 10) });
+    throw new Fail(msg, { kind: 'plan-task-ids-invalid', printed: true });
+  }
   const low = id.toLowerCase();
   const near = ids.filter((p) => low === p.toLowerCase() || low.startsWith(`${p.toLowerCase()}-`));
   const shown = ids.slice(0, 10).join(', ') + (ids.length > 10 ? `, … (${ids.length - 10} más)` : '');

@@ -10,6 +10,7 @@ const { validateScopeCard, parseScopeCard } = require('./scope-card');
 const { backingDecisions } = require('./decisions');
 const { execFileSync } = require('node:child_process');
 const { gitRun, isGitFailure } = require('./git');
+const { TASK_ID_RE } = require('./branches');
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const STAGES = ['spec', 'claims', 'spec-review', 'scope-card', 'plan-written', 'audited', 'executing', 'validating', 'final-review', 'closed'];
@@ -262,8 +263,7 @@ function advance({ main, plan, to, reopen, planFile }) {
 const TITLE_MAX = 120;
 // Título de una tarjeta del panel: una línea, sin caracteres de control, cortado a TITLE_MAX.
 function cleanTitle(v) {
-  const s = String(v).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
-  return s.length > TITLE_MAX ? `${s.slice(0, TITLE_MAX - 1)}…` : s;
+  return require('./panel-state').sanitize(v, { max: TITLE_MAX }); // el saneador del panel: sin pares sustitutos cortados ni caracteres de control, bidi o invisibles
 }
 
 // Tareas del plan: [{ id, title?, added: ['A1', ...] }] (las A<n> de la tarjeta de las que dependen; title: una línea para la tarjeta del panel).
@@ -273,8 +273,10 @@ function setTasks({ main, plan, tasks }) {
     const ids = new Set();
     for (const t of tasks) {
       if (!t || typeof t.id !== 'string' || !t.id) return { error: 'cada tarea necesita un id' };
-      if (ids.has(t.id)) return { error: `id de tarea repetido: ${t.id}` };
-      ids.add(t.id);
+      // El mismo id que acepta `run.js task`: si no, la tarea del plan no se podría registrar después.
+      if (!TASK_ID_RE.test(t.id)) return { error: `el id de tarea ${JSON.stringify(t.id.slice(0, 80))} no sirve: debe cumplir ${TASK_ID_RE} (letras, números y guiones; empieza con letra o número; hasta 64 caracteres), por ejemplo T01 o T2-api` };
+      if (ids.has(t.id.toLowerCase())) return { error: `id de tarea repetido (las mayúsculas no cuentan): ${t.id}` };
+      ids.add(t.id.toLowerCase());
       if (t.title !== undefined && t.title !== null && typeof t.title !== 'string') return { error: `la tarea ${t.id}: title debe ser un texto` };
       if (t.added !== undefined && !(Array.isArray(t.added) && t.added.every((a) => /^A\d+$/.test(a)))) return { error: `la tarea ${t.id}: added debe ser una lista de A<n>` };
     }

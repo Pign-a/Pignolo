@@ -265,7 +265,13 @@ function ignoresStep({ main, git, env, dry, notes }) {
   }
   const { status, ...rest } = fix;
   const projectMdIgnored = { status, ...rest };
-  if (status === 'refused') return { ...step, projectMdIgnored };
+  if (status === 'refused') {
+    // Una regla que init no puede reescribir: el paso queda sin hacer para este punto y la persona recibe UNA línea con el archivo, la línea y qué cambiar.
+    if (rest.reason === 'manual-rule' || rest.reason === 'still-ignored' || rest.reason === 'other-rule') {
+      notes.push(`git ignora .pignolo/project.md por la regla '${rest.rulePattern}' en ${rest.ruleSource}:${rest.ruleLine} y init no la reescribe: cambiala a mano para que no ignore la carpeta .pignolo/ entera (por ejemplo '.pignolo/*' más las líneas '!.pignolo/project.md' y '!.pignolo/.gitignore'), o el proyecto no viajará a las worktrees`);
+    }
+    return { ...step, projectMdIgnored };
+  }
   const { reason, ...base } = step;
   return { ...base, status: step.status === 'skipped' ? (dry ? 'would-do' : 'done') : step.status, projectMdIgnored };
 }
@@ -434,6 +440,10 @@ function verify({ cwd, env, run }) {
   const candidates = blank ? ['.gitattributes', ...skeletonReadmes] : ['.pignolo/project.md', '.gitattributes', 'SECURITY.md'];
   const files = candidates.filter((f) => fs.existsSync(path.join(main, f)) && dirty(f));
   if (trackedModified) files.push('.pignolo/.gitignore');
+  // El .gitignore de la raíz que init cambió para que project.md viaje (lleva la negación): queda modificado y va al commit.
+  try {
+    if (/^!\.pignolo\/project\.md\s*$/m.test(fs.readFileSync(path.join(main, '.gitignore'), 'latin1')) && dirty('.gitignore')) files.push('.gitignore');
+  } catch (_) { /* sin .gitignore */ }
   notes.push(...placesVerify({ main, config, env, run }));
   const ignoredLine = PI.noticeLine({ main, run: git });
   if (ignoredLine) notes.push(ignoredLine);

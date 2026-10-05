@@ -27,6 +27,7 @@ NO-RUNS-COMMIT: never stage ignored files and never use git add -f/--force; .pig
 5. **Register and dispatch the test-writer.**
    - `node "<P>/scripts/run.js" renew --cwd "<main>"`
    - `node "<P>/scripts/run.js" task --id <slug> --worktree "<wt>" --base <base> --file <test path> [--file <test path>]... --agent pignolo:test-writer --cwd "<main>"`. Exit 1 names the file that is outside `test-paths`: fix the list, never the check.
+   - The `--id` forms: in a daily flow `<slug>` is any id (`[A-Za-z0-9-]`, up to 64). When the flow belongs to a plan with registered tasks (`pignolo:plan`), the id is the plan's task id (`T01`) or that id plus a suffix for retries and fixes (`T01-fix2`, `T01-t2`); any other id is refused, so build the slug of `<slug>-t<n>` from the task id.
    - Dispatch `pignolo:test-writer` with the task-card and the literal requirement. It must not read the implementation.
 6. **Accept.** `run.js status` as in the rules above; continue at most twice.
 7. **Prove red yourself** (the test-writer has no Bash). Run the command it named: `cd "<wt>" && <command>`. Every test whose block says `test-first` must fail, and for the reason the test-writer stated. If one passes, it proves nothing: dispatch the test-writer again naming that (it counts as a continuation). A test whose block says `Red is proved by: sabotage` passes here; its red comes after the implementer's commit (step 12), because `sabotage.js` needs the gate green and the tests that are `test-first` are still red now. Keep the failing output for the summary.

@@ -8,6 +8,7 @@ const path = require('node:path');
 const { gitRun } = require('./git');
 const { backupFile, atomicWrite } = require('./init-actions');
 
+const BOM = '\xEF\xBB\xBF'; // el BOM de UTF-8 leído como latin1
 const REL = '.pignolo/project.md';
 const NEGATIONS = ['!.pignolo/project.md', '!.pignolo/.gitignore'];
 const defaultRun = (args, cwd) => gitRun(args, cwd, { timeout: 3000 });
@@ -83,25 +84,51 @@ function planFix({ main, run } = {}) {
   } else {
     replacement = [r.pattern.trim(), ...NEGATIONS];
   }
-  const next = [...parts.slice(0, at), ...replacement.map((l) => `${l}${cr}`), ...parts.slice(at + 1)];
+  // Un BOM al principio del archivo (línea 1) se conserva delante de la primera línea nueva.
+  const bom = at === 0 && parts[0].startsWith(BOM) ? BOM : '';
+  const next = [...parts.slice(0, at), ...replacement.map((l, i) => `${i === 0 ? bom : ''}${l}${cr}`), ...parts.slice(at + 1)];
   return { status: 'edit', file, source: r.source, line: r.line, pattern: r.pattern, replacement, text: Buffer.from(next.join('\n'), 'latin1') };
 }
 
-// Aplica el cambio y lo comprueba con git; si sigue ignorado, deja el archivo como estaba y lo dice.
+const MAX_PASSES = 5;
+const sameRule = (x, y) => x.ignored === true && y.ignored === true && x.source === y.source && x.line === y.line && x.pattern === y.pattern;
+
+// Aplica el cambio y lo comprueba con git. Con la regla repetida (o escrita de dos maneras) repite hasta que git deje de nombrar una
+// regla reescribible del .gitignore de la raíz (hasta MAX_PASSES pasadas). Si una pasada no avanza (la misma regla sigue ignorando: una
+// que no se puede negar, como `**/.pignolo/`, `.*`, `*`) o git queda ignorando por una regla de otro archivo, deja el archivo como estaba
+// y dice la regla. Un fallo a mitad de camino también lo deja como estaba.
 function applyFix({ main, run, env = process.env, dry = false } = {}) {
-  const p = planFix({ main, run });
+  let p = planFix({ main, run });
   if (p.status !== 'edit') return p;
   const info = { file: p.file, line: p.line, replaced: p.pattern, with: p.replacement };
   if (dry) return { status: 'would-do', ...info };
   const original = fs.readFileSync(p.file);
   const backup = backupFile({ file: p.file, main, env });
-  atomicWrite(p.file, p.text);
-  const after = projectIgnored({ main, run });
-  if (after.ignored === true) {
-    atomicWrite(p.file, original);
-    return { status: 'refused', reason: 'still-ignored', ...info, backup, detail: `tras el cambio git sigue ignorando project.md (${after.source}:${after.line} \`${after.pattern}\`); se dejó el archivo como estaba` };
+  const refuse = (reason, rule, detail) => {
+    atomicWrite(info.file, original);
+    return { status: 'refused', reason, ...info, ...(rule ? { ruleSource: rule.source, ruleLine: rule.line, rulePattern: rule.pattern } : {}), backup, detail };
+  };
+  const why = (rule) => `${rule.source}:${rule.line} \`${rule.pattern}\``;
+  let before = projectIgnored({ main, run });
+  let passes = 0;
+  try {
+    for (;;) {
+      atomicWrite(info.file, p.text);
+      passes += 1;
+      const after = projectIgnored({ main, run });
+      if (after.ignored === 'unknown') return refuse('unverified', null, 'no se pudo comprobar con git el resultado del cambio; se dejó el archivo como estaba');
+      if (after.ignored !== true) return { status: 'done', ...info, passes, backup };
+      if (after.where !== 'root-gitignore') return refuse('other-rule', after, `tras el cambio git sigue ignorando project.md por otra regla (${why(after)}), que init no toca; se dejó el archivo como estaba`);
+      if (sameRule(before, after)) return refuse('manual-rule', after, `la regla ${why(after)} ignora la carpeta entera y init no la reescribe; se dejó el archivo como estaba`);
+      if (passes >= MAX_PASSES) return refuse('still-ignored', after, `tras ${passes} pasadas git sigue ignorando project.md (${why(after)}); se dejó el archivo como estaba`);
+      before = after;
+      p = planFix({ main, run });
+      if (p.status !== 'edit') return refuse('still-ignored', after, `tras el cambio git sigue ignorando project.md (${why(after)}); se dejó el archivo como estaba`);
+    }
+  } catch (e) {
+    try { atomicWrite(info.file, original); } catch (_) { /* el respaldo queda en backup */ }
+    throw e;
   }
-  return { status: 'done', ...info, backup };
 }
 
 module.exports = { projectIgnored, noticeLine, whyMissing, planFix, applyFix, NEGATIONS };

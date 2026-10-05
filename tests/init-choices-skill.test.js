@@ -45,7 +45,7 @@ test('init skill: has a With choices section that asks summary.ask once, always 
 test('init skill: without --choices the fast flow and the review point by point are unchanged', () => {
   assert.equal(sha(section('Blank project')), '3f9b3683620e6f14');
   assert.equal(sha(section('Fast flow (existing project)')), '96ba642ddc497dfd');
-  assert.equal(sha(section('Review point by point')), 'b5069d98e7b91a8f');
+  assert.equal(sha(section('Review point by point')), '431b4a791efb961b');
   assert.match(SKILL.text, /0\. \*\*Confirm \(only if you chose this skill yourself\)\./);
 });
 
