@@ -156,6 +156,7 @@ exports.run = (input, ctx = {}) => {
           try {
             const panel = require('../../lib/panel-state');
             if (fs.existsSync(panel.fileOf(proj.main))) panel.reopenPostponed(proj.main);
+            else panel.refresh(proj.main); // project.md sin registro (p. ej. init en otra sesión): el panel no queda "sin datos"
           } catch (_) { /* el registro nunca rompe el arranque */ }
         }
         const line = require('../../lib/branch-cleanup').noticeLine({ main: proj.main, opts: ctx.cleanupOpts, budgetMs: ctx.cleanupBudgetMs });

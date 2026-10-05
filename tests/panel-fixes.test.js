@@ -101,7 +101,7 @@ test('RP-07 a step that costs money without a costOk is shown with the note "sin
   assert.equal(nextStep({ branches: [{ ...br, costOk: { ok: false } }] }).main, null, 'un no explícito sí bloquea');
   assert.doesNotMatch(suggestionText(nextStep({ branches: [{ ...br, costOk: { ok: true, usd: 3 } }] }).main), /sin OK/);
   // un paso que no cuesta plata no lleva la nota
-  assert.equal(nextStep({ branches: [], main: { ahead: 2 } }).main.costNote, null);
+  assert.equal(nextStep({ branches: [], main: { ahead: 2, name: 'main' } }).main.costNote, null);
 });
 
 // ---- RP-05: las fuentes escriben el registro --------------------------------------------------------------------

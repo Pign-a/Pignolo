@@ -131,8 +131,15 @@ function normalize(raw) {
   }));
   s.budget = arr(raw.budget).filter((b) => isObj(b) && typeof b.hito === 'string' && b.hito && num(b.spent) !== null && num(b.cap) !== null)
     .map((b) => ({ hito: str(b.hito, 60), spent: num(b.spent), cap: num(b.cap), warned: b.warned === true }));
-  const ahead = isObj(raw.main) ? num(raw.main.ahead) : null;
-  s.main = ahead !== null ? { ahead: Math.max(0, Math.floor(ahead)) } : null;
+  const ahead = isObj(raw.main) && raw.main.ahead !== null && raw.main.ahead !== undefined ? num(raw.main.ahead) : null;
+  const named = isObj(raw.main) && typeof raw.main.name === 'string' && raw.main.name.trim() !== '';
+  // Sin remoto `ahead` es null, pero el nombre de la rama principal igual vale (el texto de unir lo usa).
+  s.main = ahead !== null || named ? { ahead: ahead === null ? null : Math.max(0, Math.floor(ahead)) } : null;
+  if (s.main) {
+    // La rama principal real y el estado del checkout (los usa la regla del push). Los registros viejos no los traen.
+    if (typeof raw.main.name === 'string' && raw.main.name.trim()) s.main.name = str(raw.main.name, 120);
+    for (const k of ['onMain', 'dirty', 'remote']) if (typeof raw.main[k] === 'boolean') s.main[k] = raw.main[k];
+  }
   s.next = normalizeNext(raw.next);
   return { state: s, problems };
 }
@@ -425,15 +432,22 @@ const ATTENTION_KINDS = ['task-blocked', 'queue-conflict', 'run-malformed', 'sab
 const money = (n) => String(Math.round(n * 100) / 100);
 
 function gitFacts(main, git, now, env) {
-  const out = { branches: [], ahead: null, mainName: null };
+  const out = { branches: [], ahead: null, mainName: null, onMain: null, dirty: null, remote: null };
   const g = (args) => git(['--no-optional-locks', ...args], main);
   let refs = [];
   try {
     refs = g(['for-each-ref', '--format=%(refname:short)\t%(objectname)\t%(tree)', 'refs/heads']).split(/\r?\n/).filter(Boolean).map((l) => l.split('\t'));
   } catch (_) { return out; }
   const names = refs.map((r) => r[0]);
-  out.mainName = ['main', 'master'].find((n) => names.includes(n)) || null;
+  // La rama principal: la de origin/HEAD si existe como rama local; si no, main o master. Nunca un nombre fijo que el repo no tenga.
+  let originHead = '';
+  try { originHead = g(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']).trim().replace(/^origin[/]/, ''); } catch (_) { originHead = ''; }
+  out.mainName = [originHead, 'main', 'master'].find((n) => n && names.includes(n)) || null;
   if (!out.mainName) return out;
+  try { out.onMain = g(['symbolic-ref', '--short', 'HEAD']).trim() === out.mainName; } catch (_) { out.onMain = false; } // HEAD suelto = no está en la principal
+  // Cambios sin commitear (lo que pignolo escribe solo en .pignolo/.gitignore no cuenta) y remoto configurado.
+  try { out.dirty = g(['status', '--porcelain', '--', '.', ':(exclude).pignolo']).trim() !== ''; } catch (_) { out.dirty = null; }
+  try { out.remote = g(['remote']).trim() !== ''; } catch (_) { out.remote = null; }
   try {
     const n = Number(g(['rev-list', '--count', `origin/${out.mainName}..${out.mainName}`]));
     out.ahead = Number.isFinite(n) ? n : null;
@@ -514,7 +528,7 @@ function derive(main, { now = Date.now(), git = gitRun, env = process.env, prev 
   let kind = 'nothing';
   try { kind = deriveNext({ cwd: main, env, now }).kind; } catch (_) { kind = 'nothing'; }
   return {
-    plan: planOut, cards, branches: gf.branches, main: gf.ahead === null ? null : { ahead: gf.ahead },
+    plan: planOut, cards, branches: gf.branches, main: gf.ahead === null && !gf.mainName ? null : { ahead: gf.ahead, name: gf.mainName, ...(gf.onMain === null ? {} : { onMain: gf.onMain }), ...(gf.dirty === null ? {} : { dirty: gf.dirty }), ...(gf.remote === null ? {} : { remote: gf.remote }) },
     busy: BUSY_KINDS.includes(kind), attention: ATTENTION_KINDS.includes(kind) ? [kind] : [],
   };
 }

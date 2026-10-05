@@ -152,18 +152,49 @@
   },
   "agents": [
     {
-      "type": "implementer",
-      "description": "T3 escritor PDF",
-      "model": "sonnet",
-      "minutes": 4.2,
-      "tokens": 38400
+      "id": "demo-1",
+      "type": "pignolo:explorer",
+      "description": "explorar reglas MCP",
+      "model": "haiku",
+      "minutes": 2,
+      "tokens": 14000,
+      "ctx": 9000,
+      "idleSec": 130,
+      "last": { "name": "Grep", "target": "\"mcp\" en plugins/" }
     },
     {
-      "type": "refuter",
-      "description": "refutar T2",
+      "id": "demo-2",
+      "type": "pignolo:judge-a",
+      "description": "revisión de la guardia",
       "model": "opus",
-      "minutes": 2.1,
-      "tokens": 21000
+      "minutes": 6.1,
+      "tokens": 120000,
+      "ctx": 156000,
+      "idleSec": 40,
+      "last": { "name": "Bash", "target": "npm test tests/guard.test.js" }
+    },
+    {
+      "id": "demo-3",
+      "type": "general-purpose",
+      "description": "arreglos del panel",
+      "model": "sonnet",
+      "minutes": 4.2,
+      "tokens": 88000,
+      "ctx": 41000,
+      "idleSec": 3,
+      "last": { "name": "Edit", "target": "hooks/register.js" }
+    },
+    {
+      "id": "demo-4",
+      "parentId": "demo-3",
+      "type": "general-purpose",
+      "description": "buscar usos de spawn",
+      "model": "haiku",
+      "minutes": 0.4,
+      "tokens": 6000,
+      "ctx": 4000,
+      "idleSec": 2,
+      "last": { "name": "Grep", "target": "\"spawn\" en plugins/" }
     }
   ],
   "activity": [

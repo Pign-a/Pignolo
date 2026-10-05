@@ -29,6 +29,10 @@ const PANE = {
   props: { title: 'pignolo', isFocused: true, bodyColumns: 100, placement: 'inline', scroll: { offset: 0, bodyRows: 10 }, view: {} },
 } as const
 
+// Un panel alto: el bloque TRABAJANDO entra holgado (3 filas por agente). PANE (10 filas) lo obliga a ser compacto.
+const TALL = { ...PANE, props: { ...PANE.props, scroll: { offset: 0, bodyRows: 60 } } } as const
+const SPARK = /^ *[▁▂▃▄▅▆▇█][ ▁▂▃▄▅▆▇█]*$/ // el minigrafico: una fila de bloques (un hueco en blanco no cuenta)
+
 const ROW = {
   plugin: 'pignolo-panel',
   component: 'ToolUse',
@@ -177,13 +181,41 @@ test('mod: no registry gives one line saying pignolo is not active here and draw
   expect(await ui.find({ type: 'Text', text: 'drawn by Claude Code' })).toBeDefined()
   await ui.unmount()
 })
+test('mod: project.md present and no registry says pignolo is active (never "no está activo") in band, Live and Ramas', async ($, on) => {
+  common(on)
+  fakeProject(on, { '/proj/.pignolo/project.md': '# p' })
+  const band = await $.ui.mount({ ...BAND })
+  expect(await band.find({ type: 'Text', text: /pignolo está activo; el panel se completa en unos segundos/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /no está activo/ })).toBeUndefined()
+  await band.unmount()
+  const pane = await $.ui.mount({ ...PANE })
+  expect(await pane.find({ type: 'Text', text: /pignolo está activo; el panel se completa en unos segundos/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /no está activo/ })).toBeUndefined()
+  await pane.unmount()
+})
+test('mod: project.md present, registry appears later: the next poll draws the real state', async ($, on) => {
+  const clock = common(on)
+  const files: Record<string, string> = { '/proj/.pignolo/project.md': '# p' }
+  fakeProject(on, files)
+  await boot($)
+  const a = await $.ui.mount({ ...BAND })
+  expect(await a.find({ type: 'Text', text: /el panel se completa/ })).toBeDefined()
+  await a.unmount()
+  files['/proj/.pignolo/panel-state.json'] = JSON.stringify(STATE_FULL)
+  await clock.advance(3000)
+  const b = await $.ui.mount({ ...BAND })
+  expect(await b.find({ type: 'Text', text: /el panel se completa/ })).toBeUndefined()
+  expect(await b.find({ type: 'Text', text: /mi-plan/ })).toBeDefined()
+  await b.unmount()
+})
 test('mod: an unknown or greater schema gives a one-line notice and does not throw', async ($, on) => {
   common(on)
   const files = proj({ schema: 'otro/1', decisions: [dec()] })
   fakeProject(on, files)
   await boot($)
   const a = await $.ui.mount({ ...BAND })
-  expect(await a.find({ type: 'Text', text: /pignolo no está activo en este proyecto/ })).toBeDefined()
+  expect(await a.find({ type: 'Text', text: /pignolo no está activo/ })).toBeUndefined() // hay project.md: está activo
+  expect(await a.find({ type: 'Text', text: /pignolo está activo; el panel se completa en unos segundos/ })).toBeDefined()
   await a.unmount()
   files['/proj/.pignolo/panel-state.json'] = JSON.stringify({ schema: 'pignolo-panel-state/2', decisions: [dec()] })
   await ($ as any).clock?.advance?.(0)
@@ -209,17 +241,18 @@ test('mod: the band shows plan, progress, agents, open decisions, cost and next 
   const quiet = await $.ui.mount({ ...BAND })
   await quiet.unmount()
 })
-test('mod: the band shows the next step and never mentions Tab', async ($, on) => {
+test('mod: the band is one line: no "siguiente:" line (the next step lives in the panel and in the prompt) and it never mentions Tab', async ($, on) => {
   common(on)
   fakeProject(on, proj(state({ branches: [br()], next: step() })))
   await boot($)
+  expect(spy.suggest).toEqual(['revisá feat/x (usa una revisión opus)']) // la sugerencia tenue del prompt sigue
   const ui = await $.ui.mount({ ...BAND })
-  const l2 = text(await ui.find({ type: 'Text', text: /siguiente: / }))
-  expect(l2).toContain('revisá feat/x')
-  expect(l2).toContain('usa una revisión opus')
-  expect(l2).not.toContain('Tab') // Tab sobre la sugerencia no se pudo verificar: la banda no lo promete
+  expect(await ui.find({ type: 'Text', text: /siguiente/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /revisá feat\/x/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /ctx/ })).toBeDefined() // la primera linea queda como estaba
   const all = text(await ui.findAll({ type: 'Text' }))
-  expect(all).not.toContain('Tab')
+  expect(all).not.toContain('Tab') // Tab sobre la sugerencia no se pudo verificar: la banda no lo promete
+  expect(all).not.toContain('→')
   expect(await ui.find({ type: 'Button', key: 'band-open' })).toBeDefined() // la tecla 0 abre el panel
   await ui.unmount()
 })
@@ -272,9 +305,9 @@ test("a proposal from another plugin passes untouched (the engine's text rewrite
   expect(spy.suggest).toEqual(['algo del motor'])
 })
 
-// ---- panel: Ahora ----
+// ---- panel: Live ----
 
-test('Ahora: Siguiente, Te toca, En curso con evidencia; el boton de una opcion ENVIA la respuesta con contexto', async ($, on) => {
+test('Live: Siguiente, Te toca, En curso con evidencia; el boton de una opcion ENVIA la respuesta con contexto', async ($, on) => {
   common(on)
   fakeProject(on, proj(STATE_FULL))
   const ui = await $.ui.mount({ ...PANE })
@@ -485,7 +518,7 @@ test('answer: a prompt that cannot be submitted shows a toast and keeps the deci
   expect(spy.submit.length).toBe(2)
   await ui.unmount()
 })
-test('Ahora: si el prompt no puede llenarse, avisa con un toast y no cierra', async ($, on) => {
+test('Live: si el prompt no puede llenarse, avisa con un toast y no cierra', async ($, on) => {
   common(on)
   spy.fillOk = false
   fakeProject(on, proj(state({ branches: [br()], next: step() })))
@@ -495,7 +528,7 @@ test('Ahora: si el prompt no puede llenarse, avisa con un toast y no cierra', as
   expect(spy.closed).toBe(0)
   await ui.unmount()
 })
-test('Ahora: algo corriendo -> no hay bloque SIGUIENTE y TRABAJANDO lista los agentes', async ($, on) => {
+test('Live: algo corriendo -> no hay bloque SIGUIENTE y TRABAJANDO lista los agentes', async ($, on) => {
   common(on)
   fakeProject(on, proj(state({ branches: [br()], next: step() })))
   on('agent.spawn', () => ({ model: 'haiku', agentId: 'a1' }))
@@ -506,14 +539,14 @@ test('Ahora: algo corriendo -> no hay bloque SIGUIENTE y TRABAJANDO lista los ag
   expect(await ui.find({ type: 'Text', text: /1 agente/ })).toBeDefined()
   await ui.unmount()
 })
-test('Ahora: nada corriendo -> linea atenuada', async ($, on) => {
+test('Live: nada corriendo -> linea atenuada', async ($, on) => {
   common(on)
   fakeProject(on, proj(state({ decisions: [dec()] })))
   const ui = await $.ui.mount({ ...PANE })
   expect(await ui.find({ type: 'Text', text: '○ nada corriendo' })).toBeDefined()
   await ui.unmount()
 })
-test('Ahora sin registro: dice que pignolo no esta activo e invita al modo demo', async ($, on) => {
+test('Live sin registro: dice que pignolo no esta activo e invita al modo demo', async ($, on) => {
   common(on)
   fakeProject(on, {})
   const ui = await $.ui.mount({ ...PANE })
@@ -583,17 +616,16 @@ test('/pignolo-panel demo carga los datos de muestra y abre el panel', async ($,
   expect(await ui.find({ key: 'row-br-demo/rama' })).toBeDefined()
   await ui.unmount()
 })
-test('demo con agente corriendo: minigrafico Raster en terminal; en desktop texto y sin Raster', async ($, on) => {
+test('demo con agente corriendo: el minigrafico es una fila de texto en terminal y en desktop, sin Raster', async ($, on) => {
   common(on)
   fakeProject(on, { '/sample/panel-state.json': DEMO })
   await $.command.run({ command: 'pignolo-panel', args: 'demo busy' })
-  const t = await $.ui.mount({ ...PANE })
-  expect(await t.find({ type: 'Raster' })).toBeDefined()
-  await t.unmount()
-  const d = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect(await d.find({ type: 'Raster' })).toBeUndefined()
-  expect(await d.find({ type: 'Text', text: /[▁▂▃▄▅▆▇█]/ })).toBeDefined()
-  await d.unmount()
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const t = await $.ui.mount({ ...TALL, surface })
+    expect(await t.find({ type: 'Raster' })).toBeUndefined()
+    expect(await t.find({ type: 'Text', text: SPARK })).toBeDefined()
+    await t.unmount()
+  }
 })
 test('la opcion de usuario demo=true arranca en modo demo', { options: { demo: true } }, async ($, on) => {
   common(on)
@@ -834,4 +866,308 @@ test('no toca lo que Claude Code dibuja: la fila del Agent (ToolUse) queda como 
 test('suggestionText says the cost when there is one', async () => {
   expect(suggestionText({ prompt: 'x', costNote: 'usa una revisión opus' } as any)).toBe('x (usa una revisión opus)')
   expect(suggestionText({ prompt: 'x', costNote: '' } as any)).toBe('x')
+})
+
+// ---- Live: detalle por agente (panel 0.4.0) ----
+
+// Un solo `agent.spawn` y un solo `turn.step` por debajo del mod, con lo que cada prueba les deja dicho.
+let spawnNext = { id: 'a1', model: 'haiku' }
+let stepNext: any = null
+function liveCommon(on: any) {
+  const clock = common(on)
+  on('agent.spawn', () => ({ model: spawnNext.model, agentId: spawnNext.id }))
+  on('turn.step', async function* () {
+    return stepNext
+  })
+  return clock
+}
+const modelOf = new Map<string, string>() // el modelo que informa el uso de cada paso es el del agente
+async function spawnAs($: any, id: string, o: { description?: string; type?: string; parent?: string; model?: string } = {}) {
+  spawnNext = { id, model: o.model ?? 'haiku' }
+  modelOf.set(id, spawnNext.model)
+  return $.agent.spawn({
+    tool_use_id: 'tu_' + id, prompt: 'x', description: o.description ?? 'tarea ' + id, subagentType: o.type ?? 'general-purpose',
+    provider: { plugin: 'engine', tier: 'core' }, model: o.model ?? 'haiku', parentModel: 'sonnet', background: false, fork: false, parentAgentId: o.parent,
+  })
+}
+async function stepAs($: any, agentId: string, o: { tool?: string; input?: any; answer?: string; usage?: Partial<Record<string, number>> } = {}) {
+  stepNext = {
+    turnId: 't', index: 0, answer: o.answer ?? '', stopReason: o.tool ? 'tool_use' : 'end_turn',
+    toolUses: o.tool ? [{ id: 'tu', name: o.tool, input: o.input ?? {} }] : [],
+    usage: { input_tokens: 1000, output_tokens: 100, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, model: modelOf.get(agentId) ?? 'haiku', ...o.usage },
+  }
+  const s = $.turn.step({ turnId: 't', index: 0, model: 'haiku', messageCount: 1, agentId })
+  let r = await s.next() // los pedazos pasan sin tocarse; lo que retorna el generador es el resultado del paso
+  while (!r.done) r = await s.next()
+  return r.value
+}
+const working = async (ui: any) => walk(await ui.drawn(), (n) => n.props?.key === 'blk-trabajando')[0]
+const keysOf = (tree: any, re: RegExp) => walk(tree, (n) => re.test(n.props?.key ?? '')).map((n: any) => n.props.key)
+
+test('Live: the roomy block draws, per running agent, task, model, time, tokens, ctx and what it does now', async ($, on) => {
+  const clock = liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1', { description: 'arreglos del panel', model: 'sonnet' })
+  await stepAs($, 'a1', { tool: 'Edit', input: { file_path: '/p/hooks/register.js' }, usage: { input_tokens: 30000, output_tokens: 500, cache_read_input_tokens: 10000, cache_creation_input_tokens: 1000 } })
+  await clock.advance(3000)
+  const ui = await $.ui.mount({ ...TALL })
+  const all = text(await working(ui))
+  for (const s of ['arreglos del panel', 'sonnet', '41k', 'Edit  hooks/register.js', 'hace 3 s', 'tarea', 'modelo', 'tiempo', 'tokens', 'ctx', '0,1 min']) expect(all).toContain(s)
+  expect(text(await ui.find({ key: 'blk-trabajando-head' }))).toContain('1 agente · 42k · 0,1 min')
+  expect(text(await ui.find({ key: 'ag-a1-2' }))).toContain('"dimColor":true') // la linea 2 va tenue
+  expect(await ui.find({ type: 'Raster' })).toBeUndefined()
+  expect(all).not.toContain('general-purpose') // el tipo comun no se repite
+  await ui.unmount()
+})
+
+test('Live: before its first step an agent reads "empezando…", and a step with text and no tool use reads "escribiendo la respuesta"', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1', { description: 'uno' })
+  const ui = await $.ui.mount({ ...TALL })
+  expect(await ui.find({ type: 'Text', text: 'empezando…' })).toBeDefined()
+  await ui.unmount()
+  await stepAs($, 'a1', { answer: 'hola' })
+  const after = await $.ui.mount({ ...TALL }) // el panel se vuelve a dibujar con el reloj (cada 3 s)
+  expect(await after.find({ type: 'Text', text: 'escribiendo la respuesta' })).toBeDefined()
+  expect(await after.find({ type: 'Text', text: 'empezando…' })).toBeUndefined()
+  await after.unmount()
+})
+
+test('Live: a task with a type that is not general-purpose shows the type dimmed after it', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1', { description: 'explorar reglas', type: 'pignolo:explorer' })
+  const ui = await $.ui.mount({ ...TALL })
+  expect(text(await ui.find({ key: 'ag-a1' }))).toContain('pignolo:explorer')
+  await ui.unmount()
+})
+
+test('Live: an agent with no step for more than 60 s shows ◌ and "sin actividad hace …" in the warning color, and not at 60 s', async ($, on) => {
+  const clock = liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1', { description: 'explorar' })
+  await clock.advance(60_000)
+  const ui = await $.ui.mount({ ...TALL })
+  expect(await ui.find({ type: 'Text', text: /sin actividad/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '◌' })).toBeUndefined()
+  await ui.unmount()
+  await clock.advance(1000)
+  const late = await $.ui.mount({ ...TALL })
+  const line = text(await late.find({ type: 'Text', text: /sin actividad hace 1 min 1 s/ }))
+  expect(line).toContain('"color":"warning"')
+  expect(await late.find({ type: 'Text', text: '◌' })).toBeDefined()
+  await late.unmount()
+  // un paso nuevo lo saca del aviso
+  await stepAs($, 'a1', { tool: 'Read', input: { file_path: '/a/b.js' } })
+  const fresh = await $.ui.mount({ ...TALL })
+  expect(await fresh.find({ type: 'Text', text: /sin actividad/ })).toBeUndefined()
+  await fresh.unmount()
+})
+
+test('Live: a context of 150000 tokens or more draws the ctx cell in the warning color and bold', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1', { description: 'pesado' })
+  await spawnAs($, 'a2', { description: 'liviano' })
+  // el contexto es entrada + cache leida + cache escrita del ultimo paso (150k contra 100k); los tokens suman tambien la salida (170k y 120k)
+  await stepAs($, 'a1', { tool: 'Read', input: { file_path: '/a/b.js' }, usage: { input_tokens: 100000, cache_read_input_tokens: 40000, cache_creation_input_tokens: 10000, output_tokens: 20000 } })
+  await stepAs($, 'a2', { tool: 'Read', input: { file_path: '/a/b.js' }, usage: { input_tokens: 100000, output_tokens: 20000 } })
+  const ui = await $.ui.mount({ ...TALL })
+  const heavy = text(await ui.find({ type: 'Text', text: '150k' }))
+  expect(heavy).toContain('"color":"warning"')
+  expect(heavy).toContain('"bold":true')
+  const light = text(await ui.find({ type: 'Text', text: '100k' }))
+  expect(light).not.toContain('"color":"warning"')
+  expect(light).not.toContain('"bold":true')
+  await ui.unmount()
+})
+
+test('Live: agents that need attention come first, then the most recent; a nested agent goes right after its parent with └', async ($, on) => {
+  const clock = liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'old', { description: 'el parado' })
+  await clock.advance(70_000)
+  await spawnAs($, 'p1', { description: 'padre' })
+  await clock.advance(1000)
+  await spawnAs($, 'q1', { description: 'mas nuevo' })
+  await clock.advance(1000)
+  await spawnAs($, 'c1', { description: 'hijo', parent: 'p1' })
+  const ui = await $.ui.mount({ ...TALL })
+  expect(keysOf(await ui.drawn(), /^ag-(old|q1|p1|c1)$/)).toEqual(['ag-old', 'ag-q1', 'ag-p1', 'ag-c1'])
+  expect(text(await ui.find({ key: 'ag-c1' }))).toContain('└')
+  expect(text(await ui.find({ key: 'ag-p1' }))).not.toContain('└')
+  await ui.unmount()
+})
+
+test('Live: with few rows the block turns compact: one line per agent, the stalled one keeps two and everything else goes to "+ N más"', async ($, on) => {
+  const clock = liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 's1', { description: 'el parado' })
+  await clock.advance(70_000)
+  for (const id of ['n1', 'n2', 'n3']) {
+    await spawnAs($, id, { description: 'normal ' + id })
+    await stepAs($, id, { tool: 'Read', input: { file_path: '/a/b.js' } })
+  }
+  const ui = await $.ui.mount({ ...PANE }) // 10 filas: piso de 8 para el bloque
+  expect(await ui.find({ type: 'Text', text: 'tarea' })).toBeUndefined() // sin encabezado de columnas
+  expect(await ui.find({ key: 'ag-s1-2' })).toBeDefined() // el parado, con su segunda linea
+  expect(text(await ui.find({ type: 'Text', text: /sin actividad hace 1 min 10 s/ }))).toContain('warning')
+  expect(await ui.find({ key: 'ag-n3-2' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: '+ 3 más, trabajando sin avisos' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: SPARK })).toBeUndefined() // sin minigrafico
+  await ui.unmount()
+  // con alto de sobra, los cuatro entran holgados
+  const tall = await $.ui.mount({ ...TALL })
+  expect(await tall.find({ type: 'Text', text: /más, trabajando sin avisos/ })).toBeUndefined()
+  expect(await tall.find({ key: 'ag-n3-2' })).toBeDefined()
+  await tall.unmount()
+})
+
+test('Live: a narrow block drops the model, then the tokens, then the "hace n s"', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1', { description: 'uno', model: 'sonnet' })
+  await stepAs($, 'a1', { tool: 'Read', input: { file_path: '/a/b.js' } })
+  const at = async (bodyColumns: number) => {
+    const ui = await $.ui.mount({ ...TALL, props: { ...TALL.props, bodyColumns } })
+    const t = text(await working(ui))
+    await ui.unmount()
+    return { model: t.includes('modelo'), tokens: t.includes('tokens'), ago: t.includes('hace '), task: t.includes('tarea') && t.includes('tiempo') && t.includes('ctx') }
+  }
+  expect(await at(100)).toEqual({ model: true, tokens: true, ago: true, task: true })
+  expect(await at(62)).toEqual({ model: false, tokens: true, ago: true, task: true }) // ancho interior 56
+  expect(await at(56)).toEqual({ model: false, tokens: false, ago: true, task: true }) // 50
+  expect(await at(50)).toEqual({ model: false, tokens: false, ago: false, task: true }) // 44
+})
+
+test('Live: the summary button fills the prompt with the fixed request and never sends it, and it only exists while an agent runs', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  const none = await $.ui.mount({ ...TALL })
+  expect(await none.find({ key: 'summary' })).toBeUndefined()
+  await none.unmount()
+  await spawnAs($, 'a1')
+  const ui = await $.ui.mount({ ...TALL })
+  const btn = await ui.find({ type: 'Button', key: 'summary' })
+  expect(btn.props.hotkey).toBe('s')
+  expect(btn.props.label).toBe('resumen')
+  await ui.press({ key: 'summary' })
+  expect(spy.fill).toEqual(['Resumime en pocas líneas qué está haciendo cada agente ahora y si alguno necesita algo de mí.'])
+  expect(spy.submit).toEqual([])
+  // es la ultima fila del bloque
+  const kids = (await working(ui)).children
+  expect(kids[kids.length - 1].props.key).toBe('summary')
+  await ui.unmount()
+})
+
+test('Live: no answer letter is s (the summary button owns it) and hotkeys stay unique in the pane', async ($, on) => {
+  liveCommon(on)
+  const many = Array.from({ length: 6 }, (_, i) => dec({ id: 'Q-' + (i + 1), question: 'pregunta ' + (i + 1), options: [{ label: 'x' }, { label: 'y' }, { label: 'z' }], recommended: 'x' }))
+  fakeProject(on, proj(state({ decisions: many })))
+  await spawnAs($, 'a1')
+  const ui = await $.ui.mount({ ...TALL })
+  const buttons = walk(await ui.drawn(), (n) => n.type === 'Button' && n.props?.hotkey)
+  const answers = buttons.filter((b: any) => /^ans-/.test(b.props.key))
+  expect(answers.length).toBeGreaterThan(18) // pasa por todas las letras del panel
+  expect(answers.map((b: any) => b.props.hotkey)).not.toContain('s')
+  const keys = buttons.map((b: any) => b.props.hotkey)
+  expect(new Set(keys).size).toBe(keys.length)
+  expect(keys).toContain('s')
+  await ui.unmount()
+})
+
+test('Live: the pane has no numeric shortcut line at the bottom and the tabs show Live', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(STATE_FULL))
+  const ui = await $.ui.mount({ ...PANE })
+  expect(await ui.find({ type: 'Text', text: /Esc\s+cerrar/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /1\s+ahora|2\s+ramas|3\s+costo/ })).toBeUndefined()
+  const t = await ui.find({ type: 'Button', key: 'tab-now' })
+  expect([t.props.label, t.props.hotkey]).toEqual(['Live', '1'])
+  expect(text(await ui.drawn())).not.toContain('Ahora')
+  await ui.unmount()
+})
+
+test('buttons: no label of a plain Button with a hotkey starts with its own letter and two spaces (the engine draws "a: label")', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj({ ...STATE_FULL, cards: [card({ id: 'T1', status: 'done', evidence: 'x' })] }))
+  await spawnAs($, 'a1')
+  let seen = 0
+  const check = async (ui: any) => {
+    for (const b of walk(await ui.drawn(), (n) => n.type === 'Button' && n.props?.plain && n.props?.hotkey)) {
+      seen += 1
+      expect(String(b.props.label).startsWith(b.props.hotkey + '  '), `${b.props.key}: ${b.props.label}`).toBe(false)
+      expect(String(b.props.label).length).toBeGreaterThan(0)
+    }
+  }
+  const ui = await $.ui.mount({ ...TALL })
+  await check(ui)
+  await ui.press({ key: 'toggle-pros' })
+  await check(ui)
+  await ui.press({ key: 'tab-branches' })
+  await check(ui)
+  await ui.unmount()
+  expect(seen).toBeGreaterThan(12)
+  const band = await $.ui.mount({ ...BAND })
+  await check(band)
+  await band.unmount()
+})
+
+test('Live: control and invisible characters in a tool input are drawn as ?, on one line, and nothing is sent', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1')
+  await stepAs($, 'a1', { tool: 'Bash', input: { command: 'echo \u0007hola​\nsegunda linea \ud800 ' + 'x'.repeat(200) } })
+  const ui = await $.ui.mount({ ...TALL })
+  const detail = text(await ui.find({ key: 'ag-a1-2' }))
+  expect(detail).toContain('Bash  echo ?hola?')
+  expect(detail).not.toMatch(/\\u0007|\\u200b|\\n|\\u2028|\\ud800/)
+  expect(detail).toContain('…') // y el comando se corta a 80
+  await ui.unmount()
+  expect(spy.submit).toEqual([])
+  expect(spy.fill).toEqual([])
+})
+
+test('Live: stepping and spawning only draw: the step result passes through untouched and nothing is sent or filled', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, proj(state()))
+  await spawnAs($, 'a1')
+  const r: any = await stepAs($, 'a1', { tool: 'Read', input: { file_path: '/a/b.js' } })
+  expect(r).toEqual(stepNext)
+  await stepAs($, 'no-registrado', { tool: 'Read', input: {} }) // un agente que el mod no vio: no tira
+  await stepAs($, 'a1', { tool: 'Agent', input: { description: 'otro' } })
+  expect(spy.submit).toEqual([])
+  expect(spy.fill).toEqual([])
+  expect(spy.suggest).toEqual([])
+})
+
+const DEMO_BUSY = JSON.stringify(state({
+  plan: { slug: 'demo-plan', stage: 'executing', request: '' },
+  agents: [
+    { id: 'd1', type: 'pignolo:explorer', description: 'explorar reglas MCP', model: 'haiku', minutes: 2, tokens: 14000, ctx: 9000, idleSec: 130, last: { name: 'Grep', target: '"mcp" en plugins/' } },
+    { id: 'd2', type: 'pignolo:judge-a', description: 'revisión de la guardia', model: 'opus', minutes: 6.1, tokens: 120000, ctx: 156000, idleSec: 40, last: { name: 'Bash', target: 'npm test tests/guard.test.js' } },
+    { id: 'd3', type: 'general-purpose', description: 'arreglos del panel', model: 'sonnet', minutes: 4.2, tokens: 88000, ctx: 41000, idleSec: 3, last: { name: 'Edit', target: 'hooks/register.js' } },
+    { id: 'd4', parentId: 'd3', type: 'general-purpose', description: 'buscar usos de spawn', model: 'haiku', minutes: 0.4, tokens: 6000, ctx: 4000, idleSec: 2, last: { name: 'Grep', target: '"spawn" en plugins/' } },
+  ],
+  activity: [1, 5, 3, 9, 4],
+}))
+test('demo busy: four running agents with the detail (one stalled, one nested, one with a high ctx) and idle demo has none running', async ($, on) => {
+  liveCommon(on)
+  fakeProject(on, { '/sample/panel-state.json': DEMO_BUSY })
+  await $.command.run({ command: 'pignolo-panel', args: 'demo busy' })
+  const ui = await $.ui.mount({ ...TALL })
+  expect(keysOf(await ui.drawn(), /^ag-d\d$/)).toEqual(['ag-d1', 'ag-d2', 'ag-d3', 'ag-d4'])
+  expect(text(await ui.find({ key: 'blk-trabajando-head' }))).toContain('4 agentes · 228k · 6,1 min')
+  expect(await ui.find({ type: 'Text', text: 'sin actividad hace 2 min 10 s' })).toBeDefined()
+  expect(text(await ui.find({ type: 'Text', text: '156k' }))).toContain('"bold":true')
+  expect(text(await ui.find({ key: 'ag-d4' }))).toContain('└')
+  expect(text(await ui.find({ key: 'ag-d4-2' }))).toContain('Grep  \\"spawn\\" en plugins/')
+  expect(text(await ui.find({ key: 'ag-d2-2' }))).toContain('hace 40 s')
+  expect(await ui.find({ type: 'Text', text: SPARK })).toBeDefined()
+  await ui.unmount()
+  await $.command.run({ command: 'pignolo-panel', args: 'demo' })
+  const idle = await $.ui.mount({ ...TALL })
+  expect(await idle.find({ type: 'Text', text: '○ nada corriendo' })).toBeDefined()
+  await idle.unmount()
 })

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 — sin publicar
+
+Con el núcleo 0.22.1 (el núcleo no cambia). El panel muestra qué hace cada agente.
+
+- **La pestaña `Ahora` pasa a llamarse `Live`** (misma tecla `1`).
+- **TRABAJANDO muestra un renglón por agente:** la tarea (el tipo, tenue, si no es `general-purpose`), el modelo, el tiempo, los tokens y `ctx` (el tamaño de su contexto en el último paso); debajo, tenue, lo que hace ahora (la última herramienta y a qué apunta) y hace cuánto terminó ese paso. Un agente sin actividad hace más de 60 s sale con `◌` (salvo el que tiene un agente hijo corriendo: espera a su hijo) y "sin actividad hace …", y un contexto de 150k o más se marca, los dos en el color de aviso. Los agentes lanzados por otro agente van debajo de su padre (`└`). Primero los que piden atención, después el más reciente. A la derecha del título: cuántos agentes, los tokens y el tiempo del más largo.
+- **Se adapta al alto y al ancho:** con lugar, tres filas por agente y el minigráfico en una fila; con poco, solo los que piden atención ocupan dos líneas y los demás una, con "+ N más, trabajando sin avisos" (los que piden atención nunca se esconden ahí); con ancho angosto (menos de 60 columnas dentro del bloque) se van primero el modelo, después los tokens y después el "hace n s".
+- **Botón `s: resumen`:** llena el prompt con un pedido de resumen de lo que hace cada agente. Solo llena: no lo envía.
+- **Sin la línea de atajos numéricos al pie del panel** (las pestañas ya muestran su número) y **sin la línea `→ siguiente:` de la banda** (el siguiente paso sigue en el bloque SIGUIENTE y como sugerencia tenue en el prompt).
+- **Pestaña UI:** el título ya no dice `haiku · N consultas · ≈ costo`; cada recomendación es un botón con su título completo y el porqué debajo, sangrado y que baja de renglón en vez de cortarse; los atajos van en columnas alineadas (cuatro por fila desde 72 columnas, dos por fila si no) y `r: reconsultar` alineado con ellos.
+- **Letras duplicadas:** los botones con tecla ya no repiten la letra en la etiqueta (la pantalla decía `a: a  Auditar…`). El asistente de inicio no cambia.
+- `/pignolo-panel demo busy` muestra cuatro agentes con este detalle (uno parado, uno anidado, uno con contexto alto). El mod usa solo lo que ya leía (`turn.step` y `agent.spawn`): cero llamadas ni eventos nuevos, y no escribe ni envía nada más. Lo que muestra de cada herramienta se dibuja y no se guarda.
+
+## 0.3.1 — sin publicar
+
+Con el núcleo 0.22.1. "Activo" lo decide `.pignolo/project.md` (lo que usa el núcleo), no el registro: con `project.md` y sin registro (pignolo se activó a mitad de sesión) o con un registro ilegible, el panel dice "pignolo está activo; el panel se completa en unos segundos" en vez de "pignolo no está activo en este proyecto", y lo vuelve a leer con el reloj de siempre (cada 3 s) hasta que aparece. Sin `project.md` sigue diciendo que no está activo. Cero llamadas nuevas (solo `fs.exists`/`fs.read`); sigue sin `process` ni `http`.
+
 ## 0.3.0 — sin publicar
 
 **Asistente de inicio** (decisión del autor, 2026-10-03): al abrir Claude Code en un proyecto que todavía no usa pignolo (sin `.pignolo/project.md`), el panel se abre solo con un asistente de pocos pasos: cada uno con lo que pignolo detectó y la opción recomendada marcada. Va con el núcleo 0.20.0 (que deja la detección y valida las elecciones).

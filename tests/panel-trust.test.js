@@ -336,11 +336,11 @@ test('trust: plugins/pignolo/hooks/hooks.json has no new event and no modules ke
   assert.ok(starts.every((a) => /session-start/.test(a)), starts.join(' | '));
 });
 
-test('versions: pignolo-panel is 0.3.0 and the core version is higher than on main, and both CHANGELOGs have the entry', () => {
+test('versions: pignolo-panel is 0.4.0 and the core version is higher than on main, and both CHANGELOGs have the entry', () => {
   const root = path.join(__dirname, '..');
   const panel = JSON.parse(read(path.join(PANEL, '.claude-plugin', 'plugin.json'))).version;
   const coreV = JSON.parse(read(path.join(root, 'plugins', 'pignolo', '.claude-plugin', 'plugin.json'))).version;
-  assert.strictEqual(panel, '0.3.0');
+  assert.strictEqual(panel, '0.4.0');
   const num = (v) => v.split('.').map(Number);
   const [a, b, c] = num(coreV);
   assert.ok(a > 0 || b > 18 || (b === 18 && c > 0), `el núcleo (${coreV}) sube sobre el 0.18.0 de main`);

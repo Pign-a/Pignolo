@@ -128,14 +128,14 @@ test('ui tab model: rows have the letters a, b and c and the four fixed shortcut
   assert.strictEqual(new Set([...REC_LETTERS, ...SHORTCUTS.map((s) => s.key)]).size, 7);
 });
 
-test('ui tab model: the title right side says pensando, por reglas, the cost or the cap', async () => {
+test('ui tab model: the title right side says pensando, por reglas or the cap, and nothing (no haiku, no cost) for an AI answer', async () => {
   const { tabModel } = await load('ui-tab.js');
   const base = { project: 'p', input: INPUT, key: 'k', canAsk: true, calls: 1 };
   assert.strictEqual(tabModel({ ...base, result: null, pending: true }).right, 'pensando…');
   assert.strictEqual(tabModel({ ...base, result: null, pending: false }).right, 'por reglas');
   const ai = { key: 'k', source: 'ai', recs: [{ action: 'audit', target: 'ventas', why: 'x', priority: 1, context: '' }], cost: { usd: 0.01, measured: false } };
-  assert.strictEqual(tabModel({ ...base, result: ai, pending: false }).right, 'haiku · 1 consulta · ≈ 0,01 USD');
-  assert.strictEqual(tabModel({ ...base, calls: 3, result: { ...ai, cost: { usd: 0.013, measured: true } }, pending: false }).right, 'haiku · 3 consultas · 0,01 USD');
+  assert.strictEqual(tabModel({ ...base, result: ai, pending: false }).right, ''); // con una respuesta de la IA la esquina queda vacía: ya no dice haiku, consultas ni costo
+  assert.strictEqual(tabModel({ ...base, calls: 3, result: { ...ai, cost: { usd: 0.013, measured: true } }, pending: false }).right, '');
   assert.strictEqual(tabModel({ ...base, result: { key: 'k', source: 'rules', reason: 'cap', recs: [] }, pending: false }).right, 'tope de consultas de la sesión');
   assert.strictEqual(tabModel({ ...base, result: { key: 'k', source: 'rules', reason: 'error', recs: [] }, pending: false }).right, 'por reglas');
   // un resultado de otras entradas no vale

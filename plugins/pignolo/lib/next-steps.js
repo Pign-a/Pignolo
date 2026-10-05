@@ -31,6 +31,9 @@ function costOf(branch, base) {
   return { ok: true, note: base ? `${base} · ${usd}` : usd };
 }
 
+// La rama principal del proyecto tal como la registró el panel; sin dato no hay nombre (y no se sugiere unir).
+const principal = (f) => (f.main && f.main.name) || null;
+
 const RULES = [
   {
     id: 'decision',
@@ -44,8 +47,8 @@ const RULES = [
   },
   {
     id: 'merge',
-    find: (f) => f.branches.filter((b) => !b.merged && isApprove(b) && isGreen(b) && !b.waiting).map((b) => ({
-      rule: 'merge', key: `m:${b.name}`, text: `uní ${b.name} a main`, prompt: `uní ${b.name} a main`, why: 'Revisión APPROVE y suite verde registradas.', branch: b,
+    find: (f) => (principal(f) ? f.branches : []).filter((b) => !b.merged && isApprove(b) && isGreen(b) && !b.waiting).map((b) => ({
+      rule: 'merge', key: `m:${b.name}`, text: `uní ${b.name} a ${principal(f)}`, prompt: `uní ${b.name} a ${principal(f)}`, why: 'Revisión APPROVE y suite verde registradas.', branch: b,
     })),
   },
   {
@@ -57,9 +60,14 @@ const RULES = [
   },
   {
     id: 'push',
-    find: (f) => (f.main && f.main.ahead > 0
-      ? [{ rule: 'push', key: 'p:main', text: 'hacé push de main', prompt: 'hacé push de main', why: 'main está adelantado a origin/main y no hay nada corriendo.' }]
-      : []),
+    // Solo con la rama principal real (nunca "main" fijo), parado en ella, sin cambios sin commitear y con remoto. Un dato que falta
+    // (registro viejo) no cuenta como "mal": `dirty`, `onMain` y `remote` solo frenan cuando son explícitamente true/false.
+    find: (f) => {
+      const m = f.main;
+      if (!m || !(m.ahead > 0) || !m.name || m.dirty === true || m.remote === false || m.onMain === false) return [];
+      const text = `hacé push de ${m.name}`;
+      return [{ rule: 'push', key: `p:${m.name}`, text, prompt: text, why: `${m.name} está adelantado a origin/${m.name} y no hay nada corriendo.` }];
+    },
   },
   {
     id: 'card',

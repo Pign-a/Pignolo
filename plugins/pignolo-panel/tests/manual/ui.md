@@ -3,8 +3,8 @@
 Las hace el autor cuando cierre la v1 (con `claude` real, en su terminal). Marcar cada una con fecha y resultado.
 
 - [ ] **Con pignolo-ui instalado** la pestaña `4 UI` aparece; **sin él** (o con `pignolo-ui` deshabilitado) no aparece y no hay ninguna consulta.
-- [ ] **Sin `PRODUCT.md`** (o con `Audience` / `First look` en `undecided`) la única recomendación es `d  Definir producto y diseño` y no hay consulta (sin "haiku" ni costo a la derecha del título).
-- [ ] **Con datos** (una pantalla aprobada o una auditoría), las recomendaciones llegan y la esquina del título dice `haiku · 1 consulta · ≈ 0,01 USD`. Comparar el gasto real de `/cost` antes y después: ¿≈ 0,01 USD? (la sonda U3 mostró que `session.usage().cost` no cambia con esta consulta, así que la cifra es una estimación rotulada).
+- [ ] **Sin `PRODUCT.md`** (o con `Audience` / `First look` en `undecided`) la única recomendación es `a: Definir producto y diseño` y no hay consulta (sin "reglas" ni costo a la derecha del título).
+- [ ] **Con datos** (una pantalla aprobada o una auditoría), las recomendaciones llegan y la esquina del título queda vacía (ya no dice `haiku · N consultas · costo`). Comparar el gasto real de `/cost` antes y después: ¿≈ 0,01 USD por consulta? (la sonda U3 mostró que `session.usage().cost` no cambia con esta consulta).
 - [ ] **Sin red** (o con el modelo bloqueado): abrir la pestaña muestra las recomendaciones por reglas y la marca "por reglas", sin texto de error.
 - [ ] **Pulsar `a`** envía el pedido (por ejemplo `Mejorá la pantalla login. Contexto: …`) y la skill de pignolo-ui correspondiente se activa; pulsarlo dos veces seguidas con Claude trabajando envía un solo mensaje.
 - [ ] **Pulsar `n`** envía `Quiero armar una pantalla nueva.` y la skill `new` pregunta qué pantalla; `m` y `u` lo mismo con mejorar y auditar; `d` envía `Definí el producto y el diseño.`.

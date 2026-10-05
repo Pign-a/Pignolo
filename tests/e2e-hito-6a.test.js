@@ -68,3 +68,13 @@ test('resume with state: the same hot level (branch line included) from the work
   assert.equal(hot(wt), fromMain);
   assert.equal(hot(sub), fromMain);
 });
+
+test('session-start writes the panel registry when the project has project.md and no registry yet', () => {
+  const { repo } = project();
+  const reg = path.join(repo, '.pignolo', 'panel-state.json');
+  fs.rmSync(reg, { force: true });
+  const home = makeTempDir('pignolo-home-');
+  const r = runLauncher('session-start', { hook_event_name: 'SessionStart', source: 'startup', cwd: repo, session_id: 's' }, { PIGNOLO_HOME: home });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync(reg));
+});

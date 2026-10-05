@@ -2,13 +2,22 @@
 
 ## 0.23.0 — sin publicar
 
-Salir del flujo de pignolo se pregunta por pedido, `.pignolo-ui/` va por pignolo-ui y "armá un plan" llega al carril `plan`. **El número se renumera al unir.**
+Salir del flujo de pignolo se pregunta por pedido, `.pignolo-ui/` va por pignolo-ui y "armá un plan" llega al carril `plan`.
 
 - **Problema (uso real del autor, 2026-10-03, anónimo):** en un proyecto con pignolo activo, un cambio grande de interfaz sobre un prototipo se hizo con agentes genéricos en paralelo, sin tarjeta, sin tests primero y sin revisión; el plan quedó en el chat. Un "hacerlo directo" anterior, para un arreglo de una línea, se tomó como permiso para todo el trabajo.
 - **`entry`, línea `LEAVE-FLOW`:** un pedido no trivial que quedaría fuera de las skills de pignolo pregunta siempre, con opciones y diciendo en llano qué se pierde. El sí vale solo para ese pedido: no pasa a uno posterior ni a uno más grande, y "directamente" dentro del pedido no cuenta. Lo trivial, lo de solo lectura y lo que `entry` ya entrega a una skill no reciben la pregunta. Si un carril no puede hacer el trabajo, no se improvisa.
 - **`entry`, `.pignolo-ui/`:** lo que vive en esa carpeta (git la ignora a propósito) no lo ve ningún carril basado en git; el pedido va a `pignolo-ui:improve` o `pignolo-ui:new` sin pasar por `risk.js`. Sin pignolo-ui instalado, es salir del flujo con la razón real y "Instalar pignolo-ui" primero. `NO-RUNS-COMMIT` sigue igual.
 - **`entry`, planes:** "armá un plan", "hacé un plan", "make a plan" y variantes se entregan a `pignolo:plan`; el plan no se escribe en el chat. Ejecutar un plan ya escrito es otro pedido. La `description` de `plan` no cambia.
-- Tests: `tests/entry-leave-flow.test.js` (LF-01 a LF-15), `tests/eval-activation-cases.test.js` (conjunto `plan` de 14 frases y `--set plan` del runner; no se corrió la medición).
+- Tests: `tests/entry-leave-flow.test.js` (LF-01 a LF-15), `tests/eval-activation-cases.test.js` (conjunto `plan` de 14 frases y `--set plan` del runner).
+- **Medición de activación de `plan` (2026-10-05, 3,51 USD):** con el texto nuevo un pedido de plan llega a `pignolo:plan` en 2, 1 y 2 de 10 frases por ronda (antes 0), sin falsas activaciones; no alcanza el umbral de 9 que fijó la ficha. Se une igual por decisión del autor y queda pendiente otra medición sobre un proyecto con `.pignolo/project.md` (`tests/evals/RESULTS-activacion.md`).
+
+## 0.22.1 — sin publicar
+
+Dos errores del panel vistos en uso real (2026-10-03). Va con `pignolo-panel` 0.3.1.
+
+- **El registro del panel ya no espera al próximo arranque.** Tras activar pignolo a mitad de sesión el panel decía "no está activo" hasta correr `panel.js refresh` a mano. Ahora `init.js apply` (al terminar) y `init.js verify` (si falta) escriben el registro cuando existe `.pignolo/project.md`, y `SessionStart` lo genera si hay `project.md` y no hay registro. Protegido: un fallo del registro nunca cambia el resultado ni el código de salida de `init`.
+- **El siguiente paso nombra la rama principal real.** Salía "hacé push de main" en un repo cuya rama era `master` y con cambios sin commitear. La rama principal es la de `origin/HEAD` (si existe como rama local), si no `main` o `master`; el registro guarda `main.name`, `main.onMain`, `main.dirty` y `main.remote` (opcionales; los registros viejos siguen leyéndose). La regla del push exige nombre conocido, parado en esa rama, sin cambios sin commitear (lo que pignolo escribe solo en `.pignolo/.gitignore` no cuenta) y con remoto; "uní X a <rama>" también usa el nombre real. Un registro viejo sin nombre no sugiere push hasta el próximo `refresh`.
+- Tests: `tests/next-steps.test.js` (master adelantado, nombre faltante, cambios sin commitear, sin remoto, fuera de la principal), `tests/panel-state.test.js` (repo real con `master` y remoto), `tests/init-cli.test.js` (apply y verify dejan el registro), `tests/e2e-hito-6a.test.js` (SessionStart sin registro).
 
 ## 0.22.0 — sin publicar
 
