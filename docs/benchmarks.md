@@ -180,6 +180,19 @@ Mediana 20 y rango 20 a 20 contra 0 a 0: la regla de decisión se cumple y se ad
 
 **Comparabilidad:** E3 para la diferencia entre brazos (una sola variable, 3 repeticiones, criterio fijado antes). No dice nada de opus, de un proyecto con contexto propio ni de frases ajenas: las escribió quien escribió las descriptions. Evidencia: [`RESULTS-activacion.md`](../tests/evals/RESULTS-activacion.md).
 
+## 3d. Activación de `plan` con "armá un plan" (2026-10-05)
+
+14 frases (10 que deben llegar a `pignolo:plan`, 4 con la palabra "plan" que no), sonnet, `claude -p` con solo la herramienta Skill y 3 turnos, carpeta de proyecto vacía, 3 repeticiones por frase y por brazo. Control: `main` antes del cambio; tratamiento: el texto nuevo de `entry` (rama `core/salir-del-flujo`).
+
+| Brazo | Positivas por ronda (de 10) | Falsas activaciones por ronda (de 4) | USD |
+|---|---|---|---|
+| Control | 0 / 0 / 0 | 0 / 0 / 0 | 1,71 |
+| Tratamiento | **2 / 1 / 2** | 0 / 0 / 0 | 1,80 (con la sonda) |
+
+Mediana 2 de 10 contra un umbral de 9: la regla de decisión **no** se cumple. El texto mejora (los rangos no se pisan con el control) pero en 18 de 30 corridas el modelo no invoca ninguna skill y pregunta "¿un plan de qué?". Gasto total: 3,51 USD.
+
+**Comparabilidad:** E3 para la diferencia entre brazos. La carpeta vacía, sin `.pignolo/`, no parece un proyecto con pignolo activo, así que la cifra absoluta no se generaliza al uso real. Evidencia: [`RESULTS-activacion.md`](../tests/evals/RESULTS-activacion.md).
+
 ## 4. Guardia de comandos destructivos
 
 | Medida | Resultado |

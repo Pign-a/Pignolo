@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.0 — sin publicar
+
+La elección "Hacerlo directo" de `reference/activation.md` vale solo para ese pedido: `pignolo:entry` no la extiende a un pedido posterior ni más grande y vuelve a preguntar. Solo cambia texto. **El número se renumera al unir.**
+
 ## 0.11.0 — sin publicar
 
 **Privacidad:** `leak-values.json` y `leak-origins.json` (usuario del SO, carpeta personal, nombre y email de git) ya no se guardan bajo el proyecto: viven en `<PIGNOLO_HOME>/ui-leaks/<repoId>/<corrida>/`, fuera de cualquier repo (un `git add -f` de `.pignolo-ui/runs/` los había metido al historial).
