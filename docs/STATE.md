@@ -2,7 +2,17 @@
 
 _Última actualización: 2026-10-05._ Leer esto primero al retomar. Es corto a propósito: el estado vigente y punteros. Las decisiones y su detalle viven en los planes, auditorías y RESULTS (tabla de abajo). El estado anterior, completo, está en `docs/history/2026-10-01-estado-hasta-hoy.md`.
 
-## Estado al 2026-10-05 (manda sobre todo lo de abajo)
+## Estado al 2026-10-05, segundo (manda sobre todo lo de abajo)
+
+- **En `main`:** núcleo **0.24.1**, pignolo-ui **0.12.0**, `pignolo-panel` **0.4.0**. Unido hoy, cada rama con revisión opus, arreglos, re-revisión y su suite completa (el único fallo es el test de la clave `brief`, decisión abierta):
+  - **Núcleo 0.24.0** (`core/preguntas-y-tope-auditoria`, plan `docs/plans/2026-10-05-preguntas-interactivas-y-tope-de-auditoria.md`): preguntas con `AskUserQuestion` en las siete skills que preguntan; presupuesto de `plan` 2/4/6; auditoría del plan con tope (una completa en opus, una pasada de arreglos por `pignolo:fixer`, una re-auditoría acotada en sonnet; si quedan hallazgos que frenan, el autor elige entre re-auditar lo cambiado, auditar entero o dejar el plan); los menores no frenan; resumen corto y fijo. Origen: un chat real con cinco pasadas de auditoría sobre un plan de 48 tareas.
+  - **Núcleo 0.24.1** (`fix/registro-de-tareas-y-project-ignorado`): `init` detecta y arregla un `project.md` que git ignora; `run.js task` acepta ids con mayúsculas (`T01`) y en un plan rechaza un id que no es del plan; los títulos de las tarjetas van en `plan.js tasks set`; el panel reconoce un id suelto parecido. Origen: el mismo uso real.
+- **No se logró:** que el `plan-auditor` escriba su informe a un archivo (la guardia solo le deja escribir en su carpeta de experimentos); el informe sigue pasando por el hilo principal.
+- **Sin probar en una sesión real (para el autor):** las preguntas interactivas de `plan` (`tests/manual/preguntas-interactivas.md`), el `pignolo:fixer` arreglando un plan (su carta habla de código) y `init` sobre un proyecto con `.pignolo/` ignorada.
+- **Sigue, plan del núcleo 0.25.0 (sin escribir; decisiones del autor del 2026-10-05):** (1) detallar y auditar solo el lote que viene, los demás como lista de objetivos, con una medición contra el plan entero que necesita su OK del gasto; (2) corte limpio entre lotes (`/clear` o sesión nueva y retomar del estado; verificar antes que el arranque reinyecta el punto de retomada); (3) **agente de pruebas de base de datos** (el autor eligió agente y no compuerta): escribe las pruebas, aplica la migración en la base local, demuestra el rojo contra el esquema anterior y devuelve una línea; necesita una clave con el comando en `project.md`; queda preguntarle si los resets de la base local se aprueban por tramo o cada vez. Va con auditoría previa. Las skills `plan` (13.979 de 14.000) e `init` (12.298 de 12.300) están al tope de tamaño: mover texto a plantillas antes de agregar.
+- **Pendiente de antes:** repetir la medición de activación de `plan` sobre un proyecto con `.pignolo/project.md` (T6, con OK del gasto); el protocolo con repeticiones de "cómo ejecutar un plan" (único, relevo, un agente por tarea), sin presupuestar; la auditoría de UI confiable (rama `plan/ui-auditoria-confiable`, plan sin escribir).
+
+## Estado al 2026-10-05, primero
 
 - **En `main`:** núcleo **0.23.0**, pignolo-ui **0.12.0**, `pignolo-panel` **0.4.0**. Unido hoy, cada rama con su suite completa:
   - **Arreglo del panel** (`fix/panel-activo-y-rama`, núcleo 0.22.1, panel 0.3.1): activo por `.pignolo/project.md` y push con la rama principal real.
