@@ -133,6 +133,14 @@ exports.run = (input, ctx = {}) => {
   // la detección en .git/pignolo/ para que el panel lo lea. Plazo propio de 3 s; al vencer o fallar, callado y sin archivo (se borra uno
   // viejo para que no engañe). Nunca cambia la salida del hook ni bloquea el arranque.
   if (!st.hooksOff && (input.source === 'startup' || input.source === 'resume')) wizardDetect({ cwd, ctx });
+  // project.md existe pero git lo ignora: una línea (con el arreglo). Callado ante cualquier fallo; nunca cambia el exit.
+  // Solo en un arranque de verdad (no en compact, clear ni resume) y nunca con pignolo apagado.
+  try {
+    if (!st.hooksOff && ['startup', 'fork', 'status'].includes(input.source)) {
+      const ignoredLine = require('../../lib/project-ignored').noticeLine({ main: mainRoot(cwd) });
+      if (ignoredLine) lines.push(ignoredLine);
+    }
+  } catch (_) { /* es un aviso, no un requisito */ }
   // Próxima acción derivada del estado (R-10 del hito 5): solo si hay algo en curso. El sabotaje
   // interrumpido ya lo informó el bloque de arriba.
   let nextText = '';

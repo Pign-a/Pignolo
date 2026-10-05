@@ -20,7 +20,7 @@ const PROJECT_MD = '.pignolo/project.md';
 const PLUGIN_ROOT = require('node:path').join(__dirname, '..', '..');
 const MALFORMED = '_malformed';
 // R-3: la tarea del informe se resuelve por la primera línea `Task: <id>` (la exige la carta del escritor).
-const TASK_LINE = /^Task:\s*([a-z0-9][a-z0-9-]{0,63})\s*$/;
+const TASK_LINE = /^Task:\s*([A-Za-z0-9][A-Za-z0-9-]{0,63})\s*$/;
 const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 
 // Última línea no vacía, sin `*` ni `` ` `` y sin puntuación final.
