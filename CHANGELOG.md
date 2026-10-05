@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.24.0 — sin publicar
+
+Preguntas interactivas en todas las skills del núcleo y tope a la auditoría del plan (uso real del autor, 2026-10-05).
+
+- **Problema:** al armar un plan, pignolo hacía hasta 6 preguntas largas en texto dentro del chat (había que buscarlas y contestarlas a mano), y la auditoría del plan se repetía entera, en opus, cada vez que encontraba algo.
+- **Preguntas con `AskUserQuestion`** en `plan`, `daily`, `review`, `trivial`, `present`, `close-session` y `entry`: hasta 4 por llamada, las independientes juntas; la categoría va en el `header` y en el registro; la recomendada primero con "(Recomendado)"; cada opción dice en una línea qué pasa, el costo y si se deshace. El detalle técnico solo si el humano lo pide. Sin la herramienta (`claude -p`, subagentes) queda la plantilla de texto corta. "Una pregunta por mensaje" deja de ser regla.
+- **`plan`:** el presupuesto de preguntas baja de 3/6/10 a 2/4/6; el lote de supuestos de bajo riesgo es una sola pregunta ("Van así" / "Cambio alguno").
+- **Gravedad en la auditoría:** el `plan-auditor` marca cada hallazgo `CRITICAL`, `IMPORTANT` o `MINOR`; los menores no frenan y se anotan al final del plan. Un hallazgo sin `severity` o con otro valor cuenta como importante; las sondas fijas y los `experiment-false` también.
+- **Tope de vueltas:** una auditoría completa, una pasada de arreglos y una re-auditoría acotada (el diff del plan y los hallazgos de la vuelta 1, en sonnet). Con hallazgos que frenan en la vuelta 2, el veredicto es `ESCALATE` con `reason: reaudit-findings` y decide el humano; un tercer `begin-review` se niega hasta `plan-audit.js end`. La compuerta no cambia: `advance --to audited` sigue pidiendo `APPROVE` contra el sha256 del plan vigente.
+- Tests: `tests/plan-audit.test.js` (gravedad), `tests/plan-audit-cli.test.js` (vueltas), `tests/templates.test.js` y `tests/plan-brainstorm-rules.test.js` (plantilla, siete skills, presupuesto 2/4/6); prueba manual en `tests/manual/preguntas-interactivas.md`.
+
 ## 0.23.0 — sin publicar
 
 Salir del flujo de pignolo se pregunta por pedido, `.pignolo-ui/` va por pignolo-ui y "armá un plan" llega al carril `plan`.
