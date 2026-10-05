@@ -1,6 +1,12 @@
 <!--
 pignolo question template (spec §4.4 and §4.6). Fill it in the human's language: every
-heading and sentence below is translated, the structure is kept. One question per message.
+heading, sentence, label and description is translated, the structure is kept.
+
+How to ask: with the `AskUserQuestion` tool, up to 4 questions per call. Independent questions go in the same call; one that depends on another's answer goes in the next call. Before the call, one line of context; the technical detail only if the human asks for it.
+- `header`: the category, by its name in the human's language, 12 characters at most (the English name goes in the record: `plan.js decision add`, `panel.js ask`).
+- `question`: one line. `options`: 2 to 4. The recommended option goes first, with "(Recomendado)" (in the human's language) at the end of its `label`; the others keep the order they were found in.
+- `description` of each option, one line: what happens, its cost and whether it can be undone. Options are complete, never summarized.
+- Without `AskUserQuestion` (`claude -p`, a subagent): use the short text form below.
 
 Category: exactly one of the closed list, by its English name, followed by its name in the
 human's language:
@@ -8,7 +14,7 @@ human's language:
   scope-card, test-authorization, needs-review-batch, judge-conflict, live-check-input, quota
 A question without a category is a failure (spec §0 c).
 
-Options: complete, never summarized. The recommended option goes first and is marked; the others keep
+Text form (fallback): the recommended option goes first and is marked; the others keep
 the order they were found in. Each one says what happens, its cost and whether it can be undone.
 -->
 **<"In plain words" heading>**

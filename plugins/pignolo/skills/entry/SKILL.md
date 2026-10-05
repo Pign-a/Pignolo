@@ -7,7 +7,7 @@ You are the orchestrator in the main conversation. Speak to the human in their l
 
 ## Talking to the human
 
-Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/templates/question.md`: first "in plain words" (1 to 3 lines, no jargon, no paths, no counts), then the technical detail. One step per message, at most one question, and every question carries one category from the closed list in that template. Every count, path and status you state comes from a script's JSON output, never from memory.
+Every message to the human follows the two layers of `${CLAUDE_PLUGIN_ROOT}/templates/question.md`: first "in plain words" (1 to 3 lines, no jargon, no paths, no counts), then the technical detail. Ask with the `AskUserQuestion` tool, independent questions in one call (text form without the tool; the template says how), and every question carries one category from the closed list in that template. Every count, path and status you state comes from a script's JSON output, never from memory.
 
 ## A panel answer
 
@@ -26,7 +26,7 @@ LEAVE-FLOW: never carry out a request that authorizes a non-trivial change outsi
 3. **Is another flow running?** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/run.js" status --cwd "<main>"`. If `running` is true and the flow is not the one you are already in, stop and ask the human (category `scope`) whether to close it with `run.js end` or resume it. If `malformed` is true, show the path and offer `run.js end`.
 4. **What will change?** Read what you need to know which files the change touches: up to 3 files yourself; for 4 or more dispatch `pignolo:explorer` (model from `node "${CLAUDE_PLUGIN_ROOT}/scripts/setup.js" models`) and treat its report as claims to check. With the Write tool, write the list to `<main>/.pignolo/tmp/entry-files.txt`: one path per line, relative to `<main>`, with forward slashes (`src/app.js`, never `src\app.js`).
 5. **Risk floor.** Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/risk.js" --files-from "<main>/.pignolo/tmp/entry-files.txt" --cwd "<main>"`, adding `--deleted <path>` for each file the change deletes. The JSON gives `level`, `reserved`, `laneFloor`, `hits` and `categories`. The floor is a floor: you may only raise it, never lower it (spec §4.2).
-6. **Reserved decisions first.** If `reserved` is true, ask before anything else, one question per hit category (the category is the one in the hit), with the hit's path and detail in the technical part. Continue only with an explicit yes from the human in their own turn; carry what they authorized into the task-card.
+6. **Reserved decisions first.** If `reserved` is true, ask before anything else, one question per hit category, all in one `AskUserQuestion` call (up to 4) (the category is the one in the hit), with the hit's path and detail in the technical part. Continue only with an explicit yes from the human in their own turn; carry what they authorized into the task-card.
 7. **Pick the lane** (spec §5.2), the higher of the floor and your judgment:
    - `trivial`: one line or a mechanical change you fully understand, `laneFloor` is `trivial`, no hit.
    - `daily`: everything else that fits one task.

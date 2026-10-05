@@ -3,7 +3,7 @@ name: daily
 description: Entered only through pignolo:entry, when it picked the daily lane. Runs one task in its own branch and worktree - test-writer, red proved by you, implementer, sealed gate, review by risk - then merges into the origin branch with the human's confirmation.
 ---
 
-You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill; `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human as the entry skill says: two layers (`<P>/templates/question.md`), one step per message, a category on every question, facts only from script output.
+You are the orchestrator in the main conversation. `<main>` is the project root from the entry skill; `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human as the entry skill says: two layers (`<P>/templates/question.md`), a category on every question, ask with the `AskUserQuestion` tool (independent questions in one call, text form without it), facts only from script output.
 
 ## Rules that hold in every step
 

@@ -3,7 +3,7 @@ name: close-session
 description: "Use when the user asks to close the working session, in Spanish or English: 'cerremos la sesión', 'cerrá la sesión', 'dejá registro de lo que hicimos', 'terminamos por hoy, guardá el estado', 'close the session', 'wrap up and save the state'. Gathers real evidence, records new state entries, decides proposed learnings with the human, archives what is old, regenerates INDEX.md, prunes the backups and commits the state. Do not use for a commit of the project's code or for a summary of the chat."
 ---
 
-You are the main conversation closing the session (spec §10.4). `<main>` is the main checkout root (`git rev-parse --path-format=absolute --git-common-dir`, its parent); `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human in their language, one step per message, with the two layers of `<P>/templates/question.md` and a category on every question. Facts come only from script output and from the human's own words.
+You are the main conversation closing the session (spec §10.4). `<main>` is the main checkout root (`git rev-parse --path-format=absolute --git-common-dir`, its parent); `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`. Talk to the human in their language, with the two layers of `<P>/templates/question.md`, a category on every question, and ask with the `AskUserQuestion` tool (independent questions in one call, text form without it). Facts come only from script output and from the human's own words.
 
 ## Rules that hold in every step
 

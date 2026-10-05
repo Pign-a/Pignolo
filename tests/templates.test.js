@@ -17,6 +17,15 @@ test('question.md: dos capas, la lista cerrada de categorías completa, recomend
   assert.match(t, /Recommendation/);
 });
 
+test('question.md: AskUserQuestion call, "(Recomendado)" and the text fallback; the 14 categories stay', () => {
+  const t = tpl('question.md');
+  assert.match(t, /AskUserQuestion/);
+  assert.match(t, /\(Recomendado\)/);
+  assert.match(t, /Without `AskUserQuestion`[^\n]*text form/);
+  assert.doesNotMatch(t, /One question per message/i);
+  for (const c of CATEGORIES) assert.ok(t.includes(c), c);
+});
+
 test('task-card.md: worktree, archivos, gate con --task, cierre con las tres palabras', () => {
   const t = tpl('task-card.md');
   for (const re of [/Worktree:/, /Files you may touch/, /gate\.js" --level on-done --task/, /DONE, BLOCKED or NEEDS_CONTEXT/, /forward slashes/]) {

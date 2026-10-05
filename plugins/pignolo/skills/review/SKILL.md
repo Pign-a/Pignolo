@@ -3,7 +3,7 @@ name: review
 description: Use when pignolo's daily skill reaches its review step, or when the human asks pignolo to review a commit. Reviews a frozen SHA with the depth its risk level sets - lenses, refuters, repro tests, at most two fixer rounds - and persists the ledger even when it is empty.
 ---
 
-You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root; `<wt>` is the worktree under review (the task worktree from daily, or `<main>` for a review the human asked for); `<base>` is the task base from daily, or the commit the human names (by default the parent of the reviewed commit); `<level>` is the level from daily, or the one step 1 computes; `<task>` is the daily task id, or `review-<first 7 of the SHA>`; `<L>` is `<main>/.pignolo/tmp/review-<first 7 of the SHA>/ledger.json`. Talk to the human as the entry skill says: two layers, one step per message, a category on every question, facts only from script output.
+You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root; `<wt>` is the worktree under review (the task worktree from daily, or `<main>` for a review the human asked for); `<base>` is the task base from daily, or the commit the human names (by default the parent of the reviewed commit); `<level>` is the level from daily, or the one step 1 computes; `<task>` is the daily task id, or `review-<first 7 of the SHA>`; `<L>` is `<main>/.pignolo/tmp/review-<first 7 of the SHA>/ledger.json`. Talk to the human as the entry skill says: two layers, a category on every question, ask with the `AskUserQuestion` tool (independent questions in one call, text form without it), facts only from script output.
 
 ## Rules
 

@@ -3,7 +3,7 @@ name: present
 description: Use when pignolo has to put something in front of the human to decide (scope-card, a question with options, a needs-review batch, a closing summary). Decides between text and a private artifact, builds it with the same options as the text, and filters it before publishing.
 ---
 
-You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root. Talk to the human as the entry skill says: two layers, one step per message, a category on every question, facts only from script output. This skill is invoked by the other pignolo skills and when the human asks to see something presented; the model may also invoke it.
+You are the orchestrator in the main conversation. `<P>` stands for `${CLAUDE_PLUGIN_ROOT}`; `<main>` is the project root. Talk to the human as the entry skill says: two layers, a category on every question, ask with the `AskUserQuestion` tool (independent questions in one call, text form without it), facts only from script output. This skill is invoked by the other pignolo skills and when the human asks to see something presented; the model may also invoke it.
 
 ## Steps
 
