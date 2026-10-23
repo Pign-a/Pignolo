@@ -118,3 +118,43 @@ test('identity.md: la fase de identidad guarda paleta, tipografía, radios y esp
   assert.match(t, /frontmatter|front matter/i);
   assert.match(t, /ui-audit/);
 });
+
+// ---- camino degradado (revisión final F2) ----
+function numberedStep(text, n) {
+  const m = text.match(new RegExp(String.raw`^${n}\. \*\*[\s\S]*?(?=^\d+\. \*\*|^## |(?![\s\S]))`, 'm'));
+  assert.ok(m, `no se encontró el paso ${n}`);
+  return m[0];
+}
+
+test('ui-audit paso 2: salida 1 de design-md.mjs validate audita con las normas base; salida 2 es no verificado', () => {
+  const step = numberedStep(skill().body, 2);
+  assert.match(step, /exits 1/);
+  assert.match(step, /DESIGN-FRONTMATTER/);
+  assert.match(step, /base norms/);
+  assert.match(step, /exit 2[^.]*no verificado/);
+});
+
+test('ui-audit paso 4: el auditor se lanza con model y effort medium', () => {
+  const step = numberedStep(skill().body, 4);
+  assert.match(step, /model: "opus"/);
+  assert.match(step, /effort: "medium"/);
+});
+
+test('ui-audit paso 5: cada texto degradado va a facts.json.degraded', () => {
+  const step = numberedStep(skill().body, 5);
+  assert.match(step, /`degraded`: every degraded string/);
+  assert.match(step, /sin design\.md: normas base/);
+  assert.match(step, /sin navegador/);
+  assert.match(step, /sin degradaciones/);
+});
+
+test('prepare-run.md: config get va antes de init, y config set lleva el prefijo del script', () => {
+  const t = read(SKILL_DIR, 'references', 'prepare-run.md');
+  const one = numberedStep(t, 1);
+  const two = numberedStep(t, 2);
+  assert.match(one, /config get/);
+  assert.match(two, /audit\.mjs" init /);
+  assert.ok(!/ init /.test(one.replace(/before `init`/, '')), 'init en el paso 1');
+  assert.match(one, /node "<root>\/ui-audit\/scripts\/audit\.mjs" config set/);
+  assert.ok(!/(^|[^"] )config set/.test(one.replace(/audit\.mjs" config set/g, '')), 'config set sin prefijo');
+});

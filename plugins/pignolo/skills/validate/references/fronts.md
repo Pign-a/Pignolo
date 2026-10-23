@@ -9,7 +9,7 @@ Enters when forms, public endpoints, authentication, secrets, personal data, or 
 Enters when schema, migrations, SQL or ORM models are present and changed. Evidence files: `schema.prisma`, a `migrations` folder, `.sql`, Drizzle/Alembic/Django models. Looks at: reversibility, indexes, queries, performance, per-tenant security. Not enough: a schema that exists but is untouched by the diff.
 
 ## code
-Enters when the diff is above the small limit, or a dependency manifest (`package.json`, `requirements.txt`) changed. Looks at: unused functions, dead code, duplicates, unused dependencies. Not enough: a 30-line change to one file with no manifest change.
+Enters when the diff has more than 5 files or more than 200 changed lines, counted on the diff alone (evidence of forms or junk does not enlarge it), or a dependency manifest (`package.json`, `requirements.txt`) changed. Looks at: unused functions, dead code, duplicates, unused dependencies. Not enough: a 30-line change to one file with no manifest change.
 
 ## tests
 Enters when a test runner exists and behavior-bearing source changed. Looks at: missing tests for changed behavior, tautological tests. Not enough: a repo with no runner, or a diff that only touches docs and config.
@@ -26,4 +26,4 @@ security, database, code, tests, hygiene, docs: keep in that order and drop from
 ## Worked examples
 - Static landing with a contact form plus a stray screenshot: `Frentes: security, hygiene`.
 - Small CLI script, nothing else: `Frentes:` (reviewed in the main thread).
-- App with ORM schema and migrations, authentication, a test runner, a large change and stray traces: `Frentes: security, database, code, tests, hygiene` (docs dropped by the cap of 5).
+- App with ORM schema and migrations, authentication, a test runner, a large change and stray traces: `Frentes: security, database, code, tests, hygiene` (docs has no evidence: nothing the documentation mentions was removed or renamed).

@@ -11,7 +11,7 @@ _Esta ficha se escribió y se commiteó antes de cualquier corrida, como pide `d
 **Hipótesis.**
 - H1 (feature mediana): Pignolo 2 gasta como máximo 1,5 veces los tokens ponderados de superpowers y la calidad, juzgada a ciegas, es igual o mejor.
 - H2 (tarea chica): en un bug y en un cambio de una frase, Pignolo 2 no tarda más ni gasta más que superpowers. Es la anti-meta principal: si falla, se recorta antes de publicar.
-- H3 (detección de frentes): diciendo "validá" sin más contexto, `validate` elige exactamente los frentes escritos de antemano en cada repo de juguete y no lanza más de 5 agentes.
+- H3 (detección de frentes): diciendo "validá" sin más contexto, `validate` elige exactamente los frentes escritos de antemano en cada repo de juguete y respeta un tope de agentes por repo: `cli-script` cero agentes en total, `landing-form` como máximo 2 agentes de frente, `app-db` no más de 5 agentes de frente.
 
 ## 2. Variable y lo que se mantiene fijo
 
@@ -39,7 +39,7 @@ Para el revisor a ciegas los brazos se nombran `X` e `Y`, asignados al azar por 
 | Calidad | hallazgos graves y nota 1 a 5 | Un revisor Opus a ciegas (nombres neutros, orden mezclado) revisa el resultado de cada corrida contra la consigna; más tests que pasan en el repo de la tarea |
 | Hallazgos graves | cantidad | Solo lo que afecta corrección, datos o requisitos |
 | Frentes elegidos | ids | Línea `Frentes:` de la salida de `validate`, comparada con `fronts-expected.json` por `tests/evals/compare-fronts.js` |
-| Agentes lanzados | cantidad | Conteo de subagentes en el registro |
+| Agentes lanzados | cantidad | Conteo de las invocaciones de la herramienta Agent en el registro, incluidas las que lanzan los comandos nativos (`/code-review`, `/security-review`); se informan aparte los agentes de frente y los de comandos nativos |
 
 ## 5. Medición 1: feature mediana
 
@@ -72,11 +72,11 @@ Tres repos de juguete en `tests/evals/fixtures/` (ver su `README.md`), con lo es
 
 | Repo de juguete | Frentes esperados | Por qué |
 |---|---|---|
-| `landing-form` | `security, hygiene` | Diff chico (4 archivos, 30 líneas) con formulario y traza suelta: la evidencia de formulario y basura impide tratarlo como diff chico sin frentes |
-| `app-db` | `security, database, code, tests, hygiene` | Supera el límite de diff chico (10 archivos); esquema y migración, autenticación, runner de tests, trazas sueltas; `docs` queda fuera por el tope de 5 |
-| `cli-script` | ninguno | 2 archivos, 14 líneas, sin formulario, basura, autenticación ni datos |
+| `landing-form` | `security, hygiene` | Cuatro archivos y 26 líneas (diff chico por tamaño) con formulario y traza suelta: la evidencia de formulario y basura impide tratarlo como diff chico sin frentes |
+| `app-db` | `security, database, code, tests, hygiene` | Supera el límite de diff chico (10 archivos, 134 líneas); esquema y migración, autenticación, runner de tests, trazas sueltas; `docs` no entra porque nada de lo que la documentación menciona se borró ni se renombró (sin evidencia) |
+| `cli-script` | ninguno | 2 archivos, 12 líneas, sin formulario, basura, autenticación ni datos |
 
-**Repeticiones:** 3 por repo, nivel E3 para la tasa de aciertos de cada caso. **Regla:** pasa si en todas las repeticiones de los tres repos la línea `Frentes:` coincide con lo esperado (`ok: true`) y `validate` no lanza más de 5 agentes. Una sola repetición con frentes distintos es un hallazgo a analizar, no se descarta.
+**Repeticiones:** 3 por repo, nivel E3 para la tasa de aciertos de cada caso. **Regla:** pasa si en todas las repeticiones de los tres repos la línea `Frentes:` coincide con lo esperado (`ok: true`) y se cumple el tope de agentes de cada repo (contando las invocaciones de la herramienta Agent del registro, también las de comandos nativos): `cli-script` cero agentes en total (con diff chico `validate` revisa en el hilo principal y no invoca `/code-review`), `landing-form` como máximo 2 agentes de frente, `app-db` no más de 5 agentes de frente (el subagente propio de `/code-review` se cuenta aparte y se nombra en la línea de costo). Una sola repetición con frentes distintos es un hallazgo a analizar, no se descarta.
 
 ## 8. Presupuesto
 

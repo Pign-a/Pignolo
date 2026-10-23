@@ -112,11 +112,55 @@ test('las tres bases del diff en orden, la línea Validado: y funcionamiento sin
   assert.match(t, /not a git repo/i);
 });
 
-test('/code-review y /security-review se invocan desde el hilo principal', () => {
+test('/code-review: no se invoca en un diff chico; en otro diff, desde el hilo principal, con su subagente aparte del tope', () => {
   const t = skill();
-  assert.match(t, /\/code-review/);
   assert.match(t, /\/security-review/);
-  assert.match(paragraphs(t).find((p) => p.includes('/code-review')), /main thread/i);
+  const par = paragraphs(t).find((p) => p.includes('/code-review'));
+  assert.ok(par, 'falta el párrafo de /code-review');
+  assert.match(par, /small diff is reviewed by you in the main thread and the native `\/code-review` is not invoked/);
+  assert.match(par, /Any other diff invokes `\/code-review` from the main thread/);
+  assert.match(par, /own subagent is counted apart from the cap of 5 and named in the cost line/);
+});
+
+test('Validado: se busca de la sesión más nueva hacia atrás; mismo sha con árbol limpio corta con "nada nuevo"', () => {
+  const pars = paragraphs(skill());
+  const list = pars.find((p) => p.startsWith('1. Search'));
+  assert.ok(list, 'falta la lista de bases');
+  assert.match(list, /newest-first/);
+  assert.match(list, /first line matching/);
+  assert.match(list, /equals HEAD and the working tree is clean ignoring `docs\/sessions\/` and `docs\/research\/`/);
+  assert.match(list, /"nada nuevo desde <sha>" and stop: no fallback re-review/);
+  assert.match(pars.find((p) => p.startsWith('Review base')), /untracked files \(`git status --porcelain`\)/);
+  const after = pars.find((p) => p.startsWith('If any other base'));
+  assert.ok(after, 'falta el párrafo de los otros casos');
+  assert.match(after, /clean ignoring `docs\/sessions\/` and `docs\/research\/`; otherwise write nothing/);
+});
+
+test('la línea Frentes: se imprime plana, sin markdown ni backticks', () => {
+  const par = paragraphs(skill()).find((p) => p.includes('Frentes:'));
+  assert.match(par, /exactly one plain line \(no markdown, no backticks\)/);
+});
+
+test('fronts.md: code entra por más de 5 archivos o más de 200 líneas contando solo el diff', () => {
+  const sec = read(DIR, 'references', 'fronts.md').split(/^## /m).find((s) => s.startsWith('code'));
+  assert.ok(sec, 'falta la sección code');
+  assert.match(sec, /more than 5 files or more than 200 changed lines, counted on the diff alone/);
+  assert.ok(!/above the small limit/.test(sec), 'quedó el límite chico ambiguo');
+});
+
+test('fronts.md: todos los ejemplos "Frentes:" parsean y llevan ids válidos; ningún ejemplo afirma un tope sin evidencia', () => {
+  const t = read(DIR, 'references', 'fronts.md');
+  const sec = t.split(/^## /m).find((s) => s.startsWith('Worked examples'));
+  assert.ok(sec, 'faltan los ejemplos resueltos');
+  const examples = [...sec.matchAll(/`(Frentes:[^`]*)`/g)].map((m) => m[1]);
+  assert.ok(examples.length >= 3, 'faltan ejemplos');
+  for (const ex of examples) {
+    const m = ex.match(FRONT_LINE);
+    assert.ok(m, `no parsea: ${ex}`);
+    for (const id of (m[1] || '').split(', ').filter(Boolean)) assert.ok(IDS.includes(id), `id no permitido ${id}`);
+  }
+  assert.ok(!/dropped by the cap/i.test(sec), 'el ejemplo afirma que docs cayó por el tope sin tener evidencia');
+  assert.match(sec, /docs has no evidence/);
 });
 
 test('la auditoría de interfaz no forma parte: se pide con ui-audit', () => {
@@ -196,7 +240,7 @@ test('base del diff: ancestro, fecha más reciente, rama principal, árbol de tr
   const t = skill() + read(DIR, 'references', 'fronts.md');
   assert.match(t, /merge-base --is-ancestor/);
   assert.match(t, /equals HEAD|empty diff|diff is empty/i);
-  assert.match(t, /latest date in (its|the) filename|latest date in the file name/i);
+  assert.match(t, /newest-first/i);
   assert.match(t, /origin\/HEAD/);
   assert.match(t, /init\.defaultBranch/);
   assert.match(t, /working tree/i);
