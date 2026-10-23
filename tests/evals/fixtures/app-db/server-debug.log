@@ -1,0 +1,3 @@
+debug trace
+GET /notes 200
+POST /notes 201

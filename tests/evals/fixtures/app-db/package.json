@@ -1,0 +1,7 @@
+{
+  "name": "app-db-fixture",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": { "test": "node --test tests/" },
+  "dependencies": { "@prisma/client": "^6.0.0", "express": "^4.19.0" }
+}

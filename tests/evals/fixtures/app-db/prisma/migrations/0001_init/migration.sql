@@ -1,0 +1,12 @@
+CREATE TABLE "Tenant" ("id" SERIAL PRIMARY KEY, "name" TEXT NOT NULL);
+CREATE TABLE "User" (
+  "id" SERIAL PRIMARY KEY,
+  "email" TEXT NOT NULL UNIQUE,
+  "passwordHash" TEXT NOT NULL,
+  "tenantId" INTEGER NOT NULL REFERENCES "Tenant"("id")
+);
+CREATE TABLE "Note" (
+  "id" SERIAL PRIMARY KEY,
+  "body" TEXT NOT NULL,
+  "userId" INTEGER NOT NULL REFERENCES "User"("id")
+);
