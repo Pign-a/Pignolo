@@ -14,7 +14,11 @@ const HTML = { 'content-type': 'text/html; charset=utf-8' };
 const GOOD = '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Inicio</title></head><body><main><h1>Inicio</h1></main></body></html>';
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const never = async () => false; // a profile that cannot be removed: the stub reports it and leaves the folder
-const rmQuiet = (dir) => fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); // the browser may still hold the profile for a moment under load
+// The browser may still hold the profile for a while under load (EPERM/EBUSY on Windows): the test's own
+// temp dir is housekeeping, not an assertion, so after the retries a stubborn dir is left to the OS temp cleanup.
+const rmQuiet = (dir) => {
+  try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch (e) { if (!['EPERM', 'EBUSY'].includes(e.code)) throw e; }
+};
 
 function project() {
   const root = writeTree(makeTempDir(), { 'index.html': GOOD });
