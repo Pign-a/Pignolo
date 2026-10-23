@@ -226,27 +226,24 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
   for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
   const rule = FIXTURE_RULES[fixtureName] || {};
   const want = (expected && expected[fixtureName]) || [];
-  const matched = mine.filter((r) => r.fronts_ok === 'true' || r.fronts_ok === true);
-  const noData = mine.filter((r) => r.fronts_ok === '' || r.fronts_ok === null || r.fronts_ok === undefined);
+  // Decision criterion (author's decision 2026-10-23): the fronts the main thread actually delegated (agents launched),
+  // fronts_by_agents_ok. The "Frentes:" line (fronts_ok) is kept as an informational figure that no longer decides.
+  const isBool = (v) => v === 'true' || v === 'false' || v === true || v === false;
+  const matched = mine.filter((r) => r.fronts_by_agents_ok === 'true' || r.fronts_by_agents_ok === true);
+  const noData = mine.filter((r) => !isBool(r.fronts_by_agents_ok));
   const wrong = mine.filter((r) => !matched.includes(r) && !noData.includes(r));
-  const reasons = [`fixture ${fixtureName}: ${matched.length}/${mine.length} corridas con los frentes esperados [${want.join(';')}]`];
-  for (const r of wrong) {
-    reasons.push(`${runId(r)}: obtuvo [${r.fronts_got || ''}] esperaba [${want.join(';')}]${r.fronts_message ? ` (línea Frentes en el mensaje ${r.fronts_message})` : ''}${r.fronts_reason ? `: ${r.fronts_reason}` : ''}`);
-  }
+  const reasons = [`fixture ${fixtureName}: ${matched.length}/${mine.length} corridas con los frentes esperados [${want.join(';')}] (medido por los agentes lanzados)`];
+  for (const r of wrong) reasons.push(`${runId(r)}: agentes → [${r.fronts_by_agents || ''}] esperaba [${want.join(';')}]`);
   const total = stat(mine.map((r) => r.agents));
   const front = stat(mine.map((r) => r.agents_main));
   reasons.push(`agentes (total, con los de comandos nativos): ${total ? `mediana ${fmt(total.median, 0)} (rango ${fmt(total.min, 0)} a ${fmt(total.max, 0)})` : 'sin dato'}; lanzados por el hilo principal: ${front ? `mediana ${fmt(front.median, 0)} (rango ${fmt(front.min, 0)} a ${fmt(front.max, 0)})` : 'sin dato'}`);
   const over = mine.filter((r) => noData.indexOf(r) < 0 && ((rule.total !== undefined && r.agents > rule.total) || (rule.front !== undefined && r.agents_main > rule.front)));
   for (const r of over) reasons.push(`${runId(r)}: ${rule.text} (obtuvo ${rule.total !== undefined ? r.agents : r.agents_main})`);
-  // SECONDARY figure, outside the pre-registered rule: the fronts the main thread delegated (agents launched), whether or not the
-  // model printed the contract line.
-  const withAgents = mine.filter((r) => r.fronts_by_agents_ok === 'true' || r.fronts_by_agents_ok === 'false');
-  const byAgentsOk = withAgents.filter((r) => r.fronts_by_agents_ok === 'true');
+  // INFORMATIONAL figure (original criterion, no longer decides): the "Frentes:" line. Printed only if some run printed it.
   const printed = mine.filter((r) => r.fronts_message !== '' && r.fronts_message !== null && r.fronts_message !== undefined);
-  const secondary = [];
-  secondary.push(`frentes delegados (medido por los agentes lanzados, no por la línea Frentes): ${byAgentsOk.length}/${withAgents.length} corridas con los frentes esperados [${want.join(';')}]; imprimieron la línea Frentes: ${printed.length}/${mine.length}${mine.length - withAgents.length ? `; sin dato de agentes: ${mine.length - withAgents.length}` : ''}`);
-  for (const r of withAgents.filter((x) => x.fronts_by_agents_ok === 'false')) secondary.push(`${runId(r)}: agentes → [${r.fronts_by_agents || ''}] esperaba [${want.join(';')}]`);
-  secondary.push('esta cifra secundaria no cambia el veredicto de la regla preinscrita (la de la línea Frentes)');
+  const lineMatched = mine.filter((r) => r.fronts_ok === 'true' || r.fronts_ok === true);
+  const info = [];
+  if (printed.length) info.push(`línea Frentes (criterio original, ya no decide): ${lineMatched.length}/${mine.length} corridas con los frentes esperados; la imprimieron ${printed.length}/${mine.length}`);
   const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
   let verdict;
   if (invalid.length) {
@@ -255,17 +252,17 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
   } else if (!mine.length) verdict = 'pendiente';
   else if (noData.length) {
     verdict = 'pendiente';
-    reasons.push(`falta la comparación de frentes en ${noData.map(runId).join(', ')}: corré accept y row`);
+    reasons.push(`falta el dato de agentes lanzados en ${noData.map(runId).join(', ')}: corré remetric, accept y row`);
   } else if (wrong.length || over.length) verdict = 'no pasa';
   else verdict = 'pasa';
-  reasons.push(...secondary);
+  reasons.push(...info);
   const n = Math.min(...Object.values(arms).map((s) => s.n), Infinity);
   const evidence = n >= 3 ? 'E3' : n >= 2 ? 'E2' : 'sin evidencia';
   const act = activationOf(arms);
   return {
     task, kind: 'fixture', fixture: fixtureName, pair: null, arms, evidence, decision: { verdict, reasons }, invalid, systematicNoChanges: [],
     ...act, eol: Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol])),
-    fixtureDetail: { runs: mine.length, matched: matched.length, noData: noData.length, secondary: { matched: byAgentsOk.length, runs: mine.length, printed: printed.length, noData: mine.length - withAgents.length } },
+    fixtureDetail: { runs: mine.length, matched: matched.length, noData: noData.length, line: { matched: lineMatched.length, printed: printed.length } },
   };
 }
 

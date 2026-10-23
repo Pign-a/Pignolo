@@ -1,6 +1,6 @@
 # Medición de Pignolo 2 contra superpowers
 
-**Estado: medido (2026-10-23). Los resultados están en la sección 11, debajo del texto preinscrito, que no se tocó.**
+**Estado: medido (2026-10-23). Los resultados están en la sección 11, debajo del texto preinscrito, que no se tocó. La detección de frentes tiene una decisión posterior del autor y una ronda 3 pendiente de correr (sección 11.3b).**
 
 _Esta ficha se escribió y se commiteó antes de cualquier corrida, como pide `docs/protocolo-de-pruebas.md`. Las corridas pagas esperan el OK explícito del autor para el gasto y son condición para publicar la 1.0.0 (diseño §9)._
 
@@ -224,11 +224,60 @@ Prompt: "Validá el código del proyecto." con Pignolo 2 activo. **`validate` se
 - **La línea `Frentes:` se imprimió en 5 de 9 corridas** (3 de `cli-script`, 1 de `app-db`, 1 de `landing-form`). La regla preinscrita es sobre esa línea y por eso `app-db` y `landing-form` no pasan.
 - **Cifra secundaria, agregada post hoc (después de ver las corridas) y por eso etiquetada así:** el conjunto de frentes medido por los agentes realmente lanzados coincide con el esperado en 3/3 en `app-db`, 3/3 en `cli-script` y 1/3 en `landing-form`. No cambia ningún veredicto preinscrito. En `landing-form` la higiene se delegó en 1 de 3 corridas; en las otras dos el hilo principal se ocupó solo de los archivos sueltos.
 
+### 11.3b Decisión del autor (2026-10-23): la detección se decide por los agentes lanzados
+
+_Esta sección es posterior a las corridas de 11.3 y se escribe **después de ver sus resultados**. No reemplaza ni borra el texto preinscrito de la sección 7 ni lo informado en 11.3: lo complementa. Cada cifra sale de `node tests/evals/harness/run.mjs summary --experiment <experimento>` sobre `pignolo2-runs.csv`._
+
+**Qué se decidió.** El criterio de decisión de la medición 3 deja de ser la línea `Frentes: <ids>` y pasa a ser **los frentes realmente delegados, medidos por los agentes que el hilo principal lanzó** (`pignolo:review-<id>`), comparados con `fronts-expected.json`, con el mismo tratamiento de corridas inválidas y los mismos topes de agentes por repo (`cli-script` cero en total, `landing-form` como máximo 2 de frente, `app-db` como máximo 5 de frente). La línea `Frentes:` se elimina del contrato de la skill `validate`; el arnés la conserva solo como cifra informativa, rotulada "criterio original, ya no decide".
+
+**Por qué, y qué tan firme es.** Es una decisión **post hoc**, tomada por el autor después de ver que el modelo no imprime la línea de forma confiable (5 de 9 corridas en la ronda 1; 3 de 9 en la ronda 2, solo en las corridas de `cli-script`, que tienen línea vacía). La regla preinscrita medía entonces si el modelo imprimía una línea, no si elegía los frentes correctos. Quien lea la comparación debe tomar el cambio de criterio como una decisión posterior a mirar los datos y no como preinscripción. Por eso **se informan los dos criterios y las dos rondas, lado a lado**.
+
+**Rondas.**
+
+| Ronda | Experimento | Texto de la skill `validate` | Corridas |
+|---|---|---|---|
+| 1 | `pignolo2` | El texto de 11.3 (con la línea `Frentes:` como parte del contrato) | 9 (3 por repo) |
+| 2 | `pignolo2-det2` | La línea `Frentes:` pasa a ser un paso propio y anunciado; la evidencia de basura delega `hygiene` sin importar el tamaño del diff | 9 (3 por repo) |
+| 3 | `pignolo2-det3` | Con el texto final: la línea `Frentes:` eliminada y un paso con `git diff --shortstat` para decidir si el diff es chico | pendiente de correr |
+
+**Resultados por criterio (E3, 3 repeticiones por repo, solo brazo B; fuente: `summary` de cada experimento).**
+
+| Repo | Frentes esperados | Ronda 1: por la línea | Ronda 1: por agentes lanzados | Ronda 2: por la línea | Ronda 2: por agentes lanzados |
+|---|---|---|---|---|---|
+| `cli-script` | ninguno | 3/3 | **3/3** | 3/3 | **3/3** |
+| `landing-form` | `security, hygiene` | 0/3 | **1/3** | 0/3 | **3/3** |
+| `app-db` | `security, database, code, tests, hygiene` | 1/3 | **3/3** | 0/3 | **2/3** |
+| Línea impresa | | 5/9 | | 3/9 | |
+
+- **Veredicto por agentes lanzados:** ronda 1, `cli-script` y `app-db` pasan y `landing-form` no (1/3); ronda 2, `cli-script` y `landing-form` pasan y `app-db` no (2/3). En total, los agentes lanzados fueron los esperados en 7 de 9 corridas en la ronda 1 y en 8 de 9 en la ronda 2.
+- **Veredicto por la línea (criterio original):** ronda 1, solo `cli-script` pasa; ronda 2, solo `cli-script` pasa. La línea se imprimió en 5 de 9 corridas en la ronda 1 y en 3 de 9 en la ronda 2 (solo las de `cli-script`, que la imprimen vacía): con el paso propio la línea no mejoró, empeoró.
+- **Tokens ponderados, mediana (rango), ronda 2:** `cli-script` 75.460 (74.963 a 85.656), `landing-form` 140.098 (123.367 a 150.817), `app-db` 262.742 (147.231 a 282.251). Agentes: mediana 0, 2 (rango 2 a 2) y 5 (rango 2 a 5) respectivamente. Ronda 1: ver 11.3.
+- **Hallazgo de la ronda 2 que motivó el paso con `git diff --shortstat`:** en una de las tres corridas de `app-db` el modelo delegó solo `security` y `hygiene` porque juzgó "chico" un diff de 10 archivos y 134 líneas, que supera el límite de diff chico. Es un error de aplicación del umbral por parte del modelo, no de la skill, y la ronda 3 verifica si el paso con la estadística del diff lo corrige; hasta correrla no se afirma que lo corrige.
+- **Gasto de la ronda 2:** 2,83 USD en 9 corridas; acumulado de 18,83 USD en corridas únicas, de un tope aprobado de 40.
+
+**Qué limita la lectura de la detección.**
+
+- **Los ejemplos de la skill describen las formas de los fixtures.** La skill trae ejemplos resueltos con la forma de cada repo de juguete, de modo que esta medición mide **qué tan bien se siguen los ejemplos propios de la skill**, no una generalización independiente a repos que el modelo no haya visto descritos. Un repo de forma distinta sería la prueba que falta (queda anotado como hueco abierto en `docs/gaps.md`).
+- **Los fixtures son repos de juguete** (2 a 10 archivos), más fáciles que un proyecto real; el resultado no se extiende a repos reales sin una medición propia.
+- **Cambio de criterio posterior a los datos:** la selección del criterio se hizo viendo cuál reflejaba mejor el comportamiento; el criterio nuevo es más favorable que el preinscrito para `app-db` y `landing-form`. Por eso se publican ambos.
+- **n=3 por repo y por ronda:** una corrida equivocada mueve un repo de "pasa" a "no pasa"; las rondas 1 y 2 no se suman porque el texto de la skill cambió entre una y otra.
+
+#### Ronda 3 (`pignolo2-det3`)
+
+**Pendiente de correr.** La corre el controlador con el texto final de la skill (línea `Frentes:` eliminada y paso con `git diff --shortstat`), 3 repeticiones por repo. Al correrla se completa esta tabla con los números de `summary --experiment pignolo2-det3`, sin tocar lo de arriba.
+
+| Repo | Frentes esperados | Ronda 3: por agentes lanzados | Tokens ponderados, mediana (rango) | Agentes, mediana (rango) |
+|---|---|---|---|---|
+| `cli-script` | ninguno | pendiente de correr | pendiente de correr | pendiente de correr |
+| `landing-form` | `security, hygiene` | pendiente de correr | pendiente de correr | pendiente de correr |
+| `app-db` | `security, database, code, tests, hygiene` | pendiente de correr | pendiente de correr | pendiente de correr |
+
 ### 11.4 Conclusión
 
 - **Feature mediana (H1):** la no inferioridad se cumple en el par forzado (BF/AF = 0,84 de mediana de tokens) y en el autónomo (B/A = 1,04), con calidad no peor, ambos en E2. No se afirma que Pignolo 2 sea mejor: los rangos se pisan.
 - **Tarea chica (H2):** no se sostiene del todo. small-1 empata; small-2 falla en tokens (B alrededor de un 20 % más, sin activación de ninguno de los dos plugins, causa desconocida). Según la ficha, una falla de la anti-meta pide recortar antes de publicar; la decisión es del autor.
-- **Detección de frentes (H3):** `cli-script` pasa; `app-db` y `landing-form` no pasan por la regla de la línea `Frentes:`, que se imprimió solo en 5 de 9 corridas. Con la cifra secundaria los agentes lanzados fueron los esperados en 7 de 9, pero eso no reemplaza el veredicto preinscrito.
+- **Detección de frentes (H3), lectura de la ronda 1:** `cli-script` pasa; `app-db` y `landing-form` no pasan por la regla de la línea `Frentes:`, que se imprimió solo en 5 de 9 corridas. Con la cifra secundaria los agentes lanzados fueron los esperados en 7 de 9, pero eso no reemplaza el veredicto preinscrito.
+- **Detección de frentes (H3), actualización del 2026-10-23:** el criterio de decisión pasó a los agentes lanzados por decisión posterior del autor (11.3b); la ronda 2 dio 8 de 9 corridas con el conjunto esperado y la ronda 3 está pendiente de correr. El veredicto de H3 no se da por cerrado hasta esa ronda.
 - **Activación:** con prompts completos ningún plugin se activó por sí solo en los pares autónomos (0 llamadas a `Skill`); lo único que se activó solo fue `validate` ante "Validá el código del proyecto.".
 
 ### 11.5 Amenazas a la validez observadas
@@ -252,6 +301,6 @@ Se suman a la sección 10:
 
 ### 11.7 Gasto
 
-32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés.
+32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés. La ronda 2 de la detección (`pignolo2-det2`, 9 corridas) sumó 2,83 USD (ver 11.3b).
 
 Datos crudos: [`pignolo2-runs.csv`](pignolo2-runs.csv). Para reproducir las cifras: `node tests/evals/harness/run.mjs summary`.

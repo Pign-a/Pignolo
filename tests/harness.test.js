@@ -2424,34 +2424,47 @@ test('fixture: los frentes delegados se miden por los agentes lanzados, independ
   } finally { cleanup(env); }
 });
 
-test('summary de fixtures: cifra SECUNDARIA de frentes delegados (por agentes), rotulada, sin cambiar el veredicto de la regla preinscrita', async () => {
+test('summary de fixtures: el veredicto lo da lo que se delegó (agentes lanzados); la línea Frentes es una cifra informativa que ya no decide', async () => {
   const { summarize, formatSummary } = await imp('summary.mjs');
   const fx = (rep, ok, got, by, byOk, msg, extra = {}) => mk('fx-land', 'B', rep, 100, { fronts_ok: String(ok), fronts_got: got, fronts_message: msg, fronts_by_agents: by, fronts_by_agents_ok: byOk === null ? '' : String(byOk), accept_pass: null, accept_fail: null, accept_exit: null, accept_suites_failed: null, full_pass: null, full_fail: null, full_baseline_fail: null, agents: 2, agents_main: 2, ...extra });
   const kinds = { 'fx-land': 'fixture' };
   const fixtures = { 'fx-land': 'landing-form' };
-  // Línea: 1 de 3 la imprimió (y acertó); agentes: 3 de 3 delegaron los frentes esperados.
+  // La línea la imprimió 1 de 3 corridas, pero las 3 delegaron los frentes esperados: pasa (antes, con la regla de la línea, no pasaba).
   const rows = [fx(1, true, 'security;hygiene', 'security;hygiene', true, '3'), fx(2, false, '', 'security;hygiene', true, ''), fx(3, false, '', 'security;hygiene', true, '')];
   const r = summarize(rows, { kinds, fixtures });
   const t = r.tasks[0];
-  assert.strictEqual(t.decision.verdict, 'no pasa', 'la regla preinscrita (línea) manda: 1 de 3');
+  assert.strictEqual(t.decision.verdict, 'pasa', 'manda lo delegado: 3 de 3');
   const text = formatSummary(r);
-  assert.match(text, /frentes delegados \(medido por los agentes lanzados, no por la línea Frentes\): 3\/3 corridas con los frentes esperados/);
-  assert.match(text, /imprimieron la línea Frentes: 1\/3/);
-  assert.match(text, /no cambia el veredicto de la regla preinscrita/);
-  assert.deepStrictEqual(t.fixtureDetail.secondary, { matched: 3, runs: 3, printed: 1, noData: 0 });
-  // El mismo veredicto con otra cifra secundaria; el secundario no rescata ni condena.
-  const flip = summarize([fx(1, true, 'security;hygiene', 'security', false, '3'), fx(2, true, 'security;hygiene', 'security;hygiene;code', false, '2'), fx(3, true, 'security;hygiene', '', null, '5')], { kinds, fixtures });
-  assert.strictEqual(flip.tasks[0].decision.verdict, 'pasa');
+  assert.match(text, /fixture landing-form: 3\/3 corridas con los frentes esperados \[security;hygiene\] \(medido por los agentes lanzados\)/);
+  assert.match(text, /línea Frentes \(criterio original, ya no decide\): 1\/3 corridas con los frentes esperados; la imprimieron 1\/3/);
+  assert.doesNotMatch(text, /no cambia el veredicto de la regla preinscrita/);
+  assert.deepStrictEqual(t.fixtureDetail, { runs: 3, matched: 3, noData: 0, line: { matched: 1, printed: 1 } });
+  // Al revés: la línea acierta en las 3 pero los agentes lanzados no son los esperados: no pasa; la línea no rescata.
+  const flip = summarize([fx(1, true, 'security;hygiene', 'security', false, '3'), fx(2, true, 'security;hygiene', 'security;hygiene;code', false, '2'), fx(3, true, 'security;hygiene', 'security;hygiene', true, '5')], { kinds, fixtures });
+  assert.strictEqual(flip.tasks[0].decision.verdict, 'no pasa');
   const t2 = formatSummary(flip);
-  assert.match(t2, /0\/2 corridas con los frentes esperados/);
+  assert.match(t2, /fixture landing-form: 1\/3 corridas con los frentes esperados/);
   assert.match(t2, /fx-land\/B\/1: agentes → \[security\] esperaba \[security;hygiene\]/);
-  assert.match(t2, /imprimieron la línea Frentes: 3\/3/);
-  assert.match(t2, /sin dato de agentes: 1/);
+  assert.match(t2, /fx-land\/B\/2: agentes → \[security;hygiene;code\] esperaba \[security;hygiene\]/);
+  assert.match(t2, /línea Frentes \(criterio original, ya no decide\): 3\/3 corridas con los frentes esperados; la imprimieron 3\/3/);
+  // Ninguna corrida imprimió la línea: la cifra informativa no aparece.
+  const none = summarize([fx(1, false, '', 'security;hygiene', true, ''), fx(2, false, '', 'security;hygiene', true, ''), fx(3, false, '', 'security;hygiene', true, '')], { kinds, fixtures });
+  assert.strictEqual(none.tasks[0].decision.verdict, 'pasa');
+  assert.doesNotMatch(formatSummary(none), /línea Frentes/);
+  assert.deepStrictEqual(none.tasks[0].fixtureDetail.line, { matched: 0, printed: 0 });
+  // Sin dato de agentes (métrica vieja): pendiente, aunque la línea esté; el mensaje manda a correr remetric y accept.
+  const old = summarize([fx(1, true, 'security;hygiene', 'security;hygiene', true, '3'), fx(2, true, 'security;hygiene', '', null, '2'), fx(3, true, 'security;hygiene', 'security;hygiene', true, '4')], { kinds, fixtures });
+  assert.strictEqual(old.tasks[0].decision.verdict, 'pendiente');
+  assert.match(old.tasks[0].decision.reasons.join(' '), /fx-land\/B\/2.*remetric.*accept/);
+  // Una corrida inválida deja la tarea pendiente también con el criterio nuevo.
+  const inv = summarize([fx(1, true, 'security;hygiene', 'security;hygiene', true, '3'), fx(2, false, '', '', null, '', { invalid: true, invalid_reason: 'timed_out' })], { kinds, fixtures });
+  assert.match(inv.tasks[0].decision.verdict, /^pendiente: 1 corridas inválidas/);
 });
 
 test('summary de fixtures: aciertos exactos, obtenido contra esperado, agentes y la regla de la ficha por repo', async () => {
   const { summarize, formatSummary } = await imp('summary.mjs');
-  const fx = (task, rep, ok, got, extra = {}) => mk(task, 'B', rep, 100, { fronts_ok: String(ok), fronts_got: got, accept_pass: null, accept_fail: null, accept_exit: null, accept_suites_failed: null, full_pass: null, full_fail: null, full_baseline_fail: null, agents: 0, agents_main: 0, ...extra });
+  // Por defecto lo delegado coincide con lo que dice la línea; los tests que lo necesitan lo pisan con extra.
+  const fx = (task, rep, ok, got, extra = {}) => mk(task, 'B', rep, 100, { fronts_ok: String(ok), fronts_got: got, fronts_by_agents: got, fronts_by_agents_ok: ok === '' ? '' : String(ok), accept_pass: null, accept_fail: null, accept_exit: null, accept_suites_failed: null, full_pass: null, full_fail: null, full_baseline_fail: null, agents: 0, agents_main: 0, ...extra });
   const kinds = { 'fx-cli': 'fixture', 'fx-land': 'fixture', 'fx-db': 'fixture' };
   const fixtures = { 'fx-cli': 'cli-script', 'fx-land': 'landing-form', 'fx-db': 'app-db' };
   const run = (rows) => summarize(rows, { kinds, fixtures });
@@ -2474,7 +2487,7 @@ test('summary de fixtures: aciertos exactos, obtenido contra esperado, agentes y
   r = run([fx('fx-land', 1, true, 'security;hygiene'), fx('fx-land', 2, false, 'security;code', { reason: 'x' }), fx('fx-cli', 1, true, '', { agents: 1 }), fx('fx-land', 3, true, 'security;hygiene', { agents_main: 3 }), fx('fx-db', 1, true, 'security;database;code;tests;hygiene', { agents_main: 6 })]);
   const f = Object.fromEntries(r.tasks.map((t) => [t.task, t]));
   assert.strictEqual(f['fx-land'].decision.verdict, 'no pasa');
-  assert.ok(f['fx-land'].decision.reasons.some((x) => /fx-land\/B\/2: obtuvo \[security;code\] esperaba \[security;hygiene\]/.test(x)));
+  assert.ok(f['fx-land'].decision.reasons.some((x) => /fx-land\/B\/2: agentes → \[security;code\] esperaba \[security;hygiene\]/.test(x)));
   assert.ok(f['fx-land'].decision.reasons.some((x) => /más de 2 agentes de frente/.test(x)));
   assert.strictEqual(f['fx-cli'].decision.verdict, 'no pasa');
   assert.ok(f['fx-cli'].decision.reasons.some((x) => /cero agentes en total/.test(x)));
