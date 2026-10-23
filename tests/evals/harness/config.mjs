@@ -8,6 +8,7 @@ export const REPO_ROOT = path.resolve(HARNESS_DIR, '..', '..', '..');
 export const DEFAULT_CONFIG = path.join(HARNESS_DIR, 'harness.local.json');
 export const DEFAULT_CSV = path.join(REPO_ROOT, 'tests', 'evals', 'pignolo2-runs.csv');
 export const DEFAULT_GRADES = path.join(REPO_ROOT, 'tests', 'evals', 'pignolo2-grades.json');
+export const DEFAULT_EXPERIMENT = 'pignolo2';
 export const DEFAULT_WEIGHTS = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
 
 export const DEFAULT_MODEL_FACTOR = { opus: 5, sonnet: 1, haiku: 0.33 };
@@ -81,7 +82,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     acceptTimeoutMs: 15 * 60 * 1000,
     copyDirs: [],
     seed: 1,
-    experiment: 'pignolo2',
+    experiment: DEFAULT_EXPERIMENT,
     tasks: {},
     effort: 'medium',
     extraEnvAllow: [],

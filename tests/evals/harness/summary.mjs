@@ -1,15 +1,21 @@
 // Summary per task and arm, and the decision rule of tests/evals/RESULTS-pignolo2.md.
 // Every figure carries its range; nothing is reported as a bare number.
-import { parseCsv } from './row.mjs';
+// A run that cannot be trusted ("invalid") is never counted and never dropped silently: it is listed and
+// leaves its task "pendiente" until it is rerun.
+import { parseCsv, decodeModelTokens } from './row.mjs';
+import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
+import { modelFactorFor } from './metrics.mjs';
 
-const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'turns', 'agents',
-  'accept_pass', 'accept_fail', 'full_pass', 'full_fail', 'files_changed', 'lines_added', 'lines_removed'];
+const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'duration_ms', 'turns',
+  'agents', 'agents_main', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail',
+  'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed'];
+const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid'];
 
 export function normalizeRows(rows) {
   return rows.map((r) => {
     const o = { ...r };
     for (const k of NUMERIC) o[k] = o[k] === '' || o[k] === undefined || o[k] === null ? null : Number(o[k]);
-    for (const k of ['timed_out', 'contamination']) o[k] = o[k] === true || o[k] === 'true';
+    for (const k of BOOLEAN) o[k] = o[k] === true || o[k] === 'true';
     return o;
   });
 }
@@ -30,28 +36,66 @@ function stat(xs) {
 }
 
 const overlap = (a, b) => a.min <= b.max && b.min <= a.max;
+const runId = (r) => `${r.task}/${r.arm}/${r.rep}`;
+
+// Green: the command exited 0, no suite failed to run, no test failed and at least one test passed.
+// Unknown suite information (no report, no summary line) does not block; the exit code still has to be 0.
+export function isGreen(r) {
+  return r.accept_exit === 0
+    && (r.accept_suites_failed === null || r.accept_suites_failed === 0)
+    && r.accept_fail === 0 && r.accept_pass !== null && r.accept_pass > 0;
+}
+const hasAccept = (r) => r.accept_pass !== null && r.accept_fail !== null;
+
+const CONTAMINATION_ONLY = new Set(['contaminated', 'own_plugin_not_loaded']);
+function reasonsOf(r) {
+  const rs = String(r.invalid_reason || '').split(';').map((s) => s.trim()).filter(Boolean);
+  if (!rs.length && r.invalid) rs.push('invalid');
+  if (!rs.length && r.contamination) rs.push('contaminated');
+  return rs;
+}
+function isInvalid(r, includeContaminated) {
+  const rs = reasonsOf(r);
+  if (!rs.length) return false;
+  return !(includeContaminated && rs.every((x) => CONTAMINATION_ONLY.has(x)));
+}
+
+// Weighted tokens recomputed from the raw per-model tokens with the CURRENT weights and model factors.
+function reweigh(r, weights, modelFactor) {
+  const byModel = decodeModelTokens(r.model_tokens);
+  if (!byModel) return { value: r.weighted_tokens, fallback: r.weighted_tokens !== null };
+  let total = 0;
+  for (const [model, t] of Object.entries(byModel)) {
+    total += (t.input * weights.input + t.output * weights.output + t.cacheRead * weights.cacheRead + t.cacheWrite * weights.cacheWrite)
+      * modelFactorFor(model, modelFactor);
+  }
+  return { value: Math.round(total * 100) / 100, fallback: false };
+}
 
 function armStats(rows) {
-  const accRows = rows.filter((r) => r.accept_pass !== null && r.accept_fail !== null);
+  const accRows = rows.filter(hasAccept);
   const pass = accRows.reduce((s, r) => s + r.accept_pass, 0);
   const fail = accRows.reduce((s, r) => s + r.accept_fail, 0);
+  const fullRows = rows.filter((r) => r.full_fail !== null);
   return {
     n: rows.length,
-    tokens: stat(rows.map((r) => r.weighted_tokens)),
+    tokens: stat(rows.map((r) => r.wt)),
     cost: stat(rows.map((r) => r.cost_usd)),
     wall: stat(rows.map((r) => r.wall_s)),
     agents: stat(rows.map((r) => r.agents)),
     timedOut: rows.filter((r) => r.timed_out).length,
-    accept: accRows.length
-      ? { pass, fail, runs: accRows.length, greenRuns: accRows.filter((r) => r.accept_fail === 0 && r.accept_pass > 0).length }
-      : null,
+    accept: accRows.length ? { pass, fail, runs: accRows.length, greenRuns: accRows.filter(isGreen).length } : null,
+    full: {
+      baselineMissing: fullRows.filter((r) => r.full_baseline_fail === null).length,
+      overBaseline: fullRows.filter((r) => r.full_baseline_fail !== null && r.full_fail > r.full_baseline_fail).length,
+    },
   };
 }
 
-const rate = (a) => (a && a.pass + a.fail > 0 ? a.pass / (a.pass + a.fail) : null);
+const rate = (a) => (a && a.runs > 0 ? a.greenRuns / a.runs : null);
 
-function qualityOf(grades, task, arm) {
-  const g = grades.filter((x) => x.task === task && x.arm === arm);
+function qualityOf(grades, arm) {
+  const g = grades.filter((x) => x.arm === arm);
   return {
     n: g.length,
     quality: median(g.map((x) => x.quality).filter(Number.isFinite)),
@@ -59,23 +103,42 @@ function qualityOf(grades, task, arm) {
   };
 }
 
-function decideMedium(a, b, grades, task) {
+// A grade belongs to the run it was written for: same repetition and, when the grade says it, the same run timestamp.
+function gradesFor(grades, task, rows) {
+  return grades.filter((g) => g.task === task && rows.some((r) => r.arm === g.arm && r.rep === g.rep
+    && (g.timestamp === undefined || g.timestamp === null || String(g.timestamp) === String(r.timestamp))));
+}
+
+function missingAcceptance(a, b) {
+  const lacking = [['A', a], ['B', b]].filter(([, s]) => !s.accept || s.accept.runs < s.n);
+  if (!lacking.length) return null;
+  return `falta la aceptación en corridas válidas de ${lacking.map(([n, s]) => `${n} (${s.accept ? s.accept.runs : 0} de ${s.n})`).join(' y ')}: corré accept y row`;
+}
+
+// H1, non-inferiority: B passes when median(B) <= 1.5 x median(A) AND max(B) <= 1.5 x max(A) AND quality is equal or better.
+// Overlapping ranges only stop a claim of superiority; they never stop B from passing.
+function decideMedium(a, b, grades) {
   const reasons = [];
   if (!a.tokens || !b.tokens) return { verdict: 'pendiente', reasons: ['faltan corridas con tokens en algún brazo'] };
+  const miss = missingAcceptance(a, b);
+  if (miss) return { verdict: 'pendiente', reasons: [miss] };
   const ratio = b.tokens.median / a.tokens.median;
-  reasons.push(`tokens ponderados: B/A = ${fmt(ratio, 2)} de la mediana (umbral 1,5)`);
-  if (overlap(a.tokens, b.tokens)) {
-    reasons.push('los rangos de tokens de A y B se pisan');
-    return { verdict: 'sin diferencia demostrada', reasons };
+  const ratioMax = b.tokens.max / a.tokens.max;
+  reasons.push(`tokens ponderados: mediana B/A = ${fmt(ratio, 2)} (umbral 1,5); máximo B/A = ${fmt(ratioMax, 2)} (umbral 1,5)`);
+  if (a.cost && b.cost) reasons.push(`costo USD (informativo): mediana B ${fmt(b.cost.median, 4)} / A ${fmt(a.cost.median, 4)}`);
+  if (b.tokens.median < a.tokens.median) {
+    reasons.push(overlap(a.tokens, b.tokens)
+      ? 'B por debajo de A en la mediana, pero los rangos se pisan: no se afirma superioridad'
+      : 'B por debajo de A con los rangos separados');
   }
-  if (ratio > 1.5) {
-    reasons.push('tokens de B por encima de 1,5 veces los de A');
-    return { verdict: 'no pasa', reasons };
-  }
-  const qa = qualityOf(grades, task, 'A');
-  const qb = qualityOf(grades, task, 'B');
-  if (!qa.n || !qb.n) {
-    reasons.push('falta la nota de calidad a ciegas (grades.json) de algún brazo');
+  const over = [];
+  if (b.tokens.median > 1.5 * a.tokens.median) over.push('la mediana de tokens de B pasa 1,5 veces la de A');
+  if (b.tokens.max > 1.5 * a.tokens.max) over.push('el máximo de tokens de B pasa 1,5 veces el máximo de A');
+  if (over.length) return { verdict: 'no pasa', reasons: [...reasons, ...over] };
+  const qa = qualityOf(grades, 'A');
+  const qb = qualityOf(grades, 'B');
+  if (qa.n < a.n || qb.n < b.n) {
+    reasons.push(`falta la nota de calidad a ciegas de corridas válidas (A ${qa.n} de ${a.n}, B ${qb.n} de ${b.n}): corré blind y unblind`);
     return { verdict: 'pendiente', reasons };
   }
   const bad = [];
@@ -83,7 +146,7 @@ function decideMedium(a, b, grades, task) {
   if (qb.serious > qa.serious) bad.push(`calidad: hallazgos graves B ${qb.serious} > A ${qa.serious} (mediana)`);
   const ra = rate(a.accept);
   const rb = rate(b.accept);
-  if (ra !== null && rb !== null && rb < ra) bad.push(`calidad: tests de aceptación que pasan B ${fmt(rb * 100, 0)}% < A ${fmt(ra * 100, 0)}%`);
+  if (ra !== null && rb !== null && rb < ra) bad.push(`calidad: corridas verdes en aceptación B ${fmt(rb * 100, 0)}% < A ${fmt(ra * 100, 0)}%`);
   if (bad.length) return { verdict: 'no pasa', reasons: [...reasons, ...bad] };
   reasons.push(`calidad: nota mediana B ${qb.quality} >= A ${qa.quality}, hallazgos graves B ${qb.serious} <= A ${qa.serious}`);
   return { verdict: 'pasa', reasons };
@@ -93,6 +156,7 @@ function decideSmall(a, b) {
   const reasons = [];
   let fail = false;
   let open = false;
+  let pending = false;
   for (const [name, key] of [['tiempo de pared', 'wall'], ['tokens ponderados', 'tokens']]) {
     if (!a[key] || !b[key]) return { verdict: 'pendiente', reasons: [`faltan datos de ${name} en algún brazo`] };
     if (b[key].median <= a[key].median) {
@@ -105,47 +169,82 @@ function decideSmall(a, b) {
       reasons.push(`${name}: mediana B ${fmt(b[key].median)} > A ${fmt(a[key].median)} con rangos separados`);
     }
   }
-  if (!b.accept) {
-    reasons.push('falta la aceptación de B (corré accept y row)');
-    return { verdict: fail ? 'no pasa' : 'pendiente', reasons };
+  if (a.cost && b.cost) reasons.push(`costo USD (informativo): mediana B ${fmt(b.cost.median, 4)} / A ${fmt(a.cost.median, 4)}`);
+  const miss = missingAcceptance(a, b);
+  if (miss) { pending = true; reasons.push(miss); }
+  if (b.accept) {
+    if (b.accept.greenRuns < b.accept.runs) {
+      fail = true;
+      reasons.push(`resultado incorrecto: ${b.accept.runs - b.accept.greenRuns} de ${b.accept.runs} corridas de B no pasan la aceptación`);
+    } else if (!miss) {
+      reasons.push('resultado correcto en todas las corridas de B');
+    }
   }
-  if (b.accept.greenRuns < b.accept.runs) {
+  if (b.full.overBaseline) {
     fail = true;
-    reasons.push(`resultado incorrecto: ${b.accept.runs - b.accept.greenRuns} de ${b.accept.runs} corridas de B no pasan la aceptación`);
-  } else {
-    reasons.push('resultado correcto en todas las corridas de B');
+    reasons.push(`suite completa: ${b.full.overBaseline} corridas de B con más fallas que el piso (baselineFull)`);
   }
-  return { verdict: fail ? 'no pasa' : open ? 'sin diferencia demostrada' : 'pasa', reasons };
+  if (b.full.baselineMissing) {
+    pending = true;
+    reasons.push(`suite completa: falta el piso baselineFull de la tarea en <privateRoot>/tasks.json (${b.full.baselineMissing} corridas de B sin piso)`);
+  }
+  if (fail) return { verdict: 'no pasa', reasons };
+  if (pending) return { verdict: 'pendiente', reasons };
+  return { verdict: open ? 'sin diferencia demostrada' : 'pasa', reasons };
 }
 
-export function summarize(rowsIn, { kinds = {}, grades = [], includeContaminated = false } = {}) {
+export function summarize(rowsIn, {
+  kinds = {}, grades = [], includeContaminated = false, experiment = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR,
+} = {}) {
   const notes = [];
+  let rowsAll = rowsIn;
+  if (experiment) {
+    const others = [...new Set(rowsIn.filter((r) => r.experiment !== experiment).map((r) => r.experiment))];
+    rowsAll = rowsIn.filter((r) => r.experiment === experiment);
+    if (others.length) notes.push(`filas de otros experimentos ignoradas (${others.join(', ')}); este resumen es del experimento "${experiment}"`);
+  }
   // A rerun (or any later row for the same run) supersedes the earlier one; both stay in the CSV.
   const latest = new Map();
   const superseded = [];
-  rowsIn.forEach((r, i) => {
+  rowsAll.forEach((r, i) => {
     const k = `${r.task}\u0000${r.arm}\u0000${r.rep}`;
     const prev = latest.get(k);
     if (!prev) { latest.set(k, { r, i }); return; }
     const newer = String(r.timestamp) > String(prev.r.timestamp) || (r.timestamp === prev.r.timestamp && i > prev.i);
-    superseded.push(`${r.task}/${r.arm}/${r.rep}`);
+    superseded.push(runId(r));
     if (newer) latest.set(k, { r, i });
   });
   if (superseded.length) notes.push(`corridas repetidas (rerun) que reemplazan a la original en las cifras: ${[...new Set(superseded)].join(', ')}; las dos siguen en el CSV`);
-  let rows = [...latest.values()].map((x) => x.r);
-  const dirty = rows.filter((r) => r.contamination);
-  if (dirty.length && !includeContaminated) {
-    notes.push(`excluidas por contaminación (el plugin del otro brazo estaba activo): ${dirty.map((r) => `${r.task}/${r.arm}/${r.rep}`).join(', ')}`);
-    rows = rows.filter((r) => !r.contamination);
-  } else if (dirty.length) {
-    notes.push(`incluidas pese a la contaminación: ${dirty.map((r) => `${r.task}/${r.arm}/${r.rep}`).join(', ')}`);
+  const current = [...latest.values()].map((x) => x.r);
+
+  const invalidRows = current.filter((r) => isInvalid(r, includeContaminated));
+  const validRows = current.filter((r) => !isInvalid(r, includeContaminated));
+  if (invalidRows.length) {
+    notes.push(`corridas inválidas, fuera de las cifras hasta repetirlas (rerun): ${invalidRows.map((r) => `${runId(r)} (${reasonsOf(r).join(', ')})`).join('; ')}`);
   }
-  const timed = rows.filter((r) => r.timed_out);
-  if (timed.length) notes.push(`corridas cortadas por tiempo (entran en las cifras): ${timed.map((r) => `${r.task}/${r.arm}/${r.rep}`).join(', ')}`);
+  const budget = invalidRows.filter((r) => reasonsOf(r).includes('budget_cap'));
+  if (budget.length) {
+    notes.push(`superó el tope por corrida: ${budget.map(runId).join(', ')}; si un brazo lo supera de forma sistemática, eso ya es un resultado`);
+  }
+  const timed = invalidRows.filter((r) => r.timed_out);
+  if (timed.length) notes.push(`cortadas por tiempo (cuentan como inválidas y quedan fuera de las cifras): ${timed.map(runId).join(', ')}`);
+  const dirtyIncluded = includeContaminated ? current.filter((r) => r.contamination) : [];
+  if (dirtyIncluded.length) notes.push(`incluidas pese a la contaminación: ${dirtyIncluded.map(runId).join(', ')}`);
+  const multi = validRows.filter((r) => /(^|;)\s*multiple_trees\s*(;|$)/.test(r.note || ''));
+  if (multi.length) notes.push(`cambios en más de un árbol (revisar a mano cuál es el medido): ${multi.map(runId).join(', ')}`);
+
+  let fallback = 0;
+  for (const r of validRows) {
+    const w = reweigh(r, weights, modelFactor);
+    r.wt = w.value;
+    if (w.fallback) fallback += 1;
+  }
+  if (fallback) notes.push(`${fallback} filas sin tokens por modelo: se usó el ponderado guardado en el CSV en vez de recalcularlo`);
 
   const tasks = [];
-  for (const task of [...new Set(rows.map((r) => r.task))].sort()) {
-    const mine = rows.filter((r) => r.task === task);
+  for (const task of [...new Set(current.map((r) => r.task))].sort()) {
+    const mine = validRows.filter((r) => r.task === task);
+    const bad = invalidRows.filter((r) => r.task === task);
     const arms = {};
     for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
     const nA = arms.A ? arms.A.n : 0;
@@ -153,11 +252,19 @@ export function summarize(rowsIn, { kinds = {}, grades = [], includeContaminated
     const evidence = Math.min(nA, nB) >= 3 ? 'E3' : 'E2';
     const kind = kinds[task] || null;
     let decision;
-    if (!arms.A || !arms.B) decision = { verdict: 'pendiente', reasons: ['falta un brazo'] };
-    else if (kind === 'medium') decision = decideMedium(arms.A, arms.B, grades, task);
+    if (!arms.A || !arms.B) decision = { verdict: 'pendiente', reasons: ['falta un brazo con corridas válidas'] };
+    else if (kind === 'medium') decision = decideMedium(arms.A, arms.B, gradesFor(grades, task, mine));
     else if (kind === 'small') decision = decideSmall(arms.A, arms.B);
     else decision = { verdict: 'pendiente', reasons: ['tipo de tarea no definido (medium o small): usá la configuración "tasks" o --medium / --small'] };
-    tasks.push({ task, kind, arms, evidence, decision });
+    const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
+    if (invalid.length) {
+      decision = {
+        verdict: `pendiente: ${invalid.length} corridas inválidas`,
+        reasons: [...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`), 'las cifras de abajo son provisionales, sin esas corridas', ...decision.reasons],
+        provisional: decision.verdict,
+      };
+    }
+    tasks.push({ task, kind, arms, evidence, decision, invalid });
   }
   return { tasks, notes };
 }
@@ -175,9 +282,9 @@ export function formatSummary(res) {
     out.push(`== ${t.task}${t.kind ? ` (${t.kind})` : ''} ==`);
     out.push(`evidence: ${t.evidence}`);
     for (const [a, s] of Object.entries(t.arms)) {
-      const acc = s.accept ? `${s.accept.pass}/${s.accept.pass + s.accept.fail} tests (${s.accept.greenRuns}/${s.accept.runs} corridas sin fallas)` : 'sin dato';
+      const acc = s.accept ? `${s.accept.pass}/${s.accept.pass + s.accept.fail} tests (${s.accept.greenRuns}/${s.accept.runs} corridas verdes)` : 'sin dato';
       out.push(`${a}  n=${s.n}${s.timedOut ? ` (${s.timedOut} cortadas por tiempo)` : ''}`);
-      out.push(`   tokens ponderados: ${range(s.tokens, 0)}`);
+      out.push(`   tokens ponderados (pesos y factores de la configuración actual): ${range(s.tokens, 0)}`);
       out.push(`   costo USD: ${range(s.cost, 4)}`);
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);

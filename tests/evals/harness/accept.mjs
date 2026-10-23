@@ -25,11 +25,24 @@ export function parseCounts(text, exitCode) {
   return exitCode === 0 ? { pass: 1, fail: 0, source: 'exit-code' } : { pass: 0, fail: 1, source: 'exit-code' };
 }
 
+// Failed suites (test files that did not run, for example because they fail to import): null when the output has no such line.
+// vitest: "Test Files  1 failed | 2 passed (3)"; jest: "Test Suites: 2 failed, 3 passed, 5 total".
+export function parseSuites(text) {
+  const t = String(text).replace(ANSI, '');
+  const line = t.match(/^[ \t]*(?:Test Files|Test Suites):?[ \t]+(.*)$/m);
+  if (!line) return null;
+  const f = line[1].match(/(\d+)\s+failed/);
+  return f ? Number(f[1]) : 0;
+}
+
 function readJsonReport(file) {
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (Number.isFinite(j.numPassedTests) && Number.isFinite(j.numFailedTests)) {
-      return { pass: j.numPassedTests, fail: j.numFailedTests, source: 'json' };
+      return {
+        pass: j.numPassedTests, fail: j.numFailedTests, source: 'json',
+        suitesFailed: Number.isFinite(j.numFailedTestSuites) ? j.numFailedTestSuites : null,
+      };
     }
   } catch { /* no report */ }
   return null;
@@ -64,8 +77,9 @@ async function runCmd(cfg, repo, dir, name, command) {
   if (r.error) throw new Error(`no se pudo ejecutar el comando de ${name}: ${r.error}`);
   const text = `${fs.readFileSync(outPath, 'utf8')}\n${fs.readFileSync(errPath, 'utf8')}`;
   const counts = r.timedOut
-    ? { pass: 0, fail: 1, source: 'timeout' }
-    : readJsonReport(jsonPath) || parseCounts(text, r.code);
+    ? { pass: 0, fail: 1, source: 'timeout', suitesFailed: null }
+    : readJsonReport(jsonPath) || { ...parseCounts(text, r.code), suitesFailed: null };
+  if (counts.suitesFailed === null && !r.timedOut) counts.suitesFailed = parseSuites(text);
   return { exitCode: r.code, timedOut: r.timedOut, wallS: r.wallS, ...counts };
 }
 
@@ -132,7 +146,14 @@ export async function acceptRun(cfg, args) {
   }
   const accept = await runCmd(cfg, tree, dir, 'accept', acceptCmd);
   const full = await runCmd(cfg, tree, dir, 'full', fullCmd);
-  const out = { task, arm, rep, acceptedAt: new Date().toISOString(), accept, full };
+  // Floor of the full suite at the base commit, written by the author in <privateRoot>/tasks.json; unknown is null, not zero.
+  let baselineFull = null;
+  try {
+    const t = JSON.parse(fs.readFileSync(path.join(cfg.privateRoot, 'tasks.json'), 'utf8').replace(/^﻿/, ''));
+    const b = t && t[task] && t[task].baselineFull;
+    if (b && Number.isFinite(b.fail)) baselineFull = { fail: b.fail };
+  } catch { /* no tasks.json */ }
+  const out = { task, arm, rep, acceptedAt: new Date().toISOString(), accept, full, baselineFull, invalidReasons: changes.invalidReasons || [] };
   fs.writeFileSync(path.join(dir, 'acceptance.json'), JSON.stringify(out, null, 2));
   return out;
 }

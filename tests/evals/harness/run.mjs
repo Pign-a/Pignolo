@@ -2,7 +2,7 @@
 // Measurement harness for Pignolo 2 vs superpowers. See README.md.
 //   node run.mjs <prepare|run|accept|row|blind|unblind|summary> [options] [--config <path>]
 import fs from 'node:fs';
-import { loadConfig, DEFAULT_CONFIG, DEFAULT_CSV, DEFAULT_GRADES } from './config.mjs';
+import { loadConfig, DEFAULT_CONFIG, DEFAULT_CSV, DEFAULT_GRADES, DEFAULT_EXPERIMENT, DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
 import { prepare } from './prepare.mjs';
 import { runTask } from './execute.mjs';
 import { acceptRun } from './accept.mjs';
@@ -54,12 +54,18 @@ async function main() {
     try { rows = rowsFromCsv(fs.readFileSync(csv, 'utf8')); } catch { throw new Error(`no se pudo leer el CSV ${csv}`); }
     let grades = [];
     try { grades = JSON.parse(fs.readFileSync(gradesPath, 'utf8')); } catch { /* optional */ }
-    const res = summarize(rows, { kinds, grades, includeContaminated: Boolean(o['include-contaminated']) });
+    const res = summarize(rows, {
+      kinds, grades, includeContaminated: Boolean(o['include-contaminated']),
+      experiment: o.experiment || (cfg && cfg.experiment) || DEFAULT_EXPERIMENT,
+      weights: (cfg && cfg.weights) || DEFAULT_WEIGHTS, modelFactor: (cfg && cfg.modelFactor) || DEFAULT_MODEL_FACTOR,
+    });
     console.log(o.json ? JSON.stringify(res, null, 2) : formatSummary(res));
     return;
   }
 
   const cfg = loadConfig(cfgPath);
+  // Calibration runs use another experiment name (for example pignolo2-calib): same CSV, never mixed in the real summary.
+  if (o.experiment) cfg.experiment = o.experiment;
   if (cmd === 'prepare') { need(o, 'task', 'arm', 'rep'); print(await prepare(cfg, run(o))); }
   else if (cmd === 'run') { need(o, 'task', 'arm', 'rep'); print(await runTask(cfg, run(o))); }
   else if (cmd === 'accept') { need(o, 'task', 'arm', 'rep'); print(await acceptRun(cfg, run(o))); }

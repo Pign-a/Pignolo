@@ -795,6 +795,31 @@ test('accept: calcula el resumen de cambios ANTES de copiar los tests y registra
   } finally { cleanup(env); }
 });
 
+test('accept: guarda el código de salida y las suites fallidas; un archivo que no importa no es verde; lee el piso de la suite completa', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { acceptRun, parseSuites } = await imp('accept.mjs');
+    // Un archivo de test que no se puede importar: 0 tests fallidos, 1 suite fallida, salida 1.
+    put(env.priv, 't1/accept/check.js',
+      'const fs=require("fs");const p=process.argv[2];' +
+      'if(p)fs.writeFileSync(p,JSON.stringify({numPassedTests:3,numFailedTests:0,numFailedTestSuites:1}));' +
+      'console.log("Test Files  1 failed | 2 passed (3)");process.exit(1);\n');
+    put(env.priv, 'tasks.json', JSON.stringify({ t1: { baselineFull: { fail: 2 } } }));
+    const a = await acceptRun(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.deepStrictEqual([a.accept.pass, a.accept.fail, a.accept.exitCode, a.accept.suitesFailed], [3, 0, 1, 1]);
+    assert.deepStrictEqual([a.full.exitCode, a.full.suitesFailed], [0, null]);
+    assert.deepStrictEqual(a.baselineFull, { fail: 2 });
+    // Sin tasks.json (o sin esa tarea) el piso queda desconocido: null, no cero.
+    fs.rmSync(path.join(env.priv, 'tasks.json'));
+    assert.strictEqual((await acceptRun(cfg, { task: 't1', arm: 'A', rep: 1 })).baselineFull, null);
+    assert.strictEqual(parseSuites('Test Files  1 failed | 2 passed (3)'), 1);
+    assert.strictEqual(parseSuites('Test Files  4 passed (4)'), 0);
+    assert.strictEqual(parseSuites('Test Suites: 2 failed, 3 passed, 5 total'), 2);
+    assert.strictEqual(parseSuites('ℹ pass 5'), null);
+  } finally { cleanup(env); }
+});
+
 test('accept: el timeout del comando se registra y no cuelga', async () => {
   const env = setup({ acceptTimeoutMs: 500 });
   try {
@@ -1013,7 +1038,9 @@ function mk(task, arm, rep, tokens, extra = {}) {
   return {
     experiment: 'x', task, arm, rep, timestamp: '2026-10-23T00:00:0' + rep + 'Z', model: 'sonnet',
     cost_usd: tokens / 1000, weighted_tokens: tokens, wall_s: 60, turns: 5, agents: 1,
-    accept_pass: 3, accept_fail: 0, full_pass: 10, full_fail: 0, timed_out: false, contamination: false, note: '', ...extra,
+    result_subtype: 'success', is_error: false, exit_code: 0, invalid: false, invalid_reason: '',
+    accept_exit: 0, accept_pass: 3, accept_fail: 0, accept_suites_failed: 0, full_pass: 10, full_fail: 0, full_baseline_fail: 0,
+    timed_out: false, contamination: false, note: '', ...extra,
   };
 }
 const arm = (task, a, tokens, over = {}) => tokens.map((t, i) => mk(task, a, i + 1, t, typeof over === 'function' ? over(i) : over));
@@ -1033,12 +1060,20 @@ test('summary medio: pasa con tokens <= 1,5x, calidad igual y rangos separados',
   assert.strictEqual(two.tasks[0].evidence, 'E2');
 });
 
-test('summary medio: rangos que se pisan dan "sin diferencia demostrada"', async () => {
+test('summary medio (no inferioridad, R16): rangos que se pisan NO impiden pasar, solo impiden afirmar superioridad', async () => {
   const { summarize } = await imp('summary.mjs');
   const rows = [...arm('m', 'A', [100, 110, 130]), ...arm('m', 'B', [120, 125, 140])];
   const grades = [...grade('m', 'A', [4, 4, 4]), ...grade('m', 'B', [4, 4, 4])];
   const t = summarize(rows, { kinds: { m: 'medium' }, grades }).tasks[0];
-  assert.strictEqual(t.decision.verdict, 'sin diferencia demostrada');
+  assert.strictEqual(t.decision.verdict, 'pasa', t.decision.reasons.join(' | '));
+  const sup = summarize([...arm('m', 'A', [100, 110, 130]), ...arm('m', 'B', [90, 100, 125])], { kinds: { m: 'medium' }, grades }).tasks[0].decision;
+  assert.match(sup.reasons.join(' '), /no se afirma superioridad/);
+  // Mediana dentro del umbral pero un máximo de B pasado de 1,5 x el máximo de A: no pasa.
+  const spike = summarize([...arm('m', 'A', [100, 100, 100]), ...arm('m', 'B', [100, 100, 160])], { kinds: { m: 'medium' }, grades }).tasks[0].decision;
+  assert.strictEqual(spike.verdict, 'no pasa');
+  assert.match(spike.reasons.join(' '), /máximo/);
+  const edge = summarize([...arm('m', 'A', [100, 100, 100]), ...arm('m', 'B', [150, 150, 150])], { kinds: { m: 'medium' }, grades }).tasks[0].decision;
+  assert.strictEqual(edge.verdict, 'pasa', '1,5 exacto pasa (<=)');
 });
 
 test('summary medio: más de 1,5x en tokens no pasa; peor calidad no pasa; sin notas queda pendiente', async () => {
@@ -1103,6 +1138,118 @@ test('summary: la salida de texto lleva mediana con rango, nivel de evidencia y 
   assert.match(text2, /tipo de tarea no definido/);
 });
 
+test('summary: una corrida inválida sale de las cifras, se lista y deja la tarea pendiente hasta repetirla', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const bad = (i) => (i === 1 ? { invalid: true, invalid_reason: 'timed_out;no_result', timed_out: true, weighted_tokens: 9999, cost_usd: 99 } : {});
+  const rows = [...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], bad)];
+  const r = summarize(rows, { kinds: { s: 'small' } });
+  const t = r.tasks[0];
+  assert.strictEqual(t.arms.B.n, 2, 'la inválida no cuenta en n');
+  assert.strictEqual(t.arms.B.tokens.max, 90, 'ni en tokens, costo o tiempo');
+  assert.strictEqual(t.decision.verdict, 'pendiente: 1 corridas inválidas');
+  assert.deepStrictEqual(t.invalid, [{ run: 's/B/2', reasons: ['timed_out', 'no_result'] }]);
+  assert.ok(r.notes.some((n) => /inválidas/.test(n) && /s\/B\/2/.test(n) && /timed_out/.test(n)));
+  assert.ok(r.notes.some((n) => /cortadas por tiempo/.test(n) && !/entran en las cifras/.test(n)), 'la nota de tiempo es exacta');
+  assert.match(formatSummary(r), /pendiente: 1 corridas inválidas/);
+  // Un rerun válido de la misma repetición la reemplaza y la tarea deja de estar pendiente.
+  const fixed = summarize([...rows, mk('s', 'B', 2, 88, { note: 'rerun', timestamp: '2026-10-24T00:00:00Z' })], { kinds: { s: 'small' } });
+  assert.doesNotMatch(fixed.tasks[0].decision.verdict, /pendiente: \d+ corridas/);
+  assert.strictEqual(fixed.tasks[0].arms.B.n, 3);
+  // El tope de presupuesto superado se informa aparte ("superó el tope").
+  const cut = summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], (i) => (i === 0 ? { invalid: true, invalid_reason: 'budget_cap;is_error', result_subtype: 'error_max_budget_usd', is_error: true } : {}))], { kinds: { s: 'small' } });
+  assert.ok(cut.notes.some((n) => /superó el tope/.test(n) && /s\/B\/1/.test(n)));
+  // Una contaminada legada (sin motivo escrito) también es inválida; --include-contaminated la deja entrar.
+  const dirty = [...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], (i) => (i === 2 ? { contamination: true } : {}))];
+  assert.strictEqual(summarize(dirty, { kinds: { s: 'small' } }).tasks[0].decision.verdict, 'pendiente: 1 corridas inválidas');
+  assert.strictEqual(summarize(dirty, { kinds: { s: 'small' }, includeContaminated: true }).tasks[0].arms.B.n, 3);
+});
+
+test('summary: verde = código de salida 0, sin suites fallidas, sin tests fallidos y más de 0 pasados', async () => {
+  const { summarize } = await imp('summary.mjs');
+  const verdict = (extra) => summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], (i) => (i === 0 ? extra : {}))], { kinds: { s: 'small' } }).tasks[0];
+  assert.strictEqual(verdict({}).decision.verdict, 'pasa');
+  for (const [label, extra] of [
+    ['un archivo de test que no importa (suite fallida, 0 tests fallidos)', { accept_suites_failed: 1, accept_exit: 1 }],
+    ['código de salida distinto de 0', { accept_exit: 1 }],
+    ['sin código de salida', { accept_exit: null }],
+    ['cero tests pasados', { accept_pass: 0 }],
+    ['un test fallido', { accept_fail: 1 }],
+  ]) {
+    const t = verdict(extra);
+    assert.strictEqual(t.decision.verdict, 'no pasa', label);
+    assert.strictEqual(t.arms.B.accept.greenRuns, 2, label);
+  }
+});
+
+test('summary chico: la suite completa se compara con el piso (baselineFull) y sin aceptación queda pendiente', async () => {
+  const { summarize } = await imp('summary.mjs');
+  const mkRows = (extra) => [...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], (i) => (i === 1 ? extra : {}))];
+  const v = (extra) => summarize(mkRows(extra), { kinds: { s: 'small' } }).tasks[0].decision;
+  assert.strictEqual(v({ full_fail: 2, full_baseline_fail: 2 }).verdict, 'pasa', 'igual al piso: bien');
+  const worse = v({ full_fail: 3, full_baseline_fail: 2 });
+  assert.strictEqual(worse.verdict, 'no pasa');
+  assert.match(worse.reasons.join(' '), /suite completa/);
+  const unknown = v({ full_baseline_fail: null });
+  assert.strictEqual(unknown.verdict, 'pendiente');
+  assert.match(unknown.reasons.join(' '), /baselineFull/);
+  const noAccept = v({ accept_pass: null, accept_fail: null, accept_exit: null, accept_suites_failed: null });
+  assert.strictEqual(noAccept.verdict, 'pendiente');
+  assert.match(noAccept.reasons.join(' '), /aceptación/);
+});
+
+test('summary: los tokens ponderados se recalculan con la configuración actual desde los tokens crudos por modelo', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const tokens = 'claude-opus-4=100/10/1000/100|claude-haiku-4=200/20/0/0';
+  const stale = (i) => ({ model_tokens: tokens, weighted_tokens: 1, cost_usd: 2 + i });
+  const rows = [...arm('s', 'A', [1, 1, 1], stale), ...arm('s', 'B', [1, 1, 1], stale)];
+  const W = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
+  const mine = summarize(rows, { kinds: { s: 'small' }, weights: W, modelFactor: { opus: 5, sonnet: 1, haiku: 0.33 } });
+  const opus = (100 + 50 + 100 + 125) * 5;
+  const haiku = (200 + 100) * 0.33;
+  assert.strictEqual(mine.tasks[0].arms.A.tokens.median, Math.round((opus + haiku) * 100) / 100, 'no se confía en el guardado (1)');
+  const other = summarize(rows, { kinds: { s: 'small' }, weights: W, modelFactor: { opus: 1, sonnet: 1, haiku: 1 } });
+  assert.strictEqual(other.tasks[0].arms.A.tokens.median, 375 + 300);
+  // Sin tokens por modelo (fila vieja) se usa lo guardado y se avisa.
+  const old = summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90])], { kinds: { s: 'small' }, weights: W });
+  assert.strictEqual(old.tasks[0].arms.A.tokens.median, 110);
+  assert.ok(old.notes.some((n) => /sin tokens por modelo/.test(n)));
+  // El costo va al lado de los tokens ponderados.
+  const text = formatSummary(mine);
+  assert.match(text, /tokens ponderados.*mediana/);
+  assert.match(text, /costo USD: mediana 3 \(rango 2 a 4\)/);
+});
+
+test('summary: filtra por experimento, las notas cuentan solo para las corridas usadas y falta de aceptación deja pendiente', async () => {
+  const { summarize } = await imp('summary.mjs');
+  const calib = arm('m', 'A', [5000, 5000, 5000], { experiment: 'calib' });
+  const rows = [
+    ...arm('m', 'A', [100, 105, 110], { experiment: 'real' }), ...arm('m', 'B', [130, 135, 140], { experiment: 'real' }), ...calib,
+  ];
+  const grades = [...grade('m', 'A', [4, 4, 4]), ...grade('m', 'B', [4, 4, 4])];
+  const r = summarize(rows, { kinds: { m: 'medium' }, grades, experiment: 'real' });
+  assert.strictEqual(r.tasks[0].arms.A.tokens.max, 110, 'la calibración no se mezcla');
+  assert.ok(r.notes.some((n) => /otros experimentos/.test(n) && /calib/.test(n)));
+  assert.strictEqual(r.tasks[0].decision.verdict, 'pasa');
+  // La nota de una corrida inválida (rep 4) no cuenta; la de la corrida que la reemplaza hace falta aparte.
+  const bad4 = mk('m', 'B', 4, 9000, { experiment: 'real', invalid: true, invalid_reason: 'is_error', timestamp: '2026-10-23T00:00:04Z' });
+  const gradesBad = [...grades, { task: 'm', arm: 'B', rep: 4, timestamp: '2026-10-23T00:00:04Z', quality: 1, correctness: 1, serious_findings: ['x', 'y'] }];
+  const r2 = summarize([...rows, bad4], { kinds: { m: 'medium' }, grades: gradesBad, experiment: 'real' });
+  assert.match(r2.tasks[0].decision.verdict, /^pendiente: 1 corridas inválidas/);
+  const rerun4 = mk('m', 'B', 4, 136, { experiment: 'real', note: 'rerun', timestamp: '2026-10-25T00:00:00Z' });
+  const stale = summarize([...rows, bad4, rerun4], { kinds: { m: 'medium' }, grades: gradesBad, experiment: 'real' }).tasks[0].decision;
+  assert.strictEqual(stale.verdict, 'pendiente', 'la nota vieja era de otra corrida');
+  assert.match(stale.reasons.join(' '), /nota/);
+  const fresh = [...gradesBad, { task: 'm', arm: 'B', rep: 4, timestamp: '2026-10-25T00:00:00Z', quality: 4, correctness: 4, serious_findings: [] }];
+  const withFresh = summarize([...rows, bad4, rerun4], { kinds: { m: 'medium' }, grades: [...grade('m', 'A', [4, 4, 4]), ...grade('m', 'B', [4, 4, 4]), fresh[fresh.length - 1]], experiment: 'real' }).tasks[0];
+  assert.strictEqual(withFresh.decision.verdict, 'pasa', withFresh.decision.reasons.join(' | '));
+  assert.strictEqual(withFresh.arms.B.n, 4);
+  // Sin aceptación en alguna corrida válida: pendiente (nunca se descarta en silencio).
+  const noAcc = [...arm('m', 'A', [100, 105, 110], { experiment: 'real' }), ...arm('m', 'B', [130, 135, 140], (i) => ({ experiment: 'real', ...(i === 2 ? { accept_pass: null, accept_fail: null, accept_exit: null } : {}) }))];
+  const na = summarize(noAcc, { kinds: { m: 'medium' }, grades, experiment: 'real' }).tasks[0].decision;
+  assert.strictEqual(na.verdict, 'pendiente');
+  assert.match(na.reasons.join(' '), /aceptación/);
+});
+
 // ---------------------------------------------------------------- CLI
 
 const RUN = path.join(HARNESS, 'run.mjs');
@@ -1141,6 +1288,23 @@ test('CLI: prepare, run, accept, row y summary de punta a punta con el claude fa
     const miss = spawnSync(process.execPath, [RUN, 'prepare', '--task', 't1', '--arm', 'A', '--rep', '1', '--config', path.join(env.root, 'no.json')], { encoding: 'utf8' });
     assert.notStrictEqual(miss.status, 0);
     assert.match(miss.stderr, /harness\.example\.json/);
+  } finally { cleanup(env); }
+});
+
+test('CLI: una corrida de calibración (--experiment) cuenta para el tope pero no se mezcla en el resumen real', () => {
+  const env = setup();
+  try {
+    const step = (...a) => { const r = cli(env, ...a); assert.strictEqual(r.status, 0, r.err); return r; };
+    step('prepare', '--task', 't1', '--arm', 'A', '--rep', '1');
+    step('run', '--task', 't1', '--arm', 'A', '--rep', '1', '--experiment', 'toy-calib');
+    step('accept', '--task', 't1', '--arm', 'A', '--rep', '1');
+    assert.match(cli(env, 'row', '--task', 't1', '--arm', 'A', '--rep', '1').err, /toy-calib/, 'la fila debe llevar el mismo experimento que la corrida');
+    step('row', '--task', 't1', '--arm', 'A', '--rep', '1', '--experiment', 'toy-calib');
+    assert.match(fs.readFileSync(env.cfg.csvPath, 'utf8'), /^toy-calib,t1,A,1,/m);
+    const real = step('summary', '--csv', env.cfg.csvPath).out;
+    assert.doesNotMatch(real, /== t1/, 'el experimento real no ve la calibración');
+    assert.match(real, /otros experimentos/);
+    assert.match(step('summary', '--csv', env.cfg.csvPath, '--experiment', 'toy-calib').out, /== t1/);
   } finally { cleanup(env); }
 });
 
