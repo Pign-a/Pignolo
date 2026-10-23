@@ -13,6 +13,7 @@ Pignolo 2: reescrito en limpio como un solo plugin, `pignolo`, que reemplaza a s
   - `/pignolo:ui-audit`: auditoría de una pantalla con mediciones, reglas y un auditor independiente; solo si se pide.
 - **Ocho agentes.** `review-security`, `review-database`, `review-code`, `review-tests`, `review-hygiene`, `review-docs`, `ui-option`, `ui-auditor`.
 - **Se elimina.** La guardia de git y sus hooks, el registro de tareas, los lotes y carriles, las auditorías de plan, los jueces, el panel (`pignolo-panel`), la publicación al lienzo y `pignolo-ui` como plugin aparte (su auditoría vive ahora en `plugins/pignolo/ui-audit/`).
+- **Actualizar:** si tenías instalados los plugins anteriores `pignolo-ui` o `pignolo-panel`, desinstalalos desde `/plugin` antes de usar este: sus skills `define`, `new`, `improve` y `audit` compiten con `ui` y `ui-audit` por los mismos pedidos.
 - **Pignolo 2 reemplaza a superpowers:** se usa uno u otro, no los dos activos a la vez.
 - **El plugin anterior** queda en la etiqueta local `legacy` (y en las ramas viejas); no se publica con esta versión.
 - Pendiente antes de publicar: la medición contra superpowers (diseño §9), con el OK del autor para el gasto.

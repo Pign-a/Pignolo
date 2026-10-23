@@ -18,6 +18,8 @@ Desde la terminal:
 
 O dentro de Claude Code: `/plugin marketplace add Pign-a/Pignolo` y `/plugin install pignolo@pignolo`. Para tomar cambios nuevos: `/plugin marketplace update pignolo`.
 
+Si tenías instalados los plugins anteriores `pignolo-ui` o `pignolo-panel`, desinstalalos desde `/plugin` antes de usar este: sus skills `define`, `new`, `improve` y `audit` compiten con `ui` y `ui-audit` por los mismos pedidos.
+
 ## Las seis skills
 
 | Comando | Qué hace |
@@ -44,4 +46,4 @@ Los tests de navegador de `ui-audit` necesitan `PIGNOLO_UI_BROWSER` apuntando a 
 
 ## Versión anterior
 
-El plugin anterior (guardia de git, carriles, panel y `pignolo-ui` como plugin aparte) quedó en la etiqueta local `legacy` y en las ramas viejas del repo. No se instala desde este marketplace.
+El plugin anterior (guardia de git, carriles, panel y la interfaz como plugin aparte) quedó en la etiqueta local `legacy` y en las ramas viejas del repo. No se instala desde este marketplace.
