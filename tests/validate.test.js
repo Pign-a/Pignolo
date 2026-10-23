@@ -67,15 +67,6 @@ test('la description de la skill trae "validá" y "validate", en una línea', ()
   assert.ok(m[1].includes('validate'));
 });
 
-test('imprime una línea "Frentes:" con los ids permitidos, y la lista vacía', () => {
-  const t = skill();
-  assert.match(t, /Frentes: security, hygiene/);
-  const par = paragraphs(t).find((p) => p.includes('Frentes:'));
-  assert.ok(par);
-  for (const id of IDS) assert.ok(par.includes(id), `falta ${id} junto a Frentes:`);
-  assert.match(par, /empty/i, 'no trata la lista vacía');
-});
-
 test('tope de 5 agentes y diff chico en el hilo principal sin agentes', () => {
   const t = skill();
   assert.ok(paragraphs(t).find((p) => /\b5\b/.test(p) && /agent/i.test(p)), 'falta el tope 5');
@@ -136,31 +127,11 @@ test('Validado: se busca de la sesión más nueva hacia atrás; mismo sha con á
   assert.match(after, /clean ignoring `docs\/sessions\/` and `docs\/research\/`; otherwise write nothing/);
 });
 
-test('la línea Frentes: se imprime plana, sin markdown ni backticks', () => {
-  const par = paragraphs(skill()).find((p) => p.includes('Frentes:'));
-  assert.match(par, /exactly one plain line \(no markdown, no backticks\)/);
-});
-
 test('fronts.md: code entra por más de 5 archivos o más de 200 líneas contando solo el diff', () => {
   const sec = read(DIR, 'references', 'fronts.md').split(/^## /m).find((s) => s.startsWith('code'));
   assert.ok(sec, 'falta la sección code');
   assert.match(sec, /more than 5 files or more than 200 changed lines, counted on the diff alone/);
   assert.ok(!/above the small limit/.test(sec), 'quedó el límite chico ambiguo');
-});
-
-test('fronts.md: todos los ejemplos "Frentes:" parsean y llevan ids válidos; ningún ejemplo afirma un tope sin evidencia', () => {
-  const t = read(DIR, 'references', 'fronts.md');
-  const sec = t.split(/^## /m).find((s) => s.startsWith('Worked examples'));
-  assert.ok(sec, 'faltan los ejemplos resueltos');
-  const examples = [...sec.matchAll(/`(Frentes:[^`]*)`/g)].map((m) => m[1]);
-  assert.ok(examples.length >= 3, 'faltan ejemplos');
-  for (const ex of examples) {
-    const m = ex.match(FRONT_LINE);
-    assert.ok(m, `no parsea: ${ex}`);
-    for (const id of (m[1] || '').split(', ').filter(Boolean)) assert.ok(IDS.includes(id), `id no permitido ${id}`);
-  }
-  assert.ok(!/dropped by the cap/i.test(sec), 'el ejemplo afirma que docs cayó por el tope sin tener evidencia');
-  assert.match(sec, /docs has no evidence/);
 });
 
 test('la auditoría de interfaz no forma parte: se pide con ui-audit', () => {
@@ -197,24 +168,6 @@ test('ningún archivo del frente contiene valores de secretos', () => {
 });
 
 // ---- fix round 1 ----
-const FRONT_LINE = /^Frentes:(?: ([a-z]+(?:, [a-z]+)*))?$/;
-
-test('la línea Frentes: solo lleva ids permitidos; motivos y costo van después', () => {
-  const t = skill();
-  const examples = [...t.matchAll(/`(Frentes:[^`]*)`/g)].map((m) => m[1]);
-  assert.ok(examples.length >= 2, 'faltan ejemplos de la línea');
-  for (const ex of examples) {
-    const m = ex.match(FRONT_LINE);
-    assert.ok(m, `no parsea: ${ex}`);
-    for (const id of (m[1] || '').split(', ').filter(Boolean)) assert.ok(IDS.includes(id), `id no permitido ${id}`);
-  }
-  const par = paragraphs(t).find((p) => p.includes('Frentes:'));
-  assert.match(par, /only the (front )?ids/i);
-  assert.match(par, /no reasons/i);
-  assert.match(par, /(lines? )?after it|following lines/i);
-  assert.match(par, /delegated/i);
-});
-
 test('diff chico definido: <=5 archivos y <=200 líneas, sin evidencia de seguridad; security sigue delegándose con evidencia', () => {
   const t = skill() + read(DIR, 'references', 'fronts.md');
   assert.match(t, /5 files/);
@@ -225,14 +178,11 @@ test('diff chico definido: <=5 archivos y <=200 líneas, sin evidencia de seguri
   assert.match(par, /form|endpoint/i);
 });
 
-test('fronts.md: umbrales por frente con ejemplo negativo, prioridad y tres ejemplos resueltos', () => {
+test('fronts.md: umbrales por frente con ejemplo negativo y prioridad', () => {
   const t = read(DIR, 'references', 'fronts.md');
   assert.ok((t.match(/Not enough:/g) || []).length >= 6, 'un ejemplo negativo (Not enough:) por frente');
   assert.match(t, /security, database, code, tests, hygiene, docs/);
   assert.match(t, /drop from the end|drop .* from the end/i);
-  assert.ok(t.includes('Frentes: security, hygiene'));
-  assert.ok(t.includes('Frentes: security, database, code, tests, hygiene'));
-  assert.ok(/^Frentes:$/m.test(t) || t.includes('`Frentes:`'));
   assert.match(t, /never "always"|never always/i);
 });
 
@@ -251,31 +201,9 @@ test('base del diff: ancestro, fecha más reciente, rama principal, árbol de tr
   assert.match(par, /no `?Validado:/i);
 });
 
-// ---- fix round 2: anuncio de frentes como paso propio y basura como disparador de hygiene ----
+// ---- fix round 2: basura como disparador de hygiene ----
 const secBy = (t, n) => t.split(/^## /m).find((s) => s.startsWith(`${n}.`));
 const fronts = () => read(DIR, 'references', 'fronts.md');
-
-test('anuncio: la línea Frentes: es un paso propio de la sección 3, con su razón y la lista vacía', () => {
-  const s3 = secBy(skill(), 3);
-  assert.ok(s3, 'falta la sección 3');
-  const par = paragraphs(s3).find((p) => /^3\.1 Announce the fronts/.test(p));
-  assert.ok(par, 'falta el paso 3.1 "Announce the fronts"');
-  assert.ok(par.includes('Frentes:'), 'el paso lleva la línea');
-  assert.match(par, /before launching any agent/i);
-  assert.match(par, /as its own paragraph/);
-  assert.match(par, /never inside a sentence or list item/);
-  assert.match(par, /correct the plan before money is spent/);
-  assert.match(par, /only machine-readable record of what was delegated/);
-  assert.match(par, /empty list prints `Frentes:` alone/);
-  assert.match(par, /even when the list is empty/);
-  assert.match(par, /(lines? )?after it/);
-});
-
-test('anuncio: la sección 4 lanza solo después de imprimir la línea Frentes', () => {
-  const s4 = secBy(skill(), 4);
-  assert.ok(s4, 'falta la sección 4');
-  assert.match(s4.replace(/^4\. Run\n+/, ''), /^Launch only after the Frentes line is printed/);
-});
 
 test('basura: la evidencia de basura delega hygiene sin importar el tamaño; el hilo principal no la lista', () => {
   const s3 = secBy(skill(), 3);
@@ -303,21 +231,57 @@ test('basura: fronts.md hace de la basura un disparador propio de hygiene, sin i
   assert.match(intro, /whatever the size/);
 });
 
-test('basura: los ejemplos resueltos suman un script chico con solo un .log -> Frentes: hygiene, y el formulario con basura', () => {
-  const sec = fronts().split(/^## /m).find((s) => s.startsWith('Worked examples'));
-  assert.ok(sec);
-  const lines = sec.split('\n').filter((l) => l.startsWith('- '));
-  assert.ok(lines.some((l) => l.includes('`Frentes: hygiene`') && /\.log/.test(l)), 'falta el script chico con un .log');
-  assert.ok(lines.some((l) => l.includes('`Frentes: security, hygiene`') && /form/i.test(l) && /junk|screenshot|\.log/.test(l)));
-  assert.ok(lines.some((l) => l.includes('`Frentes:`') && /script/i.test(l) && /main thread/.test(l)), 'cli-script sin cambios');
+// ---- ronda 3: sin línea "Frentes:"; anuncio en prosa, diff medido, cierre con los frentes ----
+test('no existe la línea "Frentes:" en SKILL.md ni en fronts.md', () => {
+  assert.ok(!/Frentes/.test(skill()), 'quedó "Frentes" en SKILL.md');
+  assert.ok(!/Frentes/.test(fronts()), 'quedó "Frentes" en fronts.md');
+  assert.ok(!/Announc/i.test(fronts()), 'quedó la sección de anuncio en fronts.md');
 });
 
-test('anuncio: fronts.md trae un ejemplo bueno (la línea sola) y uno malo (prosa en lugar de la línea)', () => {
-  const sec = fronts().split(/^## /m).find((s) => s.startsWith('Announcing the line'));
-  assert.ok(sec, 'falta la sección "Announcing the line"');
-  assert.match(sec, /Good:/);
-  assert.match(sec, /Bad:/);
-  assert.match(sec, /^Frentes: security, hygiene$/m, 'el ejemplo bueno es la línea sola');
-  const bad = sec.split('\n').find((l) => l.startsWith('Bad:'));
-  assert.ok(bad && !/^Bad:\s*`?Frentes:/.test(bad), 'el ejemplo malo es prosa');
+test('diff medido: git diff --shortstat más los sin seguimiento, con los dos números declarados, antes de decidir', () => {
+  const s3 = secBy(skill(), 3);
+  assert.ok(s3, 'falta la sección 3');
+  const pars = paragraphs(s3);
+  const iM = pars.findIndex((p) => p.includes('git diff --shortstat <base>'));
+  const iS = pars.findIndex((p) => /small diff is at most 5 files and 200 changed lines/.test(p));
+  assert.ok(iM >= 0, 'falta el paso de medir');
+  assert.ok(iS > iM, 'el paso de medir va antes de la definición de diff chico');
+  const m = pars[iM];
+  assert.match(m, /untracked files from `git status --porcelain`/);
+  assert.match(m, /both numbers \(files, changed lines\)/);
+  assert.match(m, /announce the fronts/);
+  assert.match(m, /Without git, count the files and lines you review/);
+  assert.match(m, /misjudged by feel/);
+  assert.match(pars[iS], /both within the limits and nothing else/);
+});
+
+test('anuncio en prosa: antes de lanzar, uno o dos enunciados con frentes, motivos y costo; sigue salvo objeción; con su razón', () => {
+  const s4 = secBy(skill(), 4);
+  assert.ok(s4, 'falta la sección 4');
+  const first = paragraphs(s4.replace(/^4\. Run\n+/, ''))[0];
+  assert.match(first, /^Before launching/);
+  assert.match(first, /one or two sentences/);
+  assert.match(first, /Spanish/);
+  assert.match(first, /rough cost/);
+  assert.match(first, /unless the author objects/);
+  assert.match(first, /correct the plan before the cost is spent/);
+});
+
+test('cierre: dice en una frase qué frentes corrieron y cuáles se dejaron fuera y por qué', () => {
+  const s5 = secBy(skill(), 5);
+  assert.ok(s5, 'falta la sección 5');
+  assert.match(s5, /in one sentence, which fronts ran and which were left out and why/);
+  assert.match(s5, /Hygiene only lists, never deletes/);
+});
+
+test('ejemplos resueltos de fronts.md en enunciados llanos', () => {
+  const sec = fronts().split(/^## /m).find((s) => s.startsWith('Worked examples'));
+  assert.ok(sec, 'faltan los ejemplos resueltos');
+  const lines = sec.split('\n').filter((l) => l.startsWith('- '));
+  assert.ok(lines.some((l) => /landing/i.test(l) && /form/i.test(l) && /junk|screenshot|\.log/.test(l) && /delegate security and hygiene/.test(l)), 'landing con formulario y basura');
+  assert.ok(lines.some((l) => /\.log/.test(l) && /delegate hygiene/.test(l) && /main thread/.test(l)), 'script con solo un .log');
+  assert.ok(lines.some((l) => /script/i.test(l) && /no agents/.test(l) && /main thread/.test(l)), 'script sin nada más');
+  assert.ok(lines.some((l) => /ORM schema/.test(l) && /security, database, code, tests, hygiene/.test(l) && /docs has no evidence/.test(l)), 'forma app-db');
+  assert.ok(!/dropped by the cap/i.test(sec), 'el ejemplo afirma que docs cayó por el tope sin tener evidencia');
+  assert.ok(!sec.includes('`'), 'los ejemplos no llevan líneas de contrato entre backticks');
 });

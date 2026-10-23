@@ -23,19 +23,8 @@ Enters when the diff removes or renames something the docs mention (a command, a
 ## Priority when more than 5 qualify
 security, database, code, tests, hygiene, docs: keep in that order and drop from the end.
 
-## Announcing the line
-Print it before launching any agent, as its own paragraph, never inside a sentence, list item, bold or backticks. Reasons and cost go after it.
-
-Good:
-
-Frentes: security, hygiene
-
-Motivos: formulario de contacto expuesto; un .log y una captura sueltos. Costo aproximado: dos agentes, uno sonnet y uno haiku.
-
-Bad: "Corrieron los cinco frentes y el resto lo revisé yo." Prose instead of the line: the author cannot correct the plan before the cost is spent and nothing can read what was delegated.
-
 ## Worked examples
-- Static landing with a contact form plus stray junk (a .log file and a screenshot placeholder): `Frentes: security, hygiene`.
-- Small script with only a stray .log file: `Frentes: hygiene` (the script itself is reviewed in the main thread).
-- Small CLI script, nothing else: `Frentes:` (reviewed in the main thread).
-- App with ORM schema and migrations, authentication, a test runner, a large change and stray traces: `Frentes: security, database, code, tests, hygiene` (docs has no evidence: nothing the documentation mentions was removed or renamed).
+- Static landing with a contact form plus stray junk (a .log file and a screenshot placeholder): delegate security and hygiene.
+- Small script with only a stray .log file: delegate hygiene; the script itself is reviewed in the main thread.
+- Small CLI script, nothing else: no agents, reviewed in the main thread.
+- App with ORM schema and migrations, authentication, a test runner, a large change and stray traces: delegate security, database, code, tests, hygiene (docs has no evidence: nothing the documentation mentions was removed or renamed).
