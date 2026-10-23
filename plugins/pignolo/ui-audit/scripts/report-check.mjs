@@ -1,10 +1,8 @@
 // report-check.mjs: cross-check of the final report against its evidence (spec §12).
 //   node <root>/scripts/report-check.mjs --project <repo> --run <folder in .pignolo-ui/runs/>
 // Reads <run>/report.json, writes <run>/report-check.json ({ reportSha256, kept, retired,
-// implements, exitCode }) and prints { out, kept, retired, implements, exitCode } on stdout.
-// Exit codes: 0 no claim retired and the approved is cited when something was implemented;
-// 1 at least one claim retired or the approved citation is missing or wrong; 2 own error
-// (counts as not verified).
+// exitCode }) and prints { out, kept, retired, exitCode } on stdout.
+// Exit codes: 0 no claim retired; 1 at least one claim retired; 2 own error (counts as not verified).
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -47,7 +45,7 @@ export function main(argv, { cwd = process.cwd() } = {}) {
     const out = path.join(run, 'report-check.json');
     const body = { reportSha256: crypto.createHash('sha256').update(buf).digest('hex'), ...result };
     fs.writeFileSync(out, `${JSON.stringify(body, null, 2)}\n`);
-    process.stdout.write(`${JSON.stringify({ out, kept: result.kept.length, retired: result.retired, implements: result.implements.status, exitCode: result.exitCode }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ out, kept: result.kept.length, retired: result.retired, exitCode: result.exitCode }, null, 2)}\n`);
     return result.exitCode;
   } catch (e) {
     const known = e instanceof UsageError || e instanceof ReportError;

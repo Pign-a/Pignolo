@@ -1,16 +1,13 @@
-// Development test against the official linter (spec §0.1 criterion 2, A-09). It only runs
-// when a developer installed @google/design.md@0.4.0 by hand, outside package.json, and
-// points PIGNOLO_UI_DESIGNMD at it. Without it the test is a visible skip, never a green.
+// The official linter (spec §0.1 criterion 2, A-09) only informs: without it the result is unverified, never a green.
+// The development tests that ran it over the design flow's template and over extracted files went with that flow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
-import { PLUGIN_ROOT, FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
-import { findOfficialLinter, runOfficialLint, PINNED_VERSION } from '../lib/official-lint.mjs';
-import { extractDesign } from '../lib/design-extract.mjs';
+import { FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { runOfficialLint } from '../lib/official-lint.mjs';
 
-const TEMPLATE = path.join(PLUGIN_ROOT, 'templates', 'DESIGN.md');
-const NO_LINTER = 'sin linter oficial: instalar @google/design.md@0.4.0 a mano fuera del repo y fijar PIGNOLO_UI_DESIGNMD';
+// a valid design.md: the fixture of the validator (the templates of the design flow are not part of the audit)
+const TEMPLATE = path.join(FIXTURES, 'design', 'valid.md');
 
 test('without the official linter the result is unverified', () => {
   const r = runOfficialLint(TEMPLATE, { projectRoot: makeTempDir(), env: {} });
@@ -31,33 +28,4 @@ test('validate --official reports the official result without changing the exit 
   const out = runScript('design-md.mjs', ['validate', '--file', TEMPLATE, '--project', makeTempDir(), '--official'], { env: { ...process.env, PIGNOLO_UI_DESIGNMD: '' } });
   assert.equal(out.status, 0, out.stderr);
   assert.equal(out.json.official.status, 'unverified');
-});
-
-test(`the template passes the official linter ${PINNED_VERSION} with 0 errors and 0 warnings (development)`, (t) => {
-  const found = findOfficialLinter({ env: process.env });
-  if (!found) {
-    t.skip(NO_LINTER);
-    return;
-  }
-  assert.equal(found.version, PINNED_VERSION);
-  const r = runOfficialLint(TEMPLATE, { env: process.env });
-  assert.equal(r.status, 'ran');
-  assert.deepEqual([r.errors, r.warnings], [0, 0], JSON.stringify(r.findings));
-  assert.ok(fs.existsSync(found.entry));
-});
-
-test(`extract outputs of the fixtures pass the official linter ${PINNED_VERSION} with 0/0 (development)`, (t) => {
-  const found = findOfficialLinter({ env: process.env });
-  if (!found) {
-    t.skip(NO_LINTER);
-    return;
-  }
-  for (const name of ['tailwind-v4', 'tailwind-v3', 'css-root', 'shadcn', 'frequency']) {
-    const r = extractDesign(path.join(FIXTURES, 'extract', name), { date: '2026-09-28' });
-    const file = path.join(makeTempDir(), 'DESIGN.md');
-    fs.writeFileSync(file, r.text);
-    const lint = runOfficialLint(file, { env: process.env });
-    assert.equal(lint.status, 'ran', name);
-    assert.deepEqual([lint.errors, lint.warnings], [0, 0], `${name}: ${JSON.stringify(lint.findings)}`);
-  }
 });

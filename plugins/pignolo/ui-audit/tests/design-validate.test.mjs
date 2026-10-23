@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FIXTURES, PLUGIN_ROOT, makeTempDir, writeTree, runScript } from './helpers.mjs';
-import { validateDesign, splitFrontmatter, DEFAULT_ALIASES } from '../lib/design-doc.mjs';
+import { validateDesign, splitFrontmatter } from '../lib/design-doc.mjs';
 
 const catalog = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, 'catalog', 'rules.json'), 'utf8'));
 const VALID = fs.readFileSync(path.join(FIXTURES, 'design', 'valid.md'), 'utf8');
@@ -182,11 +182,6 @@ test('pignolo.aliases completes the default map and is part of the closed schema
   assert.deepEqual(ids(check(edit('  schema: 1\n', '  schema: 1\n  aliases:\n    primary: surface\n'))), ['DESIGN-SCHEMA pignolo.aliases.primary']);
 });
 
-test('the README documents every default alias', () => {
-  const readme = fs.readFileSync(path.join(PLUGIN_ROOT, 'README.md'), 'utf8');
-  for (const [from, to] of Object.entries(DEFAULT_ALIASES)) assert.ok(readme.includes(`\`${from}\` → \`${to}\``), `${from} → ${to}`);
-});
-
 test('an unquoted hex is empty for YAML and is reported on its line (Review Focus 3)', () => {
   const r = check(edit('  on-primary: "#FFFFFF"\n', '  on-primary: #FFFFFF\n'));
   assert.deepEqual(r.findings.map((f) => [f.id, f.path, f.line, f.severity]), [['DESIGN-FORMAT', 'colors.on-primary', 8, 'alto']]);
@@ -229,13 +224,10 @@ test('CLI design-md: an unknown option is exit 2 with a Spanish usage message, p
   const dir = makeTempDir();
   const file = path.join(dir, 'DESIGN.md');
   fs.writeFileSync(file, VALID);
-  const ops = path.join(dir, 'ops.json');
-  fs.writeFileSync(ops, '[]');
   const cases = [
     ['validate', '--file', file, '--fil', file],
     ['validate', '--file', file, '--out', path.join(dir, 'x.md')],
-    ['patch', '--file', file, '--ops', ops, '--writ'],
-    ['extract', '--project', dir, '--out', path.join(dir, '.pignolo-ui', 'p.md'), '--file', file],
+    ['validate', '--file', file, '--write'],
   ];
   for (const args of cases) {
     const out = runScript('design-md.mjs', args);
@@ -245,7 +237,19 @@ test('CLI design-md: an unknown option is exit 2 with a Spanish usage message, p
   }
 });
 
-test('CLI design-md: a missing or nonexistent --project, a bad --date and an op without heading are clean exit 2 errors', () => {
+test('CLI design-md: the audit only validates; patch and extract belong to the design flow and exit 2 with the usage', () => {
+  const dir = makeTempDir();
+  const file = path.join(dir, 'DESIGN.md');
+  fs.writeFileSync(file, VALID);
+  for (const args of [['patch', '--file', file, '--ops', file], ['extract', '--project', dir, '--out', path.join(dir, 'p.md')]]) {
+    const out = runScript('design-md.mjs', args);
+    assert.equal(out.status, 2, args[0]);
+    assert.match(out.stderr, /uso: design-md\.mjs <validate>/);
+  }
+  assert.equal(fs.readFileSync(file, 'utf8'), VALID);
+});
+
+test('CLI design-md validate: a missing or nonexistent --project or --file is a clean exit 2 error', () => {
   const dir = makeTempDir();
   const file = path.join(dir, 'DESIGN.md');
   fs.writeFileSync(file, VALID);
@@ -255,18 +259,9 @@ test('CLI design-md: a missing or nonexistent --project, a bad --date and an op 
     assert.doesNotMatch(out.stderr, /error interno|\n\s+at |\.mjs:\d+/);
   };
   const missing = path.join(dir, 'nope');
-  const proposal = path.join(dir, '.pignolo-ui', 'p.md');
   clean(runScript('design-md.mjs', ['validate', '--file', file, '--project', missing]), /--project/);
-  clean(runScript('design-md.mjs', ['extract', '--project', missing, '--out', proposal]), /--project/);
-  clean(runScript('design-md.mjs', ['extract', '--out', proposal]), /--project/);
-  clean(runScript('design-md.mjs', ['extract', '--project', dir, '--out', proposal, '--date', '28/09/2026']), /YYYY-MM-DD/);
-  const ops = path.join(dir, 'ops.json');
-  fs.writeFileSync(ops, JSON.stringify([{ op: 'section-append', text: 'x' }]));
-  clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /heading/);
-  fs.writeFileSync(ops, JSON.stringify([{ op: 'set', value: 1 }]));
-  clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /path/);
-  fs.writeFileSync(ops, JSON.stringify(['x']));
-  clean(runScript('design-md.mjs', ['patch', '--file', file, '--ops', ops]), /operación/);
+  clean(runScript('design-md.mjs', ['validate']), /--file/);
+  clean(runScript('design-md.mjs', ['validate', '--file', file, '--project']), /--project necesita un valor/);
   assert.equal(fs.readFileSync(file, 'utf8'), VALID);
 });
 

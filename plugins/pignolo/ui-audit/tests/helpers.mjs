@@ -9,7 +9,7 @@ import { findBrowser } from '../lib/browser-find.mjs';
 
 export const TESTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const PLUGIN_ROOT = path.join(TESTS_DIR, '..');
-export const REPO_ROOT = path.join(PLUGIN_ROOT, '..', '..');
+export const REPO_ROOT = path.join(PLUGIN_ROOT, '..', '..', '..');
 export const FIXTURES = path.join(TESTS_DIR, 'fixtures');
 
 // Every temporary directory is registered and removed when the test process exits
@@ -136,14 +136,4 @@ export async function leftoverProcesses(profile, timeoutMs = 15000) {
     if (!left.length || Date.now() > until) return left;
     await new Promise((r) => setTimeout(r, 500));
   }
-}
-
-// A valid brief.md (hito 4f) for the tests that save an approval: `approve.mjs save` seals it.
-export const BRIEF_TEXT = '## Screen\nAccount page of a synthetic shop.\n\n## First look\nThe order summary and the pay button, without scrolling.\n\n## Do not touch\nnothing\n';
-
-// Writes BRIEF_TEXT in dir (a new temporary one by default) and returns the file path.
-export function writeBrief(dir = makeTempDir(), name = 'brief.md', text = BRIEF_TEXT) {
-  const file = path.join(dir, name);
-  fs.writeFileSync(file, text);
-  return file;
 }

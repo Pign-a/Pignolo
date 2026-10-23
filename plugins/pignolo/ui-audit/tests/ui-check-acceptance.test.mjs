@@ -207,15 +207,7 @@ test('a text-pattern rejection already in the base is debt too', () => {
   assert.equal(r.status, 0);
 });
 
-// ---- the catalog in the README ----
-
-test('README: the block between catalog markers is exactly renderCatalogMarkdown(catalog)', () => {
-  assert.equal(typeof catalogModule.renderCatalogMarkdown, 'function', 'renderCatalogMarkdown exists');
-  const readme = fs.readFileSync(path.join(PLUGIN_ROOT, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
-  const m = readme.match(/<!-- catalog:start -->\n([\s\S]*?)\n<!-- catalog:end -->/);
-  assert.ok(m, 'README has the catalog markers');
-  assert.equal(m[1], catalogModule.renderCatalogMarkdown(catalogModule.loadCatalog()).trimEnd());
-});
+// ---- the catalog as a table ----
 
 test('renderCatalogMarkdown: one row per rule, pipes escaped, all columns', () => {
   assert.equal(typeof catalogModule.renderCatalogMarkdown, 'function', 'renderCatalogMarkdown exists');

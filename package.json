@@ -2,7 +2,8 @@
   "name": "pignolo-repo",
   "private": true,
   "scripts": {
-    "test": "node --test \"tests/**/*.test.js\"",
-    "test:quiet": "node --test --test-reporter=dot \"tests/**/*.test.js\""
+    "test": "node --test \"tests/**/*.test.js\" \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\"",
+    "test:quiet": "node --test --test-reporter=dot \"tests/**/*.test.js\" \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\"",
+    "test:ui": "node --test \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\""
   }
 }

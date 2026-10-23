@@ -40,10 +40,10 @@ function assertClean(project) {
   }
 }
 
-test('RL-01: una corrida completa (init, ui-check, browser, context) no deja rutas absolutas ni el usuario bajo .pignolo-ui/', () => {
+test('RL-01: una corrida completa (init, ui-check, browser, norms) no deja rutas absolutas ni el usuario bajo .pignolo-ui/', () => {
   const project = writeTree(makeTempDir(), { 'index.html': PAGE, 'DESIGN.md': '# d\n' });
   execFileSync('git', ['init', '-q'], { cwd: project });
-  const init = runScript('run.mjs', ['init', '--project', project, '--command', 'audit', '--slug', 'x', '--file', path.join(project, 'index.html')]);
+  const init = runScript('audit.mjs', ['init', '--project', project, '--command', 'audit', '--slug', 'x', '--file', path.join(project, 'index.html')]);
   assert.equal(init.status, 0, init.stderr);
   const run = init.json.run;
   const runJson = JSON.parse(fs.readFileSync(path.join(run, 'run.json'), 'utf8'));
@@ -51,8 +51,8 @@ test('RL-01: una corrida completa (init, ui-check, browser, context) no deja rut
   assert.equal(runJson.file, './index.html');
   const ui = runScript('ui-check.mjs', ['--project', project, '--run', run, '--files', 'index.html'], { cwd: project });
   assert.ok([0, 1].includes(ui.status), ui.stderr);
-  const ctx = runScript('run.mjs', ['context', '--project', project, '--run', run]);
-  assert.ok([0, 1].includes(ctx.status), ctx.stderr);
+  const norms = runScript('audit.mjs', ['norms', '--run', run]);
+  assert.equal(norms.status, 0, norms.stderr);
   assertClean(project);
 });
 

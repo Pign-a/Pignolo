@@ -8,13 +8,13 @@ import { makeTempDir, writeTree, runScript } from './helpers.mjs';
 const RUN = '.pignolo-ui/runs/r1';
 
 test('exit 0 with nothing retired, 1 with a retired claim; report-check.json is written', () => {
-  const project = writeTree(makeTempDir(), { [`${RUN}/report.json`]: JSON.stringify({ implemented: false, claims: [] }) });
+  const project = writeTree(makeTempDir(), { [`${RUN}/report.json`]: JSON.stringify({ claims: [] }) });
   const ok = runScript('report-check.mjs', ['--project', project, '--run', path.join(project, RUN)]);
   assert.equal(ok.status, 0, ok.stderr);
-  assert.deepEqual([ok.json.kept, ok.json.retired, ok.json.implements], [0, [], 'not-required']);
+  assert.deepEqual([ok.json.kept, ok.json.retired, 'implements' in ok.json], [0, [], false]);
   const written = JSON.parse(fs.readFileSync(path.join(project, RUN, 'report-check.json'), 'utf8'));
   assert.match(written.reportSha256, /^[0-9a-f]{64}$/);
-  writeTree(project, { [`${RUN}/report.json`]: JSON.stringify({ implemented: false, claims: [{ id: 'c1', text: 'Todo en orden' }] }) });
+  writeTree(project, { [`${RUN}/report.json`]: JSON.stringify({ claims: [{ id: 'c1', text: 'Todo en orden' }] }) });
   const bad = runScript('report-check.mjs', ['--project', project, '--run', path.join(project, RUN)]);
   assert.equal(bad.status, 1);
   assert.deepEqual(bad.json.retired, [{ id: 'c1', reason: 'no evidence reference' }]);

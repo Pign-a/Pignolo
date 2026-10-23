@@ -36,7 +36,8 @@ export function claudeVersion({ exec = defaultExec, platform = process.platform 
   }
 }
 
-const PLUGIN_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+// the plugin manifest sits one level above ui-audit: plugins/pignolo/.claude-plugin/plugin.json
+const PLUGIN_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 export function envReport({ pluginRoot = PLUGIN_ROOT, minClaude = '2.1.271', exec, platform } = {}) {
   const manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, '.claude-plugin', 'plugin.json'), 'utf8'));

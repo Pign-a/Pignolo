@@ -34,7 +34,7 @@ export const isSemanticColor = (name) => MD3_FAMILIES.has(colorFamily(name));
 
 // Reading a user's DESIGN.md does not demand literal MD3 names (spec §4.2): these aliases,
 // completed or overridden by pignolo.aliases, map common project names to MD3. What
-// pignolo-ui generates keeps MD3 names. The README documents this map (a test checks it).
+// pignolo-ui generates keeps MD3 names. DEFAULT_ALIASES is the one place where this map is written.
 export const DEFAULT_ALIASES = Object.freeze({
   accent: 'primary',
   brand: 'primary',

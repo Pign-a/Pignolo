@@ -5,8 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { firstLine, reportSkeleton, verdict } from '../lib/report-build.mjs';
 import { checkReport } from '../lib/report-check.mjs';
-import { saveApproved, decisionEntry } from '../lib/approved.mjs';
-import { makeTempDir, writeTree, BRIEF_TEXT } from './helpers.mjs';
+import { makeTempDir, writeTree } from './helpers.mjs';
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const entry = (over) => ({ id: 'COLOR-03', status: 'fail', severity: 'bloquea', scope: 'new', fingerprint: 'fp-1', measure: { ratio: 2.1 }, ...over });
@@ -20,21 +19,18 @@ function makeRun(files = {}) {
 
 test('firstLine: normal, degraded, sequential and non-independent audit', () => {
   const base = { pluginVersion: '0.5.0', degraded: [], subagents: { requested: 3, launched: 3, model: 'sonnet' }, sequential: false, notIndependentAudit: false };
-  assert.equal(firstLine(base), 'pignolo-ui 0.5.0 · sin degradaciones · subagentes: 3 de 3 (modelo pedido: sonnet)');
+  assert.equal(firstLine(base), 'pignolo ui-audit 0.5.0 · sin degradaciones · subagentes: 3 de 3 (modelo pedido: sonnet)');
   assert.match(firstLine({ ...base, degraded: ['sin navegador', 'lienzo no disponible'] }), /· sin navegador; lienzo no disponible ·/);
   assert.match(firstLine({ ...base, notIndependentAudit: true }), /auditoría no independiente/);
   const seq = firstLine({ ...base, sequential: true, subagents: { requested: 3, launched: 0, model: 'sonnet' } }).split('\n');
   assert.equal(seq[0], 'opciones generadas en secuencia en el hilo principal: no son independientes; se lanzaron 0 de 3 subagentes');
-  assert.ok(seq[1].startsWith('pignolo-ui'));
+  assert.ok(seq[1].startsWith('pignolo ui-audit'));
 });
 
-test('firstLine: the canvas fact says "lienzo: publicado" or "lienzo: local (<motivo>)" (hito 4c)', () => {
-  const base = { pluginVersion: '0.7.0', degraded: [], subagents: { requested: 3, launched: 3, model: 'sonnet' } };
-  assert.equal(firstLine({ ...base, canvas: 'published' }), 'pignolo-ui 0.7.0 · sin degradaciones · subagentes: 3 de 3 (modelo pedido: sonnet) · lienzo: publicado');
-  assert.ok(firstLine({ ...base, canvas: 'local-fallback', reasons: ['no-design-type'] }).endsWith('lienzo: local (no-design-type)'));
-  assert.ok(firstLine({ ...base, canvas: 'local-fallback', reasons: ['project-opt-out', 'run-opt-out'] }).endsWith('lienzo: local (project-opt-out, run-opt-out)'));
-  assert.ok(!firstLine(base).includes('lienzo'), 'without the fact the line is the old one');
-  assert.throws(() => firstLine({ ...base, canvas: 'otro' }));
+test('firstLine: there is no canvas in the audit, so a canvas fact in the facts does not change the line', () => {
+  const base = { pluginVersion: '1.0.0', degraded: [], subagents: { requested: 1, launched: 1, model: 'opus' } };
+  assert.equal(firstLine({ ...base, canvas: 'published' }), firstLine(base));
+  assert.ok(!firstLine(base).includes('lienzo'));
 });
 
 test('reportSkeleton builds candidates and evidence from the run', () => {
@@ -45,8 +41,8 @@ test('reportSkeleton builds candidates and evidence from the run', () => {
   assert.equal(sk.candidates.length, 2);
   assert.deepEqual(sk.evidence, { 'ui-check.json': sha(uiCheck), 'browser.json': sha(browser) });
   assert.deepEqual(sk.candidates.map((c) => c.ref.source).sort(), ['browser', 'ui-check']);
-  assert.equal(sk.implemented, false);
-  assert.ok(!('implements' in sk));
+  assert.equal('implemented' in sk, false);
+  assert.equal('implements' in sk, false);
   // without browser.json only ui-check is cited
   const { project: p2, run: r2 } = makeRun({ '.pignolo-ui/runs/r1/ui-check.json': uiCheck });
   assert.deepEqual(Object.keys(reportSkeleton({ project: p2, run: r2 }).evidence), ['ui-check.json']);
@@ -63,15 +59,10 @@ test('reportSkeleton with run = <run>/after reads after/, not the parent', () =>
   assert.equal(sk.evidence['ui-check.json'], sha(fs.readFileSync(path.join(run, 'after', 'ui-check.json'))));
 });
 
-test('reportSkeleton with implementsPath cites the approved manifest sha', () => {
+test('reportSkeleton has no approved design to cite: the audit implements nothing', () => {
   const { project, run } = makeRun({ '.pignolo-ui/runs/r1/ui-check.json': JSON.stringify({ entries: [] }) });
-  const from = path.join(project, 'mock');
-  writeTree(from, { 'inicio.html': '<!doctype html><meta charset="utf-8"><title>t</title><p>x</p>' });
-  const saved = saveApproved({ projectRoot: project, flow: 'flujo', from, date: '2026-10-01', brief: BRIEF_TEXT });
-  assert.equal(saved.ok, true);
-  const sk = reportSkeleton({ project, run, implementsPath: saved.path });
-  assert.equal(sk.implemented, true);
-  assert.deepEqual(sk.implements, { path: saved.path, manifestSha256: saved.manifestSha256 });
+  const sk = reportSkeleton({ project, run, implementsPath: 'design/approved/flujo' });
+  assert.deepEqual(Object.keys(sk).sort(), ['candidates', 'claims', 'evidence', 'version']);
 });
 
 test('round trip: a claim built from a candidate survives report-check; a changed measure is retired', () => {
@@ -81,7 +72,7 @@ test('round trip: a claim built from a candidate survives report-check; a change
   });
   const sk = reportSkeleton({ project, run });
   const claims = sk.candidates.map((c) => ({ ...c, text: `hallazgo ${c.rule}` }));
-  const report = { implemented: false, evidence: sk.evidence, claims };
+  const report = { evidence: sk.evidence, claims };
   assert.equal(checkReport({ project, run, report }).exitCode, 0);
   const tampered = { ...report, claims: claims.map((c) => (c.measure ? { ...c, measure: { ratio: 9 } } : c)) };
   const res = checkReport({ project, run, report: tampered });
@@ -106,8 +97,4 @@ test('verdict follows the rules of §12 with the right precedence', () => {
   assert.ok(noBuild.reasons.includes('no verificado: el proyecto no declara build'));
   const precedence = verdict({ ...ok, uiCheck: { exitCode: 2, blockingNew: 0 }, reportCheck: { exitCode: 1, retired: [] } });
   assert.equal(precedence.status, 'sin verificar');
-});
-
-test('decisionEntry is what report-check expects in DESIGN.md (sanity of the fixture helper)', () => {
-  assert.match(decisionEntry({ path: 'design/approved/x', manifestSha256: 'a'.repeat(64), date: '2026-10-01', quote: 'q' }), /approved `design\/approved\/x\/`/);
 });

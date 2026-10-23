@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { portable } from './portable.mjs';
 import path from 'node:path';
 import { ensureRunRoot, isInsideRunRoot, RUN_ROOT } from './run-folder.mjs';
-import { findDesignFile } from './approved.mjs';
+import { findDesignFile } from './design-file.mjs';
 
 const COMMANDS = ['new', 'improve', 'audit'];
 const PRUNE_DAYS = 14;

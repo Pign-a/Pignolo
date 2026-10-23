@@ -1,14 +1,13 @@
 // Final report pieces (spec §12): the first line, the report.json skeleton and the verdict.
 //
-// firstLine(facts) -> string      facts.canvas: published | local-fallback (+ facts.reasons) adds " · lienzo: ..." to the line
-// reportSkeleton({ project, run, implementsPath }) -> { version, implemented, implements?, evidence, claims, candidates }
+// firstLine(facts) -> string
+// reportSkeleton({ project, run }) -> { version, evidence, claims, candidates }
 // verdict({ uiCheck, reportCheck, build }) -> { status: 'terminado' | 'BLOCKED' | 'sin verificar', reasons }
 //   uiCheck.stale  (string) ui-check.json no longer matches the files it checked: sin verificar
 //   build.declared the project declares typecheck/build/lint: without build.ran it is sin verificar
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { manifestSha } from './approved.mjs';
 
 export function firstLine(facts) {
   const s = facts && facts.subagents;
@@ -19,13 +18,7 @@ export function firstLine(facts) {
   const { pluginVersion, subagents = {}, sequential = false, notIndependentAudit = false } = facts;
   const degraded = [...(facts.degraded || [])];
   if (notIndependentAudit) degraded.push('auditoría no independiente');
-  let canvas = '';
-  if (facts.canvas === 'published') canvas = ' · lienzo: publicado';
-  else if (facts.canvas === 'local-fallback') {
-    const why = Array.isArray(facts.reasons) && facts.reasons.length ? facts.reasons.join(', ') : 'sin motivo';
-    canvas = ` · lienzo: local (${why})`;
-  } else if (facts.canvas !== undefined) throw new Error('facts: canvas debe ser published o local-fallback');
-  const version = `pignolo-ui ${pluginVersion} · ${degraded.length ? degraded.join('; ') : 'sin degradaciones'} · subagentes: ${subagents.launched} de ${subagents.requested} (modelo pedido: ${subagents.model})${canvas}`;
+  const version = `pignolo ui-audit ${pluginVersion} · ${degraded.length ? degraded.join('; ') : 'sin degradaciones'} · subagentes: ${subagents.launched} de ${subagents.requested} (modelo pedido: ${subagents.model})`;
   if (!sequential) return version;
   return `opciones generadas en secuencia en el hilo principal: no son independientes; se lanzaron ${subagents.launched} de ${subagents.requested} subagentes\n${version}`;
 }
@@ -33,7 +26,7 @@ export function firstLine(facts) {
 const SOURCES = [['browser', 'browser.json'], ['ui-check', 'ui-check.json']];
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
-export function reportSkeleton({ project, run, implementsPath }) {
+export function reportSkeleton({ run }) {
   const evidence = {};
   const candidates = [];
   let n = 0;
@@ -56,12 +49,7 @@ export function reportSkeleton({ project, run, implementsPath }) {
       candidates.push(c);
     }
   }
-  const skeleton = { version: 1, implemented: false, evidence, claims: [], candidates };
-  if (implementsPath) {
-    skeleton.implemented = true;
-    skeleton.implements = { path: implementsPath, manifestSha256: manifestSha(project, implementsPath) };
-  }
-  return skeleton;
+  return { version: 1, evidence, claims: [], candidates };
 }
 
 export function verdict({ uiCheck, reportCheck, build }) {

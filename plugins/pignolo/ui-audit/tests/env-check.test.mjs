@@ -5,7 +5,7 @@ import path from 'node:path';
 import { compareVersions, claudeVersion, envReport } from '../lib/env-check.mjs';
 import { PLUGIN_ROOT } from './helpers.mjs';
 
-const pluginVersion = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '.claude-plugin', 'plugin.json'), 'utf8')).version;
+const pluginVersion = JSON.parse(fs.readFileSync(path.join(PLUGIN_ROOT, '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
 
 test('compareVersions compares numerically', () => {
   assert.equal(compareVersions('2.1.284', '2.1.271'), 1);

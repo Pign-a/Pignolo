@@ -116,12 +116,12 @@ test('C-1: initRun refuses and deletes nothing when .pignolo-ui itself is a link
   assert.equal(fs.existsSync(thesis), false);
 });
 
-test('C-1: run.mjs init exits 2 over a linked runs folder and keeps the user files', async () => {
+test('C-1: audit.mjs init exits 2 over a linked runs folder and keeps the user files', async () => {
   const { runScript } = await import('./helpers.mjs');
   const repo = makeRepo();
   const { v, thesis } = victim();
   link(v, path.join(repo, '.pignolo-ui', 'runs'));
-  const r = runScript('run.mjs', ['init', '--project', repo, '--command', 'audit', '--slug', 'x']);
+  const r = runScript('audit.mjs', ['init', '--project', repo, '--command', 'audit', '--slug', 'x']);
   assert.equal(r.status, 2);
   assert.match(r.stderr, /enlace/);
   assert.equal(fs.readFileSync(thesis, 'utf8'), 'mi tesis\n');

@@ -1,14 +1,12 @@
-// Cross tests of hito 2b through the CLIs, in temporary git repos: a realistic public Next.js
-// site (SEO never blocks, no false fail on common patterns) and one batch of §9 + §12 end to end.
+// Cross test of hito 2b through the CLIs, in a temporary git repo: a realistic public Next.js
+// site (SEO never blocks, no false fail on common patterns). The batch of files (files.mjs) went with the improve flow.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import { execFileSync, spawn } from 'node:child_process';
 import { makeTempDir, writeTree, runScript, serveRoutes, PLUGIN_ROOT } from './helpers.mjs';
 
-const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 function repo(tree) {
   const dir = writeTree(makeTempDir(), tree);
   const git = (...args) => execFileSync('git', args, { cwd: dir, stdio: 'pipe', timeout: 10000 });
@@ -84,35 +82,5 @@ test('realistic public Next.js site: no SEO fail from common patterns; the dev U
   } finally {
     await srv.close();
   }
-  assert.equal(porcelain(dir), '');
-});
-
-test('one batch end to end: save, edit, verify, ui-check, report-check (0, then 1), restore', () => {
-  const MANIFEST = 'a'.repeat(64);
-  const approved = `${DESIGN}\n## Decisions\n\n- 2026-09-29 — approved \`design/approved/tienda/\` (manifest sha256 \`${MANIFEST}\`): "A"\n`;
-  const implemented = { implemented: true, implements: { path: 'design/approved/tienda', manifestSha256: MANIFEST } };
-  const dir = repo({ 'DESIGN.md': approved, 'src/Save.tsx': 'export const S = () => <button><svg /></button>;\n' });
-  const run = path.join(dir, '.pignolo-ui', 'runs', 'r1');
-  writeTree(run, { 'expected.json': JSON.stringify([{ path: 'src/Save.tsx', exists: true, change: 'structure' }]) });
-  const batch = path.join(run, 'batch-1');
-  assert.equal(runScript('files.mjs', ['save', '--project', dir, '--batch', batch, '--expected', path.join(run, 'expected.json')]).status, 0);
-  writeTree(dir, { 'src/Save.tsx': 'export const S = () => <button aria-label="Guardar"><svg /></button>;\n' });
-  assert.equal(runScript('files.mjs', ['verify', '--project', dir, '--batch', batch]).status, 0);
-  const check = runScript('ui-check.mjs', ['--project', dir, '--run', run, '--design', 'DESIGN.md', '--files', 'src/Save.tsx'], { cwd: dir });
-  assert.equal(check.status, 0, check.stderr);
-  const uiBuf = fs.readFileSync(path.join(run, 'ui-check.json'));
-  const entry = JSON.parse(uiBuf).entries.find((e) => e.id === 'A11Y-04' && e.status === 'pass');
-  const claim = { id: 'c1', text: 'El botón Guardar tiene nombre accesible', rule: 'A11Y-04', status: 'pass', ref: { source: 'ui-check', fingerprint: entry.fingerprint } };
-  const edited = { id: 'c2', text: 'Se editó Save.tsx', ref: { source: 'file', path: 'src/Save.tsx', sha256: sha(fs.readFileSync(path.join(dir, 'src/Save.tsx'))) } };
-  writeTree(run, { 'report.json': JSON.stringify({ version: 1, ...implemented, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [claim, edited] }) });
-  const ok = runScript('report-check.mjs', ['--project', dir, '--run', run]);
-  assert.equal(ok.status, 0, ok.stdout + ok.stderr);
-  writeTree(run, { 'report.json': JSON.stringify({ version: 1, ...implemented, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [{ ...claim, status: 'fail' }] }) });
-  assert.equal(runScript('report-check.mjs', ['--project', dir, '--run', run]).status, 1);
-  // the verified batch says something was implemented: declaring the opposite is not accepted
-  writeTree(run, { 'report.json': JSON.stringify({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(uiBuf) }, claims: [claim] }) });
-  const denied = runScript('report-check.mjs', ['--project', dir, '--run', run]);
-  assert.deepEqual([denied.status, denied.json.implements], [1, 'missing']);
-  assert.equal(runScript('files.mjs', ['restore', '--project', dir, '--batch', batch]).status, 0);
   assert.equal(porcelain(dir), '');
 });

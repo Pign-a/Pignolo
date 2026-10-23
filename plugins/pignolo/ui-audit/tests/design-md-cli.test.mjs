@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { FIXTURES, makeTempDir, writeTree, runScript } from './helpers.mjs';
+import { FIXTURES, makeTempDir, runScript } from './helpers.mjs';
 
 const VALID = path.join(FIXTURES, 'design', 'valid.md');
 
@@ -29,39 +29,20 @@ function assertUsageError(res, expected) {
 
 const CASES = [
   {
-    name: 'extract --out without a value',
-    setup: (tmp) => ({ args: ['extract', '--project', tmp, '--out'], expected: '--out necesita un valor' }),
-  },
-  {
-    name: 'extract --out is the run-folder .gitignore',
-    setup: (tmp) => {
-      writeTree(tmp, { 'app.css': ':root { --primary: #0b6bcb; }\n' });
-      const out = path.join(tmp, '.pignolo-ui', '.gitignore');
-      return {
-        args: ['extract', '--project', tmp, '--out', out],
-        expected: '.gitignore',
-        after: () => assert.equal(fs.existsSync(path.join(tmp, '.pignolo-ui')), false),
-      };
-    },
-  },
-  {
-    name: 'patch --project that does not exist',
-    setup: (tmp) => {
-      const file = path.join(tmp, 'DESIGN.md');
-      fs.copyFileSync(VALID, file);
-      const ops = path.join(tmp, 'ops.json');
-      fs.writeFileSync(ops, JSON.stringify([{ op: 'set', path: ['name'], value: 'X' }]));
-      const before = fs.readFileSync(file);
-      return {
-        args: ['patch', '--file', file, '--ops', ops, '--project', path.join(tmp, 'nope')],
-        expected: '--project no es una carpeta existente',
-        after: () => assert.ok(fs.readFileSync(file).equals(before)),
-      };
-    },
+    name: 'validate --project that does not exist',
+    setup: (tmp) => ({ args: ['validate', '--file', VALID, '--project', path.join(tmp, 'nope')], expected: '--project no es una carpeta existente' }),
   },
   {
     name: 'validate --file without a value',
     setup: () => ({ args: ['validate', '--file'], expected: '--file necesita un valor' }),
+  },
+  {
+    name: 'validate without --file',
+    setup: () => ({ args: ['validate'], expected: 'falta --file' }),
+  },
+  {
+    name: 'extract is not a subcommand of the audit',
+    setup: (tmp) => ({ args: ['extract', '--project', tmp, '--out', path.join(tmp, 'p.md')], expected: 'uso: design-md.mjs <validate>' }),
   },
 ];
 

@@ -1,25 +1,23 @@
 // Claim <-> evidence cross-check of the final report (spec §12, PROC-02). Deterministic: a claim
 // stays only if the evidence it cites exists and says the same thing.
 //
-// checkReport({ project, run, report }) -> { kept, retired, implements, exitCode }
-//   report  parsed <run>/report.json (see REPORT_SHAPE in the plan / README)
+// checkReport({ project, run, report }) -> { kept, retired, exitCode }
+//   report  parsed <run>/report.json (see reportSkeleton in report-build.mjs)
 //   kept    [claim id]    retired [{ id, reason }]
-//   implements { status: 'ok'|'not-required'|'missing'|'mismatch'|'no-design-md', cited?, registered?, reason? }
-//   exitCode 0 nothing retired and implements ok or not required; 1 otherwise.
-// A run with a saved batch (any **/files.json, verified or not) implemented something,
-// whatever report.json says: `implemented: false` there gives implements missing. A claim that
+//   exitCode 0 nothing retired; 1 otherwise.
+// The audit implements nothing, so there is no approved design to cite: an `implemented` or
+// `implements` key left in report.json by the old flow is ignored. A claim that
 // cites a file or a capture states no rule: with rule, status or measure it is retired.
 // ui-check.json is stale (every claim citing it is retired) when a file in its `inputs` no
 // longer has the sha256 it had when ui-check ran. An entry whose measure says
 // `applicable: false` (a rule that did not apply) supports no claim. `measure` in a claim is a
 // non-empty object; each of its keys must equal (deep, exact) the value the entry stored.
-// A malformed report (not an object, claims not a list, implemented not boolean) throws
+// A malformed report (not an object, claims not a list) throws
 // ReportError, which the CLI turns into exit 2.
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
-import { findDesignFile, registeredManifestSha, APPROVED_PATH } from './approved.mjs';
 
 export class ReportError extends Error {}
 
@@ -92,32 +90,9 @@ function checkClaim(claim, { project, run, sources }) {
   return `unknown evidence source ${JSON.stringify(ref.source)}`;
 }
 
-// true when the run has a batch (any files.json, verified or not): save comes before editing,
-// so a saved batch counts as applied whether or not verify ran.
-function runApplied(run) {
-  let names;
-  try { names = fs.readdirSync(run, { recursive: true }); } catch { return false; }
-  return names.some((n) => path.basename(String(n)) === 'files.json');
-}
-
-function checkImplements(project, run, report) {
-  const forced = report.implemented !== true && runApplied(run);
-  if (report.implemented !== true && !forced) return { status: 'not-required' };
-  const imp = report.implements;
-  if (!isMap(imp) || typeof imp.path !== 'string' || !APPROVED_PATH.test(imp.path) || typeof imp.manifestSha256 !== 'string') {
-    return forced ? { status: 'missing', reason: 'the run has a batch (files.json) but report.json says implemented: false' } : { status: 'missing' };
-  }
-  const designFile = findDesignFile(project);
-  if (!designFile) return { status: 'no-design-md', cited: imp.manifestSha256 };
-  const registered = registeredManifestSha(fs.readFileSync(designFile, 'utf8'), imp.path);
-  if (registered !== imp.manifestSha256) return { status: 'mismatch', cited: imp.manifestSha256, registered };
-  return { status: 'ok', cited: imp.manifestSha256, registered };
-}
-
 export function checkReport({ project, run, report }) {
   if (!isMap(report)) throw new ReportError('report.json no es un objeto JSON');
   if (!Array.isArray(report.claims)) throw new ReportError('report.json no tiene la lista claims');
-  if (typeof report.implemented !== 'boolean') throw new ReportError('report.json debe decir implemented: true o false');
   const sources = loadSources(project, run, report);
   const kept = [];
   const retired = [];
@@ -132,7 +107,5 @@ export function checkReport({ project, run, report }) {
     if (reason) retired.push({ id, reason });
     else kept.push(id);
   });
-  const implementsResult = checkImplements(project, run, report);
-  const implOk = implementsResult.status === 'ok' || implementsResult.status === 'not-required';
-  return { kept, retired, implements: implementsResult, exitCode: retired.length === 0 && implOk ? 0 : 1 };
+  return { kept, retired, exitCode: retired.length === 0 ? 0 : 1 };
 }

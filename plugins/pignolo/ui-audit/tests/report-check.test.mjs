@@ -6,11 +6,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { makeTempDir, writeTree } from './helpers.mjs';
 import { checkReport, ReportError } from '../lib/report-check.mjs';
-import { registeredManifestSha } from '../lib/approved.mjs';
 
 const sha = (b) => crypto.createHash('sha256').update(b).digest('hex');
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('rest')]);
-const MANIFEST = 'a'.repeat(64);
 const UI = JSON.stringify({ catalogVersion: '0.3.0', entries: [
   { id: 'A11Y-04', status: 'pass', severity: 'bloquea', scope: 'new', file: 'src/Save.tsx', line: 3, fingerprint: 'A11Y-04|src/Save.tsx|button' },
   { id: 'COLOR-03', status: 'fail', severity: 'bloquea', scope: 'new', fingerprint: 'COLOR-03||on-surface/surface/light', measure: { ratio: 3.45, required: 4.5 } },
@@ -18,7 +16,7 @@ const UI = JSON.stringify({ catalogVersion: '0.3.0', entries: [
 
 function setup() {
   const project = writeTree(makeTempDir(), {
-    'DESIGN.md': `---\nversion: alpha\nname: X\n---\n\n## Decisions\n\n- 2026-09-29 — approved \`design/approved/checkout/\` (manifest sha256 \`${MANIFEST}\`): "B"\n`,
+    'DESIGN.md': '---\nversion: alpha\nname: X\n---\n',
     'src/Save.tsx': 'export const S = () => <button>Guardar</button>;\n',
     '.pignolo-ui/runs/r1/ui-check.json': UI,
   });
@@ -28,7 +26,7 @@ function setup() {
   return { project, run };
 }
 const uiRef = (fingerprint, extra = {}) => ({ source: 'ui-check', fingerprint, ...extra });
-const report = (claims, extra = {}) => ({ version: 1, implemented: false, evidence: { 'ui-check.json': sha(UI) }, claims, ...extra });
+const report = (claims, extra = {}) => ({ version: 1, evidence: { 'ui-check.json': sha(UI) }, claims, ...extra });
 
 test('claims stay only when the cited evidence exists and says the same', async (t) => {
   const { project, run } = setup();
@@ -75,15 +73,14 @@ test('ui-check.json must be cited by its current sha256', () => {
   assert.match(checkReport({ project, run, report: report([claim]) }).retired[0].reason, /changed since the report was written/);
 });
 
-test('§16.1: an implementation must cite the approved with the sha256 DESIGN.md registers', () => {
+test('the audit implements nothing: an implemented or implements key left by the old flow is ignored and never decides the exit code', () => {
   const { project, run } = setup();
-  const imp = (manifestSha256) => report([], { implemented: true, implements: { path: 'design/approved/checkout', manifestSha256 } });
-  assert.deepEqual([checkReport({ project, run, report: imp(MANIFEST) }).exitCode, checkReport({ project, run, report: imp(MANIFEST) }).implements.status], [0, 'ok']);
-  const other = checkReport({ project, run, report: imp('b'.repeat(64)) });
-  assert.deepEqual([other.exitCode, other.implements.status], [1, 'mismatch']);
-  const missing = checkReport({ project, run, report: report([], { implemented: true }) });
-  assert.deepEqual([missing.exitCode, missing.implements.status], [1, 'missing']);
-  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'not-required');
+  const r = checkReport({ project, run, report: report([], { implemented: true, implements: { path: 'design/approved/checkout', manifestSha256: 'b'.repeat(64) } }) });
+  assert.deepEqual([r.exitCode, r.kept, r.retired], [0, [], []]);
+  assert.equal('implements' in r, false);
+  // a saved batch (files.json) in the run no longer turns the report into an implementation
+  writeTree(run, { 'batch-1/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: null }) });
+  assert.equal(checkReport({ project, run, report: report([]) }).exitCode, 0);
 });
 
 test('§16.1: one claim without evidence and one contradicted: both retired, exit 1', () => {
@@ -99,24 +96,17 @@ test('§16.1: one claim without evidence and one contradicted: both retired, exi
 test('malformed reports throw ReportError; bad claims are retired, not fatal', () => {
   const { project, run } = setup();
   assert.throws(() => checkReport({ project, run, report: [] }), ReportError);
-  assert.throws(() => checkReport({ project, run, report: { implemented: false } }), ReportError);
-  assert.throws(() => checkReport({ project, run, report: { claims: [] } }), ReportError);
+  assert.throws(() => checkReport({ project, run, report: { version: 1 } }), ReportError);
+  assert.doesNotThrow(() => checkReport({ project, run, report: { claims: [] } })); // no implemented flag any more
   const r = checkReport({ project, run, report: report([null, { id: 'c1', text: '' }, { id: 'c2', text: 'x', ref: { source: 'capture', path: 'captures/home.png', sha256: sha(PNG) } }, { id: 'c2', text: 'y', ref: { source: 'capture', path: 'captures/home.png', sha256: sha(PNG) } }]) });
   assert.deepEqual(r.retired, [{ id: '#1', reason: 'invalid claim' }, { id: 'c1', reason: 'invalid claim' }, { id: 'c2', reason: 'duplicate claim id' }]);
-});
-
-test('registeredManifestSha reads the last entry of a path and nothing else', () => {
-  const text = [`- approved \`design/approved/a/\` (manifest sha256 \`${'1'.repeat(64)}\`)`, `- approved \`design/approved/ab/\` (manifest sha256 \`${'2'.repeat(64)}\`)`, `- approved \`design/approved/a/\` (manifest sha256 \`${'3'.repeat(64)}\`)`].join('\n');
-  assert.equal(registeredManifestSha(text, 'design/approved/a'), '3'.repeat(64));
-  assert.equal(registeredManifestSha(text, 'design/approved/ab'), '2'.repeat(64));
-  assert.equal(registeredManifestSha(text, 'design/approved/b'), null);
 });
 
 // Rewrites ui-check.json and returns a report that cites it by its sha256.
 const withUi = (run, ui, claims, extra = {}) => {
   const text = JSON.stringify(ui);
   fs.writeFileSync(path.join(run, 'ui-check.json'), text);
-  return { version: 1, implemented: false, evidence: { 'ui-check.json': sha(text) }, claims, ...extra };
+  return { version: 1, evidence: { 'ui-check.json': sha(text) }, claims, ...extra };
 };
 
 test('ui-check.json is stale when one of its inputs changed after it ran', () => {
@@ -141,17 +131,4 @@ test('a pass that says the rule does not apply supports no claim; measure {} is 
     { id: 'c1', reason: 'evidence says SEO-01 does not apply (web.public is not true: static SEO does not apply)' },
     { id: 'c2', reason: 'measure must be a non-empty object' },
   ]);
-});
-
-test('a run with a saved batch implemented something: implemented false gives missing', () => {
-  const { project, run } = setup();
-  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'not-required'); // no batch
-  writeTree(run, { 'batch-1/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: null }) });
-  assert.equal(checkReport({ project, run, report: report([]) }).implements.status, 'missing'); // saved, never verified: still applied
-  writeTree(run, { 'batch-2/files.json': JSON.stringify({ version: 1, files: [], initial: [], after: { files: {}, unexpected: [] } }) });
-  const r = checkReport({ project, run, report: report([]) });
-  assert.deepEqual([r.exitCode, r.implements.status], [1, 'missing']);
-  assert.match(r.implements.reason, /has a batch \(files\.json\)/);
-  const cited = checkReport({ project, run, report: report([], { implements: { path: 'design/approved/checkout', manifestSha256: MANIFEST } }) });
-  assert.deepEqual([cited.exitCode, cited.implements.status], [0, 'ok']);
 });
