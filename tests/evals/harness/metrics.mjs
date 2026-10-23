@@ -63,7 +63,8 @@ export function isNeutralPlugin(name, patterns = DEFAULT_NEUTRAL_PLUGINS) {
 
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);
 
-export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [], ownHooksDeclared = false } = {}) {
+export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [], ownHooksDeclared = false, prompt = '' } = {}) {
+  const initCommands = new Set();
   // Activation of the plugin under test: Skill tool calls (all, and the arm's own), and whether its hook output shows up.
   const skillIds = new Set();
   const ownSkills = [];
@@ -90,6 +91,8 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     if (!o || typeof o !== 'object' || Array.isArray(o)) { badLines += 1; continue; }
 
     if (o.type === 'system' && o.subtype === 'init') {
+      // Commands and skills the session lists: a prompt that starts with "/plugin:skill" is only an activation if it is one of them.
+      for (const n of [...names(o.slash_commands), ...names(o.skills)]) initCommands.add(String(n).replace(/^\//, '').toLowerCase());
       init = { model: typeof o.model === 'string' ? o.model : null, claude_code_version: typeof o.claude_code_version === 'string' ? o.claude_code_version : null };
       for (const n of names(o.plugins)) {
         loaded.push(n);
@@ -160,6 +163,20 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     }
     weighted = r2(total);
   }
+  // Activation by slash command: the prompt starts with "/<pluginName>:<skill>" (a prefix of the arm), the session lists that
+  // command and the run produced a successful result. The command expands the skill into the prompt: there is no Skill tool call.
+  const slashActivations = [];
+  const warnings = [];
+  const slash = String(prompt).match(/^\s*\/([^\s:/]+):(\S+)/);
+  if (slash && ownLower && slash[1].toLowerCase() === ownLower) {
+    const cmd = `${slash[1]}:${slash[2]}`;
+    if (!initCommands.has(cmd.toLowerCase())) warnings.push('slash_command_unknown');
+    else if (result && !result.is_error && !/^error/.test(String(result.subtype || ''))) slashActivations.push(cmd);
+  }
+  for (const c of slashActivations) ownSkills.push(c);
+  const ownSkillToolCalls = ownSkillCalls;
+  ownSkillCalls += slashActivations.length;
+  const activationVia = ownSkillToolCalls > 0 && slashActivations.length > 0 ? 'both' : ownSkillToolCalls > 0 ? 'skill_tool' : slashActivations.length > 0 ? 'slash_command' : 'none';
   const ownPluginLoaded = loaded.some((n) => belongsTo(n, ownPlugin));
   if (!ownPluginLoaded) hits.push('own_plugin_not_loaded');
   const uniqueHits = [...new Set(hits)];
@@ -190,6 +207,9 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     skillCalls,
     ownSkillCalls,
     ownSkillNames: [...new Set(ownSkills)].sort(),
+    slashActivations,
+    activationVia,
+    warnings,
     // true: a hook message names the plugin; false: hooks ran, none names it and the plugin declares hooks; unknown: cannot tell.
     ownHookRan: ownHookNamed ? 'true' : (hookMessages > 0 && ownHooksDeclared ? 'false' : 'unknown'),
     init,

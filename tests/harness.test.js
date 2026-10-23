@@ -1508,7 +1508,7 @@ function writeRun(env, task, arm, rep, { metrics = {}, acceptance, changes, patc
     task, arm, rep, experiment: 'toy-exp', model: 'sonnet', finishedAt: '2026-10-23T12:00:00.000Z', costUsd: 1.5,
     weightedTokens: 1200, tokens: { input: 150, output: 30, cacheRead: 1500, cacheWrite: 600 },
     tokensByModel: { 'fake-model': { input: 100, output: 20, cacheRead: 1000, cacheWrite: 400 }, 'fake-sub': { input: 50, output: 10, cacheRead: 500, cacheWrite: 200 } },
-    wallS: 42.5, durationMs: 40000, turns: 4, agents: 2, agentsMain: 1, skillCalls: 3, ownSkillCalls: 2, ownHookRan: 'true', resultSubtype: 'success', isError: false, exitCode: 0,
+    wallS: 42.5, durationMs: 40000, turns: 4, agents: 2, agentsMain: 1, skillCalls: 3, ownSkillCalls: 2, ownHookRan: 'true', activationVia: 'skill_tool', resultSubtype: 'success', isError: false, exitCode: 0,
     init: { model: 'fake-model', claude_code_version: '9.9.9-fake' }, invalidReasons: [],
     timedOut: false, contamination: false, ...metrics,
   };
@@ -1534,7 +1534,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     const cfg = loadConfig(env.cfgPath);
     assert.strictEqual(COLUMNS.join(','),
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
-        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'result_subtype', 'is_error',
+        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
         'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
@@ -1547,7 +1547,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       model_resolved: 'fake-model', claude_version: '9.9.9-fake',
       cost_usd: '1.5', weighted_tokens: '1200', input: '150', output: '30', cache_read: '1500', cache_write: '600',
       model_tokens: 'fake-model=100/20/1000/400|fake-sub=50/10/500/200',
-      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', result_subtype: 'success', is_error: 'false', exit_code: '0',
+      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', activation_via: 'skill_tool', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
       contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
@@ -2327,6 +2327,132 @@ test('CLI: summary reconoce las tareas de fixture de la configuración', () => {
     step('accept', '--task', 'fx-cli', '--arm', 'B', '--rep', '1');
     step('row', '--task', 'fx-cli', '--arm', 'B', '--rep', '1');
     assert.match(step('summary', '--csv', env.cfg.csvPath).out, /fixture cli-script: 1\/1 corridas con los frentes esperados/);
+  } finally { cleanup(env); }
+});
+
+// ---------------------------------------------------------------- activación por comando de barra y remetric
+
+test('activación por comando: un prompt que empieza con /plugin:skill listado en el init cuenta aunque no haya llamada a Skill', async () => {
+  const { parseStream } = await imp('metrics.mjs');
+  const line = (o) => JSON.stringify(o);
+  const init = (extra = {}) => line({ type: 'system', subtype: 'init', plugins: [{ name: 'pignolo' }], skills: [], slash_commands: [], ...extra });
+  const result = (extra = {}) => line({ type: 'result', subtype: 'success', is_error: false, total_cost_usd: 1, ...extra });
+  const skill = (id, name) => line({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Skill', input: { skill: name } }] } });
+  const opts = { ownPlugin: 'pignolo', otherPlugin: 'superpowers', prompt: '/pignolo:work Add a feature.\nMore.' };
+  // Listado en slash_commands (también con barra inicial) o en skills.
+  for (const extra of [{ slash_commands: ['pignolo:work', 'other'] }, { slash_commands: ['/pignolo:work'] }, { skills: ['pignolo:work'] }]) {
+    const m = parseStream([init(extra), result()].join('\n'), opts);
+    assert.deepStrictEqual(m.slashActivations, ['pignolo:work']);
+    assert.strictEqual(m.ownSkillCalls, 1);
+    assert.deepStrictEqual(m.ownSkillNames, ['pignolo:work']);
+    assert.strictEqual(m.activationVia, 'slash_command');
+    assert.deepStrictEqual([m.skillCalls, m.warnings], [0, []]);
+  }
+  const listed = { slash_commands: ['pignolo:work'] };
+  // Con error, o sin resultado: no se cuenta.
+  assert.strictEqual(parseStream([init(listed), result({ is_error: true, subtype: 'error_during_execution' })].join('\n'), opts).activationVia, 'none');
+  assert.strictEqual(parseStream(init(listed), opts).activationVia, 'none');
+  assert.deepStrictEqual(parseStream(init(listed), opts).slashActivations, []);
+  // No listado en el init: no se cuenta y queda una advertencia.
+  const unknown = parseStream([init({ slash_commands: ['pignolo:other'] }), result()].join('\n'), opts);
+  assert.deepStrictEqual([unknown.slashActivations, unknown.ownSkillCalls, unknown.activationVia, unknown.warnings], [[], 0, 'none', ['slash_command_unknown']]);
+  // El comando de otro plugin, o un prompt sin comando, ni cuenta ni advierte.
+  const foreign = parseStream([init(listed), result()].join('\n'), { ...opts, prompt: '/superpowers:brainstorming x' });
+  assert.deepStrictEqual([foreign.activationVia, foreign.warnings], ['none', []]);
+  assert.strictEqual(parseStream([init(listed), result()].join('\n'), { ...opts, prompt: 'Add a feature. /pignolo:work' }).activationVia, 'none');
+  assert.strictEqual(parseStream([init(listed), result()].join('\n'), { ownPlugin: 'pignolo', otherPlugin: 'x' }).activationVia, 'none');
+  // Llamada a Skill: por la herramienta; las dos cosas: both (suman).
+  const viaTool = parseStream([init(), skill('a', 'pignolo:work'), result()].join('\n'), { ...opts, prompt: 'Add a feature.' });
+  assert.deepStrictEqual([viaTool.activationVia, viaTool.ownSkillCalls], ['skill_tool', 1]);
+  const both = parseStream([init(listed), skill('a', 'pignolo:review'), result()].join('\n'), opts);
+  assert.deepStrictEqual([both.activationVia, both.ownSkillCalls, both.skillCalls, both.slashActivations], ['both', 2, 1, ['pignolo:work']]);
+});
+
+test('run: la variante con /plugin:skill queda activada por comando (y la fila lo dice); sin listar o con error, no', async () => {
+  const env = setup();
+  try {
+    const cfg = await variants(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const go = async (rep, mode) => { await prepare(cfg, { task: 't1', arm: 'BF', rep }); return withEnv({ FAKE_CLAUDE_MODE: mode }, () => runTask(cfg, { task: 't1', arm: 'BF', rep })); };
+    const ok = await go(1, 'slash,edit');
+    assert.deepStrictEqual([ok.slashActivations, ok.ownSkillCalls, ok.activationVia, ok.warnings], [['pignolo:work'], 1, 'slash_command', []]);
+    assert.strictEqual(appendRow(cfg, { task: 't1', arm: 'BF', rep: 1 }).activation_via, 'slash_command');
+    const unknown = await go(2, 'edit');
+    assert.deepStrictEqual([unknown.ownSkillCalls, unknown.activationVia, unknown.warnings], [0, 'none', ['slash_command_unknown']]);
+    const row = appendRow(cfg, { task: 't1', arm: 'BF', rep: 2 });
+    assert.strictEqual(row.activation_via, 'none');
+    assert.match(row.note, /slash_command_unknown/);
+    const failed = await go(3, 'slash,fail,edit');
+    assert.deepStrictEqual([failed.ownSkillCalls, failed.activationVia], [0, 'none']);
+    const viaTool = await go(4, 'slash,skill,edit');
+    assert.strictEqual(viaTool.activationVia, 'both');
+  } finally { cleanup(env); }
+});
+
+test('summary: "activaron el plugin" cuenta también la activación por comando', async () => {
+  const { summarize } = await imp('summary.mjs');
+  const idle = { skill_calls: 0, own_skill_calls: 0, own_hook_ran: 'unknown' };
+  const viaSlash = { skill_calls: 0, own_skill_calls: 1, own_hook_ran: 'unknown', activation_via: 'slash_command' };
+  const r = summarize([...arm('s', 'A', [100, 110, 120], idle), ...arm('s', 'B', [80, 85, 90], viaSlash)], { kinds: { s: 'small' } });
+  assert.deepStrictEqual(r.tasks[0].activation, { A: { n: 0, m: 3 }, B: { n: 3, m: 3 } });
+});
+
+test('remetric: recalcula desde stream.jsonl solo los campos derivados del stream, hace una copia .bak única y no corre claude; row --note rerun corrige la fila sin duplicar el gasto', async () => {
+  const env = setup();
+  try {
+    const cfg = await variants(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { remetricRun } = await imp('remetric.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    const { spentUsd } = await imp('ledger.mjs');
+    await prepare(cfg, { task: 't1', arm: 'BF', rep: 1 });
+    const m0 = await withEnv({ FAKE_CLAUDE_MODE: 'slash,edit' }, () => runTask(cfg, { task: 't1', arm: 'BF', rep: 1 }));
+    const dir = path.join(env.work, 't1-BF-1');
+    const file = path.join(dir, 'metrics.json');
+    appendRow(cfg, { task: 't1', arm: 'BF', rep: 1 });
+    // Una métrica vieja: el contador de entonces no veía el comando, y hay datos que el stream no puede dar.
+    const old = { ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+    for (const k of ['slashActivations', 'activationVia', 'warnings']) delete old[k];
+    Object.assign(old, { ownSkillCalls: 0, ownSkillNames: [], agents: 99, weightedTokens: 1, escapedCwd: { match: 'x', tool: 'Bash', command: 'x' }, invalidReasons: ['escaped_cwd'], custom_note_from_run: 'se conserva' });
+    fs.writeFileSync(file, JSON.stringify(old));
+    const stream = fs.readFileSync(path.join(dir, 'stream.jsonl'), 'utf8');
+    const r = remetricRun(cfg, { task: 't1', arm: 'BF', rep: 1 });
+    assert.ok(r.changed.includes('ownSkillCalls') && r.changed.includes('activationVia'));
+    const m1 = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepStrictEqual([m1.ownSkillCalls, m1.activationVia, m1.slashActivations, m1.agents, m1.weightedTokens, m1.escapedCwd], [1, 'slash_command', ['pignolo:work'], m0.agents, m0.weightedTokens, null]);
+    assert.deepStrictEqual(m1.invalidReasons, m0.invalidReasons, 'los motivos se recalculan');
+    // Lo que no sale del stream queda como estaba.
+    assert.strictEqual(m1.custom_note_from_run, 'se conserva');
+    for (const k of ['trees', 'nm', 'config_dir_delta', 'startedAt', 'finishedAt', 'wallS', 'exitCode', 'timedOut', 'droppedEnvNames', 'promptPrefix', 'neutralConfigContent']) assert.deepStrictEqual(m1[k], old[k], k);
+    // Copia .bak única (la primera) y el stream intacto.
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8')), old);
+    remetricRun(cfg, { task: 't1', arm: 'BF', rep: 1 });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(`${file}.bak`, 'utf8')), old, 'no se pisa la copia');
+    assert.strictEqual(fs.readFileSync(path.join(dir, 'stream.jsonl'), 'utf8'), stream);
+    // Sin stream no hay nada que recalcular.
+    assert.throws(() => remetricRun(cfg, { task: 't1', arm: 'BF', rep: 2 }), /stream|metrics|corrida/);
+    // La fila corregida: --note rerun; la original sigue y el gasto no se cuenta dos veces.
+    const row = appendRow(cfg, { task: 't1', arm: 'BF', rep: 1, note: 'rerun' });
+    assert.strictEqual(row.activation_via, 'slash_command');
+    const rows = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'));
+    assert.strictEqual(rows.length, 2);
+    assert.strictEqual(spentUsd(cfg), 0.5, 'la misma corrida (misma marca de tiempo) cuenta una sola vez');
+  } finally { cleanup(env); }
+});
+
+test('CLI: remetric', () => {
+  const env = setup();
+  try {
+    const step = (...a) => { const r = cli(env, ...a); assert.strictEqual(r.status, 0, r.err); return r; };
+    step('prepare', '--task', 't1', '--arm', 'B', '--rep', '1');
+    step('run', '--task', 't1', '--arm', 'B', '--rep', '1');
+    const out = JSON.parse(step('remetric', '--task', 't1', '--arm', 'B', '--rep', '1').out);
+    assert.ok(Array.isArray(out.changed));
+    assert.ok(fs.existsSync(path.join(env.work, 't1-B-1', 'metrics.json.bak')));
+    assert.notStrictEqual(cli(env, 'remetric', '--task', 't1', '--arm', 'B', '--rep', '9').status, 0);
   } finally { cleanup(env); }
 });
 

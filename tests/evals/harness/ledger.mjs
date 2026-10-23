@@ -40,11 +40,13 @@ export function spentUsd(cfg) {
   let total = 0;
   const seen = new Set();
   if (fs.existsSync(cfg.csvPath)) {
+    // One run is one cost even when it has several rows (a corrected row after `remetric` repeats the run's timestamp): the last row wins.
+    const byRun = new Map();
     for (const r of parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'))) {
       const c = r.cost_usd === '' || r.cost_usd === undefined ? NaN : Number(r.cost_usd);
-      total += Number.isFinite(c) ? c : Number(cfg.perRunCapUsd);
-      seen.add(key(r.task, r.arm, Number(r.rep), r.timestamp));
+      byRun.set(key(r.task, r.arm, Number(r.rep), r.timestamp), Number.isFinite(c) ? c : Number(cfg.perRunCapUsd));
     }
+    for (const [k, v] of byRun) { total += v; seen.add(k); }
   }
   for (const d of runFolders(cfg.workRoot)) {
     const m = readJson(path.join(d, 'metrics.json'));

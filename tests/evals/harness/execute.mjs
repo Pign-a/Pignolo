@@ -97,6 +97,22 @@ const delta = (before, after) => ({
   removed: before.filter((n) => !after.includes(n)),
 });
 
+// Options of the stream parser for one arm: identity from pluginName, neutral plugins, the prompt as it was sent (prefix included).
+export function parseOptionsFor(cfg, arm, prompt, neutralPluginNames = []) {
+  const other = otherArm(cfg, arm);
+  return {
+    ownPlugin: cfg.arms[arm].pluginName,
+    otherPlugin: other ? cfg.arms[other].pluginName : null,
+    otherPluginDir: other ? cfg.arms[other].pluginDir : null,
+    weights: cfg.weights,
+    modelFactor: cfg.modelFactor,
+    neutralPlugins: cfg.neutralPlugins,
+    neutralPluginNames,
+    ownHooksDeclared: fs.existsSync(path.join(cfg.arms[arm].pluginDir, 'hooks', 'hooks.json')),
+    prompt,
+  };
+}
+
 export async function runTask(cfg, args, deps = {}) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   assertArmAllowed(cfg, task, arm);
@@ -185,17 +201,7 @@ export async function runTask(cfg, args, deps = {}) {
   const trees = guard('árboles', () => measureTrees(repo, cfg.blindExcludePaths));
   const treesError = trees ? null : (post.find((p) => p.startsWith('árboles')) || 'árboles: sin datos');
 
-  const other = otherArm(cfg, arm);
-  const opts = {
-    ownPlugin: cfg.arms[arm].pluginName,
-    otherPlugin: other ? cfg.arms[other].pluginName : null,
-    otherPluginDir: other ? cfg.arms[other].pluginDir : null,
-    weights: cfg.weights,
-    modelFactor: cfg.modelFactor,
-    neutralPlugins: cfg.neutralPlugins,
-    neutralPluginNames: [],
-    ownHooksDeclared: fs.existsSync(path.join(cfg.arms[arm].pluginDir, 'hooks', 'hooks.json')),
-  };
+  const opts = parseOptionsFor(cfg, arm, prompt);
   // What the account sync put in the config dir (it may have been created by this very run); its plugins are neutral.
   const neutralConfigAfter = guard('contenido sincronizado', () => scanNeutralConfig(cfg.configDir, cfg.neutralConfigPaths), neutralConfigBefore);
   opts.neutralPluginNames = neutralConfigAfter.pluginsSynced.plugins;

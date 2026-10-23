@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Measurement harness for Pignolo 2 vs superpowers. See README.md.
-//   node run.mjs <prepare|run|accept|row|clean|blind|unblind|summary> [options] [--config <path>]
+//   node run.mjs <prepare|run|accept|row|clean|remetric|blind|unblind|summary> [options] [--config <path>]
 import fs from 'node:fs';
 import { loadConfig, DEFAULT_CONFIG, DEFAULT_CSV, DEFAULT_GRADES, DEFAULT_EXPERIMENT, DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
 import { prepare } from './prepare.mjs';
@@ -9,6 +9,7 @@ import { acceptRun } from './accept.mjs';
 import { appendRow } from './row.mjs';
 import { blind, unblind } from './blind.mjs';
 import { cleanRun } from './clean.mjs';
+import { remetricRun } from './remetric.mjs';
 import { summarize, formatSummary, rowsFromCsv } from './summary.mjs';
 
 const FLAGS = new Set(['force', 'allow-leaks', 'include-contaminated', 'json']);
@@ -38,8 +39,8 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   const cmd = o._[0];
   const cfgPath = o.config || DEFAULT_CONFIG;
-  if (!['prepare', 'run', 'accept', 'row', 'clean', 'blind', 'unblind', 'summary'].includes(cmd)) {
-    throw new Error('uso: run.mjs <prepare|run|accept|row|clean|blind|unblind|summary> [opciones] [--config <ruta>]');
+  if (!['prepare', 'run', 'accept', 'row', 'clean', 'remetric', 'blind', 'unblind', 'summary'].includes(cmd)) {
+    throw new Error('uso: run.mjs <prepare|run|accept|row|clean|remetric|blind|unblind|summary> [opciones] [--config <ruta>]');
   }
 
   if (cmd === 'summary') {
@@ -77,6 +78,7 @@ async function main() {
   if (cmd === 'prepare') { need(o, 'task', 'arm', 'rep'); print(await prepare(cfg, run(o))); }
   else if (cmd === 'run') { need(o, 'task', 'arm', 'rep'); print(await runTask(cfg, run(o))); }
   else if (cmd === 'accept') { need(o, 'task', 'arm', 'rep'); print(await acceptRun(cfg, run(o))); }
+  else if (cmd === 'remetric') { need(o, 'task', 'arm', 'rep'); print(remetricRun(cfg, run(o))); }
   else if (cmd === 'clean') { need(o, 'task', 'arm', 'rep'); print(cleanRun(cfg, run(o), { force: Boolean(o.force) })); }
   else if (cmd === 'row') { need(o, 'task', 'arm', 'rep'); print(appendRow(cfg, { ...run(o), note: o.note })); }
   else if (cmd === 'blind') {

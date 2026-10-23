@@ -1,7 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
+//   slash | noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_RESULT: final result text (" // " becomes a new line).
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
@@ -43,7 +43,7 @@ if (has('contaminated')) {
 
 out({
   type: 'system', subtype: 'init', cwd: process.cwd(), model: 'fake-model', claude_code_version: '9.9.9-fake',
-  plugins, skills, agents: [], slash_commands: [],
+  plugins, skills, agents: [], slash_commands: has('slash') && own ? [`${own}:work`] : [],
 });
 
 if (has('hang')) {
