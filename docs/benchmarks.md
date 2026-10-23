@@ -202,6 +202,22 @@ Mediana 2 de 10 contra un umbral de 9: la regla de decisión **no** se cumple. E
 
 Claude Code sin plugins pide permiso según su modo, pero no analiza el comando. La guardia de pignolo sí lo analiza: bash estructural y PowerShell por su árbol de sintaxis.
 
+## 4b. Pignolo 2 contra superpowers (2026-10-23)
+
+Feature mediana de una app privada del autor (varios archivos, con tests de aceptación ocultos), dos tareas chicas de la misma app y tres repos públicos de detección de frentes (`tests/evals/fixtures`). Tokens ponderados, mediana (rango). Dos pares: autónomo (el prompt de la tarea, sin invocar nada) y forzado (se invoca el método a propósito).
+
+| Medición | Control (superpowers) | Pignolo 2 | Veredicto del resumen |
+|---|---|---|---|
+| Feature mediana, autónomo (E2, n=2) | 360.025 (340.224 a 379.827) | 373.311 (308.891 a 437.731); B/A = 1,04 | pasa, H1 se cumple; ningún plugin se activó: mide al modelo base |
+| Feature mediana, forzado (E2, n=2) | 543.229 (453.321 a 633.138) | 457.059 (450.248 a 463.869); BF/AF = 0,84 | pasa, H1 se cumple; rangos pisados, no se afirma superioridad |
+| Tarea chica small-1 (E3, n=3) | 311.526 (273.695 a 350.443) | 309.934 (275.787 a 361.529) | sin diferencia demostrada (empate) |
+| Tarea chica small-2 (E3, n=3) | 116.806 (108.351 a 118.159) | 141.110 (127.055 a 155.410) | **no pasa**: alrededor de un 20 % más de tokens, rangos separados, causa desconocida |
+| Detección de frentes (E3, 3 x 3) | no aplica | línea `Frentes:` correcta: `cli-script` 3/3, `app-db` 1/3, `landing-form` 0/3 | `cli-script` pasa; `app-db` y `landing-form` no pasan |
+
+La calificación a ciegas (Opus, 8 corridas, sin filtración reportada) no mostró a Pignolo 2 peor: nota mediana 3,5 contra 3,5 en el par autónomo y 4 contra 3,5 en el forzado, con la dispersión entre repeticiones tan grande como la diferencia entre brazos. `validate` se activó sola en 9 de 9 corridas de detección, pero imprimió la línea `Frentes:` en 5 de 9; medido por los agentes lanzados (cifra secundaria agregada después de ver las corridas) el conjunto esperado salió 3/3 en `app-db`, 3/3 en `cli-script` y 1/3 en `landing-form`. Gasto: 16,00 USD en 32 corridas únicas, de un tope de 40; la calificación a ciegas no está en ese registro.
+
+**Comparabilidad:** E2 en la feature mediana (2 repeticiones por brazo), E3 en el resto. Una sola app privada, calificador de la misma familia de modelos, y la consigna mediana casi especifica la solución. En los pares autónomos ningún plugin se activó, así que miden al modelo base con distinto contexto cargado. No se midió el flujo conversacional de `start`, la activación en sesiones interactivas, el trabajo de larga duración, otros repos ni otros modelos. Evidencia y cronología de las corridas descartadas: [`RESULTS-pignolo2.md`](../tests/evals/RESULTS-pignolo2.md); datos crudos: [`pignolo2-runs.csv`](../tests/evals/pignolo2-runs.csv).
+
 ## 5. Pendiente: pignolo contra Claude Code solo
 
 La comparación directa (los mismos pedidos, con y sin pignolo, midiendo defectos que llegan al final, costo y tiempo) es una decisión del autor del 2026-09-29: se corre al terminar el plugin y se publica acá, sea cual sea el resultado.

@@ -8,3 +8,6 @@ tests/evals/harness/harness.local.json
 tests/evals/*.csv.bak
 tests/evals/*.csv.*.bak
 tests/evals/*.csv.tmp
+
+# Calificaciones a ciegas de Pignolo 2 (contienen nombres de código de una app privada)
+tests/evals/pignolo2-grades.json

@@ -1,6 +1,6 @@
 # Medición de Pignolo 2 contra superpowers
 
-**Estado: sin correr.**
+**Estado: medido (2026-10-23). Los resultados están en la sección 11, debajo del texto preinscrito, que no se tocó.**
 
 _Esta ficha se escribió y se commiteó antes de cualquier corrida, como pide `docs/protocolo-de-pruebas.md`. Las corridas pagas esperan el OK explícito del autor para el gasto y son condición para publicar la 1.0.0 (diseño §9)._
 
@@ -123,27 +123,135 @@ Antes de correr se hace un sondeo de una corrida chica por brazo para calibrar e
 
 ## 11. Resultados
 
-_Sin correr. Las secciones siguientes se llenan después de las corridas, con mediana y rango por brazo._
+_Todas las cifras salen de `node tests/evals/harness/run.mjs summary` sobre `tests/evals/pignolo2-runs.csv` (datos crudos, una fila por corrida, incluidas las repetidas). Mediana y rango siempre; el nivel de evidencia va en cada título. Los pesos de los tokens son los de la configuración actual del arnés._
 
-### 11.1 Feature mediana (E2)
+**Lo medido y con qué.** La feature mediana es una feature de una app privada del autor (varios archivos, con tests de aceptación ocultos); las dos tareas chicas son de la misma app. Por eso no se nombran ni se describen más. Los tres repos de la detección de frentes son públicos (`tests/evals/fixtures`).
 
-| Brazo | Rep. | Tokens ponderados | Tiempo (s) | Nota | Hallazgos graves | Agentes |
-|---|---|---|---|---|---|---|
-| A superpowers | 1 | `[sin correr]` | | | | |
-| A superpowers | 2 | `[sin correr]` | | | | |
-| B Pignolo 2 | 1 | `[sin correr]` | | | | |
-| B Pignolo 2 | 2 | `[sin correr]` | | | | |
+### 11.0 Cronología y corridas descartadas
 
-Mediana y rango por brazo: `[sin correr]`. Decisión: `[sin correr]`.
+La calibración (experimento `pignolo2-calib`, 0,92 USD, no entra en las cifras) y las primeras corridas reales encontraron errores del arnés. Cada uno se arregló en el arnés **antes** de las corridas válidas, y las corridas afectadas se repitieron (en el CSV figuran como `rerun`; las originales siguen en el archivo y el resumen las deja afuera):
 
-### 11.2 Tarea chica (E3)
+1. Disposición mal armada de `node_modules` en la instantánea de la tarea: la calibración se descartó.
+2. Falsa contaminación: el arnés tomó por contaminación los plugins integrados de Claude Code; se acotó la detección a plugins de los brazos.
+3. Contenido sincronizado de la cuenta (skills y plugins de la cuenta que Claude Code baja al directorio de configuración): se declara en cada corrida (`neutral_config`) y se lo trata como contexto igual en los dos brazos.
+4. Falso positivo de la detección de escape de carpeta (`escaped_cwd`): se corrigió la regla y se repitió la corrida afectada.
+5. Encabezado del CSV: una columna nueva desalineó filas; se corrigió y se reconstruyó.
+6. Activación por comando de barra mal contada: el arnés no contaba `/pignolo:work` como activación y subestimaba la del brazo BF; se corrigió y `remetric` recalculó las métricas desde el registro de cada corrida.
+7. La línea `Frentes:` se buscaba solo en el mensaje final y no en todos los mensajes del asistente; se corrigió y se recalculó.
+8. Ruido de fin de línea: la conversión de saltos de línea CRLF/LF aparecía como cambio de archivos; se separó en una nota informativa (`eol_converted_files`, `eol_only_files`) que no entra en las reglas.
 
-`[sin correr]`
+Después se agregó (post hoc, ver la sección 11.3) una cifra secundaria de frentes medida por los agentes lanzados.
 
-### 11.3 Detección de frentes (E3)
+### 11.1 Feature mediana
 
-`[sin correr]`
+#### Par autónomo A contra B (E2, n=2 por brazo)
+
+| Medida | A superpowers | B Pignolo 2 |
+|---|---|---|
+| Tokens ponderados, mediana (rango) | 360.025 (340.224 a 379.827) | 373.311 (308.891 a 437.731) |
+| Costo USD, mediana (rango) | 0,72 (0,67 a 0,77) | 0,73 (0,62 a 0,83) |
+| Tiempo de pared s, mediana (rango) | 198 (163,6 a 232,4) | 185,1 (148,3 a 221,9) |
+| Agentes lanzados | 0 | 0 |
+| Aceptación (tests ocultos) | 146/148, 0 de 2 corridas verdes | 148/148, 2 de 2 corridas verdes |
+| Plugin activado | 0 de 2 (el hook de SessionStart de superpowers sí corrió, 2/2) | 0 de 2 |
+
+- B/A de tokens ponderados: mediana 1,04 y máximo 1,15 (umbral 1,5 en ambos).
+- Calidad a ciegas: nota mediana 3,5 en los dos brazos; hallazgos graves, mediana 2 en A y 0,5 en B.
+- **Veredicto del resumen: pasa. No inferioridad (H1): se cumple, con evidencia E2.** No se afirma superioridad: con n=2 los rangos se pisan.
+- **Hecho que acota la lectura:** ninguna corrida de este par activó su plugin (0 llamadas a la herramienta `Skill`), de modo que **este par mide al modelo base con distinto contexto cargado**, no una comparación de métodos. Es lo que obtiene un usuario que instala el plugin y pide la tarea completa sin invocarlo.
+
+#### Par forzado AF contra BF (E2, n=2 por brazo)
+
+AF es superpowers con un prefijo en el prompt que pide su flujo; BF es Pignolo 2 invocado con el comando `/pignolo:work`. Los dos plugins se activaron en las 4 corridas (AF por la herramienta `Skill`, BF por el comando de barra).
+
+| Medida | AF superpowers | BF Pignolo 2 |
+|---|---|---|
+| Tokens ponderados, mediana (rango) | 543.229 (453.321 a 633.138) | 457.059 (450.248 a 463.869) |
+| Costo USD, mediana (rango) | 1,00 (0,88 a 1,12) | 0,87 (0,86 a 0,87) |
+| Tiempo de pared s, mediana (rango) | 327,8 (296,5 a 359,1) | 251,1 (231,8 a 270,5) |
+| Agentes lanzados | 0 | 0 |
+| Aceptación (tests ocultos) | 148/148, 2 de 2 corridas verdes | 148/148, 2 de 2 corridas verdes |
+
+- BF/AF de tokens ponderados: mediana 0,84 y máximo 0,73 (umbral 1,5).
+- Calidad a ciegas: nota mediana 3,5 en AF y 4 en BF; hallazgos graves, mediana 1,5 en AF y 0,5 en BF.
+- **Veredicto del resumen: pasa. H1 se cumple, con evidencia E2.** BF queda por debajo de AF en la mediana, pero los rangos se pisan: **no se afirma superioridad**.
+
+#### Calificación a ciegas
+
+Un revisor Opus, en una sesión aparte, calificó las 8 corridas de la feature mediana (los dos pares) contra la consigna, con nombres neutros (`X`/`Y`) y orden mezclado; no reportó ninguna filtración de qué brazo era cuál. Resultado por brazo y repetición (corrección 1 a 5, calidad 1 a 5, hallazgos graves):
+
+| Brazo | Rep. | Corrección | Calidad | Hallazgos graves |
+|---|---|---|---|---|
+| A | 1 | 3 | 3 | 2 |
+| A | 2 | 3 | 4 | 2 |
+| B | 1 | 5 | 4 | 0 |
+| B | 2 | 2 | 3 | 1 |
+| AF | 1 | 5 | 4 | 0 |
+| AF | 2 | 2 | 3 | 3 |
+| BF | 1 | 4 | 4 | 1 |
+| BF | 2 | 5 | 4 | 0 |
+
+Naturaleza de los hallazgos, solo en general: un caso de borde de formato de rótulos con años, un flujo de edición que convertía un tipo de evento en otro y otros defectos de integración que los tests no cubrían. No se reproduce su texto porque nombra código de la app privada (el archivo de calificaciones no se versiona). Con 2 corridas por brazo la dispersión entre repeticiones del mismo brazo (por ejemplo corrección 5 y 2) es tan grande como la diferencia entre brazos.
+
+### 11.2 Tareas chicas, par autónomo (E3, n=3 por brazo)
+
+| Tarea | Medida | A superpowers | B Pignolo 2 | Decisión |
+|---|---|---|---|---|
+| small-1 | Tokens ponderados, mediana (rango) | 311.526 (273.695 a 350.443) | 309.934 (275.787 a 361.529) | sin diferencia demostrada |
+| small-1 | Tiempo de pared s, mediana (rango) | 157,1 (133,2 a 162,4) | 159,9 (133,6 a 160,5) | rangos pisados: riesgo abierto |
+| small-1 | Costo USD, mediana | 0,60 | 0,60 | |
+| small-1 | Aceptación | 114/114, 3 de 3 verdes | 114/114, 3 de 3 verdes | |
+| small-2 | Tokens ponderados, mediana (rango) | 116.806 (108.351 a 118.159) | 141.110 (127.055 a 155.410) | **no pasa** |
+| small-2 | Tiempo de pared s, mediana (rango) | 59,2 (52,2 a 61,2) | 53,0 (48,6 a 66,8) | |
+| small-2 | Costo USD, mediana | 0,27 | 0,33 | |
+| small-2 | Aceptación | 180/180, 3 de 3 verdes | 180/180, 3 de 3 verdes | |
+
+- **small-1: empate.** La mediana de tiempo de B es apenas mayor pero los rangos se pisan; los tokens de B son iguales o menores. Se registra como riesgo abierto, no como aprobado.
+- **small-2: la regla de la tarea chica falla en tokens.** B gasta alrededor de un 20 % más de tokens ponderados en la mediana (141.110 contra 116.806) y los rangos no se pisan. Ninguno de los dos brazos activó su plugin (0 de 3 en cada uno) y los dos resolvieron la tarea bien, así que la causa de la diferencia es desconocida (n=3). Es un resultado negativo y se publica como tal.
+- En ninguna de las dos tareas se activó un plugin: ambas miden al modelo base con distinto contexto cargado.
+
+### 11.3 Detección de frentes (E3, 3 repos x 3 repeticiones, solo brazo B)
+
+Prompt: "Validá el código del proyecto." con Pignolo 2 activo. **`validate` se activó por sí sola en 9 de 9 corridas.**
+
+| Repo | Frentes esperados | Corridas con la línea `Frentes:` correcta (regla preinscrita) | Veredicto preinscrito | Cifra secundaria: agentes lanzados con el conjunto esperado | Línea `Frentes:` impresa |
+|---|---|---|---|---|---|
+| `cli-script` | ninguno | 3/3 | **pasa** | 3/3 | 3/3 |
+| `app-db` | `security, database, code, tests, hygiene` | 1/3 | **no pasa** | 3/3 | 1/3 |
+| `landing-form` | `security, hygiene` | 0/3 | **no pasa** | 1/3 | 1/3 |
+
+- Tokens ponderados, mediana (rango): `cli-script` 73.432 (72.992 a 79.395), `landing-form` 127.301 (126.510 a 139.264), `app-db` 275.957 (272.747 a 288.125). Agentes: mediana 0, 1 (rango 1 a 2) y 5 (rango 5 a 5) respectivamente.
+- **La línea `Frentes:` se imprimió en 5 de 9 corridas** (3 de `cli-script`, 1 de `app-db`, 1 de `landing-form`). La regla preinscrita es sobre esa línea y por eso `app-db` y `landing-form` no pasan.
+- **Cifra secundaria, agregada post hoc (después de ver las corridas) y por eso etiquetada así:** el conjunto de frentes medido por los agentes realmente lanzados coincide con el esperado en 3/3 en `app-db`, 3/3 en `cli-script` y 1/3 en `landing-form`. No cambia ningún veredicto preinscrito. En `landing-form` la higiene se delegó en 1 de 3 corridas; en las otras dos el hilo principal se ocupó solo de los archivos sueltos.
 
 ### 11.4 Conclusión
 
-`[sin correr]`
+- **Feature mediana (H1):** la no inferioridad se cumple en el par forzado (BF/AF = 0,84 de mediana de tokens) y en el autónomo (B/A = 1,04), con calidad no peor, ambos en E2. No se afirma que Pignolo 2 sea mejor: los rangos se pisan.
+- **Tarea chica (H2):** no se sostiene del todo. small-1 empata; small-2 falla en tokens (B alrededor de un 20 % más, sin activación de ninguno de los dos plugins, causa desconocida). Según la ficha, una falla de la anti-meta pide recortar antes de publicar; la decisión es del autor.
+- **Detección de frentes (H3):** `cli-script` pasa; `app-db` y `landing-form` no pasan por la regla de la línea `Frentes:`, que se imprimió solo en 5 de 9 corridas. Con la cifra secundaria los agentes lanzados fueron los esperados en 7 de 9, pero eso no reemplaza el veredicto preinscrito.
+- **Activación:** con prompts completos ningún plugin se activó por sí solo en los pares autónomos (0 llamadas a `Skill`); lo único que se activó solo fue `validate` ante "Validá el código del proyecto.".
+
+### 11.5 Amenazas a la validez observadas
+
+Se suman a la sección 10:
+
+- n=2 en la feature mediana (E2) y una sola app privada del autor.
+- El calificador es de la misma familia de modelos que el que ejecutó.
+- El prompt de la feature mediana casi especifica la solución (rutas de módulos, firmas y textos exactos), lo que reduce el lugar para que el método importe.
+- Skills de la cuenta sincronizadas y cargadas en los dos brazos.
+- Las corridas usaron `bypassPermissions` en una exportación descartable, con detección de escape de carpeta pero sin prevención.
+- Los pares autónomos miden al modelo base, no los métodos.
+- El costo de la calificación a ciegas no está en el registro del arnés (corrió en una sesión Opus aparte).
+
+### 11.6 Qué no se midió
+
+- El flujo conversacional interactivo de `start` y de la lluvia de ideas (no hay usuario simulado).
+- La activación real en sesiones interactivas.
+- Trabajo de larga duración.
+- Otros repos y otros modelos.
+
+### 11.7 Gasto
+
+32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés.
+
+Datos crudos: [`pignolo2-runs.csv`](pignolo2-runs.csv). Para reproducir las cifras: `node tests/evals/harness/run.mjs summary`.
