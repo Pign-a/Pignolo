@@ -8,6 +8,7 @@
   "claudeArgsPrefix": [],
   "extraArgs": [],
   "extraEnvAllow": [],
+  "neutralPlugins": ["cc-plugin-*"],
   "model": "sonnet",
   "effort": "medium",
   "permissionMode": "bypassPermissions",

@@ -175,6 +175,7 @@ export async function runTask(cfg, args, deps = {}) {
     otherPluginDir: other ? cfg.arms[other].pluginDir : null,
     weights: cfg.weights,
     modelFactor: cfg.modelFactor,
+    neutralPlugins: cfg.neutralPlugins,
   };
   const text = guard('stream', () => fs.readFileSync(streamPath, 'utf8'), '');
   const m = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);

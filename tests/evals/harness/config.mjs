@@ -12,6 +12,9 @@ export const DEFAULT_EXPERIMENT = 'pignolo2';
 export const DEFAULT_WEIGHTS = { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 };
 
 export const DEFAULT_MODEL_FACTOR = { opus: 5, sonnet: 1, haiku: 0.33 };
+// Plugins that Claude Code loads in every session whatever the configuration (the first real run listed three of them).
+// They load identically for both arms, so they are recorded but are not contamination. Patterns: * is any text.
+export const DEFAULT_NEUTRAL_PLUGINS = ['cc-plugin-*'];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 // Process notes and project documents that would reveal the arm (or add noise) in a diff given to the
@@ -88,6 +91,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     extraEnvAllow: [],
     trackProcesses: true,
     nmIgnore: DEFAULT_NM_IGNORE,
+    neutralPlugins: DEFAULT_NEUTRAL_PLUGINS,
     blindExcludePaths: DEFAULT_BLIND_EXCLUDE,
     csvPath: DEFAULT_CSV,
     gradesPath: DEFAULT_GRADES,

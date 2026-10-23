@@ -1,5 +1,5 @@
 // Metrics from a claude stream-json log.
-import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
+import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR, DEFAULT_NEUTRAL_PLUGINS } from './config.mjs';
 
 const r2 = (x) => Math.round(x * 100) / 100;
 const FINAL_TEXT_BYTES = 1024;
@@ -54,10 +54,18 @@ export function belongsTo(name, plugin) {
   return n === p || n.startsWith(`${p}:`) || n.startsWith(`${p}@`);
 }
 
+// A plugin name (without its @marketplace suffix) matches a neutral pattern, where * is any text and the match is anchored.
+export function isNeutralPlugin(name, patterns = DEFAULT_NEUTRAL_PLUGINS) {
+  const base = String(name).split('@')[0].toLowerCase();
+  const toRegex = (p) => `^${String(p).toLowerCase().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`;
+  return (patterns || []).some((p) => new RegExp(toRegex(p)).test(base));
+}
+
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);
 
-export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR } = {}) {
+export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS } = {}) {
   let result = null;
+  const neutralLoaded = [];
   let badLines = 0;
   const agentIds = new Set();
   const mainIds = new Set();
@@ -77,8 +85,10 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
       init = { model: typeof o.model === 'string' ? o.model : null, claude_code_version: typeof o.claude_code_version === 'string' ? o.claude_code_version : null };
       for (const n of names(o.plugins)) {
         loaded.push(n);
-        // Any plugin that is not the arm's own is contamination, whatever its name.
-        if (!belongsTo(n, ownPlugin)) hits.push(`plugin:${n}`);
+        // Any plugin that is not the arm's own is contamination, unless it is one of the neutral built-ins (recorded apart).
+        if (belongsTo(n, ownPlugin)) continue;
+        if (isNeutralPlugin(n, neutralPlugins)) neutralLoaded.push(n);
+        else hits.push(`plugin:${n}`);
       }
       for (const [kind, list] of [['skill', o.skills], ['agent', o.agents], ['command', o.slash_commands]]) {
         for (const n of names(list)) if (belongsTo(n, otherPlugin)) hits.push(`${kind}:${n}`);
@@ -152,6 +162,7 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     contamination: uniqueHits.length > 0,
     contaminationHits: uniqueHits,
     ownPluginLoaded,
+    neutralPluginsLoaded: neutralLoaded,
     init,
     pluginsLoaded: loaded,
     badLines,

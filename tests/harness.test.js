@@ -413,6 +413,75 @@ test('run: cualquier plugin cargado que no sea el del brazo cuenta como contamin
   } finally { cleanup(env); }
 });
 
+test('metrics: los plugins neutrales (incorporados en toda sesión) no son contaminación, pero se registran; uno desconocido sí lo es', async () => {
+  const { parseStream, isNeutralPlugin } = await imp('metrics.mjs');
+  const { DEFAULT_NEUTRAL_PLUGINS } = await imp('config.mjs');
+  assert.deepStrictEqual(DEFAULT_NEUTRAL_PLUGINS, ['cc-plugin-*']);
+  assert.strictEqual(isNeutralPlugin('cc-plugin-telemetry', DEFAULT_NEUTRAL_PLUGINS), true);
+  assert.strictEqual(isNeutralPlugin('cc-plugin-x@market', DEFAULT_NEUTRAL_PLUGINS), true);
+  assert.strictEqual(isNeutralPlugin('my-cc-plugin-x', DEFAULT_NEUTRAL_PLUGINS), false, 'el patrón es de prefijo, no de subcadena');
+  assert.strictEqual(isNeutralPlugin('cc-plugin-x', []), false);
+  const init = (names) => JSON.stringify({ type: 'system', subtype: 'init', plugins: names.map((name) => ({ name })) });
+  const opts = { ownPlugin: 'superpowers', otherPlugin: 'pignolo', neutralPlugins: DEFAULT_NEUTRAL_PLUGINS };
+  const ok = parseStream(init(['superpowers', 'cc-plugin-agents-md', 'cc-plugin-telemetry', 'cc-plugin-plugin-authoring']), opts);
+  assert.strictEqual(ok.contamination, false);
+  assert.deepStrictEqual(ok.contaminationHits, []);
+  assert.deepStrictEqual(ok.neutralPluginsLoaded, ['cc-plugin-agents-md', 'cc-plugin-telemetry', 'cc-plugin-plugin-authoring']);
+  assert.strictEqual(ok.ownPluginLoaded, true);
+  // Un plugin desconocido fuera de la lista y del brazo sigue siendo contaminación; el otro brazo también.
+  const bad = parseStream(init(['superpowers', 'cc-plugin-telemetry', 'mystery-plugin']), opts);
+  assert.deepStrictEqual(bad.contaminationHits, ['plugin:mystery-plugin']);
+  assert.deepStrictEqual(bad.neutralPluginsLoaded, ['cc-plugin-telemetry']);
+  assert.ok(parseStream(init(['superpowers', 'pignolo']), opts).contamination);
+  // Sin la lista (neutralPlugins vacío) los incorporados cuentan como contaminación otra vez.
+  assert.ok(parseStream(init(['superpowers', 'cc-plugin-telemetry']), { ...opts, neutralPlugins: [] }).contamination);
+});
+
+test('run: los plugins incorporados se registran como neutrales, la corrida sigue válida y la fila lo muestra', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'neutral,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.contamination, false);
+    assert.ok(!m.invalidReasons.includes('contaminated'));
+    assert.deepStrictEqual(m.neutralPluginsLoaded, ['cc-plugin-agents-md', 'cc-plugin-telemetry', 'cc-plugin-plugin-authoring']);
+    const row = appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.strictEqual(row.neutral_plugins, 'cc-plugin-agents-md;cc-plugin-telemetry;cc-plugin-plugin-authoring');
+    assert.strictEqual(parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'))[0].neutral_plugins, row.neutral_plugins);
+    // Un plugin desconocido sí contamina, aunque haya neutrales a su lado.
+    await prepared(env, 'A', 2);
+    const bad = await withEnv({ FAKE_CLAUDE_MODE: 'neutral,contaminated,edit', FAKE_CLAUDE_EXTRA_PLUGIN: 'mystery-plugin' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }));
+    assert.ok(bad.invalidReasons.includes('contaminated'));
+    assert.deepStrictEqual(bad.contaminationHits, ['plugin:mystery-plugin']);
+  } finally { cleanup(env); }
+});
+
+test('row: una corrida inválida sin aceptación se registra igual, y su gasto sigue contando después de limpiar la carpeta', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    const { cleanRun } = await imp('clean.mjs');
+    const { spentUsd } = await imp('ledger.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'fail,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.ok(m.invalidReasons.length > 0);
+    assert.ok(!fs.existsSync(path.join(runDirName(env, 't1', 'A', 1), 'acceptance.json')), 'sin aceptación');
+    const row = appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'calibracion descartada' });
+    assert.strictEqual(row.invalid, true);
+    assert.ok(row.accept_pass == null);
+    const r = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'))[0];
+    assert.strictEqual(r.accept_pass, '');
+    assert.strictEqual(r.cost_usd, '0.5');
+    assert.strictEqual(spentUsd(cfg), 0.5);
+    assert.strictEqual(cleanRun(cfg, { task: 't1', arm: 'A', rep: 1 }).removed, true, 'ya registrada: se limpia sin --force');
+    assert.ok(!fs.existsSync(runDirName(env, 't1', 'A', 1)));
+    assert.strictEqual(spentUsd(cfg), 0.5, 'el gasto sigue contado por la fila del CSV');
+  } finally { cleanup(env); }
+});
+
 test('run: tope total de gasto (suma del CSV y de corridas sin fila) antes de lanzar nada', async () => {
   const env = setup();
   try {
@@ -1188,7 +1257,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1202,7 +1271,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
-      contamination: 'false', files_changed: '1', lines_added: '3', lines_removed: '0',
+      contamination: 'false', neutral_plugins: '', files_changed: '1', lines_added: '3', lines_removed: '0',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
@@ -1675,7 +1744,7 @@ test('CLI: una corrida de calibración (--experiment) cuenta para el tope pero n
 });
 
 test('repo: harness.local.json está en .gitignore y harness.example.json no trae datos reales', async () => {
-  const { DEFAULT_BLIND_EXCLUDE, DEFAULT_MODEL_FACTOR } = await imp('config.mjs');
+  const { DEFAULT_BLIND_EXCLUDE, DEFAULT_MODEL_FACTOR, DEFAULT_NEUTRAL_PLUGINS } = await imp('config.mjs');
   const ig = fs.readFileSync(path.join(__dirname, '..', '.gitignore'), 'utf8');
   assert.match(ig, /^tests\/evals\/harness\/harness\.local\.json$/m);
   const ex = JSON.parse(fs.readFileSync(path.join(HARNESS, 'harness.example.json'), 'utf8'));
@@ -1685,6 +1754,7 @@ test('repo: harness.local.json está en .gitignore y harness.example.json no tra
   // El ejemplo y los valores por defecto del código dicen lo mismo.
   assert.deepStrictEqual(ex.blindExcludePaths, DEFAULT_BLIND_EXCLUDE);
   assert.deepStrictEqual(ex.modelFactor, DEFAULT_MODEL_FACTOR);
+  assert.deepStrictEqual(ex.neutralPlugins, DEFAULT_NEUTRAL_PLUGINS);
   const text = JSON.stringify(ex);
   assert.ok(!/[A-Za-z]:[\\/]Users|pigna/i.test(text), 'sin rutas personales');
   // Ningún archivo versionado del arnés (salvo la configuración local, que no se versiona) trae rutas personales.

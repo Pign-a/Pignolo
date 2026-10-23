@@ -1,7 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
+//   neutral | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -30,6 +30,9 @@ const own = i >= 0 ? pluginName(argv[i + 1]) : null;
 let plugins = own ? [{ name: own, path: argv[i + 1] }] : [];
 let skills = own ? [`${own}:some-skill`] : [];
 if (has('noplugin')) { plugins = []; skills = []; }
+if (has('neutral')) {
+  for (const n of ['cc-plugin-agents-md', 'cc-plugin-telemetry', 'cc-plugin-plugin-authoring']) plugins.push({ name: n, path: '/builtin' });
+}
 if (has('contaminated')) {
   const extra = process.env.FAKE_CLAUDE_EXTRA_PLUGIN;
   plugins.push({ name: extra, path: '/x' });
