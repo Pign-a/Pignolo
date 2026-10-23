@@ -187,6 +187,7 @@ export async function runTask(cfg, args, deps = {}) {
     modelFactor: cfg.modelFactor,
     neutralPlugins: cfg.neutralPlugins,
     neutralPluginNames: [],
+    ownHooksDeclared: fs.existsSync(path.join(cfg.arms[arm].pluginDir, 'hooks', 'hooks.json')),
   };
   // What the account sync put in the config dir (it may have been created by this very run); its plugins are neutral.
   const neutralConfigAfter = guard('contenido sincronizado', () => scanNeutralConfig(cfg.configDir, cfg.neutralConfigPaths), neutralConfigBefore);

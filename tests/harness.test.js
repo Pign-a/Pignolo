@@ -1024,6 +1024,71 @@ test('metrics: contenido sincronizado que aparece con el nombre de un brazo dura
   assert.deepStrictEqual(invalidReasons({ ...base, neutralConfigArmNamed: ['skills/synced/b1/pignolo-ui'] }), ['contaminated']);
 });
 
+test('activación: se cuentan las llamadas a Skill, las del plugin propio (nombres distintos) y si corrió su hook', async () => {
+  const { parseStream } = await imp('metrics.mjs');
+  const line = (o) => JSON.stringify(o);
+  const init = line({ type: 'system', subtype: 'init', plugins: [{ name: 'superpowers' }] });
+  const skill = (id, name, parent = null) => line({ type: 'assistant', parent_tool_use_id: parent, message: { content: [{ type: 'tool_use', id, name: 'Skill', input: { skill: name } }] } });
+  const hook = (text) => line({ type: 'system', subtype: 'hook_response', hook_name: 'SessionStart:startup', hook_event: 'SessionStart', output: text, stdout: text, exit_code: 0, outcome: 'success' });
+  const opts = { ownPlugin: 'superpowers', otherPlugin: 'pignolo' };
+  const stream = [init, skill('a', 'superpowers:brainstorming'), skill('a', 'superpowers:brainstorming'), skill('b', 'superpowers:writing-plans', 'toolu_x'),
+    skill('c', 'superpowers'), skill('d', 'pignolo:work'), skill('e', 'superpowers-extra:x'), skill('f', 'frontend-design:frontend-design'), hook('You have superpowers.')].join('\n');
+  const m = parseStream(stream, opts);
+  assert.strictEqual(m.skillCalls, 6, 'todas las llamadas a Skill, sin repetir ids');
+  assert.strictEqual(m.ownSkillCalls, 3, 'el nombre del plugin o "plugin:skill"; superpowers-extra y pignolo:work no');
+  assert.deepStrictEqual(m.ownSkillNames, ['superpowers', 'superpowers:brainstorming', 'superpowers:writing-plans']);
+  assert.strictEqual(m.ownHookRan, 'true');
+  // Sin ninguna llamada a Skill.
+  const none = parseStream([init, line({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'r', name: 'Read', input: {} }] } })].join('\n'), opts);
+  assert.deepStrictEqual([none.skillCalls, none.ownSkillCalls, none.ownSkillNames, none.ownHookRan], [0, 0, [], 'unknown']);
+  // El hook: nombrado = true; hubo hooks pero ninguno nombra al plugin y el plugin declara hooks = false; si no declara hooks o no hay mensajes = unknown.
+  assert.strictEqual(parseStream([init, hook('otra cosa')].join('\n'), { ...opts, ownHooksDeclared: true }).ownHookRan, 'false');
+  assert.strictEqual(parseStream([init, hook('otra cosa')].join('\n'), { ...opts, ownHooksDeclared: false }).ownHookRan, 'unknown');
+  assert.strictEqual(parseStream(init, { ...opts, ownHooksDeclared: true }).ownHookRan, 'unknown');
+  assert.strictEqual(parseStream([init, hook('SUPERPOWERS cargado')].join('\n'), opts).ownHookRan, 'true', 'sin distinguir mayúsculas');
+});
+
+test('run: la activación del plugin queda en metrics.json y en la fila del CSV', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const used = await withEnv({ FAKE_CLAUDE_MODE: 'skill,hook,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.deepStrictEqual([used.skillCalls, used.ownSkillCalls, used.ownSkillNames, used.ownHookRan], [2, 1, ['superpowers:brainstorming'], 'true']);
+    const row = appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.deepStrictEqual([row.skill_calls, row.own_skill_calls, row.own_hook_ran], [2, 1, 'true']);
+    await prepared(env, 'A', 2);
+    const idle = await withEnv({ FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }));
+    assert.deepStrictEqual([idle.skillCalls, idle.ownSkillCalls, idle.ownSkillNames, idle.ownHookRan], [0, 0, [], 'unknown']);
+    const row2 = appendRow(cfg, { task: 't1', arm: 'A', rep: 2 });
+    assert.deepStrictEqual([row2.skill_calls, row2.own_skill_calls, row2.own_hook_ran], [0, 0, 'unknown']);
+  } finally { cleanup(env); }
+});
+
+test('summary: cuántas corridas activaron el plugin, y la advertencia cuando ninguna lo hizo', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const idle = { skill_calls: 0, own_skill_calls: 0, own_hook_ran: 'unknown' };
+  const both = summarize([...arm('s', 'A', [100, 110, 120], idle), ...arm('s', 'B', [80, 85, 90], idle)], { kinds: { s: 'small' } });
+  assert.deepStrictEqual(both.tasks[0].activation, { A: { n: 0, m: 3 }, B: { n: 0, m: 3 } });
+  const text = formatSummary(both);
+  assert.match(text, /activaron el plugin: 0\/3/);
+  assert.match(text, /ningún corrida activó el plugin: la comparación de esta tarea mide al modelo base/);
+  // Solo un brazo sin activar: se nombra el brazo, no la frase general.
+  const one = summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], idle)], { kinds: { s: 'small' } });
+  const t1 = formatSummary(one);
+  assert.match(t1, /A {2}n=3[\s\S]*activaron el plugin: 3\/3/);
+  assert.match(t1, /activaron el plugin: 0\/3/);
+  assert.doesNotMatch(t1, /ningún corrida activó/);
+  assert.match(t1, /el brazo B no activó el plugin en ninguna corrida \(0\/3\)/);
+  // Con activaciones mixtas: n/m; filas viejas sin el dato: sin dato.
+  const mixed = summarize([...arm('s', 'A', [100, 110, 120], (i) => (i === 0 ? idle : {})), ...arm('s', 'B', [80, 85, 90], { skill_calls: null, own_skill_calls: null, own_hook_ran: '' })], { kinds: { s: 'small' } });
+  assert.deepStrictEqual(mixed.tasks[0].activation.A, { n: 2, m: 3 });
+  assert.deepStrictEqual(mixed.tasks[0].activation.B, { n: 0, m: 0 });
+  assert.match(formatSummary(mixed), /activaron el plugin: sin dato/);
+  assert.doesNotMatch(formatSummary(mixed), /ningún corrida activó/);
+});
+
 test('metrics: un plugin con el nombre del brazo como prefijo (pignolo-ui) no es el propio', async () => {
   const { parseStream, belongsTo } = await imp('metrics.mjs');
   assert.strictEqual(belongsTo('pignolo-ui@market', 'pignolo'), false);
@@ -1357,7 +1422,7 @@ function writeRun(env, task, arm, rep, { metrics = {}, acceptance, changes, patc
     task, arm, rep, experiment: 'toy-exp', model: 'sonnet', finishedAt: '2026-10-23T12:00:00.000Z', costUsd: 1.5,
     weightedTokens: 1200, tokens: { input: 150, output: 30, cacheRead: 1500, cacheWrite: 600 },
     tokensByModel: { 'fake-model': { input: 100, output: 20, cacheRead: 1000, cacheWrite: 400 }, 'fake-sub': { input: 50, output: 10, cacheRead: 500, cacheWrite: 200 } },
-    wallS: 42.5, durationMs: 40000, turns: 4, agents: 2, agentsMain: 1, resultSubtype: 'success', isError: false, exitCode: 0,
+    wallS: 42.5, durationMs: 40000, turns: 4, agents: 2, agentsMain: 1, skillCalls: 3, ownSkillCalls: 2, ownHookRan: 'true', resultSubtype: 'success', isError: false, exitCode: 0,
     init: { model: 'fake-model', claude_code_version: '9.9.9-fake' }, invalidReasons: [],
     timedOut: false, contamination: false, ...metrics,
   };
@@ -1383,7 +1448,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     const cfg = loadConfig(env.cfgPath);
     assert.strictEqual(COLUMNS.join(','),
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
-        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'result_subtype', 'is_error',
+        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
         'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
@@ -1396,7 +1461,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       model_resolved: 'fake-model', claude_version: '9.9.9-fake',
       cost_usd: '1.5', weighted_tokens: '1200', input: '150', output: '30', cache_read: '1500', cache_write: '600',
       model_tokens: 'fake-model=100/20/1000/400|fake-sub=50/10/500/200',
-      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', result_subtype: 'success', is_error: 'false', exit_code: '0',
+      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
       contamination: 'false', neutral_plugins: '', neutral_config: '', files_changed: '1', lines_added: '3', lines_removed: '0',
@@ -1602,7 +1667,7 @@ function mk(task, arm, rep, tokens, extra = {}) {
   return {
     experiment: 'x', task, arm, rep, timestamp: '2026-10-23T00:00:0' + rep + 'Z', model: 'sonnet',
     cost_usd: tokens / 1000, weighted_tokens: tokens, wall_s: 60, turns: 5, agents: 1,
-    result_subtype: 'success', is_error: false, exit_code: 0, invalid: false, invalid_reason: '',
+    skill_calls: 1, own_skill_calls: 1, own_hook_ran: 'true', result_subtype: 'success', is_error: false, exit_code: 0, invalid: false, invalid_reason: '',
     accept_exit: 0, accept_pass: 3, accept_fail: 0, accept_suites_failed: 0, full_pass: 10, full_fail: 0, full_baseline_fail: 0,
     timed_out: false, contamination: false, note: '', ...extra,
   };

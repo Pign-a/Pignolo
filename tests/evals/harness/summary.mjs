@@ -7,7 +7,7 @@ import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
 import { modelFactorFor } from './metrics.mjs';
 
 const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'duration_ms', 'turns',
-  'agents', 'agents_main', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail',
+  'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail',
   'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed'];
 const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid'];
 
@@ -84,6 +84,10 @@ function armStats(rows) {
     wall: stat(rows.map((r) => r.wall_s)),
     agents: stat(rows.map((r) => r.agents)),
     timedOut: rows.filter((r) => r.timed_out).length,
+    // Did the run exercise the plugin under test? A run activated it when it called at least one of the plugin's own skills.
+    // Rows without the data (older CSV) are not counted either way. The plugin's own hook is shown apart.
+    activation: { n: rows.filter((r) => r.own_skill_calls !== null && r.own_skill_calls > 0).length, m: rows.filter((r) => r.own_skill_calls !== null).length },
+    hook: { n: rows.filter((r) => r.own_hook_ran === 'true').length, m: rows.filter((r) => r.own_hook_ran === 'true' || r.own_hook_ran === 'false').length },
     accept: accRows.length ? { pass, fail, runs: accRows.length, greenRuns: accRows.filter(isGreen).length } : null,
     full: {
       baselineMissing: fullRows.filter((r) => r.full_baseline_fail === null).length,
@@ -283,7 +287,16 @@ export function summarize(rowsIn, {
         provisional: decision.verdict,
       };
     }
-    tasks.push({ task, kind, arms, evidence, decision, invalid, systematicNoChanges });
+    // A comparison in which no run called a skill of its plugin measures the base model, not the method.
+    const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
+    const known = Object.entries(activation).filter(([, v]) => v.m > 0);
+    const activationNotes = [];
+    if (known.length && known.every(([, v]) => v.n === 0)) {
+      activationNotes.push('ningún corrida activó el plugin: la comparación de esta tarea mide al modelo base');
+    } else {
+      for (const [a, v] of known) if (v.n === 0) activationNotes.push(`el brazo ${a} no activó el plugin en ninguna corrida (0/${v.m})`);
+    }
+    tasks.push({ task, kind, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes });
   }
   return { tasks, notes };
 }
@@ -308,9 +321,11 @@ export function formatSummary(res) {
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);
       out.push(`   aceptación: ${acc}`);
+      out.push(`   activaron el plugin: ${s.activation.m ? `${s.activation.n}/${s.activation.m}` : 'sin dato'}${s.hook.m ? ` (hook propio visto: ${s.hook.n}/${s.hook.m})` : ''}`);
     }
     out.push(`decisión: ${t.decision.verdict}`);
     for (const r of t.decision.reasons) out.push(`   - ${r}`);
+    for (const n of t.activationNotes) out.push(`   - ${n}`);
     out.push('');
   }
   for (const n of res.notes) out.push(`nota: ${n}`);

@@ -6,7 +6,7 @@ import { summarizeNeutralConfig } from './neutralconfig.mjs';
 
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
-  'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main',
+  'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'own_hook_ran',
   'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
   'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'note',
@@ -119,6 +119,7 @@ export function appendRow(cfg, args) {
     cache_read: m.tokens && m.tokens.cacheRead, cache_write: m.tokens && m.tokens.cacheWrite,
     model_tokens: encodeModelTokens(m.tokensByModel),
     wall_s: m.wallS, duration_ms: m.durationMs, turns: m.turns, agents: m.agents, agents_main: m.agentsMain,
+    skill_calls: m.skillCalls, own_skill_calls: m.ownSkillCalls, own_hook_ran: m.ownHookRan,
     result_subtype: m.resultSubtype, is_error: m.isError, exit_code: m.exitCode,
     timed_out: m.timedOut, invalid: reasons.length > 0, invalid_reason: reasons.join(';'),
     accept_exit: a && a.accept && a.accept.exitCode,

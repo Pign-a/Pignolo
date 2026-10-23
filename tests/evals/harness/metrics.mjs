@@ -63,7 +63,15 @@ export function isNeutralPlugin(name, patterns = DEFAULT_NEUTRAL_PLUGINS) {
 
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);
 
-export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [] } = {}) {
+export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [], ownHooksDeclared = false } = {}) {
+  // Activation of the plugin under test: Skill tool calls (all, and the arm's own), and whether its hook output shows up.
+  const skillIds = new Set();
+  const ownSkills = [];
+  let skillCalls = 0;
+  let ownSkillCalls = 0;
+  let hookMessages = 0;
+  let ownHookNamed = false;
+  const ownLower = String(ownPlugin || '').toLowerCase();
   let result = null;
   const neutralLoaded = [];
   let badLines = 0;
@@ -95,11 +103,25 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
         for (const n of names(list)) if (belongsTo(n, otherPlugin)) hits.push(`${kind}:${n}`);
       }
     } else if (o.type === 'system') {
+      if (/^hook_/.test(String(o.subtype))) {
+        hookMessages += 1;
+        if (ownLower && JSON.stringify(o).toLowerCase().includes(ownLower)) ownHookNamed = true;
+      }
       // Hook and other system messages: contaminated when they point into the other plugin's folder.
       const s = JSON.stringify(o).replace(/\\\\/g, '/').replace(/\\/g, '/').toLowerCase();
       if (otherDir && s.includes(otherDir)) hits.push(`${o.subtype || 'system'}:${otherPlugin}`);
     } else if (o.type === 'assistant' && o.message && Array.isArray(o.message.content)) {
       for (const b of o.message.content) {
+        if (b && b.type === 'tool_use' && b.name === 'Skill') {
+          const id = b.id || `noskill-${anon++}`;
+          if (!skillIds.has(id)) {
+            skillIds.add(id);
+            skillCalls += 1;
+            const raw = b.input && typeof b.input === 'object' ? String(b.input.skill ?? b.input.name ?? '') : '';
+            const nm = raw.trim().toLowerCase();
+            if (ownLower && (nm === ownLower || nm.startsWith(`${ownLower}:`))) { ownSkillCalls += 1; ownSkills.push(raw.trim()); }
+          }
+        }
         if (b && b.type === 'tool_use' && (b.name === 'Agent' || b.name === 'Task')) {
           const id = b.id || `noid-${anon++}`;
           if (!agentIds.has(id)) {
@@ -164,6 +186,11 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     contaminationHits: uniqueHits,
     ownPluginLoaded,
     neutralPluginsLoaded: neutralLoaded,
+    skillCalls,
+    ownSkillCalls,
+    ownSkillNames: [...new Set(ownSkills)].sort(),
+    // true: a hook message names the plugin; false: hooks ran, none names it and the plugin declares hooks; unknown: cannot tell.
+    ownHookRan: ownHookNamed ? 'true' : (hookMessages > 0 && ownHooksDeclared ? 'false' : 'unknown'),
     init,
     pluginsLoaded: loaded,
     badLines,

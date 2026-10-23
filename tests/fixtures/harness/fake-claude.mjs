@@ -1,7 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
+//   skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -113,11 +113,19 @@ if (has('hang')) {
     sh('commit', '-q', '-m', 'feature');
     spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: process.cwd(), encoding: 'utf8' });
   }
+  if (has('hook')) {
+    out({ type: 'system', subtype: 'hook_started', hook_id: 'h1', hook_name: 'SessionStart:startup', hook_event: 'SessionStart' });
+    out({ type: 'system', subtype: 'hook_response', hook_id: 'h1', hook_name: 'SessionStart:startup', hook_event: 'SessionStart', output: `${own} session start`, stdout: `${own} session start`, exit_code: 0, outcome: 'success' });
+  }
   const blocks = [
     { type: 'text', text: 'Working.' },
     { type: 'tool_use', id: 'toolu_1', name: 'Agent', input: { prompt: 'x' } },
     { type: 'tool_use', id: 'toolu_2', name: 'Read', input: {} },
   ];
+  if (has('skill')) {
+    blocks.push({ type: 'tool_use', id: 'toolu_s1', name: 'Skill', input: { skill: `${own}:brainstorming` } });
+    blocks.push({ type: 'tool_use', id: 'toolu_s2', name: 'Skill', input: { skill: 'someone-else:thing' } });
+  }
   if (has('escape')) {
     blocks.push({ type: 'tool_use', id: 'toolu_9', name: 'Bash', input: { command: `type ${process.env.FAKE_CLAUDE_ESCAPE_PATH}` } });
   }
