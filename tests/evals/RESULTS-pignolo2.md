@@ -9,7 +9,7 @@ _Esta ficha se escribió y se commiteó antes de cualquier corrida, como pide `d
 **Pregunta.** ¿Pignolo 2 hace el mismo trabajo que superpowers con una calidad igual o mejor y sin gastar mucho más?
 
 **Hipótesis.**
-- H1 (feature mediana): Pignolo 2 gasta como máximo 1,5 veces los tokens ponderados de superpowers y la calidad, juzgada a ciegas, es igual o mejor.
+- H1 (feature mediana), de **no inferioridad**: Pignolo 2 no es peor que superpowers en gasto, es decir su mediana de tokens ponderados es como máximo 1,5 veces la de superpowers y su máximo es como máximo 1,5 veces el máximo de superpowers, y la calidad, juzgada a ciegas, es igual o mejor. H1 no afirma que Pignolo 2 gaste menos.
 - H2 (tarea chica): en un bug y en un cambio de una frase, Pignolo 2 no tarda más ni gasta más que superpowers. Es la anti-meta principal: si falla, se recorta antes de publicar.
 - H3 (detección de frentes): diciendo "validá" sin más contexto, `validate` elige exactamente los frentes escritos de antemano en cada repo de juguete y respeta un tope de agentes por repo: `cli-script` cero agentes en total, `landing-form` como máximo 2 agentes de frente, `app-db` no más de 5 agentes de frente.
 
@@ -33,7 +33,7 @@ Para el revisor a ciegas los brazos se nombran `X` e `Y`, asignados al azar por 
 | Métrica | Unidad | Cómo se mide |
 |---|---|---|
 | Tokens por tipo | tokens (entrada, salida, caché leída, caché escrita) | Suma de los registros de uso de la sesión principal y de todos sus subagentes |
-| Tokens ponderados | tokens equivalentes | Cada tipo por su precio relativo; la tabla de pesos se fija en la calibración, antes de la primera corrida válida |
+| Tokens ponderados | tokens equivalentes | Cada tipo por su precio relativo y un factor por familia de modelo (los modelos de los revisores y subagentes difieren de la sesión principal); la tabla de pesos y de factores se fija en la calibración contra el costo en USD, antes de la primera corrida válida |
 | Costo | USD, si el registro lo da | Tokens por tipo por tarifa vigente |
 | Tiempo de pared | segundos | Del primer mensaje al mensaje final del agente |
 | Calidad | hallazgos graves y nota 1 a 5 | Un revisor Opus a ciegas (nombres neutros, orden mezclado) revisa el resultado de cada corrida contra la consigna; más tests que pasan en el repo de la tarea |
@@ -47,12 +47,14 @@ Para el revisor a ciegas los brazos se nombran `X` e `Y`, asignados al azar por 
 
 **Repeticiones:** 2 por brazo (4 corridas), intercaladas A, B, A, B para que la carga de la máquina pegue igual. El protocolo pide al menos 3 por brazo si la corrida cuesta menos de ~300 mil tokens; una feature mediana con subagentes cuesta más, así que se usan 2 y **la prueba baja a E2**. La conclusión vale solo si la diferencia es grande; con 2 repeticiones cualquier diferencia chica es ruido.
 
-**Regla de decisión.** Pignolo 2 pasa si:
+**Regla de decisión (no inferioridad).** Pignolo 2 pasa si:
 1. su mediana de tokens ponderados es como máximo 1,5 veces la mediana de superpowers, **y**
-2. su calidad es igual o mejor (mediana de nota igual o mayor y no más hallazgos graves que el control), **y**
-3. los rangos (mínimo a máximo) de los dos brazos no se pisan en la métrica en que se afirma una diferencia.
+2. su máximo de tokens ponderados es como máximo 1,5 veces el máximo de superpowers, **y**
+3. su calidad es igual o mejor (mediana de nota igual o mayor, no más hallazgos graves que el control y no menos corridas verdes en la aceptación).
 
-Si los rangos se pisan, el resultado es **"sin diferencia demostrada"** y se decide por lo más simple. Si pasa el umbral de tokens pero no la calidad, o al revés, no pasa. Se anota que no hay repetición suficiente para E3.
+La condición de que los rangos (mínimo a máximo) de los dos brazos no se pisen **vale solo para afirmar superioridad** (que Pignolo 2 es mejor que superpowers en una métrica), no para la no inferioridad: con los rangos pisados, Pignolo 2 puede pasar H1, pero no se afirma que sea mejor y el resultado se informa como "sin diferencia demostrada" en esa comparación. Si pasa el umbral de tokens pero no la calidad, o al revés, no pasa. Se anota que no hay repetición suficiente para E3.
+
+_Aclaración del 2026-10-23, escrita antes de cualquier corrida real: la versión anterior de esta regla pedía rangos separados también para pasar, lo que mezclaba la no inferioridad con la superioridad. Todavía no se corrió nada, así que el cambio no depende de ningún dato._
 
 ## 6. Medición 2: tarea chica (anti-meta principal)
 
@@ -80,14 +82,15 @@ Tres repos de juguete en `tests/evals/fixtures/` (ver su `README.md`), con lo es
 
 ## 8. Presupuesto
 
-**Tope:** `[pendiente: lo fija el autor]` USD.
+**Tope:** 40 USD en total (aprobado por el autor), con un tope por corrida que el arnés pasa a `claude -p`. El arnés se niega a lanzar una corrida si lo ya gastado más el tope por corrida pasa de 40. Lo gastado cuenta todas las filas del CSV, la calibración incluida.
 
-Antes de correr se hace un sondeo de una corrida chica por brazo para calibrar el costo, y con eso se estima el total de las tres mediciones. **Si el gasto se agota a mitad de camino:** se detienen las corridas, se anota qué quedó sin correr y por qué, se publican los datos parciales con su nivel de evidencia, y se pide al autor decidir si amplía el tope o si se reduce el alcance (primero se recortan repeticiones de la medición 3, después las de la 1). Lo que no se midió se declara como no medido; la 1.0.0 no se publica con una medición obligatoria sin correr salvo decisión explícita del autor.
+Antes de correr se hace un sondeo de una corrida chica por brazo para calibrar el costo (con el experimento `pignolo2-calib`: queda en el mismo CSV y cuenta para el tope, pero no se mezcla en las cifras reales), y con eso se estima el total de las tres mediciones. **Si el gasto se agota a mitad de camino:** se detienen las corridas, se anota qué quedó sin correr y por qué, se publican los datos parciales con su nivel de evidencia, y se pide al autor decidir si amplía el tope o si se reduce el alcance (primero se recortan repeticiones de la medición 3, después las de la 1). Lo que no se midió se declara como no medido; la 1.0.0 no se publica con una medición obligatoria sin correr salvo decisión explícita del autor.
 
 ## 9. Durante y después
 
 - Cada corrida en un worktree nuevo desde el mismo commit; carga pareja o corridas intercaladas, anotando cuántos agentes más había.
-- Nada se descarta en silencio: una corrida cortada o fallida se anota con su motivo y, si se repite, las dos quedan en el registro.
+- Nada se descarta en silencio: una corrida cortada o fallida se anota con su motivo y, si se repite, las dos quedan en el registro. Una corrida inválida (cortada por tiempo, con error, que superó el tope por corrida, contaminada, que tocó fuera de su carpeta o que terminó sin cambios) sale de las cifras, se lista y deja la tarea pendiente hasta repetirla.
+- Dónde quedó el código de cada corrida (carpeta, worktree o rama) se registra, y la aceptación y los conteos se miden en el árbol con más cambios contra el commit base.
 - Datos crudos: una fila por corrida en el CSV de la prueba (id del experimento, brazo, repetición, métricas).
 - Resultado por brazo: mediana y rango; nunca un número sin su dispersión. Resultados negativos también se publican.
 - Se documenta en este archivo y en `docs/benchmarks.md`, con el nivel de evidencia de cada cifra.

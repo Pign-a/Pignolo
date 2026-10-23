@@ -1320,13 +1320,23 @@ test('CLI: una corrida de calibración (--experiment) cuenta para el tope pero n
   } finally { cleanup(env); }
 });
 
-test('repo: harness.local.json está en .gitignore y harness.example.json no trae datos reales', () => {
+test('repo: harness.local.json está en .gitignore y harness.example.json no trae datos reales', async () => {
+  const { DEFAULT_BLIND_EXCLUDE, DEFAULT_MODEL_FACTOR } = await imp('config.mjs');
   const ig = fs.readFileSync(path.join(__dirname, '..', '.gitignore'), 'utf8');
   assert.match(ig, /^tests\/evals\/harness\/harness\.local\.json$/m);
   const ex = JSON.parse(fs.readFileSync(path.join(HARNESS, 'harness.example.json'), 'utf8'));
-  for (const k of ['sourceRepo', 'privateRoot', 'workRoot', 'configDir', 'arms', 'model', 'permissionMode', 'perRunCapUsd', 'timeoutMs', 'weights', 'seed']) {
+  for (const k of ['sourceRepo', 'privateRoot', 'workRoot', 'configDir', 'arms', 'model', 'effort', 'permissionMode', 'perRunCapUsd', 'totalCapUsd', 'timeoutMs', 'weights', 'modelFactor', 'seed', 'blindExcludePaths']) {
     assert.ok(k in ex, `falta ${k}`);
   }
+  // El ejemplo y los valores por defecto del código dicen lo mismo.
+  assert.deepStrictEqual(ex.blindExcludePaths, DEFAULT_BLIND_EXCLUDE);
+  assert.deepStrictEqual(ex.modelFactor, DEFAULT_MODEL_FACTOR);
   const text = JSON.stringify(ex);
   assert.ok(!/[A-Za-z]:[\\/]Users|pigna/i.test(text), 'sin rutas personales');
+  // Ningún archivo versionado del arnés (salvo la configuración local, que no se versiona) trae rutas personales.
+  for (const f of fs.readdirSync(HARNESS)) {
+    if (f === 'harness.local.json') continue;
+    const body = fs.readFileSync(path.join(HARNESS, f), 'utf8');
+    assert.ok(!/[A-Za-z]:[\\/]Users|\/home\/\w+|pigna(?!ture)/i.test(body), `${f} trae una ruta o nombre personal`);
+  }
 });

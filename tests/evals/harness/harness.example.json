@@ -7,9 +7,12 @@
   "claudeBin": "claude",
   "claudeArgsPrefix": [],
   "extraArgs": [],
+  "extraEnvAllow": [],
   "model": "sonnet",
+  "effort": "medium",
   "permissionMode": "bypassPermissions",
   "perRunCapUsd": 5,
+  "totalCapUsd": 40,
   "timeoutMs": 1800000,
   "acceptTimeoutMs": 900000,
   "arms": {
@@ -18,10 +21,14 @@
   },
   "copyDirs": ["relative/path/of/a/gitignored/generated/folder"],
   "weights": { "input": 1, "output": 5, "cacheRead": 0.1, "cacheWrite": 1.25 },
+  "modelFactor": { "opus": 5, "sonnet": 1, "haiku": 0.33 },
   "seed": 1,
   "tasks": {
     "task-id-1": { "kind": "medium" },
     "task-id-2": { "kind": "small" }
   },
-  "blindExcludePaths": [".claude/", ".superpowers/", ".pignolo/", "docs/superpowers/", "docs/pignolo/"]
+  "blindExcludePaths": [
+    ".claude/", ".superpowers/", ".pignolo/", "docs/superpowers/", "docs/pignolo/", "docs/sessions/", "docs/research/",
+    "roadmap.md", "security.md", "design.md", "CLAUDE.md", ".gitignore", ".worktrees/"
+  ]
 }
