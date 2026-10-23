@@ -51,7 +51,7 @@ export function belongsTo(name, plugin) {
   if (typeof name !== 'string' || !plugin) return false;
   const n = name.toLowerCase();
   const p = plugin.toLowerCase();
-  return n === p || n.startsWith(`${p}:`) || n.startsWith(`${p}@`) || n.startsWith(`${p}-`);
+  return n === p || n.startsWith(`${p}:`) || n.startsWith(`${p}@`);
 }
 
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runPaths } from './config.mjs';
 import { runProcess } from './proc.mjs';
+import { buildChildEnv } from './env.mjs';
 import { git } from './prepare.mjs';
 import { measureTrees, treePatches, excludeSpecs } from './trees.mjs';
 import { linkNodeModules, ensureSnapshot } from './nm.mjs';
@@ -72,7 +73,7 @@ async function runCmd(cfg, repo, dir, name, command) {
   const errPath = path.join(dir, `${name}.err.txt`);
   const r = await runProcess({
     command: command.replaceAll('{json}', `"${jsonPath}"`),
-    shell: true, cwd: repo, env: process.env, timeoutMs: cfg.acceptTimeoutMs, stdoutPath: outPath, stderrPath: errPath,
+    shell: true, cwd: repo, env: buildChildEnv(cfg, process.env, { claude: false }).env, timeoutMs: cfg.acceptTimeoutMs, stdoutPath: outPath, stderrPath: errPath,
   });
   if (r.error) throw new Error(`no se pudo ejecutar el comando de ${name}: ${r.error}`);
   const text = `${fs.readFileSync(outPath, 'utf8')}\n${fs.readFileSync(errPath, 'utf8')}`;

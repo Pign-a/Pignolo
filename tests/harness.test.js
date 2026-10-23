@@ -340,8 +340,10 @@ test('run: el hijo recibe solo el entorno de la lista blanca, --effort y el prom
     assert.deepStrictEqual(seen.argv.slice(seen.argv.indexOf('--effort'), seen.argv.indexOf('--effort') + 2), ['--effort', 'high']);
     assert.ok(!seen.argv.includes('Add a feature.\nSecond line.'), 'el prompt no va en argv');
     for (const n of ['ANTHROPIC_API_KEY', 'CLAUDECODE', 'CLAUDE_CODE_FOO', 'GITHUB_TOKEN', 'MY_APP_SECRET']) assert.ok(m.droppedEnvNames.includes(n), `se anota ${n}`);
-    assert.ok(!m.droppedEnvNames.includes('HARMLESS_VAR'), 'lo inocuo no se anota');
-    assert.ok(m.droppedEnvNames.every((n) => /^(CLAUDE|ANTHROPIC)|TOKEN|KEY|SECRET/i.test(n)));
+    assert.ok(m.droppedEnvNames.includes('HARMLESS_VAR'), 'se anotan los nombres de TODAS las variables descartadas, no solo las que parecen secretos');
+    for (const n of ['SYSTEMDRIVE', 'WINDIR', 'USERNAME', 'HOMEDRIVE', 'HOMEPATH']) {
+      if (process.env[n] !== undefined) assert.ok(names.includes(n), `${n} está en la lista blanca`);
+    }
     const blob = fs.readFileSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json'), 'utf8');
     assert.ok(!/sk-secret-value|tok-secret-value|zzz-secret-value/.test(blob), 'solo nombres, nunca valores');
     assert.strictEqual(m.init.model, 'fake-model');
@@ -681,6 +683,177 @@ test('accept: los conteos son solo de código (pathspec, también con espacios) 
     const blindPatch = fs.readFileSync(path.join(dir, 'changes.blind.patch'), 'utf8');
     for (const hidden of ['plan.md', '.superpowers', 'docs/sessions', 'CLAUDE.md', '.gitignore']) assert.ok(!blindPatch.includes(hidden), `${hidden} fuera del diff a ciegas`);
     assert.ok(blindPatch.includes('file with space.md') && blindPatch.includes('src/feature.js'));
+  } finally { cleanup(env); }
+});
+
+// ---------------------------------------------------------------- enlaces, limpieza, configDir, entorno y árboles raros
+
+const link = (target, at) => fs.symlinkSync(target, at, 'junction');
+
+test('prepare: se niega, antes de copiar y de gastar, si node_modules tiene enlaces que salen de la carpeta', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { prepare } = await imp('prepare.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    const outside = path.join(env.root, 'outside');
+    put(outside, 'secret.txt', 'x');
+    const nm = path.join(env.src, 'node_modules');
+    // Un enlace que queda adentro es válido.
+    link(path.join(nm, 'dep'), path.join(nm, 'alias-dep'));
+    await prepare(cfg, { task: 't1', arm: 'A', rep: 1 });
+    fs.rmSync(path.join(env.work), { recursive: true, force: true });
+    for (const where of ['lnk', '@scope/pkg', '.pnpm/pkg']) {
+      const at = path.join(nm, ...where.split('/'));
+      fs.mkdirSync(path.dirname(at), { recursive: true });
+      link(outside, at);
+      await assert.rejects(() => prepare(cfg, { task: 't1', arm: 'A', rep: 1 }), /enlaces que salen/, where);
+      assert.ok(!fs.existsSync(path.join(env.work, '_nm')), 'no queda copia');
+      assert.ok(!fs.existsSync(runDirName(env, 't1', 'A', 1)), 'no queda la carpeta de la corrida');
+      fs.rmdirSync(at);
+    }
+    assert.ok(fs.existsSync(path.join(outside, 'secret.txt')), 'el destino del enlace no se tocó');
+  } finally { cleanup(env); }
+});
+
+test('prepare: un copyDirs con un enlace que sale de la carpeta se rechaza', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { prepare } = await imp('prepare.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    const outside = path.join(env.root, 'outside');
+    put(outside, 'secret.txt', 'x');
+    link(outside, path.join(env.src, 'generated', 'client', 'out'));
+    await assert.rejects(() => prepare(cfg, { task: 't1', arm: 'A', rep: 1 }), /enlaces que salen|copyDirs/);
+    assert.ok(!fs.existsSync(runDirName(env, 't1', 'A', 1)));
+    assert.ok(fs.existsSync(path.join(outside, 'secret.txt')));
+  } finally { cleanup(env); }
+});
+
+test('clean: borra la carpeta de una corrida sin seguir ningún enlace y se niega si hay datos sin registrar', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { cleanRun } = await imp('clean.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const dir = runDirName(env, 't1', 'A', 1);
+    const outside = path.join(env.root, 'outside');
+    put(outside, 'keep.txt', 'x');
+    for (const rel of ['measured/node_modules', '.worktrees/x/node_modules', 'repo/sub/lnk']) {
+      const at = path.join(dir, ...rel.split('/'));
+      fs.mkdirSync(path.dirname(at), { recursive: true });
+      link(outside, at);
+    }
+    // Solo preparada: se limpia sin más.
+    const r = cleanRun(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.strictEqual(r.removed, true);
+    assert.ok(!fs.existsSync(dir));
+    assert.ok(fs.existsSync(path.join(outside, 'keep.txt')), 'el destino de los enlaces intacto');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')), 'la copia compartida intacta');
+    assert.ok(fs.existsSync(path.join(env.src, 'node_modules', 'dep', 'index.js')));
+    // Con datos de una corrida que no está en el CSV: se niega, salvo --force.
+    await prepared(env, 'A', 1);
+    await runTask(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.throws(() => cleanRun(cfg, { task: 't1', arm: 'A', rep: 1 }), /sin registrar|--force/);
+    assert.ok(fs.existsSync(dir));
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.strictEqual(cleanRun(cfg, { task: 't1', arm: 'A', rep: 1 }).removed, true);
+    // Una carpeta que no existe no es un error.
+    assert.strictEqual(cleanRun(cfg, { task: 't1', arm: 'A', rep: 1 }).removed, false);
+    // --force con datos sin registrar.
+    await prepared(env, 'B', 1);
+    await runTask(cfg, { task: 't1', arm: 'B', rep: 1 });
+    assert.strictEqual(cleanRun(cfg, { task: 't1', arm: 'B', rep: 1 }, { force: true }).removed, true);
+  } finally { cleanup(env); }
+});
+
+test('CLI: clean borra la corrida', () => {
+  const env = setup();
+  try {
+    assert.strictEqual(cli(env, 'prepare', '--task', 't1', '--arm', 'A', '--rep', '1').status, 0);
+    const c = cli(env, 'clean', '--task', 't1', '--arm', 'A', '--rep', '1');
+    assert.strictEqual(c.status, 0, c.err);
+    assert.ok(!fs.existsSync(runDirName(env, 't1', 'A', 1)));
+    assert.ok(fs.existsSync(path.join(env.src, 'node_modules', 'dep', 'index.js')));
+  } finally { cleanup(env); }
+});
+
+test('run: chequeo de configDir por installed_plugins.json y plugins/cache; plugins/data se permite y queda anotado', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask, checkConfigDir } = await imp('execute.mjs');
+    const dir = path.join(env.root, 'cd');
+    const reset = () => { fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true }); };
+    reset(); put(dir, 'plugins/installed_plugins.json', '{"version":2,"plugins":{}}');
+    assert.doesNotThrow(() => checkConfigDir(dir), 'archivo vacío: bien');
+    reset(); put(dir, 'plugins/installed_plugins.json', '{"version":2,"plugins":{"a@b":[{"scope":"user"}]}}');
+    assert.throws(() => checkConfigDir(dir), /installed_plugins/);
+    reset(); put(dir, 'plugins/installed_plugins.json', '{"plugins":{"a@b":{"version":"1"}}}');
+    assert.throws(() => checkConfigDir(dir), /installed_plugins/, 'formato viejo');
+    reset(); put(dir, 'plugins/installed_plugins.json', 'no es json');
+    assert.throws(() => checkConfigDir(dir), /installed_plugins/, 'ilegible: no se adivina');
+    reset(); put(dir, 'plugins/cache/x/y.txt', 'x');
+    assert.throws(() => checkConfigDir(dir), /cache/);
+    reset(); put(dir, 'plugins/data/x/y.txt', 'x'); put(dir, 'plugins/known_marketplaces.json', '{}');
+    assert.doesNotThrow(() => checkConfigDir(dir));
+    // Lo que aparece en plugins/data durante la corrida queda en config_dir_delta.
+    reset(); put(dir, 'settings.json', '{}');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'cfg-write' }, () => runTask({ ...cfg, configDir: dir }, { task: 't1', arm: 'A', rep: 1 }));
+    assert.ok(m.config_dir_delta.added.includes('cache-x'));
+  } finally { cleanup(env); }
+});
+
+test('metrics: un plugin con el nombre del brazo como prefijo (pignolo-ui) no es el propio', async () => {
+  const { parseStream, belongsTo } = await imp('metrics.mjs');
+  assert.strictEqual(belongsTo('pignolo-ui@market', 'pignolo'), false);
+  assert.strictEqual(belongsTo('pignolo-ui', 'pignolo'), false);
+  assert.strictEqual(belongsTo('superpowers-x', 'superpowers'), false);
+  assert.strictEqual(belongsTo('pignolo@market', 'pignolo'), true);
+  assert.strictEqual(belongsTo('pignolo:work', 'pignolo'), true);
+  const stream = JSON.stringify({ type: 'system', subtype: 'init', plugins: [{ name: 'pignolo-ui@market' }] });
+  const m = parseStream(stream, { ownPlugin: 'pignolo', otherPlugin: 'superpowers' });
+  assert.strictEqual(m.ownPluginLoaded, false);
+  assert.ok(m.contaminationHits.includes('plugin:pignolo-ui@market'));
+});
+
+test('accept: los comandos corren con el entorno en lista blanca, sin secretos ni CLAUDE_CONFIG_DIR', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { acceptRun } = await imp('accept.mjs');
+    const outFile = path.join(env.root, 'env-names.json');
+    put(env.priv, 't1/accept/check.js', 'require("fs").writeFileSync(process.argv[2],JSON.stringify(Object.keys(process.env)));console.log("Tests  2 passed (2)");\n');
+    put(env.priv, 't1/accept-cmd.txt', `node check.js "${outFile}"\n`);
+    await withEnv({ GITHUB_TOKEN: 'tok', ANTHROPIC_API_KEY: 'sk', CLAUDE_CONFIG_DIR: 'x', MY_APP_SECRET: 's', FAKE_CLAUDE_MODE: 'ok' }, () => acceptRun({ ...cfg, extraEnvAllow: [...cfg.extraEnvAllow, 'KEEP_ME'] }, { task: 't1', arm: 'A', rep: 1 }));
+    const names = JSON.parse(fs.readFileSync(outFile, 'utf8')).map((n) => n.toUpperCase());
+    for (const n of ['GITHUB_TOKEN', 'ANTHROPIC_API_KEY', 'CLAUDE_CONFIG_DIR', 'MY_APP_SECRET', 'DISABLE_AUTOUPDATER']) assert.ok(!names.includes(n), n);
+    assert.ok(names.includes('PATH') || names.includes('SYSTEMROOT'));
+    assert.ok(names.includes('FAKE_CLAUDE_MODE'), 'lo que el autor permite en extraEnvAllow llega');
+  } finally { cleanup(env); }
+});
+
+test('árboles: un worktree que ya no existe no rompe la medición; solo cambios en archivos excluidos no son "sin cambios"', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'worktree-gone' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.treesError, null, 'el worktree desaparecido se ignora (prune)');
+    assert.deepStrictEqual(m.postRunError, []);
+    assert.ok(m.trees.candidates.every((c) => c.kind !== 'worktree'));
+    assert.ok(m.invalidReasons.includes('no_changes'), 'el código se perdió con el worktree');
+    // Un cambio solo en un archivo excluido (una nota) sigue siendo un cambio: no se puede decir que no hizo nada.
+    const cfg2 = await prepared(env, 'B', 1);
+    const m2 = await withEnv({ FAKE_CLAUDE_MODE: 'only-excluded' }, () => runTask(cfg2, { task: 't1', arm: 'B', rep: 1 }));
+    assert.strictEqual(m2.trees.noChanges, false);
+    assert.ok(!m2.invalidReasons.includes('no_changes'));
+    const { acceptRun } = await imp('accept.mjs');
+    await acceptRun(cfg2, { task: 't1', arm: 'B', rep: 1 });
+    const c = JSON.parse(fs.readFileSync(path.join(runDirName(env, 't1', 'B', 1), 'changes.json'), 'utf8'));
+    assert.deepStrictEqual([c.filesChanged, c.rawFilesChanged, c.noChanges], [0, 1, false]);
   } finally { cleanup(env); }
 });
 

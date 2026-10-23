@@ -1,5 +1,6 @@
 // Where the code of a run lives. A method may work in the run folder, in a git worktree or on a branch:
 // the measured tree is the candidate with the largest change against the base commit.
+import fs from 'node:fs';
 import path from 'node:path';
 import { git } from './prepare.mjs';
 
@@ -69,7 +70,9 @@ function treeChanges(tree, others, excludes) {
 
 // Candidates: the run folder, every other worktree and every branch ahead of base that no worktree has checked out.
 export function measureTrees(repo, excludes) {
-  const worktrees = listWorktrees(repo);
+  // A worktree whose folder is gone (the agent removed it) is dropped from git's list first; a path that still does not exist is skipped.
+  try { git(repo, ['worktree', 'prune']); } catch { /* nothing to prune */ }
+  const worktrees = listWorktrees(repo).filter((w) => fs.existsSync(w.path));
   const main = worktrees.find((w) => same(w.path, repo)) || { path: path.resolve(repo), head: null, branch: null };
   const others = worktrees.filter((w) => !same(w.path, repo)).map((w) => w.path);
   const candidates = [];
@@ -77,7 +80,8 @@ export function measureTrees(repo, excludes) {
     const { code, raw } = treeChanges(w.path, [...others, main.path].filter((o) => !same(o, w.path)), excludes);
     candidates.push({
       kind: same(w.path, repo) ? 'main' : 'worktree', path: w.path, branch: w.branch, head: w.head,
-      filesChanged: code.files.length, files: code.files, linesAdded: code.added, linesRemoved: code.removed, rawFilesChanged: raw.files.length,
+      filesChanged: code.files.length, files: code.files, linesAdded: code.added, linesRemoved: code.removed,
+      rawFilesChanged: raw.files.length, rawLines: raw.added + raw.removed,
     });
   }
   const branchesAhead = [];
@@ -86,23 +90,28 @@ export function measureTrees(repo, excludes) {
     const ahead = Number(q(repo, ['rev-list', '--count', `base..${b}`]));
     if (ahead > 0) branchesAhead.push({ branch: b, ahead });
     if (ahead > 0 && !checkedOut.has(b)) {
-      const code = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', 'base', b, ...['--', '.', ...excludeSpecs(excludes)]]));
+      const code = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', 'base', b, '--', '.', ...excludeSpecs(excludes)]));
+      const raw = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', 'base', b]));
       candidates.push({
         kind: 'branch', path: null, branch: b, head: null,
-        filesChanged: code.files.length, files: code.files, linesAdded: code.added, linesRemoved: code.removed, rawFilesChanged: code.files.length,
+        filesChanged: code.files.length, files: code.files, linesAdded: code.added, linesRemoved: code.removed,
+        rawFilesChanged: raw.files.length, rawLines: raw.added + raw.removed,
       });
     }
   }
+  // The measured tree has the largest CODE change (excluded names left out); ties fall back to the raw change, then to the run folder.
+  // Whether the run produced changes at all looks at the raw change: a task whose target is an excluded name is not "no changes".
   const size = (c) => c.linesAdded + c.linesRemoved + c.filesChanged;
+  const rawSize = (c) => c.rawLines + c.rawFilesChanged;
   let measured = candidates[0];
-  for (const c of candidates) if (size(c) > size(measured)) measured = c;
+  for (const c of candidates) if (size(c) > size(measured) || (size(c) === size(measured) && rawSize(c) > rawSize(measured))) measured = c;
   const withChanges = candidates.filter((c) => size(c) > 0);
   return {
     worktrees: worktrees.map((w) => ({ path: w.path, branch: w.branch, head: w.head })),
     branchesAhead,
     candidates,
     measured,
-    noChanges: size(measured) === 0,
+    noChanges: rawSize(measured) === 0,
     flags: withChanges.length > 1 ? ['multiple_trees'] : [],
   };
 }

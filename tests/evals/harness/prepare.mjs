@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { runPaths, validateCopyDirs } from './config.mjs';
 import { ensureSnapshot, snapshotPaths } from './nm.mjs';
-import { removeTreeSafe } from './fsutil.mjs';
+import { removeTreeSafe, linksOutsideTree } from './fsutil.mjs';
 
 const NEUTRAL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'neutral-claude.md');
 const CONTEXT_FILES = new Set(['claude.md', 'claude.local.md', 'agents.md', '.mcp.json']);
@@ -92,6 +92,8 @@ export async function prepare(cfg, args) {
     for (const rel of copyDirs) {
       const from = path.join(cfg.sourceRepo, rel);
       if (!fs.existsSync(from)) { warnings.push(`copyDirs: no existe en la fuente: ${rel}`); continue; }
+      const bad = linksOutsideTree(from);
+      if (bad.length) throw new Error(`copyDirs: ${rel} tiene enlaces que salen de la carpeta (${bad.slice(0, 3).join('; ')}); se copiaría contenido de afuera`);
       fs.cpSync(from, path.join(repo, rel), { recursive: true });
     }
 

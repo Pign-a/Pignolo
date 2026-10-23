@@ -1,7 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   nm-modify | src-nm-modify | worktree | branch-only | process-files | cfg-write | escape
+//   nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -67,6 +67,9 @@ if (has('hang')) {
     w('docs/my notes/file with space.md', 'real doc\n');
     w('src/feature.js', feature);
   }
+  if (has('only-excluded')) {
+    fs.appendFileSync(path.join(process.cwd(), 'CLAUDE.md'), 'a note only\n');
+  }
   if (has('cfg-write') && process.env.CLAUDE_CONFIG_DIR) {
     fs.mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR, 'cache-x'), { recursive: true });
     fs.writeFileSync(path.join(process.env.CLAUDE_CONFIG_DIR, 'cache-x', 'f.txt'), 'x');
@@ -77,6 +80,13 @@ if (has('hang')) {
     if (r.status !== 0) process.stderr.write(`worktree failed: ${r.stderr}\n`);
     fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
     fs.writeFileSync(path.join(wt, 'src', 'feature.js'), feature);
+  }
+  if (has('worktree-gone')) {
+    const wt = path.join(process.cwd(), '..', 'wt');
+    spawnSync('git', ['worktree', 'add', '-q', '-b', 'feature', wt], { cwd: process.cwd(), encoding: 'utf8' });
+    fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(wt, 'src', 'feature.js'), feature);
+    fs.rmSync(wt, { recursive: true, force: true });
   }
   if (has('branch-only')) {
     const wt = path.join(process.cwd(), '..', 'wt');
