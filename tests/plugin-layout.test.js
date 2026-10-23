@@ -48,7 +48,7 @@ test('no existe plugins/pignolo-panel', () => {
   assert.ok(!exists(path.join(ROOT, 'plugins', 'pignolo-panel')));
 });
 
-test('no existe plugins/pignolo-ui', { skip: 'se activa en T7' }, () => {
+test('no existe plugins/pignolo-ui', () => {
   assert.ok(!exists(path.join(ROOT, 'plugins', 'pignolo-ui')));
 });
 
