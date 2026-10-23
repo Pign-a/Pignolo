@@ -151,3 +151,58 @@ test('ningún archivo del frente contiene valores de secretos', () => {
     ...IDS.map((i) => path.join(AGENTS, `review-${i}.md`))];
   for (const f of files) assert.ok(!/(sk-[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{12,})/.test(read(f)));
 });
+
+// ---- fix round 1 ----
+const FRONT_LINE = /^Frentes:(?: ([a-z]+(?:, [a-z]+)*))?$/;
+
+test('la línea Frentes: solo lleva ids permitidos; motivos y costo van después', () => {
+  const t = skill();
+  const examples = [...t.matchAll(/`(Frentes:[^`]*)`/g)].map((m) => m[1]);
+  assert.ok(examples.length >= 2, 'faltan ejemplos de la línea');
+  for (const ex of examples) {
+    const m = ex.match(FRONT_LINE);
+    assert.ok(m, `no parsea: ${ex}`);
+    for (const id of (m[1] || '').split(', ').filter(Boolean)) assert.ok(IDS.includes(id), `id no permitido ${id}`);
+  }
+  const par = paragraphs(t).find((p) => p.includes('Frentes:'));
+  assert.match(par, /only the (front )?ids/i);
+  assert.match(par, /no reasons/i);
+  assert.match(par, /(lines? )?after it|following lines/i);
+  assert.match(par, /delegated/i);
+});
+
+test('diff chico definido: <=5 archivos y <=200 líneas, sin evidencia de seguridad; security sigue delegándose con evidencia', () => {
+  const t = skill() + read(DIR, 'references', 'fronts.md');
+  assert.match(t, /5 files/);
+  assert.match(t, /200 (changed )?lines/);
+  const par = paragraphs(skill()).find((p) => /5 files/.test(p));
+  assert.ok(par, 'SKILL.md debe definir el diff chico');
+  assert.match(par, /security/i);
+  assert.match(par, /form|endpoint/i);
+});
+
+test('fronts.md: umbrales por frente con ejemplo negativo, prioridad y tres ejemplos resueltos', () => {
+  const t = read(DIR, 'references', 'fronts.md');
+  assert.ok((t.match(/Not enough:/g) || []).length >= 6, 'un ejemplo negativo (Not enough:) por frente');
+  assert.match(t, /security, database, code, tests, hygiene, docs/);
+  assert.match(t, /drop from the end|drop .* from the end/i);
+  assert.ok(t.includes('Frentes: security, hygiene'));
+  assert.ok(t.includes('Frentes: security, database, code, tests, hygiene'));
+  assert.ok(/^Frentes:$/m.test(t) || t.includes('`Frentes:`'));
+  assert.match(t, /never "always"|never always/i);
+});
+
+test('base del diff: ancestro, fecha más reciente, rama principal, árbol de trabajo, árbol limpio', () => {
+  const t = skill() + read(DIR, 'references', 'fronts.md');
+  assert.match(t, /merge-base --is-ancestor/);
+  assert.match(t, /equals HEAD|empty diff|diff is empty/i);
+  assert.match(t, /latest date in (its|the) filename|latest date in the file name/i);
+  assert.match(t, /origin\/HEAD/);
+  assert.match(t, /init\.defaultBranch/);
+  assert.match(t, /working tree/i);
+  assert.match(t, /uncommitted/i);
+  assert.match(t, /only when the working tree is clean/i);
+  const par = paragraphs(skill()).find((p) => /not a git repo/i.test(p));
+  assert.ok(par);
+  assert.match(par, /no `?Validado:/i);
+});

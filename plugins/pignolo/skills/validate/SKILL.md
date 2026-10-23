@@ -5,36 +5,38 @@ description: "Use when the user asks to validate the work at a milestone, in Spa
 
 # validate: review only what the project gives evidence for
 
-The author should not have to say what to review or how many agents to launch. The plugin looks at the project and decides. Ask for validation when the author says "validá" or at a milestone agreed in the roadmap, never per task: per-task review is how the cost of process grows past the value of what it finds. Nothing here blocks; findings are information for the author.
+Run when the author says "validá" or at a roadmap milestone, never per task, because per-task review costs more than it finds. Nothing here blocks.
 
 ## 1. Read before choosing
 
-Read `security.md`, the diff and the repo's evidence (schema and migrations, dependencies, forms, authentication, which files exist). Read `security.md` for its meaning, not its headings: it is written in Spanish and its sections may be named or ordered differently, so look for what it declares (the data handled, who the users are, the exposed surface, what must be protected). If it is missing, rely on the evidence alone and offer to create a minimal one, because the security front is much sharper when it knows what is sensitive.
+Read `security.md`, the diff and the repo's evidence (schema, dependencies, forms, authentication, files present). Read `security.md` for its meaning, not its headings (it is written in Spanish and its sections may vary): look for what it declares (the data handled, who the users are, the exposed surface, what must be protected). If it is missing, rely on the evidence alone and offer to create a minimal one.
 
 ## 2. The base of the diff
 
-Review what changed since the last validation. Take the base in this order, using the first that exists:
+Review base..working tree (uncommitted changes included) since the last validation. Use the first usable base:
 
-1. The most recent line matching `^Validado: ([0-9a-f]{7,40})` in `docs/sessions/*.md`.
-2. The merge-base with the main branch.
-3. The last commits (a reasonable handful).
+1. The most recent line matching `^Validado: ([0-9a-f]{7,40})`: look in the `docs/sessions/*.md` file with the latest date in its filename, and take the last matching line in it. The sha must pass `git merge-base --is-ancestor <sha> HEAD`; if not (rebased away, wrong), fall back.
+2. The merge-base of HEAD with the main branch: the target of origin/HEAD if there is a remote, else `main`, else `master`, else `init.defaultBranch`.
+3. The last commits.
 
-This needs no git remote. If the folder is not a git repo, there is no diff: review the files themselves and say so. When validation ends, write the line `Validado: <sha>` (the current HEAD) into today's `docs/sessions/YYYY-MM-DD.md`, creating a minimal file if it does not exist. It is one visible line in a project document the author can read and correct; the plugin keeps no hidden state.
+If a base equals HEAD or its diff is empty (for example you are working on the main branch itself), move to the next one. This works with no git remote. If the folder is not a git repo, there is no diff: review the files themselves, say so, and write no `Validado:` line. When validation ends, write `Validado: <sha>` (the current HEAD) into today's `docs/sessions/YYYY-MM-DD.md`, creating a minimal file if absent, only when the working tree is clean; otherwise write nothing and say why in the closing message, because that sha would hide the uncommitted work next time.
 
 ## 3. Choose the fronts
 
-Ids: security, database, code, tests, hygiene, docs. A front enters only with evidence in the repo; the table of evidence and what each front looks at is in `references/fronts.md`. Print exactly one line with the literal ids, separated by comma and space, for example `Frentes: security, hygiene`. An empty list prints `Frentes:` alone. Add a short reason per front (in Spanish) and a rough cost estimate, then continue unless the author adjusts. Correctness of the diff is not a front with an agent: from the main thread, run the native `/code-review`, and `/security-review` when the security front is on.
+A small diff is at most 5 files and 200 changed lines, with no evidence of forms, public endpoints, authentication, secrets, personal data or stray junk. A small diff is reviewed in the main thread with no agents, since a subagent's fresh context costs more than the review. Even then, security is still delegated if that evidence exists.
+
+Ids: security, database, code, tests, hygiene, docs. A front enters only with evidence tied to this diff (thresholds, negative examples and worked shapes in `references/fronts.md`); most projects need zero or one. Print exactly one line holding only the ids of the fronts delegated to agents, comma and space, no reasons, no cost: `Frentes: security, hygiene`. An empty list prints `Frentes:` alone. Put the reasons (in Spanish) and a rough cost on the lines after it, then continue unless the author adjusts. Diff correctness has no agent: from the main thread, run the native `/code-review`, and `/security-review` when the security front is on.
 
 ## 4. Run
 
-At most 5 agents, one per front, launched together because they are independent. A small diff is reviewed in the main thread with no agents: a subagent costs a fresh context, and for a few files that is more than the review.
+At most 5 agents, one per front, launched together because they are independent. If more than 5 qualify, drop from the end of the priority list in `references/fronts.md`.
 
-Dispatch the `review-<id>` agents and pass `model` explicitly. Defaults: security sonnet/high, database sonnet/medium, code sonnet/medium, tests sonnet/medium, hygiene haiku/low, docs haiku/low. Pass `opus` for security when `security.md` declares sensitive data, since a miss there is the costly kind. Give each agent the base, the diff and the relevant part of `security.md`.
+Dispatch the `review-<id>` agents with `model` passed explicitly: security sonnet/high, database, code and tests sonnet/medium, hygiene and docs haiku/low; `opus` for security when `security.md` declares sensitive data. Give each the base, the diff and the relevant part of `security.md`.
 
-The agents report every finding with evidence (file:line), unfiltered by severity. Asking a model to report only the serious ones makes it under-report, so the ranking is yours: in the main thread, rank by impact, discard what the evidence does not support, and merge duplicates.
+The agents report every finding with evidence (file:line), unfiltered by severity. Asking for only the serious ones makes a model under-report, so the ranking is yours: rank by impact, discard what the evidence does not support, merge duplicates.
 
 ## 5. Report
 
-In Spanish: findings ordered by impact, each with its evidence and what to do; then what was not reviewed and why. Hygiene only lists, never deletes; deleting is the author's call.
+In Spanish: findings by impact, each with evidence and what to do; then what was not reviewed and why. Hygiene only lists, never deletes.
 
-The interface audit is not part of validate. The author asks for it separately with `ui-audit`.
+The interface audit is not part of validate: it is asked for with `ui-audit`.
