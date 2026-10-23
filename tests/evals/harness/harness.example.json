@@ -9,6 +9,7 @@
   "extraArgs": [],
   "extraEnvAllow": [],
   "neutralPlugins": ["cc-plugin-*"],
+  "neutralConfigPaths": ["skills/synced", "plugins/synced", "plugins/data"],
   "model": "sonnet",
   "effort": "medium",
   "permissionMode": "bypassPermissions",

@@ -63,7 +63,7 @@ export function isNeutralPlugin(name, patterns = DEFAULT_NEUTRAL_PLUGINS) {
 
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);
 
-export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS } = {}) {
+export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [] } = {}) {
   let result = null;
   const neutralLoaded = [];
   let badLines = 0;
@@ -87,7 +87,8 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
         loaded.push(n);
         // Any plugin that is not the arm's own is contamination, unless it is one of the neutral built-ins (recorded apart).
         if (belongsTo(n, ownPlugin)) continue;
-        if (isNeutralPlugin(n, neutralPlugins)) neutralLoaded.push(n);
+        // Neutral: a built-in pattern, or a plugin named in the account-synced content of the config dir.
+        if (isNeutralPlugin(n, neutralPlugins) || neutralPluginNames.includes(String(n).split('@')[0])) neutralLoaded.push(n);
         else hits.push(`plugin:${n}`);
       }
       for (const [kind, list] of [['skill', o.skills], ['agent', o.agents], ['command', o.slash_commands]]) {
@@ -277,7 +278,7 @@ export function invalidReasons(m) {
   }
   const hits = m.contaminationHits || [];
   if (hits.includes('own_plugin_not_loaded')) r.push('own_plugin_not_loaded');
-  if (hits.some((h) => h !== 'own_plugin_not_loaded')) r.push('contaminated');
+  if (hits.some((h) => h !== 'own_plugin_not_loaded') || (m.neutralConfigArmNamed && m.neutralConfigArmNamed.length)) r.push('contaminated');
   if (m.escapedCwd) r.push('escaped_cwd');
   if (m.nm && m.nm.snapshotChanged) r.push('nm_changed');
   if (m.nm && m.nm.sourceChanged) r.push('source_nm_changed');

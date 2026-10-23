@@ -40,6 +40,7 @@ El revisor a ciegas y cualquier otro gasto que no pase por `run` se anotan en `<
 | `effort` | nivel de esfuerzo que se pasa con `--effort` (`low`, `medium`, `high`, `xhigh`, `max`); por defecto `medium`, el mismo en los dos brazos |
 | `totalCapUsd` | tope de gasto de toda la medición (obligatorio) |
 | `neutralPlugins` | patrones (`*` es cualquier texto) de plugins que Claude Code carga en toda sesión y que **no** son contaminación; por defecto `["cc-plugin-*"]`. Se registran en `metrics.json` (`neutralPluginsLoaded`) y en la columna `neutral_plugins`. Un plugin que no es del brazo ni coincide con esta lista sí contamina. Cargan igual en los dos brazos, así que no sesgan la comparación |
+| `neutralConfigPaths` | rutas de `configDir` con contenido que Claude Code sincroniza de la cuenta y que se declara en vez de bloquear; por defecto `["skills/synced", "plugins/synced", "plugins/data"]` (ver "Contenido sincronizado de la cuenta") |
 | `extraEnvAllow` | nombres de variables de entorno extra que el hijo puede heredar (ver "Entorno del hijo") |
 | `copyDirs` | carpetas o archivos ignorados por git que la tarea necesita (por ejemplo el cliente generado de la base) y que se copian de la fuente; rutas relativas, sin `.`, `..` ni vacías |
 | `weights`, `modelFactor` | pesos de los tokens y factor por familia de modelo, ver "Calibración" |
@@ -61,7 +62,17 @@ $env:CLAUDE_CONFIG_DIR = "<configDir>"; claude
 # dentro: /login
 ```
 
-`run` revisa `configDir` antes de gastar: tiene que existir y no puede tener `CLAUDE.md`, plugins instalados (`plugins/installed_plugins.json` con entradas, o `plugins/cache` con contenido; el archivo vacío o ausente está bien, y los registros de marketplaces y `plugins/data` se permiten y, si cambian, aparecen en `config_dir_delta`), `skills/`, `agents/`, `commands/` o `hooks/` con contenido, ni `settings.json` / `settings.local.json` con `hooks` o `enabledPlugins`. Y que el `name` del plugin de cada brazo coincida con el `pluginName` configurado.
+`run` revisa `configDir` antes de gastar: tiene que existir y no puede tener `CLAUDE.md`, plugins instalados (`plugins/installed_plugins.json` con entradas, o `plugins/cache` con contenido; el archivo vacío o ausente está bien, y los registros de marketplaces y `plugins/data` se permiten y, si cambian, aparecen en `config_dir_delta`), `skills/` (salvo `skills/synced`), `agents/`, `commands/` o `hooks/` con contenido, ni `settings.json` / `settings.local.json` con `hooks` o `enabledPlugins`. Y que el `name` del plugin de cada brazo coincida con el `pluginName` configurado.
+
+## Contenido sincronizado de la cuenta
+
+Cuando Claude Code corre con sesión iniciada **descarga contenido de la cuenta al directorio de configuración** en el primer inicio: skills de la cuenta en `<configDir>/skills/synced/<bucket>/...` (cientos de archivos), un plugin de la cuenta con sus skills y su `.mcp.json` en `<configDir>/plugins/synced/<bucket>/...`, y una carpeta de datos por plugin en `<configDir>/plugins/data/<plugin>-inline/` (también para el plugin del brazo). Lo crea Claude Code solo, lo administra la cuenta y **los dos brazos ven lo mismo**: es una condición realista (las sesiones reales del autor lo tienen) que suma el mismo contexto a ambos. Por eso es neutral: se **declara**, no se bloquea.
+
+- El chequeo previo de `configDir` deja pasar exactamente `neutralConfigPaths` (por defecto esas tres rutas). Cualquier otra cosa en `skills/`, plugins instalados (`installed_plugins.json`, `plugins/cache`), hooks, `enabledPlugins` o un `CLAUDE.md` en `configDir` sigue bloqueando.
+- Bloquea igual si ese contenido trae una skill, un plugin (carpeta o `name` de un `plugin.json`) que se llame como el plugin de un brazo (`superpowers` o `pignolo`, o con prefijo `superpowers-` / `pignolo-`): sería contaminación, con un mensaje que lo dice. Si aparece durante la corrida, la corrida queda `contaminated`.
+- `metrics.json` guarda `neutralConfigContent` (solo nombres y conteos: archivos y carpetas de skills sincronizadas, archivos y nombres de plugin de `plugins/synced`, carpetas de `plugins/data`) **antes** y **después** de la corrida y si la creó la corrida (`createdByRun`). El CSV lo resume en la columna `neutral_config`, por ejemplo `skills_synced=322;plugins_synced=77;plugins_data=1` (más `creado_en_la_corrida` si lo creó esa corrida).
+- Un plugin que figura en el `init` y es uno de los `name` de `plugins/synced` es neutral (se anota en `neutralPluginsLoaded`); uno que no es del brazo, ni coincide con `neutralPlugins`, ni está en ese contenido, sigue contaminando.
+- La ficha lo declara entre las amenazas a la validez.
 
 ## Entorno del hijo
 
@@ -136,7 +147,7 @@ Intercalá los brazos (A, B, A, B...) como pide la ficha. Todos los comandos ace
 
 ### Columnas del CSV
 
-`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, files_changed, lines_added, lines_removed, note`.
+`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, files_changed, lines_added, lines_removed, note`.
 
 `wall_s` es el tiempo de pared del proceso: incluye el arranque de Claude Code, la carga de los plugins y los hooks. `duration_ms` es el que informa Claude Code en su mensaje final. `agents` cuenta todos los subagentes y `agents_main` los lanzados por el hilo principal. `model_tokens` son los tokens crudos por modelo (`modelo=entrada/salida/cache leída/cache escrita`, separados por `|`): `summary` recalcula con ellos los tokens ponderados con la configuración actual, y el `weighted_tokens` del CSV es el que se calculó al correr.
 

@@ -8,6 +8,8 @@ import { assertWithinTotalCap } from './ledger.mjs';
 import { manifest, manifestBrief, repairSnapshot, snapshotPaths, sourceNm, dropSnapshot } from './nm.mjs';
 import { measureTrees } from './trees.mjs';
 import { buildChildEnv } from './env.mjs';
+import { DEFAULT_NEUTRAL_CONFIG_PATHS } from './config.mjs';
+import { isNeutralPath, scanNeutralConfig, armNamedContent, summarizeNeutralConfig, hasContent } from './neutralconfig.mjs';
 
 export { buildChildEnv };
 
@@ -41,7 +43,7 @@ export function checkPlugin(cfg, arm) {
   }
 }
 
-export function checkConfigDir(configDir) {
+export function checkConfigDir(configDir, { neutralPaths = DEFAULT_NEUTRAL_CONFIG_PATHS, armNames = ['superpowers', 'pignolo'] } = {}) {
   let st;
   try { st = fs.statSync(configDir); } catch { st = null; }
   if (!st || !st.isDirectory()) throw new Error(`configDir no existe: ${configDir}; entrá una vez con CLAUDE_CONFIG_DIR para hacer /login (ver README)`);
@@ -56,9 +58,16 @@ export function checkConfigDir(configDir) {
     else if (ip.plugins && Object.keys(ip.plugins).length) problems.push(`tiene plugins instalados (installed_plugins.json: ${Object.keys(ip.plugins).join(', ')})`);
   }
   if (nonEmptyDir(path.join(plugins, 'cache'))) problems.push('tiene plugins instalados (plugins/cache no vacía)');
-  for (const d of ['skills', 'agents', 'commands', 'hooks']) {
+  // skills/: only what is declared neutral (the account-synced bucket) may be there; agents, commands and hooks must be empty.
+  let skillEntries = [];
+  try { skillEntries = fs.readdirSync(path.join(configDir, 'skills')); } catch { /* none */ }
+  for (const e of skillEntries) if (!isNeutralPath(`skills/${e}`, neutralPaths)) problems.push(`tiene skills/${e} (no es contenido sincronizado declarado)`);
+  for (const d of ['agents', 'commands', 'hooks']) {
     if (nonEmptyDir(path.join(configDir, d))) problems.push(`tiene ${d}/ no vacía`);
   }
+  // Declared neutral content must not itself carry one of the arms: a synced skill or plugin named like either plugin.
+  const named = armNamedContent(configDir, armNames, neutralPaths);
+  if (named.length) problems.push(`contenido sincronizado con el nombre de un brazo (${named.slice(0, 5).join('; ')}): contaminaría la medición`);
   for (const f of ['settings.json', 'settings.local.json']) {
     const p = path.join(configDir, f);
     if (!fs.existsSync(p)) continue;
@@ -104,7 +113,7 @@ export async function runTask(cfg, args, deps = {}) {
   if (!prompt) throw new Error('prompt.md está vacío');
   if (!fs.existsSync(cfg.arms[arm].pluginDir)) throw new Error(`no existe el plugin del brazo ${arm}: ${cfg.arms[arm].pluginDir}`);
   checkPlugin(cfg, arm);
-  checkConfigDir(cfg.configDir);
+  checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName) });
   assertWithinTotalCap(cfg);
 
   // node_modules: the run is linked to one snapshot copy; the snapshot and the source must come out of the run as they went in.
@@ -120,6 +129,7 @@ export async function runTask(cfg, args, deps = {}) {
   const lister = deps.listProcesses || listProcessNames;
   const procBefore = cfg.trackProcesses === false ? null : lister();
   const cfgBefore = listNames(cfg.configDir);
+  const neutralConfigBefore = scanNeutralConfig(cfg.configDir, cfg.neutralConfigPaths);
   const { env, dropped } = buildChildEnv(cfg);
 
   const startedAt = new Date().toISOString();
@@ -176,7 +186,11 @@ export async function runTask(cfg, args, deps = {}) {
     weights: cfg.weights,
     modelFactor: cfg.modelFactor,
     neutralPlugins: cfg.neutralPlugins,
+    neutralPluginNames: [],
   };
+  // What the account sync put in the config dir (it may have been created by this very run); its plugins are neutral.
+  const neutralConfigAfter = guard('contenido sincronizado', () => scanNeutralConfig(cfg.configDir, cfg.neutralConfigPaths), neutralConfigBefore);
+  opts.neutralPluginNames = neutralConfigAfter.pluginsSynced.plugins;
   const text = guard('stream', () => fs.readFileSync(streamPath, 'utf8'), '');
   const m = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
@@ -188,6 +202,13 @@ export async function runTask(cfg, args, deps = {}) {
     leftover_processes: guard('procesos', () => (procBefore && procAfter ? newProcesses(procBefore, procAfter) : null)),
     config_dir_delta: guard('configDir', () => delta(cfgBefore, listNames(cfg.configDir))),
     escapedCwd,
+    neutralConfigArmNamed: guard('contenido sincronizado', () => armNamedContent(cfg.configDir, Object.values(cfg.arms).map((a) => a.pluginName), cfg.neutralConfigPaths), []),
+    neutralConfigContent: {
+      before: neutralConfigBefore, after: neutralConfigAfter,
+      createdByRun: hasContent(neutralConfigAfter) && (neutralConfigAfter.skillsSynced.files > neutralConfigBefore.skillsSynced.files
+        || neutralConfigAfter.pluginsSynced.files > neutralConfigBefore.pluginsSynced.files
+        || neutralConfigAfter.pluginsData.folders.length > neutralConfigBefore.pluginsData.folders.length),
+    },
     nm,
     trees: trees && {
       measured: { kind: trees.measured.kind, path: trees.measured.path, branch: trees.measured.branch },

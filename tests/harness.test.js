@@ -928,6 +928,102 @@ test('run: chequeo de configDir por installed_plugins.json y plugins/cache; plug
   } finally { cleanup(env); }
 });
 
+test('configDir: el contenido sincronizado de la cuenta (skills/synced, plugins/synced, plugins/data) es neutral; lo demás o lo que se llame como un brazo bloquea', async () => {
+  const env = setup();
+  try {
+    const { checkConfigDir } = await imp('execute.mjs');
+    const { DEFAULT_NEUTRAL_CONFIG_PATHS } = await imp('config.mjs');
+    assert.deepStrictEqual(DEFAULT_NEUTRAL_CONFIG_PATHS, ['skills/synced', 'plugins/synced', 'plugins/data']);
+    const dir = path.join(env.root, 'cd2');
+    const reset = () => { fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true }); };
+    const arms = ['superpowers', 'pignolo'];
+    reset();
+    put(dir, 'skills/synced/b1/docx/SKILL.md', 'x'); put(dir, 'skills/synced/b1/built-in-browser/SKILL.md', 'x');
+    put(dir, 'plugins/synced/b1/acme-tools/.claude-plugin/plugin.json', '{"name":"acme-tools"}'); put(dir, 'plugins/synced/b1/acme-tools/.mcp.json', '{}');
+    put(dir, 'plugins/data/pignolo-inline/state.json', '{}');
+    assert.doesNotThrow(() => checkConfigDir(dir, { armNames: arms }), 'lo sincronizado y los datos del plugin del brazo son neutrales');
+    // Cualquier otra cosa en skills/ o plugins/ sigue bloqueando.
+    reset(); put(dir, 'skills/synced/b1/docx/SKILL.md', 'x'); put(dir, 'skills/mine/SKILL.md', 'x');
+    assert.throws(() => checkConfigDir(dir, { armNames: arms }), /skills\/mine/);
+    reset(); put(dir, 'plugins/synced/b1/a/plugin.json', '{"name":"a"}'); put(dir, 'plugins/cache/x/y.txt', 'x');
+    assert.throws(() => checkConfigDir(dir, { armNames: arms }), /cache/);
+    reset(); put(dir, 'plugins/installed_plugins.json', '{"plugins":{"a@b":[{}]}}');
+    assert.throws(() => checkConfigDir(dir, { armNames: arms }), /installed_plugins/);
+    reset(); put(dir, 'skills/synced/b1/docx/SKILL.md', 'x'); put(dir, 'settings.json', '{"hooks":{"Stop":[]}}');
+    assert.throws(() => checkConfigDir(dir, { armNames: arms }), /hooks/);
+    reset(); put(dir, 'skills/synced/b1/docx/SKILL.md', 'x'); put(dir, 'CLAUDE.md', '# x');
+    assert.throws(() => checkConfigDir(dir, { armNames: arms }), /CLAUDE\.md/);
+    // Una ruta que no está en la lista deja de ser neutral.
+    reset(); put(dir, 'skills/synced/b1/docx/SKILL.md', 'x');
+    assert.throws(() => checkConfigDir(dir, { armNames: arms, neutralPaths: ['plugins/data'] }), /skills\/synced/);
+    // Contenido sincronizado que se llama como un brazo: contamina.
+    for (const [rel, body, label] of [
+      ['skills/synced/b1/superpowers/SKILL.md', 'x', 'skill con el nombre de un brazo'],
+      ['skills/synced/b1/pignolo-ui/SKILL.md', 'x', 'skill con prefijo de un brazo'],
+      ['skills/synced/superpowers-extra/docx/SKILL.md', 'x', 'bucket con prefijo de un brazo'],
+      ['plugins/synced/b1/whatever/.claude-plugin/plugin.json', '{"name":"pignolo"}', 'plugin.json con el nombre de un brazo'],
+      ['plugins/synced/b1/superpowers-x/.claude-plugin/plugin.json', '{"name":"other"}', 'carpeta de plugin con prefijo de un brazo'],
+    ]) {
+      reset(); put(dir, rel, body);
+      assert.throws(() => checkConfigDir(dir, { armNames: arms }), /sincronizado.*(superpowers|pignolo)|(superpowers|pignolo).*sincronizado/, label);
+    }
+    // El nombre de un brazo como parte de otro nombre no contamina (no es prefijo con guion).
+    reset(); put(dir, 'skills/synced/b1/mypignolo/SKILL.md', 'x');
+    assert.doesNotThrow(() => checkConfigDir(dir, { armNames: arms }));
+  } finally { cleanup(env); }
+});
+
+test('run: se registra el contenido sincronizado (solo nombres y conteos), si ya estaba o lo creó la corrida, y en la fila', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow } = await imp('row.mjs');
+    // Creado por la corrida (como en el primer inicio de sesión con la cuenta).
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'sync,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    const c = m.neutralConfigContent;
+    assert.deepStrictEqual(c.after.skillsSynced, { files: 3, folders: ['docx', 'pdf'] });
+    assert.deepStrictEqual(c.after.pluginsSynced, { files: 3, plugins: ['acme-tools'] });
+    assert.deepStrictEqual(c.after.pluginsData, { folders: ['arm-inline'] });
+    assert.deepStrictEqual(c.before.skillsSynced, { files: 0, folders: [] });
+    assert.strictEqual(c.createdByRun, true);
+    assert.ok(!JSON.stringify(c).includes('"x"'), 'nunca contenido');
+    assert.strictEqual(appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }).neutral_config, 'skills_synced=3;plugins_synced=3;plugins_data=1;creado_en_la_corrida');
+    // Ya estaba antes de la corrida: pasa el chequeo previo y no figura como creado.
+    await prepared(env, 'A', 2);
+    const m2 = await withEnv({ FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }));
+    assert.strictEqual(m2.neutralConfigContent.createdByRun, false);
+    assert.strictEqual(m2.neutralConfigContent.before.skillsSynced.files, 3);
+    assert.strictEqual(appendRow(cfg, { task: 't1', arm: 'A', rep: 2 }).neutral_config, 'skills_synced=3;plugins_synced=3;plugins_data=1');
+    assert.ok(!m2.invalidReasons.includes('contaminated'));
+  } finally { cleanup(env); }
+});
+
+test('run: un plugin del init que viene del contenido sincronizado es neutral; uno desconocido sigue contaminando', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const ok = await withEnv({ FAKE_CLAUDE_MODE: 'sync,sync-plugin,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(ok.contamination, false, ok.contaminationHits.join(','));
+    assert.deepStrictEqual(ok.neutralPluginsLoaded, ['acme-tools']);
+    // El mismo plugin en el init pero SIN estar en el contenido sincronizado: contaminación.
+    await prepared(env, 'B', 1);
+    const fresh = path.join(env.root, 'cd-fresh');
+    fs.mkdirSync(fresh);
+    const bad = await withEnv({ FAKE_CLAUDE_MODE: 'sync-plugin,edit' }, () => runTask({ ...cfg, configDir: fresh }, { task: 't1', arm: 'B', rep: 1 }));
+    assert.deepStrictEqual(bad.contaminationHits.filter((h) => h.startsWith('plugin:')), ['plugin:acme-tools']);
+    assert.ok(bad.invalidReasons.includes('contaminated'));
+  } finally { cleanup(env); }
+});
+
+test('metrics: contenido sincronizado que aparece con el nombre de un brazo durante la corrida la invalida', async () => {
+  const { invalidReasons } = await imp('metrics.mjs');
+  const base = { hasResult: true, resultSubtype: 'success', isError: false, exitCode: 0, timedOut: false, contaminationHits: [] };
+  assert.deepStrictEqual(invalidReasons(base), []);
+  assert.deepStrictEqual(invalidReasons({ ...base, neutralConfigArmNamed: ['skills/synced/b1/pignolo-ui'] }), ['contaminated']);
+});
+
 test('metrics: un plugin con el nombre del brazo como prefijo (pignolo-ui) no es el propio', async () => {
   const { parseStream, belongsTo } = await imp('metrics.mjs');
   assert.strictEqual(belongsTo('pignolo-ui@market', 'pignolo'), false);
@@ -1257,7 +1353,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1271,7 +1367,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
-      contamination: 'false', neutral_plugins: '', files_changed: '1', lines_added: '3', lines_removed: '0',
+      contamination: 'false', neutral_plugins: '', neutral_config: '', files_changed: '1', lines_added: '3', lines_removed: '0',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
@@ -1744,7 +1840,7 @@ test('CLI: una corrida de calibración (--experiment) cuenta para el tope pero n
 });
 
 test('repo: harness.local.json está en .gitignore y harness.example.json no trae datos reales', async () => {
-  const { DEFAULT_BLIND_EXCLUDE, DEFAULT_MODEL_FACTOR, DEFAULT_NEUTRAL_PLUGINS } = await imp('config.mjs');
+  const { DEFAULT_BLIND_EXCLUDE, DEFAULT_MODEL_FACTOR, DEFAULT_NEUTRAL_PLUGINS, DEFAULT_NEUTRAL_CONFIG_PATHS } = await imp('config.mjs');
   const ig = fs.readFileSync(path.join(__dirname, '..', '.gitignore'), 'utf8');
   assert.match(ig, /^tests\/evals\/harness\/harness\.local\.json$/m);
   const ex = JSON.parse(fs.readFileSync(path.join(HARNESS, 'harness.example.json'), 'utf8'));
@@ -1755,6 +1851,7 @@ test('repo: harness.local.json está en .gitignore y harness.example.json no tra
   assert.deepStrictEqual(ex.blindExcludePaths, DEFAULT_BLIND_EXCLUDE);
   assert.deepStrictEqual(ex.modelFactor, DEFAULT_MODEL_FACTOR);
   assert.deepStrictEqual(ex.neutralPlugins, DEFAULT_NEUTRAL_PLUGINS);
+  assert.deepStrictEqual(ex.neutralConfigPaths, DEFAULT_NEUTRAL_CONFIG_PATHS);
   const text = JSON.stringify(ex);
   assert.ok(!/[A-Za-z]:[\\/]Users|pigna/i.test(text), 'sin rutas personales');
   // Ningún archivo versionado del arnés (salvo la configuración local, que no se versiona) trae rutas personales.

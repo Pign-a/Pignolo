@@ -1,7 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   neutral | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
+//   neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -30,6 +30,7 @@ const own = i >= 0 ? pluginName(argv[i + 1]) : null;
 let plugins = own ? [{ name: own, path: argv[i + 1] }] : [];
 let skills = own ? [`${own}:some-skill`] : [];
 if (has('noplugin')) { plugins = []; skills = []; }
+if (has('sync-plugin')) plugins.push({ name: 'acme-tools', path: '/synced' });
 if (has('neutral')) {
   for (const n of ['cc-plugin-agents-md', 'cc-plugin-telemetry', 'cc-plugin-plugin-authoring']) plugins.push({ name: n, path: '/builtin' });
 }
@@ -72,6 +73,17 @@ if (has('hang')) {
   }
   if (has('only-excluded')) {
     fs.appendFileSync(path.join(process.cwd(), 'CLAUDE.md'), 'a note only\n');
+  }
+  if (has('sync') && process.env.CLAUDE_CONFIG_DIR) {
+    const c = process.env.CLAUDE_CONFIG_DIR;
+    const w = (rel, text) => { fs.mkdirSync(path.dirname(path.join(c, rel)), { recursive: true }); fs.writeFileSync(path.join(c, rel), text); };
+    w('skills/synced/b1/docx/SKILL.md', 'x');
+    w('skills/synced/b1/pdf/SKILL.md', 'x');
+    w('skills/synced/b1/pdf/ref.md', 'x');
+    w('plugins/synced/b1/acme-tools/.claude-plugin/plugin.json', JSON.stringify({ name: 'acme-tools' }));
+    w('plugins/synced/b1/acme-tools/.mcp.json', '{}');
+    w('plugins/synced/b1/acme-tools/skills/x/SKILL.md', 'x');
+    w('plugins/data/arm-inline/state.json', '{}');
   }
   if (has('cfg-write') && process.env.CLAUDE_CONFIG_DIR) {
     fs.mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR, 'cache-x'), { recursive: true });

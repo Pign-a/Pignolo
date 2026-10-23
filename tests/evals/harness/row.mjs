@@ -2,13 +2,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runPaths } from './config.mjs';
+import { summarizeNeutralConfig } from './neutralconfig.mjs';
 
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
   'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main',
   'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
-  'contamination', 'neutral_plugins', 'files_changed', 'lines_added', 'lines_removed', 'note',
+  'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'note',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -111,6 +112,7 @@ export function appendRow(cfg, args) {
     full_baseline_fail: a && a.baselineFull && a.baselineFull.fail,
     contamination: m.contamination,
     neutral_plugins: (m.neutralPluginsLoaded || []).join(';'),
+    neutral_config: summarizeNeutralConfig(m.neutralConfigContent),
     files_changed: c && c.filesChanged, lines_added: c && c.linesAdded, lines_removed: c && c.linesRemoved,
     note: notes.filter(Boolean).join(';'),
   };

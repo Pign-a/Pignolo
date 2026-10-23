@@ -15,6 +15,9 @@ export const DEFAULT_MODEL_FACTOR = { opus: 5, sonnet: 1, haiku: 0.33 };
 // Plugins that Claude Code loads in every session whatever the configuration (the first real run listed three of them).
 // They load identically for both arms, so they are recorded but are not contamination. Patterns: * is any text.
 export const DEFAULT_NEUTRAL_PLUGINS = ['cc-plugin-*'];
+// Content Claude Code itself puts in the config dir when it runs logged in with the account (account skills and plugins it
+// syncs, and the data folder of each plugin). Identical in both arms, so declared instead of blocked.
+export const DEFAULT_NEUTRAL_CONFIG_PATHS = ['skills/synced', 'plugins/synced', 'plugins/data'];
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 // Process notes and project documents that would reveal the arm (or add noise) in a diff given to the
@@ -92,6 +95,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     trackProcesses: true,
     nmIgnore: DEFAULT_NM_IGNORE,
     neutralPlugins: DEFAULT_NEUTRAL_PLUGINS,
+    neutralConfigPaths: DEFAULT_NEUTRAL_CONFIG_PATHS,
     blindExcludePaths: DEFAULT_BLIND_EXCLUDE,
     csvPath: DEFAULT_CSV,
     gradesPath: DEFAULT_GRADES,
