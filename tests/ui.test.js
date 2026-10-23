@@ -166,3 +166,59 @@ test('ui-option: genera HTML estático sin scripts ni recursos remotos y no repi
   assert.match(body, /no remote/i);
   assert.ok(!/canvas|publish|leak/i.test(body), 'sin restos del lienzo ni de la publicación');
 });
+
+// ---- fix round 1: el script de la plantilla distingue vacío de dañado ----
+const vm = require('node:vm');
+
+function runTemplate(dataText) {
+  const html = template().replace(
+    /(<script id="data" type="application\/json">)[\s\S]*?(<\/script>)/, (_, a, b) => `${a}${dataText}${b}`);
+  const scripts = [...html.matchAll(/<script(?![^>]*id="data")[^>]*>([\s\S]*?)<\/script>/g)];
+  assert.strictEqual(scripts.length, 1, 'un solo script en línea además del de datos');
+  const mk = () => ({
+    children: [], textContent: '', className: '', attrs: {},
+    appendChild(c) { this.children.push(c); return c; },
+    setAttribute(k, v) { this.attrs[k] = v; },
+  });
+  const els = {};
+  const document = {
+    createElement: () => mk(),
+    getElementById: (id) => {
+      if (id === 'data') return { textContent: dataText };
+      return (els[id] = els[id] || mk());
+    },
+  };
+  vm.runInNewContext(scripts[0][1], { document, String, JSON, Array });
+  const texts = [];
+  const walk = (e) => { if (e.textContent) texts.push(e.textContent); e.children.forEach(walk); };
+  walk(els.list);
+  return texts.join('\n');
+}
+
+test('script de la plantilla: datos válidos dibujan las piezas', () => {
+  const out = runTemplate('{"pieces":[{"name":"Navegación","status":"pendiente","options":["options/n/a.html"]}]}');
+  assert.match(out, /Navegación/);
+  assert.match(out, /pendiente/);
+  assert.match(out, /Opción A/);
+  assert.ok(!/Todavía no hay piezas/.test(out));
+  assert.ok(!/dañados/.test(out));
+});
+
+test('script de la plantilla: "pieces": [] muestra el mensaje de lista vacía', () => {
+  const out = runTemplate('{"pieces":[]}');
+  assert.match(out, /Todavía no hay piezas/);
+  assert.ok(!/dañados/.test(out));
+});
+
+test('script de la plantilla: un bloque dañado muestra el error y NO dice que no hay piezas', () => {
+  const out = runTemplate('{"pieces":[{"name":"A","status":"decidido","options":[],}]}');
+  assert.match(out, /dañados/);
+  assert.match(out, /regenerar/);
+  assert.ok(!/Todavía no hay piezas/.test(out), 'un registro dañado no es una lista vacía');
+});
+
+test('SKILL.md: al escribir el bloque de datos, `<` va como u003c escapado y se valida que parsee', () => {
+  const t = skill();
+  assert.ok(t.includes(String.fromCharCode(92) + 'u003c'));
+  assert.match(t, /parses?/i);
+});

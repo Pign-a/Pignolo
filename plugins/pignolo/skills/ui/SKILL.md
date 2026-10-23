@@ -39,7 +39,7 @@ design/
   options/<piece>/  a.html  b.html  c.html
 ```
 
-The status of each piece (`decidido` or `pendiente`) lives in the data embedded in `index.html`. Create it from `templates/index.html` and regenerate it from the template whenever a piece is added or decided: replace only the `<script id="data" type="application/json">` block, keep the rest. Set a piece to `decidido` when the author chooses an option, and record the choice in `design.md`.
+The status of each piece (`decidido` or `pendiente`) lives in the data embedded in `index.html`. Create it from `templates/index.html` and regenerate it from the template whenever a piece is added or decided: replace only the `<script id="data" type="application/json">` block, keep the rest. When you write that JSON by hand, write every `<` as `\u003c` and check that the block parses before you finish: a name containing `</script>` would otherwise close the element early and spill the data onto the page, and a stray comma would make the index read as empty when it is only corrupt. Set a piece to `decidido` when the author chooses an option, and record the choice in `design.md`.
 
 ## 6. Close
 

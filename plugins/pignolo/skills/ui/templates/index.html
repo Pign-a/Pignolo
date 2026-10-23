@@ -84,6 +84,7 @@
   }
   .none { color: var(--muted); margin: 12px 0 0; font-size: 0.9375rem; }
   .empty { color: var(--muted); }
+  .error { color: var(--wait-text); background: var(--wait-bg); border-radius: var(--radius); padding: 12px 16px; }
   @media (prefers-reduced-motion: reduce) {
     .options a { transition: none; }
   }
@@ -123,15 +124,25 @@
 <script>
 (function () {
   var pieces = [];
+  var broken = false;
   try {
-    pieces = JSON.parse(document.getElementById('data').textContent).pieces || [];
+    pieces = JSON.parse(document.getElementById('data').textContent).pieces;
+    if (!Array.isArray(pieces)) { throw new Error('pieces'); }
   } catch (e) {
     pieces = [];
+    broken = true;
   }
   var list = document.getElementById('list');
   var counts = { decidido: 0, pendiente: 0 };
 
-  if (pieces.length === 0) {
+  if (broken) {
+    // A corrupt record is not an empty list: say so instead of "nothing decided yet".
+    var bad = document.createElement('li');
+    bad.className = 'empty error';
+    bad.setAttribute('role', 'alert');
+    bad.textContent = 'Los datos de este índice están dañados; pedí regenerarlo.';
+    list.appendChild(bad);
+  } else if (pieces.length === 0) {
     var empty = document.createElement('li');
     empty.className = 'empty';
     empty.textContent = 'Todavía no hay piezas. Se suman cuando haya algo que decidir.';
@@ -179,9 +190,9 @@
     list.appendChild(item);
   });
 
-  document.getElementById('count-total').textContent = String(pieces.length);
-  document.getElementById('count-decidido').textContent = String(counts.decidido);
-  document.getElementById('count-pendiente').textContent = String(counts.pendiente);
+  document.getElementById('count-total').textContent = broken ? '–' : String(pieces.length);
+  document.getElementById('count-decidido').textContent = broken ? '–' : String(counts.decidido);
+  document.getElementById('count-pendiente').textContent = broken ? '–' : String(counts.pendiente);
 })();
 </script>
 </body>
