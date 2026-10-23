@@ -28,7 +28,7 @@ Small things and delegation decisions are resolved in the main thread. Launch a 
 - context relief, when the main thread is getting full;
 - an independent verifier in high-risk work, because the author of a change is the worst person to check it.
 
-Without one of these, a subagent only adds cost and loses detail in the hand-off.
+Without one of these, a subagent only adds cost and loses detail in the hand-off. Every subagent you launch gets `model` and `effort` passed explicitly for its role, because inheriting the session model spends the most expensive one on mechanical work.
 
 ## Before a large change
 
@@ -36,7 +36,11 @@ Check `git status`. If there is uncommitted work and the change is large, warn t
 
 ## Missing documents
 
-`security.md`, `design.md` and the roadmap are useful when present, and `work` reads them: they tell you what the project protects and how it should look. When they are absent, do not stop and do not demand them. Work from the evidence in the repo, and offer `/pignolo:start` once, at the end, only if it would have changed a decision.
+`security.md`, `design.md` (or `DESIGN.md`, the same file on Windows) and the roadmap are useful when present, and `work` reads them: they tell you what the project protects and how it should look. When they are absent, do not stop and do not demand them. Work from the evidence in the repo, and offer `/pignolo:start` once, at the end, only if it would have changed a decision.
+
+## At a milestone
+
+When a roadmap milestone closes, offer `/pignolo:validate` once, because a milestone is the moment when a review finds problems that are still cheap to fix. Never offer it per task.
 
 ## Closing
 

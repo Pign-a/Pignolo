@@ -56,3 +56,23 @@ test('nada menciona cloud.md', () => {
     assert.ok(!read(f).includes('cloud.md'), `${f} menciona cloud.md`);
   }
 });
+
+// ---- revisión final F10 ----
+test('start: habla en el idioma del usuario y explica por qué ignora project.md', () => {
+  const t = read('SKILL.md').replace(/\r\n/g, '\n');
+  const intro = t.split(/\n\s*\n/).find((p) => p.startsWith('Talk to the user'));
+  assert.ok(intro, 'falta el párrafo inicial');
+  assert.match(intro, /user's language/);
+  assert.ok(!/Spanish by default/i.test(intro), 'idioma fijo para este autor');
+  const adopt = t.split(/\n\s*\n/).find((p) => p.includes('project.md'));
+  assert.match(adopt, /Ignore `project\.md` files left by pignolo 0\.x: they come from the old plugin and are no longer read/);
+});
+
+test('la plantilla design.md cubre el proyecto sin pantallas (librería o API)', () => {
+  const t = read('templates', 'design.md').replace(/\r\n/g, '\n');
+  const sec = t.split(/^## /m).find((s) => s.startsWith('Sin interfaz'));
+  assert.ok(sec, 'falta la sección sin interfaz');
+  assert.match(sec, /no hay pantallas/);
+  assert.match(sec, /librería/);
+  assert.match(sec, /API/);
+});

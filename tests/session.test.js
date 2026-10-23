@@ -73,3 +73,14 @@ test('SKILL.md: nunca escribe valores de secretos, con el motivo', () => {
   assert.match(p, /never/i);
   assert.match(p, /because/i);
 });
+
+// ---- revisión final F9 ----
+test('SKILL.md: nunca escribe un sha nuevo a mano, y ofrece /pignolo:start si falta un archivo', () => {
+  const t = read('SKILL.md');
+  const p = paragraphs(t).find((x) => !x.startsWith('#') && x.includes('Validado:'));
+  assert.match(p, /Never write a new sha yourself/);
+  assert.ok(!/Never write it yourself/.test(t));
+  const ctx = paragraphs(t).find((x) => x.includes('If a file is missing'));
+  assert.ok(ctx, 'falta el párrafo del contexto');
+  assert.match(ctx, /offer `\/pignolo:start`/);
+});

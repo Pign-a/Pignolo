@@ -10,7 +10,7 @@ Each brief carries:
 
 - The piece, what it is for and who uses it, from the conversation and `roadmap.md`.
 - The axis that option must vary along. Give each agent a different axis (density, structure, emphasis, mood). Options that differ only in color are a failed round.
-- The folder to write into, empty, and the file names: `design/options/<piece>/a.html`, `b.html`, `c.html` (for a full screen with several states, name each file in the list).
+- The folder to write into (it contains only the files named for each agent; the other options are written there in parallel) and the file names: `design/options/<piece>/a.html`, `b.html`, `c.html` (for a full screen with several states, name each file in the list).
 - The parts of `design.md` and the catalog that apply, quoted: the agent cannot read the repository. For the identity round, the author's references and taste instead.
 - The data it may use literally. Everything else is filled with realistic sample values marked `data-sample`, and the page shows `Datos de muestra`.
 - That it is a style tile (identity) or a screen/piece, and that fonts are local only.

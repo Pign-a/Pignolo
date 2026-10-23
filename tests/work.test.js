@@ -61,3 +61,27 @@ test('SKILL.md menciona references/card.md y no pasa de 750 palabras', () => {
   assert.ok(t.includes('references/card.md'));
   assert.ok(t.split(/\s+/).filter(Boolean).length <= 750);
 });
+
+// ---- revisión final F10 y F11 ----
+const paras = () => read('SKILL.md').split(/\n\s*\n/);
+
+test('work nombra DESIGN.md junto a design.md en el párrafo de documentos ausentes', () => {
+  const par = paras().find((p) => p.includes('security.md'));
+  assert.match(par, /`DESIGN\.md`/);
+});
+
+test('work ofrece /pignolo:validate al cerrar un hito del roadmap, nunca por tarea', () => {
+  const t = read('SKILL.md');
+  const sec = t.split(/^## /m).find((s) => s.startsWith('At a milestone'));
+  assert.ok(sec, 'falta la sección del hito');
+  assert.match(sec, /roadmap milestone closes/);
+  assert.match(sec, /\/pignolo:validate/);
+  assert.match(sec, /Never offer it per task/);
+});
+
+test('work pasa model y effort explícitos a cada subagente que lanza', () => {
+  const t = read('SKILL.md');
+  const sec = t.split(/^## /m).find((s) => s.startsWith('Stay in the main thread'));
+  assert.ok(sec);
+  assert.match(sec, /`model` and `effort` passed explicitly/);
+});

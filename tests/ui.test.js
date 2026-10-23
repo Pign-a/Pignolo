@@ -40,22 +40,18 @@ test('la plantilla abre con doble clic: sin fetch ni recursos remotos', () => {
   assert.ok(!/XMLHttpRequest/.test(t));
 });
 
-test('el JSON embebido es válido, con las claves documentadas y los dos estados', () => {
+test('el JSON embebido es válido y arranca vacío: ninguna pieza inventada como decidida', () => {
   const m = template().match(/<script id="data" type="application\/json">([\s\S]*?)<\/script>/);
   assert.ok(m, 'no se encuentra el bloque de datos');
   const data = JSON.parse(m[1]);
-  assert.ok(Array.isArray(data.pieces) && data.pieces.length >= 2);
-  for (const p of data.pieces) {
-    assert.strictEqual(typeof p.name, 'string');
-    assert.ok(p.name.length > 0);
-    assert.ok(['decidido', 'pendiente'].includes(p.status), `estado inválido ${p.status}`);
-    assert.ok(Array.isArray(p.options));
-    for (const o of p.options) {
-      assert.match(o, /^options\/[a-z0-9-]+\/[a-z]\.html$/);
-    }
-  }
-  const statuses = new Set(data.pieces.map((p) => p.status));
-  assert.ok(statuses.has('decidido') && statuses.has('pendiente'), 'ejemplo de cada estado');
+  assert.ok(Array.isArray(data.pieces));
+  assert.deepStrictEqual(data.pieces, [], 'el índice nuevo no trae piezas de ejemplo');
+  // La forma de una pieza queda documentada en el comentario, con el nombre de carpeta en inglés.
+  const comment = template().match(/<!-- Datos de las piezas[\s\S]*?-->/);
+  assert.ok(comment, 'falta el comentario sobre el bloque de datos');
+  assert.match(comment[0], /"options": \["options\/identity\/a\.html"/);
+  assert.match(comment[0], /solo rutas relativas/);
+  assert.ok(!/identidad\/|navegacion\//.test(template()), 'nombres de carpeta en español en la plantilla');
 });
 
 test('la plantilla lee el JSON y dibuja la lista con el resumen, y respeta claro/oscuro', () => {
@@ -170,7 +166,7 @@ test('ui-option: genera HTML estático sin scripts ni recursos remotos y no repi
 // ---- fix round 1: el script de la plantilla distingue vacío de dañado ----
 const vm = require('node:vm');
 
-function runTemplate(dataText) {
+function renderTemplate(dataText) {
   const html = template().replace(
     /(<script id="data" type="application\/json">)[\s\S]*?(<\/script>)/, (_, a, b) => `${a}${dataText}${b}`);
   const scripts = [...html.matchAll(/<script(?![^>]*id="data")[^>]*>([\s\S]*?)<\/script>/g)];
@@ -182,7 +178,7 @@ function runTemplate(dataText) {
   });
   const els = {};
   const document = {
-    createElement: () => mk(),
+    createElement: (tag) => Object.assign(mk(), { tag }),
     getElementById: (id) => {
       if (id === 'data') return { textContent: dataText };
       return (els[id] = els[id] || mk());
@@ -190,10 +186,16 @@ function runTemplate(dataText) {
   };
   vm.runInNewContext(scripts[0][1], { document, String, JSON, Array });
   const texts = [];
-  const walk = (e) => { if (e.textContent) texts.push(e.textContent); e.children.forEach(walk); };
+  const links = [];
+  const walk = (e) => {
+    if (e.textContent) texts.push(e.textContent);
+    if (e.tag === 'a') links.push(e.href);
+    e.children.forEach(walk);
+  };
   walk(els.list);
-  return texts.join('\n');
+  return { text: texts.join('\n'), links };
 }
+const runTemplate = (dataText) => renderTemplate(dataText).text;
 
 test('script de la plantilla: datos válidos dibujan las piezas', () => {
   const out = runTemplate('{"pieces":[{"name":"Navegación","status":"pendiente","options":["options/n/a.html"]}]}');
@@ -221,4 +223,47 @@ test('SKILL.md: al escribir el bloque de datos, `<` va como u003c escapado y se 
   const t = skill();
   assert.ok(t.includes(String.fromCharCode(92) + 'u003c'));
   assert.match(t, /parses?/i);
+});
+
+// ---- revisión final F7: enlaces seguros y estado desconocido ----
+const one = (opts, status = 'pendiente') =>
+  JSON.stringify({ pieces: [{ name: 'Pieza', status, options: opts }] });
+
+test('script de la plantilla: solo rutas relativas .html se vuelven enlace', () => {
+  const r = renderTemplate(one(['options/nav/a.html', 'a.html', 'options/nav/b.html']));
+  assert.deepStrictEqual(r.links, ['options/nav/a.html', 'a.html', 'options/nav/b.html']);
+  assert.ok(!/ruta no válida/.test(r.text));
+});
+
+test('script de la plantilla: javascript:, URL absoluta, ruta absoluta o con .. se rechazan y se dice', () => {
+  const bad = ['javascript:alert(1)', 'JavaScript:alert(1).html', 'https://example.com/a.html', '//example.com/a.html',
+    '/etc/a.html', 'options/../../a.html', 'data:text/html,x.html', 'options/nav/a.txt', 'options/nav/a.html?x=1', 7];
+  const r = renderTemplate(one(bad));
+  assert.deepStrictEqual(r.links, [], 'ninguna ruta peligrosa se vuelve enlace');
+  assert.strictEqual((r.text.match(/ruta no válida/g) || []).length, bad.length, 'cada ruta rechazada se avisa');
+});
+
+test('script de la plantilla: un estado desconocido se muestra tal cual, no como pendiente', () => {
+  const r = renderTemplate(one([], 'en revision'));
+  assert.match(r.text, /en revision/);
+  assert.ok(!/\bpendiente\b/.test(r.text), 'el estado desconocido se leyó como pendiente');
+  const missing = renderTemplate(JSON.stringify({ pieces: [{ name: 'Pieza', options: [] }] }));
+  assert.match(missing.text, /sin estado/);
+});
+
+// ---- revisión final F8: la carpeta de una opción no está vacía mientras se escriben las otras ----
+test('ui-option y options.md: la carpeta contiene solo los archivos nombrados; los estados incluyen loading', () => {
+  const { body } = agent();
+  const rule = body.split('\n').find((l) => l.startsWith('3. Write only to the folder'));
+  assert.ok(rule, 'falta la regla de la carpeta');
+  assert.match(rule, /contains only the files named for you \(other options are written in parallel\)/);
+  assert.ok(!/folder is empty/i.test(body), 'el agente sigue diciendo que la carpeta está vacía');
+  const states = body.split('\n').find((l) => l.startsWith('9. Show states'));
+  assert.match(states, /pressed, disabled and loading/);
+  const op = read(DIR, 'references', 'options.md');
+  const bullet = op.split('\n').find((l) => l.startsWith('- The folder to write into'));
+  assert.ok(bullet, 'falta el ítem de la carpeta');
+  assert.match(bullet, /contains only the files named/);
+  assert.match(bullet, /in parallel/);
+  assert.ok(!/, empty,/.test(bullet), 'options.md sigue diciendo que la carpeta está vacía');
 });

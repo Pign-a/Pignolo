@@ -5,7 +5,7 @@ description: "Turn an idea into a project with CLAUDE.md, security.md, design.md
 
 # start: from an idea to a project
 
-Talk to the user in the language they write in (Spanish by default for this author). Keep the conversation loose, like a colleague developing an idea, not a questionnaire. The goal is that the project ends up with four documents that later work (`work`, `validate`, `ui`) can rely on, so nobody has to repeat rules or explain what to check.
+Talk to the user in the user's language. Keep the conversation loose, like a colleague developing an idea, not a questionnaire. The goal is that the project ends up with four documents that later work (`work`, `validate`, `ui`) can rely on, so nobody has to repeat rules or explain what to check.
 
 ## 1. Develop the idea
 
@@ -21,7 +21,7 @@ One or two questions at a time. If the user is unsure, propose a default and say
 
 ## 2. Existing repo: adopt it
 
-If there is already code, read before writing: the code, the README, and any documents present. Write only the documents that are missing, built from that evidence, and ask only what the repo cannot answer. A `DESIGN.md` or `PRODUCT.md` from pignolo-ui is read and kept. On Windows `design.md` and `DESIGN.md` are the same file, so if either already exists, keep the existing name and do not create the other. Ignore `project.md` files left by pignolo 0.x. An empty or throwaway folder needs no questions about the past: just start from the idea.
+If there is already code, read before writing: the code, the README, and any documents present. Write only the documents that are missing, built from that evidence, and ask only what the repo cannot answer. A `DESIGN.md` or `PRODUCT.md` from pignolo-ui is read and kept. On Windows `design.md` and `DESIGN.md` are the same file, so if either already exists, keep the existing name and do not create the other. Ignore `project.md` files left by pignolo 0.x: they come from the old plugin and are no longer read. An empty or throwaway folder needs no questions about the past: just start from the idea.
 
 ## 3. The four documents
 

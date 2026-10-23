@@ -19,7 +19,7 @@ Open items live in the day's record and are tracked across sessions. Before writ
 
 ## 3. The `Validado:` line
 
-`validate` writes a line at the very start of a line, exactly `Validado: <sha>` (no bullet, no bold), in the day's file; it reads the most recent one as its diff base. So preserve it when you edit a day's file. When you create a new day's file, copy forward the most recent `Validado:` line found in earlier session files, so the base is not lost. Never write it yourself: only `validate` knows what was reviewed.
+`validate` writes a line at the very start of a line, exactly `Validado: <sha>` (no bullet, no bold), in the day's file; it reads the most recent one as its diff base. So preserve it when you edit a day's file. When you create a new day's file, copy forward the most recent `Validado:` line found in earlier session files, so the base is not lost. Never write a new sha yourself: only `validate` knows what was reviewed.
 
 ## 4. Research
 
@@ -27,7 +27,7 @@ When agents did research this session, save it as `docs/research/YYYY-MM-DD-<top
 
 ## 5. Keep the context current
 
-Update `CLAUDE.md` and `roadmap.md` only where this session changed something (a decision, a finished milestone, a new convention, the status of an item), editing those lines in place. Do not rewrite either file or add narrative to `CLAUDE.md`, which is loaded in every session. If a file is missing, say so and offer `start` instead of inventing it.
+Update `CLAUDE.md` and `roadmap.md` only where this session changed something (a decision, a finished milestone, a new convention, the status of an item), editing those lines in place. Do not rewrite either file or add narrative to `CLAUDE.md`, which is loaded in every session. If a file is missing, say so and offer `/pignolo:start` instead of inventing it.
 
 ## 6. Secrets
 
