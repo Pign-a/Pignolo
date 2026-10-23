@@ -1,10 +1,11 @@
 {
   "name": "pignolo",
   "displayName": "Pignolo",
-  "version": "0.24.1",
-  "description": "Metodología de desarrollo con agentes: autonomía acotada, verificación real, guardia de git",
+  "version": "1.0.0",
+  "description": "Metodología liviana de desarrollo con agentes: empezar, trabajar, validar y cerrar sesión",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",
   "license": "MIT",
-  "keywords": ["methodology", "agents", "tdd", "git-guard"]
+  "keywords": ["methodology", "agents", "tdd"],
+  "userConfig": {}
 }
