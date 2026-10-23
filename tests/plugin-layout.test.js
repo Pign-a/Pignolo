@@ -109,3 +109,14 @@ test('cada description es YAML válido: entre comillas o sin ": " crudo', () => 
     assert.ok(quoted || !v.includes(': '), `${name}: description sin comillas con ": " (YAML estricto la rechaza)`);
   }
 });
+
+test('si hay agentes revisores, son exactamente los seis y todo effort es válido', () => {
+  const reviewers = agentFiles.filter((f) => /^review-.*\.md$/.test(f));
+  if (reviewers.length === 0) return;
+  const expected = ['security', 'database', 'code', 'tests', 'hygiene', 'docs'].map((i) => `review-${i}.md`);
+  assert.deepStrictEqual([...reviewers].sort(), expected.sort());
+  for (const f of agentFiles) {
+    const { data } = frontmatter(path.join(agentsDir, f));
+    assert.match(data.effort, /^(low|medium|high|xhigh|max)$/, `${f}: effort`);
+  }
+});
