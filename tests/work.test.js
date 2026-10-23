@@ -42,8 +42,10 @@ test('describe los tres niveles y el aviso de árbol sucio sin imponerlo', () =>
 });
 
 test('sin documentos previos no se frena', () => {
-  assert.match(read('SKILL.md'), /security\.md/);
-  assert.match(read('SKILL.md'), /(without|missing|absent|no).{0,60}(stop|block|require)|do(es)? not (stop|require)/is);
+  const par = read('SKILL.md').split(/\n\s*\n/).find((p) => p.includes('security.md'));
+  assert.ok(par, 'no hay párrafo que mencione security.md');
+  assert.match(par, /absent|missing/i, 'el párrafo no trata el caso de documentos ausentes');
+  assert.match(par, /do not stop/i, 'el párrafo no dice que no se frena');
 });
 
 test('card.md lista los cuatro campos como ítems de lista', () => {

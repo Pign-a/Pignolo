@@ -98,3 +98,14 @@ test('los agents/review-*.md solo leen: tools dentro de Read, Grep, Glob, Bash',
     }
   }
 });
+
+test('cada description es YAML válido: entre comillas o sin ": " crudo', () => {
+  for (const name of SKILLS) {
+    const raw = fs.readFileSync(path.join(PLUGIN, 'skills', name, 'SKILL.md'), 'utf8').replace(/\r\n/g, '\n');
+    const m = raw.match(/^description:[ \t]*(.*)$/m);
+    assert.ok(m, `${name}: falta description`);
+    const v = m[1].trim();
+    const quoted = v.length >= 2 && ((v[0] === '"' && v.endsWith('"')) || (v[0] === "'" && v.endsWith("'")));
+    assert.ok(quoted || !v.includes(': '), `${name}: description sin comillas con ": " (YAML estricto la rechaza)`);
+  }
+});

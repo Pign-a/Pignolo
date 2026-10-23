@@ -1,6 +1,6 @@
 ---
 name: work
-description: Use when the user asks to build, change or fix something in a project, in Spanish or English: 'arreglá este bug', 'agregá esta feature', 'hagamos este cambio', 'implementá esto', 'fix this bug', 'add this feature', 'implement this'. Sizes the effort to the risk and to what cannot be undone, not to the number of lines.
+description: "Use when the user asks to build, change or fix something in a project, in Spanish or English: 'arreglá este bug', 'agregá esta feature', 'hagamos este cambio', 'implementá esto', 'fix this bug', 'add this feature', 'implement this'. Sizes the effort to the risk and to what cannot be undone, not to the number of lines."
 ---
 
 # work: ceremony proportional to risk
