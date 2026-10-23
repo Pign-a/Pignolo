@@ -87,7 +87,7 @@ export async function prepare(cfg, args) {
 
     // The run links to ONE snapshot copy of the source's node_modules, never to the source itself.
     const snap = ensureSnapshot(cfg);
-    if (snap) fs.symlinkSync(snapshotPaths(cfg).dir, path.join(repo, 'node_modules'), 'junction');
+    if (snap) fs.symlinkSync(snapshotPaths(cfg).nodeModules, path.join(repo, 'node_modules'), 'junction');
     else warnings.push('la fuente no tiene node_modules');
     for (const rel of copyDirs) {
       const from = path.join(cfg.sourceRepo, rel);

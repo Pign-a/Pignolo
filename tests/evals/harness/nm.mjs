@@ -6,7 +6,14 @@ import crypto from 'node:crypto';
 import { DEFAULT_NM_IGNORE } from './config.mjs';
 import { removeTreeSafe } from './fsutil.mjs';
 
-export const snapshotPaths = (cfg) => ({ dir: path.join(cfg.workRoot, '_nm'), file: path.join(cfg.workRoot, '_nm.manifest.json') });
+// Layout 2: the copy lives in <workRoot>/_nm/node_modules and every run links to THAT folder. Node resolves a bare import
+// by walking up from the real path of the importing file looking for a folder literally named node_modules, so the
+// packages must sit inside one (layout 1 had them directly under _nm and sibling packages were never found).
+export const SNAPSHOT_LAYOUT = 2;
+export const snapshotPaths = (cfg) => {
+  const dir = path.join(cfg.workRoot, '_nm');
+  return { dir, nodeModules: path.join(dir, 'node_modules'), file: path.join(cfg.workRoot, '_nm.manifest.json') };
+};
 export const sourceNm = (cfg) => path.join(cfg.sourceRepo, 'node_modules');
 
 // Sorted top-level package names (scoped ones as @scope/name), count of top-level entries and a hash of
@@ -87,44 +94,54 @@ function cleanTrash(cfg) {
   }
 }
 
-// Creates the snapshot if it is missing (a copy of the source's node_modules). Returns null when the source has none.
-// Refuses, before anything is copied or spent, when the source has links that lead outside it.
+// 'missing' (no copy), 'stale' (copy or manifest of an older layout, or without a manifest), 'intact', or 'tampered'
+// (the copy no longer matches the manifest taken when it was made).
+export function snapshotState(cfg) {
+  const { dir, nodeModules, file } = snapshotPaths(cfg);
+  if (!fs.existsSync(dir)) return 'missing';
+  let saved = null;
+  try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none */ }
+  if (!fs.existsSync(nodeModules) || !saved || saved.layout !== SNAPSHOT_LAYOUT) return 'stale';
+  const now = manifest(nodeModules, cfg.nmIgnore);
+  return now && saved.digest === now.digest ? 'intact' : 'tampered';
+}
+export const snapshotIntact = (cfg) => snapshotState(cfg) === 'intact';
+
+// Creates the snapshot if it is missing (a copy of the source's node_modules into <_nm>/node_modules). Returns null when
+// the source has none. A copy of an older layout is dropped (safe delete) and copied again. Refuses, before anything is
+// copied or spent, when the source has links that lead outside it.
 export function ensureSnapshot(cfg) {
   const src = sourceNm(cfg);
   if (!fs.existsSync(src)) return null;
-  const { dir, file } = snapshotPaths(cfg);
-  if (fs.existsSync(dir) && fs.existsSync(file)) return { dir, created: false };
+  const { dir, nodeModules, file } = snapshotPaths(cfg);
+  const state = snapshotState(cfg);
+  if (state === 'intact' || state === 'tampered') return { dir: nodeModules, created: false };
   fs.mkdirSync(cfg.workRoot, { recursive: true });
   cleanTrash(cfg);
   assertNoEscapingLinks(src, 'el node_modules de la fuente');
-  removeTreeSafe(dir);
+  if (state === 'stale') {
+    const d = dropSnapshot(cfg);
+    if (fs.existsSync(dir)) throw new Error(`no se pudo quitar la copia vieja de node_modules (${d.error}); cerrá lo que la use y reintentá`);
+  }
+  fs.rmSync(file, { force: true });
   const tmp = `${dir}.tmp`;
   removeTreeSafe(tmp);
+  fs.mkdirSync(tmp, { recursive: true });
+  const tmpNm = path.join(tmp, 'node_modules');
   // Links inside node_modules are kept as links where the platform allows it; a second check follows the copy.
-  fs.cpSync(src, tmp, { recursive: true, verbatimSymlinks: true });
+  fs.cpSync(src, tmpNm, { recursive: true, verbatimSymlinks: true });
   try {
-    assertNoEscapingLinks(tmp, 'la copia de node_modules');
+    assertNoEscapingLinks(tmpNm, 'la copia de node_modules');
   } catch (e) {
     removeTreeSafe(tmp);
     throw e;
   }
   fs.renameSync(tmp, dir);
-  const m = manifest(dir, cfg.nmIgnore);
-  const s = manifest(src, cfg.nmIgnore);
-  fs.writeFileSync(file, JSON.stringify({ ...m, sourceDigest: s ? s.digest : null }, null, 2));
-  return { dir, created: true };
+  const m = manifest(nodeModules, cfg.nmIgnore);
+  const sm = manifest(src, cfg.nmIgnore);
+  fs.writeFileSync(file, JSON.stringify({ ...m, layout: SNAPSHOT_LAYOUT, sourceDigest: sm ? sm.digest : null }, null, 2));
+  return { dir: nodeModules, created: true };
 }
-
-// 'missing' (no copy), 'intact', or 'tampered' (the copy no longer matches the manifest taken when it was made).
-export function snapshotState(cfg) {
-  const { dir, file } = snapshotPaths(cfg);
-  if (!fs.existsSync(dir) || !fs.existsSync(file)) return 'missing';
-  let saved = null;
-  try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none */ }
-  const now = manifest(dir, cfg.nmIgnore);
-  return saved && now && saved.digest === now.digest ? 'intact' : 'tampered';
-}
-export const snapshotIntact = (cfg) => snapshotState(cfg) === 'intact';
 
 // Moves the copy out of the way FIRST (so the name is free at once) and then deletes it with the safe delete.
 // Never throws: a locked file leaves the renamed folder behind (cleaned by a later prepare) and is reported.
@@ -152,6 +169,10 @@ export function dropSnapshot(cfg, { remove = removeTreeSafe, now = Date.now() } 
 export function repairSnapshot(cfg, opts = {}) {
   const state = snapshotState(cfg);
   if (state === 'intact') return 'ok';
+  if (state === 'stale') {
+    const d = dropSnapshot(cfg, opts);
+    if (fs.existsSync(snapshotPaths(cfg).dir)) throw new Error(`no se pudo quitar la copia vieja de node_modules (${d.error}); cerrá lo que la use y reintentá`);
+  }
   if (state === 'tampered') {
     let saved = null;
     try { saved = JSON.parse(fs.readFileSync(snapshotPaths(cfg).file, 'utf8')); } catch { /* none */ }
@@ -168,7 +189,7 @@ export function repairSnapshot(cfg, opts = {}) {
 
 // Links <tree>/node_modules to the snapshot when the tree has none.
 export function linkNodeModules(cfg, tree) {
-  const snap = snapshotPaths(cfg).dir;
+  const snap = snapshotPaths(cfg).nodeModules;
   const target = path.join(tree, 'node_modules');
   if (!fs.existsSync(snap)) return false;
   try { fs.lstatSync(target); return false; } catch { /* absent: link it */ }

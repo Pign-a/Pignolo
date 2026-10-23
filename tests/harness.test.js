@@ -132,7 +132,7 @@ test('prepare: node_modules es una junction, copyDirs se copia, commit base y gi
     assert.ok(fs.lstatSync(nm).isSymbolicLink(), 'junction');
     // La junction apunta a la copia (snapshot) bajo workRoot, nunca al node_modules de la fuente.
     assert.strictEqual(path.resolve(fs.readlinkSync(nm)).toLowerCase().replace(/\\+$/, ''),
-      path.join(env.work, '_nm').toLowerCase());
+      path.join(env.work, '_nm', 'node_modules').toLowerCase());
     assert.ok(fs.existsSync(path.join(nm, 'dep', 'index.js')));
     assert.strictEqual(fs.readFileSync(path.join(repo, 'generated', 'client', 'index.js'), 'utf8'),
       'module.exports = "client";\n');
@@ -494,7 +494,7 @@ test('prepare: node_modules se copia UNA vez a _nm; borrar una corrida no toca l
   const env = setup();
   try {
     await prepared(env, 'A', 1);
-    const snap = path.join(env.work, '_nm');
+    const snap = path.join(env.work, '_nm', 'node_modules');
     assert.ok(fs.existsSync(path.join(snap, 'dep', 'index.js')), 'copia del contenido');
     assert.ok(fs.existsSync(path.join(env.work, '_nm.manifest.json')));
     fs.writeFileSync(path.join(snap, 'marker.txt'), 'm');
@@ -510,6 +510,59 @@ test('prepare: node_modules se copia UNA vez a _nm; borrar una corrida no toca l
   } finally { cleanup(env); }
 });
 const runDirName = (env, task, arm, rep) => path.join(env.work, `${task}-${arm}-${rep}`);
+
+test('nm: lo que se ve a través del enlace se resuelve (require entre paquetes hermanos) y los .bin arrancan', async () => {
+  // Node resuelve "import b" subiendo desde la RUTA REAL del archivo hasta una carpeta llamada node_modules: la copia tiene que
+  // vivir dentro de una carpeta con ese nombre (<workRoot>/_nm/node_modules), o los paquetes hermanos no se encuentran.
+  const env = setup();
+  try {
+    const nm = path.join(env.src, 'node_modules');
+    put(nm, 'a/index.js', 'module.exports = require("b") + 1;\n');
+    put(nm, 'b/index.js', 'module.exports = 41;\n');
+    put(nm, '@sc/d/index.js', 'module.exports = require("b") + 2;\n');
+    put(nm, 'c/cli.js', 'console.log("cli:" + require("a") + ":" + require("@sc/d"));\n');
+    put(nm, '.bin/hello.cmd', '@node "%~dp0..\\c\\cli.js"\r\n');
+    const { loadConfig } = await imp('config.mjs');
+    const { ensureSnapshot, linkNodeModules } = await imp('nm.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    ensureSnapshot(cfg);
+    const run = path.join(env.root, 'runfolder');
+    fs.mkdirSync(run);
+    assert.strictEqual(linkNodeModules(cfg, run), true);
+    const r = spawnSync(process.execPath, ['-e', 'console.log(require("a") + "," + require("@sc/d"))'], { cwd: run, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.strictEqual(r.stdout.trim(), '42,43');
+    if (process.platform === 'win32') {
+      const bin = spawnSync(path.join(run, 'node_modules', '.bin', 'hello.cmd'), { cwd: run, encoding: 'utf8', shell: true });
+      assert.strictEqual(bin.status, 0, bin.stderr);
+      assert.strictEqual(bin.stdout.trim(), 'cli:42:43', 'un .bin que arranca desde el enlace y resuelve sus dependencias');
+    }
+  } finally { cleanup(env); }
+});
+
+test('nm: una copia con el diseño viejo (_nm sin node_modules adentro) se descarta y se vuelve a copiar, gratis y antes de gastar', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { repairSnapshot, snapshotState } = await imp('nm.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    // Diseño viejo: los paquetes directamente bajo _nm, con su manifiesto de entonces.
+    put(env.work, '_nm/dep/index.js', 'module.exports = 1;\n');
+    fs.writeFileSync(path.join(env.work, '_nm.manifest.json'), JSON.stringify({ count: 1, names: ['dep'], lockHash: null, digest: 'x', sourceDigest: 'y' }));
+    assert.strictEqual(snapshotState(cfg), 'stale');
+    assert.strictEqual(repairSnapshot(cfg), 'repaired');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'dep', 'index.js')));
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'dep')), 'nada del diseño viejo');
+    assert.strictEqual(snapshotState(cfg), 'intact');
+    // Aunque la fuente haya cambiado desde entonces: una copia vieja no es una copia alterada, se reemplaza igual.
+    fs.rmSync(path.join(env.work, '_nm', 'node_modules'), { recursive: true });
+    fs.mkdirSync(path.join(env.work, '_nm', 'dep'));
+    fs.writeFileSync(path.join(env.work, '_nm.manifest.json'), JSON.stringify({ digest: 'x', sourceDigest: 'otro' }));
+    fs.mkdirSync(path.join(env.src, 'node_modules', 'new-dep'));
+    assert.strictEqual(repairSnapshot(cfg), 'repaired');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'new-dep')));
+  } finally { cleanup(env); }
+});
 
 test('nm: el manifiesto cambia con paquetes o lockfile, no con cachés de herramientas', async () => {
   const env = setup();
@@ -553,8 +606,8 @@ test('run: si el agente cambia node_modules la corrida es inválida y la copia s
     assert.strictEqual(m.nm.sourceChanged, false);
     // La próxima preparación vuelve a copiar desde la fuente intacta, sin lo que dejó el agente.
     await prepared(env, 'A', 2);
-    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')));
-    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'zz-new')));
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'dep', 'index.js')));
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'zz-new')));
     const ok = await withEnv({ FAKE_CLAUDE_MODE: 'ok' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }));
     assert.ok(!ok.invalidReasons.includes('nm_changed') && ok.nm.snapshotChanged === false);
   } finally { cleanup(env); }
@@ -576,14 +629,14 @@ test('run: una copia de node_modules alterada se repone sola, gratis y antes de 
   try {
     const cfg = await prepared(env, 'A', 1);
     const { runTask } = await imp('execute.mjs');
-    fs.mkdirSync(path.join(env.work, '_nm', 'tampered'));
+    fs.mkdirSync(path.join(env.work, '_nm', 'node_modules', 'tampered'));
     const m = await runTask(cfg, { task: 't1', arm: 'A', rep: 1 });
-    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'tampered')), 'se volvió a copiar desde la fuente');
-    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')));
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'tampered')), 'se volvió a copiar desde la fuente');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'dep', 'index.js')));
     assert.ok(!m.invalidReasons.includes('nm_changed'));
     // Alterada Y la fuente ya no es la que se copió: no se repone sola y no se gasta nada.
     await prepared(env, 'A', 2);
-    fs.mkdirSync(path.join(env.work, '_nm', 'tampered'));
+    fs.mkdirSync(path.join(env.work, '_nm', 'node_modules', 'tampered'));
     fs.mkdirSync(path.join(env.src, 'node_modules', 'new-dep'));
     await assert.rejects(() => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }), /fuente/);
     assert.ok(!fs.existsSync(path.join(runDirName(env, 't1', 'A', 2), 'stream.jsonl')));
@@ -751,7 +804,7 @@ test('clean: borra la carpeta de una corrida sin seguir ningún enlace y se nieg
     assert.strictEqual(r.removed, true);
     assert.ok(!fs.existsSync(dir));
     assert.ok(fs.existsSync(path.join(outside, 'keep.txt')), 'el destino de los enlaces intacto');
-    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')), 'la copia compartida intacta');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'dep', 'index.js')), 'la copia compartida intacta');
     assert.ok(fs.existsSync(path.join(env.src, 'node_modules', 'dep', 'index.js')));
     // Con datos de una corrida que no está en el CSV: se niega, salvo --force.
     await prepared(env, 'A', 1);
@@ -887,7 +940,7 @@ test('run: si no se puede borrar la copia de node_modules (EBUSY) la corrida igu
     assert.ok(fs.existsSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json')));
     // La próxima preparación vuelve a copiar y limpia la basura anterior.
     await prepared(env, 'A', 2);
-    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')));
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'node_modules', 'dep', 'index.js')));
     assert.ok(!fs.existsSync(m.nm.drop.trash), 'la basura se borró cuando ya no estaba bloqueada');
   } finally { cleanup(env); }
 });

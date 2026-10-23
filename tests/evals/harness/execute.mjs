@@ -112,7 +112,7 @@ export async function runTask(cfg, args, deps = {}) {
   let nmBefore = null;
   if (fs.existsSync(sourceNm(cfg))) {
     repairSnapshot(cfg, { remove: deps.removeTree });
-    nmBefore = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
+    nmBefore = { snapshot: manifest(snapshotPaths(cfg).nodeModules, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
   }
 
   const stdinPath = path.join(dir, 'prompt.stdin.txt');
@@ -146,7 +146,7 @@ export async function runTask(cfg, args, deps = {}) {
   let nm = { checked: false };
   if (nmBefore) {
     nm = guard('node_modules', () => {
-      const after = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
+      const after = { snapshot: manifest(snapshotPaths(cfg).nodeModules, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
       const out = {
         checked: true,
         snapshotChanged: !after.snapshot || after.snapshot.digest !== nmBefore.snapshot.digest,
