@@ -1240,6 +1240,38 @@ test('escapes: la coincidencia es en el borde de la ruta; formas de git-bash, ba
   assert.ok(findEscape(stream({ file_path: 'C:\\X\\priv\\t1\\prompt.md' }), ctx), 'también en otros campos del input');
 });
 
+test('escapes: ".." solo cuenta como escape si es una ruta real que sale de la carpeta, con el cwd real del comando', async () => {
+  const { findEscape } = await imp('metrics.mjs');
+  const ctx = { sourceRepo: 'C:\\X\\app', privateRoot: 'C:\\X\\priv', workRoot: 'C:\\X\\work', runDir: 'C:\\X\\work\\t1-A-1' };
+  const stream = (input) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input }] } });
+  const hit = (command) => findEscape(stream({ command }), ctx);
+  // El caso real: un cd absoluto adentro de la corrida, un heredoc de python con '...' y replace('..', '.'), y después
+  // "cd ../../../.." que desde esa carpeta vuelve al repo (adentro). Nada salió.
+  const real = [
+    'cd C:/X/work/t1-A-1/repo/src/components/v2/este-mes && python - <<\'E\'',
+    'import re',
+    's = open("f.tsx").read()',
+    'print(\'...\')',
+    's = s.replace(\'..\', \'.\')',
+    'x = "../../../../afuera"',
+    'E',
+    'git diff --stat; cd ../../../.. && npx tsc --noEmit 2>&1 | head -20',
+  ].join('\n');
+  assert.strictEqual(hit(real), null);
+  for (const ok of [
+    'echo \'...\'', 'python -c "s = s.replace(\'..\', \'.\')"', 'grep -r "a..b" src', 'cat src/../lib/a.js', 'cd .. && ls', 'cd ../wt && ls',
+    'cat <<\'X\'\ncat ../../otro/archivo\ncd ../../..\nX\nls', 'echo "ver ../../x en el texto"', 'cd src/a && cd ../.. && ls',
+  ]) assert.strictEqual(hit(ok), null, ok);
+  // Las que sí salen.
+  for (const bad of ['cat ../../other/file', 'cd .. && ls ../x', 'cd src && cd ../../.. && ls', 'ls ../../*', 'cat "../../x/y"', 'cd C:/X/work/t1-A-1/repo/src && cat ../../../../../etc/hosts']) {
+    const r = hit(bad);
+    assert.ok(r && r.match === 'relativeEscape', bad);
+  }
+  // Un campo de ruta de otra herramienta.
+  assert.strictEqual(findEscape(stream({ file_path: '../../x/y.txt' }), ctx).match, 'relativeEscape');
+  assert.strictEqual(findEscape(stream({ file_path: 'src/../a.txt' }), ctx), null);
+});
+
 // ---------------------------------------------------------------- accept
 
 test('accept: calcula el resumen de cambios ANTES de copiar los tests y registra los conteos', async () => {
