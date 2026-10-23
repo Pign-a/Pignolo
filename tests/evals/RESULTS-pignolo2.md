@@ -210,6 +210,30 @@ Naturaleza de los hallazgos, solo en general: un caso de borde de formato de ró
 - **small-2: la regla de la tarea chica falla en tokens.** B gasta alrededor de un 20 % más de tokens ponderados en la mediana (141.110 contra 116.806) y los rangos no se pisan. Ninguno de los dos brazos activó su plugin (0 de 3 en cada uno) y los dos resolvieron la tarea bien, así que la causa de la diferencia es desconocida (n=3). Es un resultado negativo y se publica como tal.
 - En ninguna de las dos tareas se activó un plugin: ambas miden al modelo base con distinto contexto cargado.
 
+### 11.2b Repeticiones 4 a 6 de small-2 (2026-10-23)
+
+_Sección posterior a 11.2; no reemplaza ni borra su texto. Las cifras salen de `summary --experiment pignolo2` y de un script propio que reparte las corridas por repetición, ambos sobre `pignolo2-runs.csv`._
+
+**Cómo se decidió (parada opcional, declarada).** Las repeticiones 4, 5 y 6 se decidieron **después de ver las tres primeras**, para comprobar si el 20 % más de tokens ponderados de B en small-2 persistía. Es un tamaño de muestra elegido con los datos a la vista (parada opcional) y debe leerse así. Se corrieron intercaladas, A y B, con la misma tarea, el mismo commit y las mismas reglas. Las seis corridas nuevas son válidas, con aceptación correcta (60/60 en cada una) y sin activación del plugin en ninguna (0 de 6 en cada brazo, como antes).
+
+| Medida | A superpowers | B Pignolo 2 | B/A |
+|---|---|---|---|
+| **Repeticiones 1 a 3** (11.2): tokens ponderados, mediana (rango) | 116.806 (108.351 a 118.159) | 141.110 (127.055 a 155.410) | 1,21 |
+| Repeticiones 1 a 3: costo USD, mediana (rango) | 0,272 (0,251 a 0,275) | 0,327 (0,303 a 0,351) | 1,20 |
+| Repeticiones 1 a 3: tiempo de pared s, mediana (rango) | 59,2 (52,2 a 61,2) | 53,0 (48,6 a 66,8) | 0,89 |
+| **Repeticiones 4 a 6** (nuevas): tokens ponderados, mediana (rango) | 140.045 (123.339 a 155.627) | 118.453 (111.474 a 131.057) | 0,85 |
+| Repeticiones 4 a 6: costo USD, mediana (rango) | 0,334 (0,286 a 0,336) | 0,290 (0,257 a 0,308) | 0,87 |
+| Repeticiones 4 a 6: tiempo de pared s, mediana (rango) | 69,4 (49,1 a 80,8) | 50,6 (43,6 a 50,7) | 0,73 |
+| **Las seis juntas** (E3, n=6 por brazo): tokens ponderados, mediana (rango) | 120.749 (108.351 a 155.627) | 129.056 (111.474 a 155.410) | 1,07 |
+| Las seis: costo USD, mediana (rango) | 0,281 (0,251 a 0,336) | 0,306 (0,257 a 0,351) | 1,09 |
+| Las seis: tiempo de pared s, mediana (rango) | 60,2 (49,1 a 80,8) | 50,7 (43,6 a 66,8) | 0,84 |
+| Las seis: aceptación | 360/360, 6 de 6 verdes | 360/360, 6 de 6 verdes | |
+
+- **Veredicto del resumen para small-2 con seis repeticiones por brazo: sin diferencia demostrada** (E3). La mediana de tiempo de B es menor o igual a la de A; la de tokens de B es mayor (129.056 contra 120.749), pero los rangos se pisan, así que queda como riesgo abierto y no como aprobado. El "no pasa" de 11.2 (con tres repeticiones) queda **reemplazado** por este veredicto; el texto de 11.2 se conserva como se publicó.
+- **La diferencia del 20 % no persistió.** En las repeticiones 4 a 6 los papeles se invirtieron: A salió más caro y más variable que antes (mediana de 0,334 USD contra 0,272 USD en las repeticiones 1 a 3) y B salió más barato que A (B/A de 0,85 en tokens). No se propone una causa: la causa de la brecha de las tres primeras sigue siendo desconocida, y que haya desaparecido al repetir es compatible con variación entre corridas del modelo, pero eso es una lectura, no algo medido.
+- **No se comparó por tipo de token** (era una propuesta de `docs/gaps.md`); las cifras de arriba son tokens ponderados, costo y tiempo.
+- Ninguno de los dos brazos activó su plugin en las seis corridas: la comparación sigue midiendo al modelo base con distinto contexto cargado.
+
 ### 11.3 Detección de frentes (E3, 3 repos x 3 repeticiones, solo brazo B)
 
 Prompt: "Validá el código del proyecto." con Pignolo 2 activo. **`validate` se activó por sí sola en 9 de 9 corridas.**
@@ -295,7 +319,8 @@ Texto final de la skill: línea `Frentes:` eliminada, paso con `git diff --short
 ### 11.4 Conclusión
 
 - **Feature mediana (H1):** la no inferioridad se cumple en el par forzado (BF/AF = 0,84 de mediana de tokens) y en el autónomo (B/A = 1,04), con calidad no peor, ambos en E2. No se afirma que Pignolo 2 sea mejor: los rangos se pisan.
-- **Tarea chica (H2):** no se sostiene del todo. small-1 empata; small-2 falla en tokens (B alrededor de un 20 % más, sin activación de ninguno de los dos plugins, causa desconocida). Según la ficha, una falla de la anti-meta pide recortar antes de publicar; la decisión es del autor.
+- **Tarea chica (H2), lectura de 11.2 con tres repeticiones:** no se sostiene del todo. small-1 empata; small-2 falla en tokens (B alrededor de un 20 % más, sin activación de ninguno de los dos plugins, causa desconocida). Según la ficha, una falla de la anti-meta pide recortar antes de publicar; la decisión es del autor.
+- **Tarea chica (H2), actualización del 2026-10-23:** con seis repeticiones por brazo (11.2b, repeticiones 4 a 6 decididas después de ver las tres primeras) small-2 queda en "sin diferencia demostrada": la diferencia del 20 % no persistió.
 - **Detección de frentes (H3), lectura de la ronda 1:** `cli-script` pasa; `app-db` y `landing-form` no pasan por la regla de la línea `Frentes:`, que se imprimió solo en 5 de 9 corridas. Con la cifra secundaria los agentes lanzados fueron los esperados en 7 de 9, pero eso no reemplaza el veredicto preinscrito.
 - **Detección de frentes (H3), actualización del 2026-10-23:** el criterio de decisión pasó a los agentes lanzados por decisión posterior del autor (11.3b); la ronda 2 dio 8 de 9 corridas con el conjunto esperado y la ronda 3, con el texto final, 9 de 9 (los tres repos pasan por agentes lanzados). El texto de la skill se ajustó mirando estos mismos repos, así que la ronda 3 confirma el arreglo y no es una validación independiente (11.3b).
 - **Activación:** con prompts completos ningún plugin se activó por sí solo en los pares autónomos (0 llamadas a `Skill`); lo único que se activó solo fue `validate` ante "Validá el código del proyecto.".
@@ -303,7 +328,7 @@ Texto final de la skill: línea `Frentes:` eliminada, paso con `git diff --short
 **Estado actual de los criterios de publicación (2026-10-23).**
 
 - **(i) No inferioridad de H1 en el par forzado:** se cumple (BF/AF = 0,84 de mediana de tokens, calidad no peor), con evidencia E2; no se afirma superioridad.
-- **(ii) Regla de la tarea chica, par autónomo:** no se cumple por completo. small-1: sin diferencia demostrada (riesgo abierto). small-2: no pasa en tokens (B alrededor de un 20 % más, causa desconocida). Ningún plugin se activó en esas corridas.
+- **(ii) Regla de la tarea chica, par autónomo:** ni pasa ni falla; las dos tareas quedan en "sin diferencia demostrada" (riesgo abierto, no aprobado). small-1 (E3, n=3): tokens de B iguales o menores, tiempo de B apenas mayor con rangos pisados. small-2 (E3, n=6 por brazo): tokens de B 1,07 veces los de A con rangos pisados y tiempo de B menor (50,7 contra 60,2 s); el "no pasa" anterior, con tres repeticiones, no se sostuvo al repetir. Ningún plugin se activó en esas corridas.
 - **(iii) Detección de frentes:** pasa por agentes lanzados en la ronda 3 (9/9, los tres repos), después de cambios al texto de la skill hechos sobre esos mismos repos; con el criterio original (línea `Frentes:`) no pasaba en las rondas 1 y 2. No es una validación independiente.
 
 ### 11.5 Amenazas a la validez observadas
@@ -327,6 +352,6 @@ Se suman a la sección 10:
 
 ### 11.7 Gasto
 
-32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés. La ronda 2 de la detección (`pignolo2-det2`, 9 corridas) sumó 2,83 USD y la ronda 3 (`pignolo2-det3`, 9 corridas) 3,05 USD (ver 11.3b). Acumulado en corridas únicas: 21,87 USD de 40.
+32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés. La ronda 2 de la detección (`pignolo2-det2`, 9 corridas) sumó 2,83 USD y la ronda 3 (`pignolo2-det3`, 9 corridas) 3,05 USD (ver 11.3b). Las repeticiones 4 a 6 de small-2 (6 corridas) sumaron 1,81 USD. Acumulado en corridas únicas (una por experimento, tarea, brazo, repetición y marca de tiempo del CSV, calibración incluida): 23,69 USD de 40.
 
 Datos crudos: [`pignolo2-runs.csv`](pignolo2-runs.csv). Para reproducir las cifras: `node tests/evals/harness/run.mjs summary`.
