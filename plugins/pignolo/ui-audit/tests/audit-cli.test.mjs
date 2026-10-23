@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { makeTempDir, writeTree, runScript, PLUGIN_ROOT } from './helpers.mjs';
-import { SUBCOMMANDS } from '../scripts/audit.mjs';
+import { SUBCOMMANDS, main } from '../scripts/audit.mjs';
 
 const RUN_REL = '.pignolo-ui/runs/r1';
 const run = (args, opts) => runScript('audit.mjs', args, opts);
@@ -100,6 +100,32 @@ test('check passes one --dom per file of dom.json and --measures; exit code of u
   const blocking = checkRun({ dom: page('<img src="a.png">') });
   const bad = run(['check', '--project', blocking, '--run', runDir(blocking)]);
   assert.equal(bad.status, 1, bad.stderr);
+});
+
+test('check: ui-check exits 0 but prints no JSON -> exit 2 with an explanatory error, never a pass', async () => {
+  const project = checkRun();
+  let out = '';
+  const code = await main(['check', '--project', project, '--run', runDir(project)], {
+    cwd: project,
+    stdout: { write: (s) => { out += s; } },
+    spawn: () => ({ status: 0, stdout: '', stderr: '' }),
+  });
+  assert.equal(code, 2);
+  const json = JSON.parse(out);
+  assert.match(json.error, /no imprimió JSON|no devolvió JSON/);
+  assert.match(json.error, /no se midió|no verificado/);
+});
+
+test('check: ui-check exit code 1 with JSON keeps being a finding (exit 1)', async () => {
+  const project = checkRun();
+  let out = '';
+  const code = await main(['check', '--project', project, '--run', runDir(project)], {
+    cwd: project,
+    stdout: { write: (s) => { out += s; } },
+    spawn: () => ({ status: 1, stdout: JSON.stringify({ status: 1, entries: [] }), stderr: '' }),
+  });
+  assert.equal(code, 1);
+  assert.equal(JSON.parse(out).status, 1);
 });
 
 test('check without dom.json, browser.json or --files is exit 2', () => {

@@ -143,11 +143,11 @@ test('CSS-in-JS, MUI and Chakra are declared unsupported', () => {
   for (const u of r.unsupported) assert.equal(u.file, 'package.json');
 });
 
-test('node_modules, build output and approved mockups are never token sources', () => {
+test('node_modules, build output and the design/ folder (mockups, options, catalog) are never token sources', () => {
   const r = readTokenSources(project({
     'node_modules/lib/x.css': ':root { --x: red; }',
     'dist/app.css': ':root { --x: red; }',
-    'design/approved/home/style.css': ':root { --x: red; }',
+    'design/options/home/style.css': ':root { --x: red; }',
     'src/app.css': 'body { margin: 0 }',
   }));
   assert.deepEqual(r.sources, []);

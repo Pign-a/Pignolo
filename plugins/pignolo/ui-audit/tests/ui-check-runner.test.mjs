@@ -179,12 +179,12 @@ test('equal unverified findings of one file are aggregated with a count', async 
   assert.deepEqual(e[0].measure, { count: 40 });
 });
 
-test('mockup: design/approved and .pignolo-ui/runs files, not src', async () => {
+test('mockup: design/ and .pignolo-ui/runs files, not src', async () => {
   const mock = {};
   const spy = { id: 'CONTENT-01', checkFile: (ctx) => { mock[ctx.file] = ctx.mockup; return [pass('x')]; } };
-  await run({ 'design/approved/home/index.html': '<p>x</p>\n', '.pignolo-ui/runs/r1/option-a/home.html': '<p>x</p>\n', 'src/home.html': '<p>x</p>\n' },
+  await run({ 'design/options/home/a.html': '<p>x</p>\n', '.pignolo-ui/runs/r1/option-a/home.html': '<p>x</p>\n', 'src/home.html': '<p>x</p>\n' },
     { inject: { rules: [spy] } });
-  assert.deepEqual(mock, { 'design/approved/home/index.html': true, '.pignolo-ui/runs/r1/option-a/home.html': true, 'src/home.html': false });
+  assert.deepEqual(mock, { 'design/options/home/a.html': true, '.pignolo-ui/runs/r1/option-a/home.html': true, 'src/home.html': false });
 });
 
 test('project rules receive the file contexts and the fetched site; each ctx says its origin', async () => {

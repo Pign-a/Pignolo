@@ -318,7 +318,7 @@ export function listCss(root, max) {
       const full = path.join(dir, ent.name);
       const rel = path.relative(root, full).split(path.sep).join('/');
       if (ent.isDirectory()) {
-        if (SKIP_DIRS.has(ent.name) || rel === 'design/approved') continue;
+        if (SKIP_DIRS.has(ent.name) || rel === 'design') continue;
         walk(full);
       } else if (ent.name.endsWith('.css')) {
         out.push(rel);

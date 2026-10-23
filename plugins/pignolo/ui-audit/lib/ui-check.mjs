@@ -53,9 +53,10 @@ const stripBom = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s);
 const relTo = (project, p) => toPosix(path.relative(project, path.resolve(project, p)));
 const emptyCss = () => ({ rules: [], decls: [], keyframes: [] });
 
-// Mockups are the approved options and the option folders of a run (spec §3.3, §7).
+// Mockups are everything under design/ (options, identity tiles, the component catalog: none of it is
+// product code) and the option folders of a run.
 function isMockup(rel) {
-  return rel.startsWith('design/approved/') || rel.startsWith('.pignolo-ui/runs/');
+  return rel.startsWith('design/') || rel.startsWith('.pignolo-ui/runs/');
 }
 
 function readDesign(file, rel, catalog, tokens) {

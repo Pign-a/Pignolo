@@ -17,7 +17,7 @@ The author gives their taste as links or screenshots, or you propose from scratc
 
 What gets designed is deduced from `roadmap.md`: the elements the planned features need and no others (no calendar in the app, no calendar designed). Say the deduced list in one line and continue unless the author adjusts it.
 
-The identity itself is a big decision, so it goes through three options (section 4). Write the decision into `design.md`, which is the document screens read.
+The identity itself is a big decision, so it goes through three options (section 4). Write the decision into `design.md`, which is the document screens read: start from `templates/design.md` and record palette, typography, radii and spacing as YAML tokens at the top, because the audit compares the screens against them (`references/identity.md`).
 
 ## 3. Catalog
 

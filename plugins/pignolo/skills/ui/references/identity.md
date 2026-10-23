@@ -35,5 +35,11 @@ An element is not done until its states are visible. Use this as the starting se
 ## Output
 
 1. Three options for the identity, as style tiles in `design/options/identity/{a,b,c}.html` (see `options.md`), each along a different axis (for example mood: sober, warm, bold).
-2. When the author chooses, copy the winning tile to `design/identity/` and write the decision into `design.md` (palette values, radii, font stack, animation rules, navigation, icon rules), with the date and the origin (conversation, references).
+2. When the author chooses, copy the winning tile to `design/identity/` and write the decision into `design.md` (see "Recording it in design.md"), with the date and the origin (conversation, references).
 3. Mark the piece `decidido` in `design/index.html`.
+
+## Recording it in design.md
+
+Start from `templates/design.md` (the file keeps the name the project already uses: `DESIGN.md` if that is there). The chosen palette, typography, radii and spacing go as tokens in the YAML frontmatter at the top, under `colors`, `typography`, `rounded` and `spacing`; keep the shape of the template and replace its placeholder values. Reason: `/pignolo:ui-audit` compares the screens against those tokens, so a value that lives only in the prose cannot be checked.
+
+Below the frontmatter, the prose explains the decisions and cites the tokens by name (`{colors.primary}`, `{rounded.md}`), never by raw value. Animation rules, navigation and icon rules live in the prose and in the `pignolo:` block of the template. Keep the YAML valid: if the audit cannot parse the tokens it audits against the base norms and says so on its first line.

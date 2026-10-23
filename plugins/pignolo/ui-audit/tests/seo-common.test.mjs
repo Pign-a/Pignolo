@@ -46,7 +46,7 @@ test('seoPages: documents among the inputs, never mockups or fragments; fetched 
   const doc = '<!doctype html><html><head><title>A</title></head><body></body></html>';
   const page = (p, extra = {}) => ({ url: `http://127.0.0.1:1${p}`, path: p, finalUrl: `http://127.0.0.1:1${p}`, status: 200, headers: { 'content-type': 'text/html' }, text: doc, ...extra });
   const pages = seoPages({
-    ctxs: [ctx('index.html', doc), ctx('Card.tsx', 'export const C = () => <div/>;'), ctx('design/approved/x/home.html', doc, { mockup: true })],
+    ctxs: [ctx('index.html', doc), ctx('Card.tsx', 'export const C = () => <div/>;'), ctx('design/options/x/a.html', doc, { mockup: true })],
     site: { pages: [
       page('/'), page('/a/', { finalUrl: 'http://127.0.0.1:1/a' }), page('/cuenta', { finalUrl: 'http://127.0.0.1:1/login' }),
       page('/b', { status: 500 }), page('/c', { headers: { 'content-type': 'application/json' } }),

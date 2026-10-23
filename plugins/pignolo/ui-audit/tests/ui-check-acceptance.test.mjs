@@ -125,12 +125,12 @@ test('unsupported extension: Page.astro leaves only unverified entries and exit 
   assert.ok(own.every((e) => e.status === 'unverified' && /unsupported extension/.test(e.reason)));
 });
 
-// ---- approved mockups ----
+// ---- mockups under design/ ----
 
 const MOCKUP = '<!doctype html><html lang="es"><head><title>Home</title><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><main><h1 data-sample>$ 12.480,00</h1><p>Datos de muestra</p></main></body></html>';
 
-test('approved mockup: markers are detalle under design/approved/, bloquea in src/', () => {
-  const approved = check({ 'design/approved/checkout/home.html': MOCKUP });
+test('design mockup: markers are detalle under design/, bloquea in src/', () => {
+  const approved = check({ 'design/options/checkout/a.html': MOCKUP });
   const c1 = approved.entries.filter((e) => e.id === 'CONTENT-01' && e.status === 'fail');
   assert.equal(c1.length, 1);
   assert.equal(c1[0].severity, 'detalle');

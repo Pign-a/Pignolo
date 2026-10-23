@@ -125,7 +125,7 @@ const COMMANDS = {
 
   check: {
     spec: { value: ['project', 'run', 'files', 'design', 'base', 'url', 'before'] },
-    run(opts, { cwd }) {
+    run(opts, { cwd, spawn = spawnSync }) {
       const project = projectDir(cwd, opts);
       const run = runDirOf(cwd, project, opts);
       const args = [path.join(SCRIPTS_DIR, 'ui-check.mjs'), '--project', project, '--run', run];
@@ -141,11 +141,15 @@ const COMMANDS = {
       if (opts.base !== undefined) args.push('--base', opts.base);
       if (opts.url !== undefined) args.push('--url', opts.url);
       if (opts.before !== undefined) args.push('--before', path.resolve(cwd, opts.before));
-      const res = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 300000, windowsHide: true });
+      const res = spawn(process.execPath, args, { encoding: 'utf8', timeout: 300000, windowsHide: true });
       if (res.stderr) process.stderr.write(res.stderr);
       let json = null;
       try { json = JSON.parse(res.stdout); } catch { /* ui-check wrote no JSON */ }
-      return { out: json ?? { error: 'ui-check no devolvió JSON' }, code: res.status ?? 2 };
+      // A step that did not run (no JSON) must never read as a pass, even when the process exited 0.
+      if (json === null) {
+        return { out: { error: 'ui-check no imprimió JSON: no se midió nada, no verificado' }, code: 2 };
+      }
+      return { out: json, code: res.status ?? 2 };
     },
   },
 
@@ -207,7 +211,7 @@ async function configCommand(argv, { cwd }) {
 // Subcommands the CLI accepts; the skill tests check every call of a skill against this list.
 export const SUBCOMMANDS = ['config', ...Object.keys(COMMANDS)];
 
-export async function main(argv, { cwd = process.cwd(), stdout = process.stdout } = {}) {
+export async function main(argv, { cwd = process.cwd(), stdout = process.stdout, spawn = spawnSync } = {}) {
   try {
     const [name, ...rest] = argv;
     let result;
@@ -215,7 +219,7 @@ export async function main(argv, { cwd = process.cwd(), stdout = process.stdout 
     else {
       const cmd = COMMANDS[name];
       if (!cmd) throw new UsageError(`falta el subcomando: ${SUBCOMMANDS.join(' | ')}`);
-      result = await cmd.run(parse(rest, cmd.spec), { cwd });
+      result = await cmd.run(parse(rest, cmd.spec), { cwd, spawn });
     }
     stdout.write(`${JSON.stringify(result.out, null, 2)}\n`);
     return result.code;
