@@ -1,7 +1,8 @@
 // Acceptance: change summary first, then the private acceptance tests, then the project's full test command.
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { runPaths } from './config.mjs';
+import { runPaths, HARNESS_DIR, isFixtureTask, taskConfig, assertArmAllowed } from './config.mjs';
 import { runProcess } from './proc.mjs';
 import { buildChildEnv } from './env.mjs';
 import { git } from './prepare.mjs';
@@ -129,9 +130,33 @@ function prepareTree(cfg, mainRepo, tree) {
   }
 }
 
+// Front-detection fixtures: no tests to copy. The "Frentes:" line of the full final text is compared with what was written in advance.
+function acceptFixture(cfg, { task, arm, rep, dir }) {
+  const require = createRequire(import.meta.url);
+  const { compareFronts, extractFronts, decodeInput } = require('../compare-fronts.js');
+  const finalFile = path.join(dir, 'final.txt');
+  if (!fs.existsSync(finalFile)) throw new Error(`falta ${finalFile}; corré run primero`);
+  const name = taskConfig(cfg, task).fixture;
+  const expected = JSON.parse(fs.readFileSync(path.join(HARNESS_DIR, '..', 'fronts-expected.json'), 'utf8'));
+  const text = decodeInput(fs.readFileSync(finalFile));
+  const result = compareFronts(text, name, expected);
+  let metrics = {};
+  try { metrics = JSON.parse(fs.readFileSync(path.join(dir, 'metrics.json'), 'utf8')); } catch { /* no metrics */ }
+  const out = {
+    task, arm, rep, fixture: name, ok: result.ok, reason: result.reason, got: extractFronts(text) || [], expected: expected[name],
+    missing: result.missing, extra: result.extra,
+    // Total agents (the ficha counts native-command agents too) and the ones launched by the main thread.
+    agents: metrics.agents ?? null, agentsMain: metrics.agentsMain ?? null, acceptedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(path.join(dir, 'fronts.json'), JSON.stringify(out, null, 2));
+  return out;
+}
+
 export async function acceptRun(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
+  assertArmAllowed(cfg, task, arm);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}`);
+  if (isFixtureTask(cfg, task)) return acceptFixture(cfg, { task, arm, rep, dir });
   const acceptCmd = readCmd(path.join(taskDir, 'accept-cmd.txt'));
   const fullCmd = readCmd(path.join(taskDir, 'full-cmd.txt'));
 

@@ -2,8 +2,10 @@
 // Every figure carries its range; nothing is reported as a bare number.
 // A run that cannot be trusted ("invalid") is never counted and never dropped silently: it is listed and
 // leaves its task "pendiente" until it is rerun.
+import fs from 'node:fs';
+import path from 'node:path';
 import { parseCsv, decodeModelTokens } from './row.mjs';
-import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
+import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR, HARNESS_DIR } from './config.mjs';
 import { modelFactorFor } from './metrics.mjs';
 
 const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'duration_ms', 'turns',
@@ -210,9 +212,71 @@ function decideSmall(a, b, ids = ['A', 'B']) {
   return { verdict: open ? 'sin diferencia demostrada' : 'pasa', reasons };
 }
 
+// The detection rule of the ficha (measurement 3), per fixture: cli-script spends zero agents in total (native-command agents
+// included); landing-form at most 2 front agents; app-db at most 5. Front agents are the ones launched by the main thread
+// (a native command that the main thread launches cannot be told apart in the stream, so this is an upper bound).
+const FIXTURE_RULES = {
+  'cli-script': { total: 0, text: 'cero agentes en total' },
+  'landing-form': { front: 2, text: 'más de 2 agentes de frente' },
+  'app-db': { front: 5, text: 'más de 5 agentes de frente' },
+};
+
+function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) {
+  const arms = {};
+  for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
+  const rule = FIXTURE_RULES[fixtureName] || {};
+  const want = (expected && expected[fixtureName]) || [];
+  const matched = mine.filter((r) => r.fronts_ok === 'true' || r.fronts_ok === true);
+  const noData = mine.filter((r) => r.fronts_ok === '' || r.fronts_ok === null || r.fronts_ok === undefined);
+  const wrong = mine.filter((r) => !matched.includes(r) && !noData.includes(r));
+  const reasons = [`fixture ${fixtureName}: ${matched.length}/${mine.length} corridas con los frentes esperados [${want.join(';')}]`];
+  for (const r of wrong) reasons.push(`${runId(r)}: obtuvo [${r.fronts_got || ''}] esperaba [${want.join(';')}]`);
+  const total = stat(mine.map((r) => r.agents));
+  const front = stat(mine.map((r) => r.agents_main));
+  reasons.push(`agentes (total, con los de comandos nativos): ${total ? `mediana ${fmt(total.median, 0)} (rango ${fmt(total.min, 0)} a ${fmt(total.max, 0)})` : 'sin dato'}; lanzados por el hilo principal: ${front ? `mediana ${fmt(front.median, 0)} (rango ${fmt(front.min, 0)} a ${fmt(front.max, 0)})` : 'sin dato'}`);
+  const over = mine.filter((r) => noData.indexOf(r) < 0 && ((rule.total !== undefined && r.agents > rule.total) || (rule.front !== undefined && r.agents_main > rule.front)));
+  for (const r of over) reasons.push(`${runId(r)}: ${rule.text} (obtuvo ${rule.total !== undefined ? r.agents : r.agents_main})`);
+  const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
+  let verdict;
+  if (invalid.length) {
+    verdict = `pendiente: ${invalid.length} corridas inválidas`;
+    reasons.unshift(...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`));
+  } else if (!mine.length) verdict = 'pendiente';
+  else if (noData.length) {
+    verdict = 'pendiente';
+    reasons.push(`falta la comparación de frentes en ${noData.map(runId).join(', ')}: corré accept y row`);
+  } else if (wrong.length || over.length) verdict = 'no pasa';
+  else verdict = 'pasa';
+  const n = Math.min(...Object.values(arms).map((s) => s.n), Infinity);
+  const evidence = n >= 3 ? 'E3' : n >= 2 ? 'E2' : 'sin evidencia';
+  const act = activationOf(arms);
+  return {
+    task, kind: 'fixture', fixture: fixtureName, pair: null, arms, evidence, decision: { verdict, reasons }, invalid, systematicNoChanges: [],
+    ...act, eol: Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol])),
+    fixtureDetail: { runs: mine.length, matched: matched.length, noData: noData.length },
+  };
+}
+
+function activationOf(arms) {
+  const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
+  const known = Object.entries(activation).filter(([, v]) => v.m > 0);
+  const activationNotes = [];
+  if (known.length && known.every(([, v]) => v.n === 0)) {
+    activationNotes.push('ningún corrida activó el plugin: la comparación de esta tarea mide al modelo base');
+  } else {
+    for (const [a, v] of known) if (v.n === 0) activationNotes.push(`el brazo ${a} no activó el plugin en ninguna corrida (0/${v.m})`);
+  }
+  return { activation, activationNotes };
+}
+
 export function summarize(rowsIn, {
   kinds = {}, grades = [], includeContaminated = false, experiment = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, pairs = [['A', 'B']],
+  fixtures = {}, frontsExpected = null,
 } = {}) {
+  let expectedFronts = frontsExpected;
+  if (!expectedFronts) {
+    try { expectedFronts = JSON.parse(fs.readFileSync(path.join(HARNESS_DIR, '..', 'fronts-expected.json'), 'utf8')); } catch { expectedFronts = {}; }
+  }
   const notes = [];
   let rowsAll = rowsIn;
   if (experiment) {
@@ -262,6 +326,10 @@ export function summarize(rowsIn, {
   const pairList = pairs && pairs.length ? pairs : [['A', 'B']];
   for (const task of [...new Set(current.map((r) => r.task))].sort()) {
     const kind = kinds[task] || null;
+    if (kind === 'fixture') {
+      tasks.push(fixtureEntry({ task, fixtureName: fixtures[task] || task, mine: validRows.filter((r) => r.task === task), bad: invalidRows.filter((r) => r.task === task), expected: expectedFronts, activationOf }));
+      continue;
+    }
     // Each rule is evaluated once per pair [control, variant]; a pair with no runs of this task does not appear.
     for (const pair of pairList) {
       const [X, Y] = pair;
@@ -309,14 +377,7 @@ export function summarize(rowsIn, {
         };
       }
       // A comparison in which no run called a skill of its plugin measures the base model, not the method.
-      const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
-      const known = Object.entries(activation).filter(([, v]) => v.m > 0);
-      const activationNotes = [];
-      if (known.length && known.every(([, v]) => v.n === 0)) {
-        activationNotes.push('ningún corrida activó el plugin: la comparación de esta tarea mide al modelo base');
-      } else {
-        for (const [a, v] of known) if (v.n === 0) activationNotes.push(`el brazo ${a} no activó el plugin en ninguna corrida (0/${v.m})`);
-      }
+      const { activation, activationNotes } = activationOf(arms);
       const eol = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol]));
       tasks.push({ task, kind, pair, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes, eol });
     }

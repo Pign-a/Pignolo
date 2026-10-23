@@ -19,15 +19,22 @@
   "acceptTimeoutMs": 900000,
   "arms": {
     "A": { "pluginName": "superpowers", "pluginDir": "/absolute/path/to/the/superpowers/plugin" },
-    "B": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin" }
+    "B": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin" },
+    "AF": {
+      "pluginName": "superpowers", "pluginDir": "/absolute/path/to/the/superpowers/plugin",
+      "promptPrefix": "Use the superpowers workflow for this task: brainstorming first, then writing-plans, then execute the plan. "
+    },
+    "BF": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin", "promptPrefix": "/pignolo:work " }
   },
+  "pairs": [["A", "B"], ["AF", "BF"]],
   "copyDirs": ["relative/path/of/a/gitignored/generated/folder"],
   "weights": { "input": 1, "output": 5, "cacheRead": 0.1, "cacheWrite": 1.25 },
   "modelFactor": { "opus": 5, "sonnet": 1, "haiku": 0.33 },
   "seed": 1,
   "tasks": {
     "task-id-1": { "kind": "medium" },
-    "task-id-2": { "kind": "small" }
+    "task-id-2": { "kind": "small" },
+    "detect-cli-script": { "kind": "fixture", "fixture": "cli-script", "prompt": "Validate the code of the project.", "arms": ["B"] }
   },
   "blindExcludePaths": [
     ".claude/", ".superpowers/", ".pignolo/", "docs/superpowers/", "docs/pignolo/", "docs/sessions/", "docs/research/",

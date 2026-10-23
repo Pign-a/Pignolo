@@ -4,6 +4,17 @@
 
 _Esta ficha se escribió y se commiteó antes de cualquier corrida, como pide `docs/protocolo-de-pruebas.md`. Las corridas pagas esperan el OK explícito del autor para el gasto y son condición para publicar la 1.0.0 (diseño §9)._
 
+## Aclaración previa (2026-10-23)
+
+_Escrita **después** de que corriera el primer par mediano autónomo (una corrida por brazo, A y B) y motivada por lo que mostró: en las dos corridas hubo 0 llamadas a la herramienta `Skill`, es decir, con un prompt completo **ninguno de los dos plugins se activó por sí solo**. Esa observación es anterior a esta aclaración y la motivó; los umbrales de las reglas de abajo no cambian, pero sí cambia qué se compara y con qué pares, así que el lector debe tomarlo como una decisión posterior a mirar ese primer par, no como preinscripción pura._
+
+- **Se informan dos pares**, cada uno con sus propias reglas de decisión:
+  - **Autónomo (A contra B):** cada brazo tal como es, con el prompt de la tarea sin más; es lo que obtiene el usuario al instalar el plugin y pedir directamente.
+  - **Forzado (AF contra BF):** el método invocado a propósito. AF es superpowers con un prefijo en el prompt que pide usar su flujo (brainstorming, writing-plans y después ejecutar el plan); BF es Pignolo 2 con el prefijo `/pignolo:work `. Es el mismo plugin que en el par autónomo (la variable sigue siendo qué plugin está activo); cambia solo el prompt.
+- **Criterios de publicación:** (i) la no inferioridad de H1 en la tarea mediana, **en el par forzado**; (ii) la regla de la tarea chica, **en el par autónomo** (que el plugin no sume costo cuando no se usa); (iii) la prueba de detección de frentes en los repos de juguete (medición 3).
+- Cada cifra que se publique lleva su par y su nivel de evidencia. Un par autónomo en el que ninguna corrida activó su plugin se informa como "mide al modelo base", no como una comparación de métodos.
+- La prueba de detección (medición 3) corre en el arnés como tareas de tipo `fixture` con el brazo Pignolo 2.
+
 ## 1. Pregunta e hipótesis
 
 **Pregunta.** ¿Pignolo 2 hace el mismo trabajo que superpowers con una calidad igual o mejor y sin gastar mucho más?

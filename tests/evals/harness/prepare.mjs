@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
-import { runPaths, validateCopyDirs } from './config.mjs';
+import { runPaths, validateCopyDirs, isFixtureTask, taskConfig, assertArmAllowed, FIXTURES_DIR } from './config.mjs';
 import { ensureSnapshot, snapshotPaths } from './nm.mjs';
 import { removeTreeSafe, linksOutsideTree } from './fsutil.mjs';
 
@@ -66,8 +66,42 @@ function stripContext(dir) {
   }
 }
 
+// A fixture task (front detection): the toy repo of tests/evals/fixtures/<name> as plain files, following the recipe of that README.
+// A baseline commit of unrelated files on main (with the neutral CLAUDE.md), then a branch "trabajo" off it holding the fixture as
+// a second commit, left checked out. validate takes the merge-base with main, which is always the baseline commit.
+async function prepareFixture(cfg, { task, arm, rep, dir, repo }) {
+  if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; borrala con "run.mjs clean")`);
+  const from = path.join(FIXTURES_DIR, taskConfig(cfg, task).fixture);
+  fs.mkdirSync(repo, { recursive: true });
+  try {
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.name', 'eval']);
+    git(repo, ['config', 'user.email', 'eval@example.invalid']);
+    git(repo, ['config', 'core.autocrlf', 'false']);
+    git(repo, ['config', 'core.safecrlf', 'false']);
+    git(repo, ['config', 'commit.gpgsign', 'false']);
+    fs.writeFileSync(path.join(repo, 'NOTES.txt'), 'Unrelated baseline file.\n');
+    fs.copyFileSync(NEUTRAL, path.join(repo, 'CLAUDE.md'));
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'base']);
+    git(repo, ['tag', 'base']);
+    git(repo, ['checkout', '-q', '-b', 'trabajo']);
+    fs.cpSync(from, repo, { recursive: true });
+    // -f: a global .gitignore may drop files the fixture needs (*.log is the junk it is made of).
+    git(repo, ['add', '-A', '-f']);
+    git(repo, ['commit', '-q', '-m', 'fixture']);
+    fs.writeFileSync(path.join(dir, 'prepare.json'), JSON.stringify({ task, arm, rep, fixture: taskConfig(cfg, task).fixture, baseCommit: git(repo, 'rev-parse HEAD'.split(' ')), createdAt: new Date().toISOString(), warnings: [] }, null, 2));
+  } catch (e) {
+    removeTreeSafe(dir);
+    throw e;
+  }
+  return { task, arm, rep, runDir: dir, repo, warnings: [] };
+}
+
 export async function prepare(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
+  assertArmAllowed(cfg, task, arm);
+  if (isFixtureTask(cfg, task)) return prepareFixture(cfg, { task, arm, rep, dir, repo });
   const copyDirs = validateCopyDirs(cfg.copyDirs).map((rel) => path.normalize(rel));
   if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; borrala con "run.mjs clean")`);
   let base;

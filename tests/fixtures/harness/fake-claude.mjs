@@ -1,8 +1,9 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
+//   noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
+// FAKE_CLAUDE_RESULT: final result text (" // " becomes a new line).
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
 import fs from 'node:fs';
@@ -130,7 +131,7 @@ if (has('hang')) {
   }
   const blocks = [
     { type: 'text', text: 'Working.' },
-    { type: 'tool_use', id: 'toolu_1', name: 'Agent', input: { prompt: 'x' } },
+    ...(has('noagents') ? [] : [{ type: 'tool_use', id: 'toolu_1', name: 'Agent', input: { prompt: 'x' } }]),
     { type: 'tool_use', id: 'toolu_2', name: 'Read', input: {} },
   ];
   if (has('skill')) {
@@ -142,17 +143,20 @@ if (has('hang')) {
   }
   out({ type: 'assistant', parent_tool_use_id: null, message: { content: blocks } });
   // Same tool_use repeated (partial-message duplicates) and one inside a sub-agent.
-  out({ type: 'assistant', parent_tool_use_id: null, message: { content: [
-    { type: 'tool_use', id: 'toolu_1', name: 'Agent', input: { prompt: 'x' } },
-  ] } });
-  out({ type: 'assistant', parent_tool_use_id: 'toolu_1', message: { content: [
-    { type: 'tool_use', id: 'toolu_3', name: 'Task', input: { prompt: 'y' } },
-  ] } });
+  if (!has('noagents')) {
+    out({ type: 'assistant', parent_tool_use_id: null, message: { content: [
+      { type: 'tool_use', id: 'toolu_1', name: 'Agent', input: { prompt: 'x' } },
+    ] } });
+    out({ type: 'assistant', parent_tool_use_id: 'toolu_1', message: { content: [
+      { type: 'tool_use', id: 'toolu_3', name: 'Task', input: { prompt: 'y' } },
+    ] } });
+  }
   out({ type: 'user', message: { content: [] } });
   process.stdout.write('this line is not json\n');
   const result = { type: 'result', subtype: 'success', is_error: false, duration_ms: 1234, num_turns: 4, result: 'Done.' };
   if (has('budget')) Object.assign(result, { subtype: 'error_max_budget_usd', is_error: true, result: undefined });
   if (has('fail')) Object.assign(result, { subtype: 'error_during_execution', is_error: true });
+  if (process.env.FAKE_CLAUDE_RESULT) result.result = process.env.FAKE_CLAUDE_RESULT.split(' // ').join('\n');
   if (has('ask')) result.result = `${'Long preamble. '.repeat(200)}Which option do you prefer, A or B?`;
   if (!has('nocost')) {
     Object.assign(result, {

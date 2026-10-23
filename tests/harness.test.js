@@ -77,7 +77,7 @@ function setup(over = {}) {
     perRunCapUsd: 5,
     totalCapUsd: 40,
     trackProcesses: false,
-    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM'],
+    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM', 'FAKE_CLAUDE_RESULT'],
     timeoutMs: 20000,
     acceptTimeoutMs: 20000,
     arms: {
@@ -1536,7 +1536,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1550,7 +1550,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
-      contamination: 'false', neutral_plugins: '', neutral_config: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
+      contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
@@ -2169,6 +2169,167 @@ test('blind: mezcla las corridas de varios brazos de una tarea y las devuelve a 
   } finally { cleanup(env); }
 });
 
+// ---------------------------------------------------------------- tareas con fixture (detección de frentes)
+
+const FIXTURE_TASKS = {
+  'fx-cli': { kind: 'fixture', fixture: 'cli-script', prompt: 'Validá el código del proyecto.', arms: ['B'] },
+  'fx-land': { kind: 'fixture', fixture: 'landing-form', prompt: 'Validá el código del proyecto.', arms: ['B'] },
+  'fx-db': { kind: 'fixture', fixture: 'app-db', prompt: 'Validá el código del proyecto.', arms: ['B', 'BF'] },
+};
+const fxCfg = (env, over = {}) => loadWith(env, { tasks: FIXTURE_TASKS, arms: { A: env.cfg.arms.A, B: env.cfg.arms.B, BF: { pluginName: 'pignolo', pluginDir: env.cfg.arms.B.pluginDir, promptPrefix: '/pignolo:validate ' } }, pairs: [['A', 'B']], ...over });
+
+test('fixture: la configuración exige carpeta existente, prompt y brazos conocidos', async () => {
+  const env = setup();
+  try {
+    const ok = await fxCfg(env);
+    assert.strictEqual(ok.tasks['fx-cli'].fixture, 'cli-script');
+    const bad = (t) => fxCfg(env, { tasks: { x: t } });
+    await assert.rejects(() => bad({ kind: 'fixture', fixture: 'no-existe', prompt: 'p', arms: ['B'] }), /fixture/);
+    await assert.rejects(() => bad({ kind: 'fixture', fixture: '../harness', prompt: 'p', arms: ['B'] }), /fixture/);
+    await assert.rejects(() => bad({ kind: 'fixture', fixture: 'cli-script', prompt: '', arms: ['B'] }), /prompt/);
+    await assert.rejects(() => bad({ kind: 'fixture', fixture: 'cli-script', prompt: 'p', arms: ['ZZ'] }), /arms|brazo/);
+    await assert.rejects(() => bad({ kind: 'fixture', fixture: 'cli-script', prompt: 'p' }), /arms|brazo/);
+  } finally { cleanup(env); }
+});
+
+test('fixture: prepare copia el fixture a una rama "trabajo" sobre un commit base sin relación, con el CLAUDE.md neutral, sin node_modules ni repo fuente', async () => {
+  const env = setup();
+  try {
+    const cfg = await fxCfg(env);
+    const { prepare } = await imp('prepare.mjs');
+    const r = await prepare(cfg, { task: 'fx-land', arm: 'B', rep: 1 });
+    const repo = r.repo;
+    assert.strictEqual(git(repo, 'branch', '--show-current'), 'trabajo');
+    assert.strictEqual(git(repo, 'merge-base', 'HEAD', 'main'), git(repo, 'rev-parse', 'main'), 'validate toma el merge-base: el commit base');
+    assert.strictEqual(git(repo, 'rev-list', '--count', 'main..HEAD'), '1', 'un solo commit con el fixture');
+    assert.deepStrictEqual(git(repo, 'ls-tree', '-r', '--name-only', 'main').split('\n').sort(), ['CLAUDE.md', 'NOTES.txt']);
+    assert.strictEqual(fs.readFileSync(path.join(repo, 'CLAUDE.md'), 'utf8'), fs.readFileSync(path.join(HARNESS, 'neutral-claude.md'), 'utf8'));
+    const tracked = git(repo, 'ls-files').split('\n');
+    for (const f of ['index.html', 'style.css', 'trace.log', 'screenshot-2026-10-01.png.txt']) assert.ok(tracked.includes(f), `${f} rastreado (incluidos los que un .gitignore global descartaría)`);
+    assert.strictEqual(git(repo, 'status', '--porcelain'), '');
+    assert.strictEqual(git(repo, 'log', '-1', '--format=%an <%ae>'), 'eval <eval@example.invalid>');
+    assert.ok(!fs.existsSync(path.join(repo, 'node_modules')) && !fs.existsSync(path.join(env.work, '_nm')), 'sin node_modules');
+    assert.ok(!fs.existsSync(path.join(repo, 'generated')), 'sin copyDirs');
+    assert.ok(!fs.existsSync(path.join(repo, 'src', 'app.js')), 'no sale del repo fuente');
+    // Solo los brazos listados.
+    await assert.rejects(() => prepare(cfg, { task: 'fx-land', arm: 'A', rep: 1 }), /solo.*brazos|brazos.*(B)/i);
+    const ok = await prepare(cfg, { task: 'fx-db', arm: 'BF', rep: 1 });
+    assert.ok(git(ok.repo, 'ls-files').split('\n').includes('prisma/migrations/20260101_init/migration.sql') || git(ok.repo, 'ls-files').length > 0);
+  } finally { cleanup(env); }
+});
+
+test('fixture: run usa el prompt de la configuración, guarda el texto final completo en final.txt y no exige cambios', async () => {
+  const env = setup();
+  try {
+    const cfg = await fxCfg(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    await prepare(cfg, { task: 'fx-land', arm: 'B', rep: 1 });
+    const log = path.join(env.root, 'stub.json');
+    const longText = `${'Informe largo. '.repeat(300)} // Frentes: security, hygiene`;
+    const m = await withEnv({ FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_MODE: 'ok', FAKE_CLAUDE_RESULT: longText }, () => runTask(cfg, { task: 'fx-land', arm: 'B', rep: 1 }));
+    assert.strictEqual(JSON.parse(fs.readFileSync(log, 'utf8')).stdin, 'Validá el código del proyecto.');
+    const final = fs.readFileSync(path.join(env.work, 'fx-land-B-1', 'final.txt'), 'utf8');
+    assert.ok(final.length > 4000 && final.endsWith('Frentes: security, hygiene'), 'el texto completo, no solo el último KB');
+    assert.ok(m.finalText.length <= 1024);
+    assert.ok(!('resultText' in m) && fs.readFileSync(path.join(env.work, 'fx-land-B-1', 'metrics.json'), 'utf8').length < 20000, 'metrics.json solo guarda el final acotado');
+    assert.strictEqual(m.isFixture, true);
+    assert.ok(!m.invalidReasons.includes('no_changes'), 'validar no cambia el código');
+    assert.deepStrictEqual(m.invalidReasons, []);
+    // Un brazo no listado no corre.
+    await prepare({ ...cfg, tasks: { 'fx-land': { ...cfg.tasks['fx-land'], arms: ['B', 'A'] } } }, { task: 'fx-land', arm: 'A', rep: 1 });
+    await assert.rejects(() => runTask(cfg, { task: 'fx-land', arm: 'A', rep: 1 }), /brazos/);
+  } finally { cleanup(env); }
+});
+
+test('fixture: accept compara la línea Frentes con lo esperado (coincide, sin línea, conjunto equivocado) y la fila lo registra', async () => {
+  const env = setup();
+  try {
+    const cfg = await fxCfg(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const cases = [
+      [1, 'Revisé todo. // Frentes: security, hygiene', { ok: true, got: ['security', 'hygiene'], reason: undefined }],
+      [2, 'Todo parece bien.', { ok: false, got: [], reason: 'sin línea de frentes' }],
+      [3, 'Listo. // Frentes: security, code', { ok: false, got: ['security', 'code'], reason: 'frentes distintos a los esperados' }],
+    ];
+    for (const [rep, text, want] of cases) {
+      await prepare(cfg, { task: 'fx-land', arm: 'B', rep });
+      await withEnv({ FAKE_CLAUDE_MODE: 'ok', FAKE_CLAUDE_RESULT: text }, () => runTask(cfg, { task: 'fx-land', arm: 'B', rep }));
+      await acceptRun(cfg, { task: 'fx-land', arm: 'B', rep });
+      const f = JSON.parse(fs.readFileSync(path.join(env.work, `fx-land-B-${rep}`, 'fronts.json'), 'utf8'));
+      assert.strictEqual(f.ok, want.ok, `rep ${rep}`);
+      assert.deepStrictEqual(f.got, want.got);
+      assert.deepStrictEqual(f.expected, ['security', 'hygiene']);
+      assert.strictEqual(f.reason, want.reason);
+      assert.deepStrictEqual([f.agents, f.agentsMain], [2, 1], 'agentes: total y del hilo principal');
+      assert.ok(!fs.existsSync(path.join(env.work, `fx-land-B-${rep}`, 'repo', 'test')), 'sin tests de aceptación');
+      const row = appendRow(cfg, { task: 'fx-land', arm: 'B', rep });
+      assert.deepStrictEqual([row.fronts_ok, row.fronts_got], [String(want.ok), want.got.join(';')]);
+    }
+    // Un fixture sin frentes esperados: línea vacía coincide; el CSV deja fronts_got vacío.
+    await prepare(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    await withEnv({ FAKE_CLAUDE_MODE: 'noagents', FAKE_CLAUDE_RESULT: 'Nada que revisar. // Frentes:' }, () => runTask(cfg, { task: 'fx-cli', arm: 'B', rep: 1 }));
+    await acceptRun(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    const row = appendRow(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    assert.deepStrictEqual([row.fronts_ok, row.fronts_got, row.agents], ['true', '', 0]);
+  } finally { cleanup(env); }
+});
+
+test('summary de fixtures: aciertos exactos, obtenido contra esperado, agentes y la regla de la ficha por repo', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const fx = (task, rep, ok, got, extra = {}) => mk(task, 'B', rep, 100, { fronts_ok: String(ok), fronts_got: got, accept_pass: null, accept_fail: null, accept_exit: null, accept_suites_failed: null, full_pass: null, full_fail: null, full_baseline_fail: null, agents: 0, agents_main: 0, ...extra });
+  const kinds = { 'fx-cli': 'fixture', 'fx-land': 'fixture', 'fx-db': 'fixture' };
+  const fixtures = { 'fx-cli': 'cli-script', 'fx-land': 'landing-form', 'fx-db': 'app-db' };
+  const run = (rows) => summarize(rows, { kinds, fixtures });
+  // Todo bien.
+  let r = run([fx('fx-land', 1, true, 'security;hygiene', { agents: 3, agents_main: 2 }), fx('fx-land', 2, true, 'security;hygiene', { agents: 3, agents_main: 1 }), fx('fx-land', 3, true, 'security;hygiene', { agents_main: 2 }),
+    fx('fx-cli', 1, true, ''), fx('fx-cli', 2, true, ''), fx('fx-cli', 3, true, ''),
+    fx('fx-db', 1, true, 'security;database;code;tests;hygiene', { agents: 7, agents_main: 5 })]);
+  const by = Object.fromEntries(r.tasks.map((t) => [t.task, t]));
+  assert.strictEqual(by['fx-land'].decision.verdict, 'pasa');
+  assert.strictEqual(by['fx-cli'].decision.verdict, 'pasa');
+  assert.strictEqual(by['fx-db'].decision.verdict, 'pasa');
+  assert.strictEqual(by['fx-land'].evidence, 'E3');
+  assert.strictEqual(by['fx-db'].evidence, 'sin evidencia');
+  assert.strictEqual(by['fx-land'].fixture, 'landing-form');
+  assert.strictEqual(by['fx-land'].pair, null);
+  const text = formatSummary(r);
+  assert.match(text, /fixture landing-form: 3\/3 corridas con los frentes esperados/);
+  assert.match(text, /agentes \(total, con los de comandos nativos\): mediana 3 \(rango 0 a 3\)/);
+  // Fallos: frentes distintos, tope de agentes por repo (cli-script: cero en total; landing-form: 2 de frente; app-db: 5 de frente).
+  r = run([fx('fx-land', 1, true, 'security;hygiene'), fx('fx-land', 2, false, 'security;code', { reason: 'x' }), fx('fx-cli', 1, true, '', { agents: 1 }), fx('fx-land', 3, true, 'security;hygiene', { agents_main: 3 }), fx('fx-db', 1, true, 'security;database;code;tests;hygiene', { agents_main: 6 })]);
+  const f = Object.fromEntries(r.tasks.map((t) => [t.task, t]));
+  assert.strictEqual(f['fx-land'].decision.verdict, 'no pasa');
+  assert.ok(f['fx-land'].decision.reasons.some((x) => /fx-land\/B\/2: obtuvo \[security;code\] esperaba \[security;hygiene\]/.test(x)));
+  assert.ok(f['fx-land'].decision.reasons.some((x) => /más de 2 agentes de frente/.test(x)));
+  assert.strictEqual(f['fx-cli'].decision.verdict, 'no pasa');
+  assert.ok(f['fx-cli'].decision.reasons.some((x) => /cero agentes en total/.test(x)));
+  assert.strictEqual(f['fx-db'].decision.verdict, 'no pasa');
+  assert.ok(f['fx-db'].decision.reasons.some((x) => /más de 5 agentes de frente/.test(x)));
+  // Inválidas y sin comparar: pendiente como en el resto.
+  r = run([fx('fx-land', 1, true, 'security;hygiene'), fx('fx-land', 2, '', '', { invalid: true, invalid_reason: 'timed_out' }), fx('fx-land', 3, '', '')]);
+  assert.match(r.tasks[0].decision.verdict, /^pendiente: 1 corridas inválidas/);
+  r = run([fx('fx-land', 1, true, 'security;hygiene'), fx('fx-land', 3, '', '')]);
+  assert.strictEqual(r.tasks[0].decision.verdict, 'pendiente');
+  assert.match(r.tasks[0].decision.reasons.join(' '), /accept/);
+});
+
+test('CLI: summary reconoce las tareas de fixture de la configuración', () => {
+  const env = setup({ tasks: { 'fx-cli': { kind: 'fixture', fixture: 'cli-script', prompt: 'Validá el código del proyecto.', arms: ['B'] } } });
+  try {
+    const step = (...a) => { const r = cli(env, ...a); assert.strictEqual(r.status, 0, r.err); return r; };
+    step('prepare', '--task', 'fx-cli', '--arm', 'B', '--rep', '1');
+    const r = spawnSync(process.execPath, [RUN, 'run', '--task', 'fx-cli', '--arm', 'B', '--rep', '1', '--config', env.cfgPath], { encoding: 'utf8', env: { ...process.env, FAKE_CLAUDE_MODE: 'noagents', FAKE_CLAUDE_RESULT: 'ok // Frentes:' } });
+    assert.strictEqual(r.status, 0, r.stderr);
+    step('accept', '--task', 'fx-cli', '--arm', 'B', '--rep', '1');
+    step('row', '--task', 'fx-cli', '--arm', 'B', '--rep', '1');
+    assert.match(step('summary', '--csv', env.cfg.csvPath).out, /fixture cli-script: 1\/1 corridas con los frentes esperados/);
+  } finally { cleanup(env); }
+});
+
 test('CLI: una corrida de calibración (--experiment) cuenta para el tope pero no se mezcla en el resumen real', () => {
   const env = setup();
   try {
@@ -2200,6 +2361,13 @@ test('repo: harness.local.json está en .gitignore y harness.example.json no tra
   assert.deepStrictEqual(ex.blindExcludePaths, DEFAULT_BLIND_EXCLUDE);
   assert.deepStrictEqual(ex.modelFactor, DEFAULT_MODEL_FACTOR);
   assert.deepStrictEqual(ex.neutralPlugins, DEFAULT_NEUTRAL_PLUGINS);
+  // El ejemplo es una configuración válida: variantes AF/BF, pares y una tarea de fixture.
+  const { loadConfig } = await imp('config.mjs');
+  const loaded = loadConfig(path.join(HARNESS, 'harness.example.json'));
+  assert.deepStrictEqual(loaded.pairs, [['A', 'B'], ['AF', 'BF']]);
+  assert.strictEqual(loaded.arms.BF.promptPrefix, '/pignolo:work ');
+  assert.strictEqual(loaded.arms.AF.pluginName, 'superpowers');
+  assert.strictEqual(loaded.tasks['detect-cli-script'].kind, 'fixture');
   assert.deepStrictEqual(ex.neutralConfigPaths, DEFAULT_NEUTRAL_CONFIG_PATHS);
   const text = JSON.stringify(ex);
   assert.ok(!/[A-Za-z]:[\\/]Users|pigna/i.test(text), 'sin rutas personales');

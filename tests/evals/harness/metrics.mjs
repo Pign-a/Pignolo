@@ -168,6 +168,7 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     resultSubtype: result ? result.subtype ?? null : null,
     isError: result ? Boolean(result.is_error) : null,
     finalText: result && typeof result.result === 'string' ? result.result.slice(-FINAL_TEXT_BYTES) : null,
+    resultText: result && typeof result.result === 'string' ? result.result : null,
     costUsd: result && typeof result.total_cost_usd === 'number' ? result.total_cost_usd : null,
     durationMs: result && typeof result.duration_ms === 'number' ? result.duration_ms : null,
     turns: result && typeof result.num_turns === 'number' ? result.num_turns : null,
@@ -220,6 +221,6 @@ export function invalidReasons(m) {
   if (m.nm && m.nm.dropFailed) r.push('drop_failed');
   if (m.postRunError && m.postRunError.length) r.push('post_run_error');
   if (m.treesError) r.push('trees_unmeasurable');
-  else if (m.trees && m.trees.noChanges) r.push('no_changes');
+  else if (m.trees && m.trees.noChanges && !m.isFixture) r.push('no_changes'); // validating does not change the code
   return r;
 }

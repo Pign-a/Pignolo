@@ -17,6 +17,21 @@ Motivos: `no_result` (sin mensaje final), `timed_out`, `exit_nonzero`, `is_error
 
 Después de la corrida paga **nada puede perder `metrics.json`**: cada paso posterior (procesos, manifiestos, árboles, métricas, escapes) está protegido, un fallo se anota en `postRunError` y la corrida queda inválida, pero `metrics.json` se escribe siempre. Si el proceso se corta antes de escribirlo (existe `stream.jsonl` sin `metrics.json`), el ledger la cuenta igual como gastada.
 
+## Variantes de brazo y pares
+
+Los ids de brazo son una mayúscula y hasta tres mayúsculas o dígitos (`A`, `B`, `AF`, `BF`). La identidad del plugin de un brazo sale de su `pluginName`, no de su id: `AF` y `A` son el mismo plugin. Un brazo puede llevar `promptPrefix` (texto, por defecto vacío): se antepone al prompt de la tarea antes de escribir `prompt.stdin.txt`. El texto vive en la configuración; `metrics.json` lo registra y el CSV lleva solo la columna `prompt_prefix_id` (el id del brazo cuando usó prefijo, vacío si no). Que `claude -p` ejecute un prompt que empieza con `/pignolo:work` como comando de plugin es algo que la primera corrida forzada tiene que confirmar (mirar `ownSkillCalls` y los mensajes de hook).
+
+`pairs` es una lista de `[control, variante]` (por defecto `[["A","B"]]`); `summary` evalúa las reglas **una vez por par**, con el control primero, y rotula cada bloque `[par A contra B]`. Un par sin corridas de la tarea no aparece. El ejemplo trae el par autónomo `A`/`B` y el forzado `AF`/`BF`. El paquete a ciegas mezcla las corridas de **todos** los brazos de una tarea (las etiquetas se barajan entre ellos) y `unblind` las devuelve a brazo y repetición; un brazo que no corrió esa tarea se salta, y `blind --arms A,B` elige cuáles.
+
+## Tareas de fixture (detección de frentes)
+
+Una tarea de configuración `{ "kind": "fixture", "fixture": "<carpeta de tests/evals/fixtures>", "prompt": "<texto>", "arms": ["B"] }` mide la medición 3 de la ficha. Solo corren los brazos de `arms` (los demás se rechazan con un mensaje claro). No usa la carpeta privada, el repo fuente, `node_modules` ni `copyDirs`:
+
+- `prepare` copia el fixture (archivos planos) a la carpeta de la corrida y sigue la receta de `tests/evals/fixtures/README.md`: `git init` con identidad local, un commit base con archivos sin relación y el `CLAUDE.md` neutral en `main`, y una rama `trabajo` que sale de ahí con el fixture como segundo commit, dejada activa (se fuerza el `git add` para que un `.gitignore` global no descarte `*.log`).
+- `run` usa el `prompt` de la configuración (con el `promptPrefix` del brazo, si lo tiene) y guarda el texto final **completo** en `<corrida>/final.txt`. Validar no cambia el código, así que `no_changes` no se aplica.
+- `accept` no copia tests: compara la línea `Frentes:` de `final.txt` con `tests/evals/fronts-expected.json` (`compare-fronts.js`) y escribe `fronts.json` (`ok`, `reason`, `got`, `expected`, `agents`, `agentsMain`). Columnas del CSV: `fronts_ok` y `fronts_got` (ids separados por `;`, vacío si no hay).
+- `summary` imprime por fixture las corridas con los frentes esperados (`k/n`), obtenido contra esperado de las que no coinciden, los agentes (total, que incluye los de comandos nativos como pide la ficha, y los lanzados por el hilo principal) y aplica la regla de la ficha: `cli-script` cero agentes en total, `landing-form` como máximo 2 agentes de frente y `app-db` no más de 5. Los agentes "de frente" se toman como los lanzados por el hilo principal: un agente que un comando nativo lance desde el hilo principal no se distingue en el stream, así que es una cota superior. Las corridas inválidas dejan la tarea `pendiente`, como en el resto.
+
 ## Qué gasta plata y qué no
 
 Solo `run` lanza `claude -p` y gasta tokens. Todo lo demás (`prepare`, `accept`, `row`, `blind`, `unblind`, `summary`) es local y gratis. Las pruebas del arnés (`tests/harness.test.js`) usan un `claude` falso (`tests/fixtures/harness/fake-claude.mjs`) y no gastan nada.
@@ -147,7 +162,7 @@ Intercalá los brazos (A, B, A, B...) como pide la ficha. Todos los comandos ace
 
 ### Columnas del CSV
 
-`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, skill_calls, own_skill_calls, own_hook_ran, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, files_changed, lines_added, lines_removed, eol_only_files, eol_converted_files, note`.
+`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, prompt_prefix_id, skill_calls, own_skill_calls, own_hook_ran, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, fronts_ok, fronts_got, files_changed, lines_added, lines_removed, eol_only_files, eol_converted_files, note`.
 
 `skill_calls` cuenta todas las llamadas a la herramienta `Skill`; `own_skill_calls` las de una skill del propio plugin del brazo (su nombre o `plugin:skill`; `superpowers-extra:x` o `pignolo:work` en el brazo de superpowers no); los nombres distintos quedan en `metrics.json` (`ownSkillNames`). `own_hook_ran` es `true` si algún mensaje de hook (`hook_started` / `hook_response`) nombra al plugin, `false` si hubo hooks, ninguno lo nombra y el plugin declara `hooks/hooks.json`, y `unknown` en cualquier otro caso (por ejemplo un plugin sin hooks).
 

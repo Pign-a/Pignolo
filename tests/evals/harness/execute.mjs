@@ -1,7 +1,7 @@
 // Runs `claude -p` for one task/arm/rep and turns the stream into metrics.json.
 import fs from 'node:fs';
 import path from 'node:path';
-import { runPaths, otherArm } from './config.mjs';
+import { runPaths, otherArm, isFixtureTask, taskConfig, assertArmAllowed } from './config.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
 import { parseStream, findEscape, invalidReasons } from './metrics.mjs';
 import { assertWithinTotalCap } from './ledger.mjs';
@@ -99,13 +99,17 @@ const delta = (before, after) => ({
 
 export async function runTask(cfg, args, deps = {}) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
+  assertArmAllowed(cfg, task, arm);
+  const isFixture = isFixtureTask(cfg, task);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}; corré prepare primero`);
   const streamPath = path.join(dir, 'stream.jsonl');
   if (fs.existsSync(streamPath)) {
     throw new Error(`esta corrida ya se ejecutó (${streamPath}); para repetirla corré "run.mjs clean", prepará de nuevo y anotá --note rerun`);
   }
   let prompt;
-  try {
+  if (isFixture) {
+    prompt = taskConfig(cfg, task).prompt.trimEnd();
+  } else try {
     prompt = fs.readFileSync(path.join(taskDir, 'prompt.md'), 'utf8').replace(/^﻿/, '').trimEnd();
   } catch {
     throw new Error(`falta ${path.join(taskDir, 'prompt.md')}`);
@@ -122,7 +126,7 @@ export async function runTask(cfg, args, deps = {}) {
   // node_modules: the run is linked to one snapshot copy; the snapshot and the source must come out of the run as they went in.
   // A copy that was merely altered is dropped and copied again from the (unchanged) source: free, before any spend.
   let nmBefore = null;
-  if (fs.existsSync(sourceNm(cfg))) {
+  if (!isFixture && fs.existsSync(sourceNm(cfg))) {
     repairSnapshot(cfg, { remove: deps.removeTree });
     nmBefore = { snapshot: manifest(snapshotPaths(cfg).nodeModules, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
   }
@@ -196,10 +200,13 @@ export async function runTask(cfg, args, deps = {}) {
   const neutralConfigAfter = guard('contenido sincronizado', () => scanNeutralConfig(cfg.configDir, cfg.neutralConfigPaths), neutralConfigBefore);
   opts.neutralPluginNames = neutralConfigAfter.pluginsSynced.plugins;
   const text = guard('stream', () => fs.readFileSync(streamPath, 'utf8'), '');
-  const m = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);
+  const parsed = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);
+  // The full final text is kept for fixture tasks (the fronts line is read from it); metrics.json only keeps the last KB.
+  const { resultText, ...m } = parsed;
+  if (isFixture) guard('final.txt', () => fs.writeFileSync(path.join(dir, 'final.txt'), resultText ?? ''));
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {
-    task, arm, rep, experiment: cfg.experiment, promptPrefix, model: cfg.model, effort: cfg.effort,
+    task, arm, rep, experiment: cfg.experiment, promptPrefix, isFixture, model: cfg.model, effort: cfg.effort,
     startedAt, finishedAt: new Date().toISOString(),
     wallS: r.wallS, timedOut: r.timedOut, exitCode: r.code, signal: r.signal,
     droppedEnvNames: dropped,

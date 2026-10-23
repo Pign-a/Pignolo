@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 export const HARNESS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HARNESS_DIR, '..', '..', '..');
+export const FIXTURES_DIR = path.join(REPO_ROOT, 'tests', 'evals', 'fixtures');
 export const DEFAULT_CONFIG = path.join(HARNESS_DIR, 'harness.local.json');
 export const DEFAULT_CSV = path.join(REPO_ROOT, 'tests', 'evals', 'pignolo2-runs.csv');
 export const DEFAULT_GRADES = path.join(REPO_ROOT, 'tests', 'evals', 'pignolo2-grades.json');
@@ -74,6 +75,18 @@ export function loadConfig(file = DEFAULT_CONFIG) {
   }
   // Pairs [control, variant]: each summary rule is evaluated once per pair. By default A against B, or the first two arms.
   const armIds = Object.keys(cfg.arms);
+  // Tasks of kind "fixture" (front detection): a toy repo from tests/evals/fixtures, an inline prompt and the arms allowed to run it.
+  for (const [id, t] of Object.entries(cfg.tasks || {})) {
+    if (!t || t.kind !== 'fixture') continue;
+    if (!ID.test(id)) throw new Error(`id de tarea inválido: ${id}`);
+    if (typeof t.fixture !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(t.fixture) || !fs.existsSync(path.join(FIXTURES_DIR, t.fixture))) {
+      throw new Error(`la tarea ${id}: fixture inexistente o inválido (${JSON.stringify(t.fixture)}); tiene que ser una carpeta de tests/evals/fixtures`);
+    }
+    if (typeof t.prompt !== 'string' || !t.prompt.trim()) throw new Error(`la tarea ${id}: falta el prompt (texto) del fixture`);
+    if (!Array.isArray(t.arms) || !t.arms.length || t.arms.some((a) => !armIds.includes(a))) {
+      throw new Error(`la tarea ${id}: arms tiene que listar brazos configurados (los de la configuración: ${armIds.join(', ')})`);
+    }
+  }
   const pairs = cfg.pairs !== undefined ? cfg.pairs : [armIds.includes('A') && armIds.includes('B') ? ['A', 'B'] : armIds.slice(0, 2)];
   if (!Array.isArray(pairs) || !pairs.length || pairs.some((p) => !Array.isArray(p) || p.length !== 2 || p[0] === p[1] || !armIds.includes(p[0]) || !armIds.includes(p[1]))) {
     throw new Error(`pairs (pares) debe ser una lista de [control, variante] con brazos configurados (los de la configuración: ${armIds.join(', ')})`);
@@ -146,4 +159,15 @@ export function runPaths(cfg, args) {
 }
 
 // The other plugin: the first arm whose pluginName differs from this arm's (AF and A share a plugin, so AF's other is B).
+export const taskConfig = (cfg, task) => (cfg.tasks && cfg.tasks[task]) || null;
+export const isFixtureTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'fixture');
+
+// Only the arms listed in a task's "arms" may run it (fixture tasks always list them).
+export function assertArmAllowed(cfg, task, arm) {
+  const t = taskConfig(cfg, task);
+  if (t && Array.isArray(t.arms) && !t.arms.includes(arm)) {
+    throw new Error(`la tarea ${task} solo admite los brazos ${t.arms.join(', ')}; ${arm} no puede correrla`);
+  }
+}
+
 export const otherArm = (cfg, arm) => Object.keys(cfg.arms).find((a) => cfg.arms[a].pluginName !== cfg.arms[arm].pluginName);

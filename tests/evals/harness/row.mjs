@@ -9,7 +9,7 @@ export const COLUMNS = [
   'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran',
   'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
-  'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note',
+  'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -88,6 +88,7 @@ export function appendRow(cfg, args) {
   if (!m) throw new Error(`no hay metrics.json en ${dir}; corré run primero`);
   const a = readJson(path.join(dir, 'acceptance.json'));
   const c = readJson(path.join(dir, 'changes.json'));
+  const fr = readJson(path.join(dir, 'fronts.json'));
   const userNote = args.note || '';
   if (m.experiment && m.experiment !== cfg.experiment) {
     throw new Error(`la corrida se hizo con el experimento "${m.experiment}" y la fila saldría como "${cfg.experiment}"; pasá --experiment ${m.experiment}`);
@@ -130,6 +131,7 @@ export function appendRow(cfg, args) {
     contamination: m.contamination,
     neutral_plugins: (m.neutralPluginsLoaded || []).join(';'),
     neutral_config: summarizeNeutralConfig(m.neutralConfigContent),
+    fronts_ok: fr ? String(fr.ok) : '', fronts_got: fr ? (fr.got || []).join(';') : '',
     files_changed: c && c.filesChanged, lines_added: c && c.linesAdded, lines_removed: c && c.linesRemoved,
     eol_only_files: c && c.eolOnlyCount, eol_converted_files: c && c.eolConvertedCount,
     note: notes.filter(Boolean).join(';'),

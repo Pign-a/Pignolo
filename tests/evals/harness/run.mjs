@@ -48,7 +48,13 @@ async function main() {
     const csv = o.csv || (cfg && cfg.csvPath) || DEFAULT_CSV;
     const gradesPath = o.grades || (cfg && cfg.gradesPath) || DEFAULT_GRADES;
     const kinds = {};
-    if (cfg) for (const [id, t] of Object.entries(cfg.tasks || {})) if (t && t.kind) kinds[id] = t.kind;
+    const fixtures = {};
+    if (cfg) {
+      for (const [id, t] of Object.entries(cfg.tasks || {})) {
+        if (t && t.kind) kinds[id] = t.kind;
+        if (t && t.kind === 'fixture') fixtures[id] = t.fixture;
+      }
+    }
     for (const id of list(o.medium)) kinds[id] = 'medium';
     for (const id of list(o.small)) kinds[id] = 'small';
     let rows;
@@ -58,7 +64,7 @@ async function main() {
     const res = summarize(rows, {
       kinds, grades, includeContaminated: Boolean(o['include-contaminated']),
       experiment: o.experiment || (cfg && cfg.experiment) || DEFAULT_EXPERIMENT,
-      pairs: (cfg && cfg.pairs) || [['A', 'B']],
+      pairs: (cfg && cfg.pairs) || [['A', 'B']], fixtures,
       weights: (cfg && cfg.weights) || DEFAULT_WEIGHTS, modelFactor: (cfg && cfg.modelFactor) || DEFAULT_MODEL_FACTOR,
     });
     console.log(o.json ? JSON.stringify(res, null, 2) : formatSummary(res));
