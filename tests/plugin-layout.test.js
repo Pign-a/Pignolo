@@ -110,13 +110,53 @@ test('cada description es YAML válido: entre comillas o sin ": " crudo', () => 
   }
 });
 
-test('si hay agentes revisores, son exactamente los seis y todo effort es válido', () => {
+const AGENTS = ['review-security', 'review-database', 'review-code', 'review-tests', 'review-hygiene', 'review-docs', 'ui-option', 'ui-auditor'];
+
+test('los ocho agentes existen, el name coincide con el archivo y todo effort es válido', () => {
+  assert.ok(exists(agentsDir), 'falta la carpeta agents');
+  assert.deepStrictEqual(agentFiles.map((f) => f.replace(/\.md$/, '')).sort(), [...AGENTS].sort());
+  for (const name of AGENTS) {
+    const file = path.join(agentsDir, `${name}.md`);
+    assert.ok(exists(file), `falta el agente ${name}`);
+    const { data } = frontmatter(file);
+    assert.strictEqual(data.name, name, `${name}: el name no coincide con el archivo`);
+    assert.match(data.effort, /^(low|medium|high|xhigh|max)$/, `${name}: effort`);
+  }
+});
+
+test('los revisores son exactamente los seis review-*.md', () => {
   const reviewers = agentFiles.filter((f) => /^review-.*\.md$/.test(f));
-  if (reviewers.length === 0) return;
+  assert.strictEqual(reviewers.length, 6);
   const expected = ['security', 'database', 'code', 'tests', 'hygiene', 'docs'].map((i) => `review-${i}.md`);
   assert.deepStrictEqual([...reviewers].sort(), expected.sort());
-  for (const f of agentFiles) {
-    const { data } = frontmatter(path.join(agentsDir, f));
-    assert.match(data.effort, /^(low|medium|high|xhigh|max)$/, `${f}: effort`);
+});
+
+test('cada references/ y templates/ que nombra un SKILL.md existe en esa skill', () => {
+  let seen = 0;
+  for (const name of SKILLS) {
+    const dir = path.join(PLUGIN, 'skills', name);
+    const text = fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8');
+    for (const m of text.matchAll(/\b((?:references|templates)\/[A-Za-z0-9._-]+)/g)) {
+      seen += 1;
+      assert.ok(exists(path.join(dir, m[1])), `${name}: no existe ${m[1]}`);
+    }
   }
+  assert.ok(seen >= 10, `se esperaban varias referencias, hubo ${seen}`);
+});
+
+test('el plugin instalado lleva su LICENSE (copia de la raíz) y su CREDITS al día', () => {
+  const lic = path.join(PLUGIN, 'LICENSE');
+  assert.ok(exists(lic), 'falta plugins/pignolo/LICENSE');
+  assert.strictEqual(fs.readFileSync(lic, 'utf8').replace(/\r\n/g, '\n'),
+    fs.readFileSync(path.join(ROOT, 'LICENSE'), 'utf8').replace(/\r\n/g, '\n'));
+  const credits = fs.readFileSync(path.join(PLUGIN, 'CREDITS.md'), 'utf8');
+  assert.ok(!/`plan` skill/.test(credits), 'CREDITS nombra una skill plan que ya no existe');
+  assert.match(credits, /`start`/);
+});
+
+test('plugin.json: la descripción nombra la parte de interfaz y no lleva la palabra clave tdd', () => {
+  const p = readJson(path.join(PLUGIN, '.claude-plugin', 'plugin.json'));
+  assert.match(p.description, /interfaces web/i);
+  assert.ok(!p.keywords.includes('tdd'));
+  assert.ok(p.keywords.length > 0);
 });
