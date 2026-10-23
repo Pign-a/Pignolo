@@ -1,6 +1,6 @@
 # Medición de Pignolo 2 contra superpowers
 
-**Estado: medido (2026-10-23). Los resultados están en la sección 11, debajo del texto preinscrito, que no se tocó. La detección de frentes tiene una decisión posterior del autor y una ronda 3 pendiente de correr (sección 11.3b).**
+**Estado: medido (2026-10-23). Los resultados están en la sección 11, debajo del texto preinscrito, que no se tocó. La detección de frentes tiene una decisión posterior del autor y tres rondas (sección 11.3b); el estado actual de los tres criterios de publicación está al final de 11.4.**
 
 _Esta ficha se escribió y se commiteó antes de cualquier corrida, como pide `docs/protocolo-de-pruebas.md`. Las corridas pagas esperan el OK explícito del autor para el gasto y son condición para publicar la 1.0.0 (diseño §9)._
 
@@ -238,7 +238,7 @@ _Esta sección es posterior a las corridas de 11.3 y se escribe **después de ve
 |---|---|---|---|
 | 1 | `pignolo2` | El texto de 11.3 (con la línea `Frentes:` como parte del contrato) | 9 (3 por repo) |
 | 2 | `pignolo2-det2` | La línea `Frentes:` pasa a ser un paso propio y anunciado; la evidencia de basura delega `hygiene` sin importar el tamaño del diff | 9 (3 por repo) |
-| 3 | `pignolo2-det3` | Con el texto final: la línea `Frentes:` eliminada y un paso con `git diff --shortstat` para decidir si el diff es chico | pendiente de correr |
+| 3 | `pignolo2-det3` | Con el texto final: la línea `Frentes:` eliminada y un paso con `git diff --shortstat` para decidir si el diff es chico | 9 (3 por repo) |
 
 **Resultados por criterio (E3, 3 repeticiones por repo, solo brazo B; fuente: `summary` de cada experimento).**
 
@@ -252,7 +252,7 @@ _Esta sección es posterior a las corridas de 11.3 y se escribe **después de ve
 - **Veredicto por agentes lanzados:** ronda 1, `cli-script` y `app-db` pasan y `landing-form` no (1/3); ronda 2, `cli-script` y `landing-form` pasan y `app-db` no (2/3). En total, los agentes lanzados fueron los esperados en 7 de 9 corridas en la ronda 1 y en 8 de 9 en la ronda 2.
 - **Veredicto por la línea (criterio original):** ronda 1, solo `cli-script` pasa; ronda 2, solo `cli-script` pasa. La línea se imprimió en 5 de 9 corridas en la ronda 1 y en 3 de 9 en la ronda 2 (solo las de `cli-script`, que la imprimen vacía): con el paso propio la línea no mejoró, empeoró.
 - **Tokens ponderados, mediana (rango), ronda 2:** `cli-script` 75.460 (74.963 a 85.656), `landing-form` 140.098 (123.367 a 150.817), `app-db` 262.742 (147.231 a 282.251). Agentes: mediana 0, 2 (rango 2 a 2) y 5 (rango 2 a 5) respectivamente. Ronda 1: ver 11.3.
-- **Hallazgo de la ronda 2 que motivó el paso con `git diff --shortstat`:** en una de las tres corridas de `app-db` el modelo delegó solo `security` y `hygiene` porque juzgó "chico" un diff de 10 archivos y 134 líneas, que supera el límite de diff chico. Es un error de aplicación del umbral por parte del modelo, no de la skill, y la ronda 3 verifica si el paso con la estadística del diff lo corrige; hasta correrla no se afirma que lo corrige.
+- **Hallazgo de la ronda 2 que motivó el paso con `git diff --shortstat`:** en una de las tres corridas de `app-db` el modelo delegó solo `security` y `hygiene` porque juzgó "chico" un diff de 10 archivos y 134 líneas, que supera el límite de diff chico. Es un error de aplicación del umbral por parte del modelo, no de la skill; la ronda 3 verificó si el paso con la estadística del diff lo corrige (ver abajo).
 - **Gasto de la ronda 2:** 2,83 USD en 9 corridas; acumulado de 18,83 USD en corridas únicas, de un tope aprobado de 40.
 
 **Qué limita la lectura de la detección.**
@@ -264,21 +264,47 @@ _Esta sección es posterior a las corridas de 11.3 y se escribe **después de ve
 
 #### Ronda 3 (`pignolo2-det3`)
 
-**Pendiente de correr.** La corre el controlador con el texto final de la skill (línea `Frentes:` eliminada y paso con `git diff --shortstat`), 3 repeticiones por repo. Al correrla se completa esta tabla con los números de `summary --experiment pignolo2-det3`, sin tocar lo de arriba.
+Texto final de la skill: línea `Frentes:` eliminada, paso con `git diff --shortstat` para medir el diff y la evidencia de basura delega `hygiene` sin importar el tamaño. 9 corridas (3 por repo), solo brazo B, modelo sonnet, mismo prompt ("Validá el código del proyecto."). Solo corrió el brazo B porque superpowers no tiene un equivalente de `validate`. `validate` se activó sola en 9 de 9. Fuente: `summary --experiment pignolo2-det3` sobre el CSV.
 
-| Repo | Frentes esperados | Ronda 3: por agentes lanzados | Tokens ponderados, mediana (rango) | Agentes, mediana (rango) |
+**Las tres rondas lado a lado (E3 por ronda, 3 repeticiones por repo; criterio que decide: agentes lanzados).**
+
+| Repo | Frentes esperados | Ronda 1 | Ronda 2 | Ronda 3 |
 |---|---|---|---|---|
-| `cli-script` | ninguno | pendiente de correr | pendiente de correr | pendiente de correr |
-| `landing-form` | `security, hygiene` | pendiente de correr | pendiente de correr | pendiente de correr |
-| `app-db` | `security, database, code, tests, hygiene` | pendiente de correr | pendiente de correr | pendiente de correr |
+| `cli-script` | ninguno | 3/3 | 3/3 | **3/3** (0 agentes) |
+| `landing-form` | `security, hygiene` | 1/3 | 3/3 | **3/3** (`security` y `hygiene`, 2 agentes) |
+| `app-db` | `security, database, code, tests, hygiene` | 3/3 | 2/3 | **3/3** (los cinco frentes, 5 agentes) |
+| Total con el conjunto esperado | | 7/9 | 8/9 | **9/9** |
+| Veredicto por repo | | `cli-script` y `app-db` pasan | `cli-script` y `landing-form` pasan | **los tres pasan** |
+
+| Repo | Ronda 3: tokens ponderados, mediana (rango) | Agentes, mediana (rango) | Costo por corrida (USD) |
+|---|---|---|---|
+| `cli-script` | 75.119 (73.671 a 75.537) | 0 (0 a 0) | 0,18 |
+| `landing-form` | 148.832 (144.278 a 151.546) | 2 (2 a 2) | 0,30 a 0,31 |
+| `app-db` | 272.026 (252.007 a 279.400) | 5 (5 a 5) | 0,51 a 0,55 |
+
+- **Criterio de la línea `Frentes:`:** no aplica en la ronda 3, porque la línea se eliminó del contrato de la skill; el resumen ya no la informa. En las rondas 1 y 2 se imprimió en 5 de 9 y en 3 de 9 corridas.
+- **El paso con `git diff --shortstat` corrigió el error de la ronda 2 en estas corridas:** las tres de `app-db` delegaron los cinco frentes. Con n=3 es una confirmación, no una garantía.
+- **Gasto de la ronda 3:** 3,05 USD en 9 corridas. Acumulado en corridas únicas (una por experimento, tarea, brazo, repetición y marca de tiempo del CSV, calibración incluida): 21,87 USD de un tope aprobado de 40. La calificación a ciegas corrió en una sesión Opus aparte y su costo está fuera de ese registro.
+
+**Advertencias que acotan la lectura de la ronda 3.**
+
+- **No es una validación independiente.** El texto de la skill se cambió entre rondas **después de mirar estos mismos tres repos** (la ronda 2 y la 3 son iteraciones sobre el conjunto de prueba). La ronda 3 confirma que el arreglo funciona en ellos; no demuestra que la detección funcione en otros.
+- **Los ejemplos resueltos de la skill describen las formas de los fixtures.** La medición muestra sobre todo que se siguen los ejemplos propios de la skill, no una generalización a un repo de forma distinta (hueco abierto en `docs/gaps.md`).
+- **Tres repos de juguete y tres corridas cada uno**, un solo modelo (sonnet) y un solo brazo.
 
 ### 11.4 Conclusión
 
 - **Feature mediana (H1):** la no inferioridad se cumple en el par forzado (BF/AF = 0,84 de mediana de tokens) y en el autónomo (B/A = 1,04), con calidad no peor, ambos en E2. No se afirma que Pignolo 2 sea mejor: los rangos se pisan.
 - **Tarea chica (H2):** no se sostiene del todo. small-1 empata; small-2 falla en tokens (B alrededor de un 20 % más, sin activación de ninguno de los dos plugins, causa desconocida). Según la ficha, una falla de la anti-meta pide recortar antes de publicar; la decisión es del autor.
 - **Detección de frentes (H3), lectura de la ronda 1:** `cli-script` pasa; `app-db` y `landing-form` no pasan por la regla de la línea `Frentes:`, que se imprimió solo en 5 de 9 corridas. Con la cifra secundaria los agentes lanzados fueron los esperados en 7 de 9, pero eso no reemplaza el veredicto preinscrito.
-- **Detección de frentes (H3), actualización del 2026-10-23:** el criterio de decisión pasó a los agentes lanzados por decisión posterior del autor (11.3b); la ronda 2 dio 8 de 9 corridas con el conjunto esperado y la ronda 3 está pendiente de correr. El veredicto de H3 no se da por cerrado hasta esa ronda.
+- **Detección de frentes (H3), actualización del 2026-10-23:** el criterio de decisión pasó a los agentes lanzados por decisión posterior del autor (11.3b); la ronda 2 dio 8 de 9 corridas con el conjunto esperado y la ronda 3, con el texto final, 9 de 9 (los tres repos pasan por agentes lanzados). El texto de la skill se ajustó mirando estos mismos repos, así que la ronda 3 confirma el arreglo y no es una validación independiente (11.3b).
 - **Activación:** con prompts completos ningún plugin se activó por sí solo en los pares autónomos (0 llamadas a `Skill`); lo único que se activó solo fue `validate` ante "Validá el código del proyecto.".
+
+**Estado actual de los criterios de publicación (2026-10-23).**
+
+- **(i) No inferioridad de H1 en el par forzado:** se cumple (BF/AF = 0,84 de mediana de tokens, calidad no peor), con evidencia E2; no se afirma superioridad.
+- **(ii) Regla de la tarea chica, par autónomo:** no se cumple por completo. small-1: sin diferencia demostrada (riesgo abierto). small-2: no pasa en tokens (B alrededor de un 20 % más, causa desconocida). Ningún plugin se activó en esas corridas.
+- **(iii) Detección de frentes:** pasa por agentes lanzados en la ronda 3 (9/9, los tres repos), después de cambios al texto de la skill hechos sobre esos mismos repos; con el criterio original (línea `Frentes:`) no pasaba en las rondas 1 y 2. No es una validación independiente.
 
 ### 11.5 Amenazas a la validez observadas
 
@@ -301,6 +327,6 @@ Se suman a la sección 10:
 
 ### 11.7 Gasto
 
-32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés. La ronda 2 de la detección (`pignolo2-det2`, 9 corridas) sumó 2,83 USD (ver 11.3b).
+32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés. La ronda 2 de la detección (`pignolo2-det2`, 9 corridas) sumó 2,83 USD y la ronda 3 (`pignolo2-det3`, 9 corridas) 3,05 USD (ver 11.3b). Acumulado en corridas únicas: 21,87 USD de 40.
 
 Datos crudos: [`pignolo2-runs.csv`](pignolo2-runs.csv). Para reproducir las cifras: `node tests/evals/harness/run.mjs summary`.
