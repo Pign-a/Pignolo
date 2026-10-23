@@ -111,6 +111,9 @@ export async function runTask(cfg, args, deps = {}) {
     throw new Error(`falta ${path.join(taskDir, 'prompt.md')}`);
   }
   if (!prompt) throw new Error('prompt.md está vacío');
+  // A variant invokes the method on purpose: its prefix goes in front of the task prompt (the text lives in the config).
+  const promptPrefix = cfg.arms[arm].promptPrefix || '';
+  prompt = promptPrefix + prompt;
   if (!fs.existsSync(cfg.arms[arm].pluginDir)) throw new Error(`no existe el plugin del brazo ${arm}: ${cfg.arms[arm].pluginDir}`);
   checkPlugin(cfg, arm);
   checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName) });
@@ -196,7 +199,7 @@ export async function runTask(cfg, args, deps = {}) {
   const m = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {
-    task, arm, rep, experiment: cfg.experiment, model: cfg.model, effort: cfg.effort,
+    task, arm, rep, experiment: cfg.experiment, promptPrefix, model: cfg.model, effort: cfg.effort,
     startedAt, finishedAt: new Date().toISOString(),
     wallS: r.wallS, timedOut: r.timedOut, exitCode: r.code, signal: r.signal,
     droppedEnvNames: dropped,

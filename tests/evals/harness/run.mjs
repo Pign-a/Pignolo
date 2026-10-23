@@ -58,6 +58,7 @@ async function main() {
     const res = summarize(rows, {
       kinds, grades, includeContaminated: Boolean(o['include-contaminated']),
       experiment: o.experiment || (cfg && cfg.experiment) || DEFAULT_EXPERIMENT,
+      pairs: (cfg && cfg.pairs) || [['A', 'B']],
       weights: (cfg && cfg.weights) || DEFAULT_WEIGHTS, modelFactor: (cfg && cfg.modelFactor) || DEFAULT_MODEL_FACTOR,
     });
     console.log(o.json ? JSON.stringify(res, null, 2) : formatSummary(res));
@@ -74,7 +75,7 @@ async function main() {
   else if (cmd === 'row') { need(o, 'task', 'arm', 'rep'); print(appendRow(cfg, { ...run(o), note: o.note })); }
   else if (cmd === 'blind') {
     need(o, 'task', 'reps');
-    print(blind(cfg, { task: o.task, reps: list(o.reps), force: Boolean(o.force), allowLeaks: Boolean(o['allow-leaks']) }));
+    print(blind(cfg, { task: o.task, reps: list(o.reps), force: Boolean(o.force), allowLeaks: Boolean(o['allow-leaks']), arms: o.arms ? list(o.arms) : null }));
   } else if (cmd === 'unblind') {
     need(o, 'task', 'input');
     print(unblind(cfg, { task: o.task, input: o.input, force: Boolean(o.force) }));

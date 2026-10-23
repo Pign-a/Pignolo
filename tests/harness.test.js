@@ -1534,7 +1534,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     const cfg = loadConfig(env.cfgPath);
     assert.strictEqual(COLUMNS.join(','),
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
-        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'result_subtype', 'is_error',
+        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
         'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
@@ -1547,7 +1547,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       model_resolved: 'fake-model', claude_version: '9.9.9-fake',
       cost_usd: '1.5', weighted_tokens: '1200', input: '150', output: '30', cache_read: '1500', cache_write: '600',
       model_tokens: 'fake-model=100/20/1000/400|fake-sub=50/10/500/200',
-      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', result_subtype: 'success', is_error: 'false', exit_code: '0',
+      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
       contamination: 'false', neutral_plugins: '', neutral_config: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
@@ -2037,6 +2037,135 @@ test('CLI: prepare, run, accept, row y summary de punta a punta con el claude fa
     const miss = spawnSync(process.execPath, [RUN, 'prepare', '--task', 't1', '--arm', 'A', '--rep', '1', '--config', path.join(env.root, 'no.json')], { encoding: 'utf8' });
     assert.notStrictEqual(miss.status, 0);
     assert.match(miss.stderr, /harness\.example\.json/);
+  } finally { cleanup(env); }
+});
+
+// ---------------------------------------------------------------- variantes de brazo y pares
+
+async function variants(env, over = {}) {
+  const base = env.cfg.arms;
+  return loadWith(env, {
+    arms: {
+      A: base.A, B: base.B,
+      AF: { pluginName: 'superpowers', pluginDir: base.A.pluginDir, promptPrefix: 'Use the superpowers workflow: brainstorming, writing-plans, then execute the plan. ' },
+      BF: { pluginName: 'pignolo', pluginDir: base.B.pluginDir, promptPrefix: '/pignolo:work ' },
+    },
+    pairs: [['A', 'B'], ['AF', 'BF']],
+    ...over,
+  });
+}
+
+test('config: ids de brazo A-Z0-9 de hasta 4, promptPrefix por brazo, pares con el control primero; la identidad del plugin sale de pluginName', async () => {
+  const env = setup();
+  try {
+    const cfg = await variants(env);
+    assert.deepStrictEqual(cfg.pairs, [['A', 'B'], ['AF', 'BF']]);
+    assert.strictEqual(cfg.arms.A.promptPrefix, '', 'por defecto vacío');
+    assert.strictEqual(cfg.arms.BF.promptPrefix, '/pignolo:work ');
+    assert.deepStrictEqual((await loadWith(env, {})).pairs, [['A', 'B']], 'por defecto A contra B');
+    const { otherArm, check } = await imp('config.mjs');
+    assert.strictEqual(otherArm(cfg, 'AF'), 'B', 'el otro plugin es el de otro pluginName, no otro id');
+    assert.strictEqual(otherArm(cfg, 'BF'), 'A');
+    assert.deepStrictEqual(check(cfg, { task: 't1', arm: 'AF', rep: 1 }), { task: 't1', arm: 'AF', rep: 1 });
+    const a = env.cfg.arms.A;
+    for (const bad of ['a', 'ABCDE', '1A', 'A-B', 'A_']) {
+      await assert.rejects(() => loadWith(env, { arms: { A: a, [bad]: a } }), /id de brazo/, bad);
+    }
+    await assert.rejects(() => loadWith(env, { arms: { A: { ...a, promptPrefix: 5 }, B: env.cfg.arms.B } }), /promptPrefix/);
+    await assert.rejects(() => loadWith(env, { pairs: [['A', 'ZZ']] }), /pares|pairs/);
+    await assert.rejects(() => loadWith(env, { pairs: [['A']] }), /pares|pairs/);
+    assert.throws(() => check(cfg, { task: 't1', arm: 'ZZ', rep: 1 }), /brazo/);
+  } finally { cleanup(env); }
+});
+
+test('run: la variante con promptPrefix antepone el texto al prompt, lo registra, y la identidad sale de pluginName', async () => {
+  const env = setup();
+  try {
+    const cfg = await variants(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const log = path.join(env.root, 'stub.json');
+    await prepare(cfg, { task: 't1', arm: 'BF', rep: 1 });
+    assert.ok(fs.existsSync(path.join(env.work, 't1-BF-1', 'repo', '.git')), 'carpeta con el id completo');
+    const m = await withEnv({ FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfg, { task: 't1', arm: 'BF', rep: 1 }));
+    assert.strictEqual(JSON.parse(fs.readFileSync(log, 'utf8')).stdin, '/pignolo:work Add a feature.\nSecond line.');
+    assert.strictEqual(m.promptPrefix, '/pignolo:work ');
+    assert.strictEqual(m.ownPluginLoaded, true, 'BF carga el plugin pignolo');
+    assert.strictEqual(m.contamination, false);
+    assert.strictEqual(appendRow(cfg, { task: 't1', arm: 'BF', rep: 1 }).prompt_prefix_id, 'BF', 'solo el id del brazo, nunca el texto');
+    await prepare(cfg, { task: 't1', arm: 'A', rep: 1 });
+    const plain = await withEnv({ FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(JSON.parse(fs.readFileSync(log, 'utf8')).stdin, 'Add a feature.\nSecond line.');
+    assert.strictEqual(plain.promptPrefix, '');
+    assert.strictEqual(appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }).prompt_prefix_id, '');
+    // Un brazo con el plugin equivocado se nota por pluginName: AF con el plugin de pignolo carga "pignolo", no "superpowers".
+    const wrong = await loadWith(env, { arms: { ...env.cfg.arms, AF: { pluginName: 'superpowers', pluginDir: env.cfg.arms.B.pluginDir } } });
+    await prepare(wrong, { task: 't1', arm: 'AF', rep: 1 });
+    await assert.rejects(() => runTask(wrong, { task: 't1', arm: 'AF', rep: 1 }), /pignolo/);
+  } finally { cleanup(env); }
+});
+
+test('summary: las reglas se evalúan una vez por par, etiquetadas con el par', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const rows = [
+    ...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90]),
+    ...arm('s', 'AF', [100, 110, 120]), ...arm('s', 'BF', [300, 310, 320]),
+  ];
+  const r = summarize(rows, { kinds: { s: 'small' }, pairs: [['A', 'B'], ['AF', 'BF']] });
+  assert.deepStrictEqual(r.tasks.map((t) => t.pair), [['A', 'B'], ['AF', 'BF']]);
+  assert.deepStrictEqual(r.tasks.map((t) => t.decision.verdict), ['pasa', 'no pasa']);
+  assert.deepStrictEqual(Object.keys(r.tasks[1].arms), ['AF', 'BF']);
+  const text = formatSummary(r);
+  assert.match(text, /== s \(small\) \[par A contra B\] ==/);
+  assert.match(text, /== s \(small\) \[par AF contra BF\] ==/);
+  // Un par sin corridas no aparece; el control es el primero del par.
+  const only = summarize(rows.filter((x) => x.arm === 'A' || x.arm === 'B'), { kinds: { s: 'small' }, pairs: [['A', 'B'], ['AF', 'BF']] });
+  assert.strictEqual(only.tasks.length, 1);
+  // Sin `pairs` se usa A contra B, como antes.
+  assert.deepStrictEqual(summarize(rows, { kinds: { s: 'small' } }).tasks.map((t) => t.pair), [['A', 'B']]);
+  // La evidencia y las inválidas son por par.
+  const bad = summarize([...rows, mk('s', 'BF', 4, 50, { invalid: true, invalid_reason: 'is_error' })], { kinds: { s: 'small' }, pairs: [['A', 'B'], ['AF', 'BF']] });
+  assert.strictEqual(bad.tasks[0].decision.verdict, 'pasa');
+  assert.match(bad.tasks[1].decision.verdict, /^pendiente: 1 corridas inválidas/);
+  // El control de un par con "sin cambios" en todas sus corridas se nombra con su id.
+  const empty = summarize([...arm('s', 'AF', [100, 110, 120], () => ({ invalid: true, invalid_reason: 'no_changes' })), ...arm('s', 'BF', [80, 85, 90])], { kinds: { s: 'small' }, pairs: [['AF', 'BF']] });
+  assert.match(empty.tasks[0].decision.reasons[0], /el brazo AF termina sin cambios en todas las corridas: 3\/3/);
+  assert.strictEqual(empty.tasks[0].decision.verdict, 'no comparable');
+});
+
+test('blind: mezcla las corridas de varios brazos de una tarea y las devuelve a brazo y repetición; salta los brazos sin corrida', async () => {
+  const env = setup();
+  try {
+    const cfg = await variants(env);
+    const { blind, unblind } = await imp('blind.mjs');
+    let n = 0;
+    for (const a of ['A', 'B', 'AF', 'BF']) {
+      for (const rep of [1, 2]) {
+        n += 1;
+        writeRun(env, 't1', a, rep, { changes: CHG, patch: PATCH(n), blindPatch: PATCH(n), metrics: { finishedAt: `2026-10-23T12:00:0${n}.000Z` } });
+      }
+    }
+    const r = blind(cfg, { task: 't1', reps: [1, 2] });
+    assert.strictEqual(r.packs, 8);
+    const key = JSON.parse(fs.readFileSync(path.join(env.priv, 'blind-keys', 't1.json'), 'utf8'));
+    assert.deepStrictEqual(Object.values(key).map((k) => `${k.arm}${k.rep}`).sort(), ['A1', 'A2', 'AF1', 'AF2', 'B1', 'B2', 'BF1', 'BF2']);
+    const grader = Object.keys(key).map((label) => ({ label, serious_findings: [], correctness: 4, quality: 3 }));
+    const input = path.join(env.root, 'g.json');
+    fs.writeFileSync(input, JSON.stringify(grader));
+    unblind(cfg, { task: 't1', input });
+    const grades = JSON.parse(fs.readFileSync(cfg.gradesPath, 'utf8'));
+    assert.deepStrictEqual(grades.map((g) => `${g.arm}${g.rep}`).sort(), ['A1', 'A2', 'AF1', 'AF2', 'B1', 'B2', 'BF1', 'BF2']);
+    // Un brazo configurado que no corrió esa tarea se salta; con --arms se elige cuáles.
+    fs.rmSync(path.join(env.priv, 'blind'), { recursive: true, force: true });
+    fs.rmSync(path.join(env.priv, 'blind-keys'), { recursive: true, force: true });
+    fs.rmSync(runDir(env, 't1', 'AF', 1), { recursive: true });
+    fs.rmSync(runDir(env, 't1', 'AF', 2), { recursive: true });
+    assert.strictEqual(blind(cfg, { task: 't1', reps: [1, 2] }).packs, 6, 'AF sin corridas: se salta');
+    fs.rmSync(path.join(env.priv, 'blind'), { recursive: true, force: true });
+    fs.rmSync(path.join(env.priv, 'blind-keys'), { recursive: true, force: true });
+    assert.strictEqual(blind(cfg, { task: 't1', reps: [1, 2], arms: ['A', 'B'] }).packs, 4);
+    assert.throws(() => blind({ ...cfg }, { task: 't1', reps: [1, 2], arms: ['ZZ'], force: true }), /brazo/);
   } finally { cleanup(env); }
 });
 

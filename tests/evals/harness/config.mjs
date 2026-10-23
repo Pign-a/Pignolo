@@ -18,6 +18,8 @@ export const DEFAULT_NEUTRAL_PLUGINS = ['cc-plugin-*'];
 // Content Claude Code itself puts in the config dir when it runs logged in with the account (account skills and plugins it
 // syncs, and the data folder of each plugin). Identical in both arms, so declared instead of blocked.
 export const DEFAULT_NEUTRAL_CONFIG_PATHS = ['skills/synced', 'plugins/synced', 'plugins/data'];
+// Arm ids: A, B, or variants such as AF and BF (the same plugin invoked on purpose). The plugin of an arm is its pluginName, not its id.
+export const ARM_ID = /^[A-Z][A-Z0-9]{0,3}$/;
 export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 // Process notes and project documents that would reveal the arm (or add noise) in a diff given to the
@@ -66,7 +68,15 @@ export function loadConfig(file = DEFAULT_CONFIG) {
   }
   for (const a of Object.keys(cfg.arms)) {
     const arm = cfg.arms[a];
+    if (!ARM_ID.test(a)) throw new Error(`id de brazo inválido: ${a} (una mayúscula y hasta 3 mayúsculas o dígitos más, por ejemplo A, B, AF)`);
     if (!arm || !arm.pluginName || !arm.pluginDir) throw new Error(`el brazo ${a} necesita pluginName y pluginDir`);
+    if (arm.promptPrefix !== undefined && typeof arm.promptPrefix !== 'string') throw new Error(`el promptPrefix del brazo ${a} tiene que ser un texto`);
+  }
+  // Pairs [control, variant]: each summary rule is evaluated once per pair. By default A against B, or the first two arms.
+  const armIds = Object.keys(cfg.arms);
+  const pairs = cfg.pairs !== undefined ? cfg.pairs : [armIds.includes('A') && armIds.includes('B') ? ['A', 'B'] : armIds.slice(0, 2)];
+  if (!Array.isArray(pairs) || !pairs.length || pairs.some((p) => !Array.isArray(p) || p.length !== 2 || p[0] === p[1] || !armIds.includes(p[0]) || !armIds.includes(p[1]))) {
+    throw new Error(`pairs (pares) debe ser una lista de [control, variante] con brazos configurados (los de la configuración: ${armIds.join(', ')})`);
   }
   if (!(Number(cfg.perRunCapUsd) > 0)) throw new Error('perRunCapUsd debe ser un número mayor que 0');
   if (!(Number(cfg.totalCapUsd) > 0)) throw new Error('totalCapUsd debe ser un número mayor que 0');
@@ -104,6 +114,8 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     modelFactor: { ...DEFAULT_MODEL_FACTOR, ...(cfg.modelFactor || {}) },
     // The experiment named in the file; a --experiment flag changes cfg.experiment but not this.
     baseExperiment: cfg.experiment || DEFAULT_EXPERIMENT,
+    pairs,
+    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, promptPrefix: a.promptPrefix || '' }])),
     graderSpendPath: cfg.graderSpendPath || path.join(cfg.privateRoot, 'grader-spend.csv'),
   };
 }
@@ -112,6 +124,7 @@ const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function check(cfg, { task, arm, rep }) {
   if (typeof task !== 'string' || !ID.test(task)) throw new Error(`id de tarea inválido: ${task}`);
+  if (typeof arm !== 'string' || !ARM_ID.test(arm)) throw new Error(`id de brazo inválido: ${arm}; brazo desconocido (los de la configuración: ${Object.keys(cfg.arms).join(', ')})`);
   if (!cfg.arms[arm]) throw new Error(`brazo desconocido: ${arm} (los de la configuración: ${Object.keys(cfg.arms).join(', ')})`);
   const n = Number(rep);
   if (!Number.isInteger(n) || n < 1) throw new Error(`repetición inválida: ${rep}`);
@@ -132,4 +145,5 @@ export function runPaths(cfg, args) {
   return { task, arm, rep, dir, repo: path.join(dir, 'repo'), taskDir: path.join(cfg.privateRoot, task) };
 }
 
-export const otherArm = (cfg, arm) => Object.keys(cfg.arms).find((a) => a !== arm);
+// The other plugin: the first arm whose pluginName differs from this arm's (AF and A share a plugin, so AF's other is B).
+export const otherArm = (cfg, arm) => Object.keys(cfg.arms).find((a) => cfg.arms[a].pluginName !== cfg.arms[arm].pluginName);

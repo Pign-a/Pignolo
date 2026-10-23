@@ -77,7 +77,8 @@ For each candidate, output exactly one JSON object and nothing else:
 \`correctness\` and \`quality\` are integers from 0 to 5. Give an empty \`serious_findings\` list when there are none.
 `;
 
-export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
+// arms: which arms to mix (default: every configured arm that has runs of this task). The labels are shuffled across all of them.
+export function blind(cfg, { task, reps, force = false, allowLeaks = false, arms = null }) {
   const { taskDir } = runPaths(cfg, { task, arm: Object.keys(cfg.arms)[0], rep: 1 });
   const repList = [...new Set(reps.map(Number))].sort((a, b) => a - b);
   if (!repList.length || repList.some((r) => !Number.isInteger(r) || r < 1)) throw new Error('--reps necesita una lista de enteros, por ejemplo 1,2,3');
@@ -88,9 +89,12 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
   }
 
   const runs = [];
-  for (const arm of Object.keys(cfg.arms).sort()) {
+  const armList = arms && arms.length ? arms : Object.keys(cfg.arms).sort();
+  for (const arm of armList) {
     for (const rep of repList) {
       const { dir } = runPaths(cfg, { task, arm, rep });
+      // A configured arm that never ran this task (or this repetition) is skipped; a run that exists must be accepted first.
+      if (!fs.existsSync(dir)) continue;
       // accept wrote this diff with the process notes and project documents already left out (git pathspec excludes).
       const pf = path.join(dir, 'changes.blind.patch');
       if (!fs.existsSync(pf)) throw new Error(`falta ${pf}; corré accept para ${task}/${arm}/${rep}`);
@@ -105,6 +109,7 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
       runs.push({ arm, rep, timestamp, eol, patch: fs.readFileSync(pf, 'utf8') });
     }
   }
+  if (!runs.length) throw new Error(`no hay corridas de ${task} para armar paquetes (brazos: ${armList.join(', ')}; repeticiones: ${repList.join(', ')})`);
   if (runs.length > LABELS.length) throw new Error('demasiadas corridas para etiquetar');
 
   const terms = [...Object.values(cfg.arms).map((a) => a.pluginName), ...(cfg.blindLeakTerms || [])].filter(Boolean);

@@ -123,51 +123,53 @@ function gradesFor(grades, task, rows) {
     && (g.timestamp === undefined || g.timestamp === null || String(g.timestamp) === String(r.timestamp))));
 }
 
-function missingAcceptance(a, b) {
-  const lacking = [['A', a], ['B', b]].filter(([, s]) => !s.accept || s.accept.runs < s.n);
+function missingAcceptance(a, b, ids) {
+  const lacking = [[ids[0], a], [ids[1], b]].filter(([, s]) => !s.accept || s.accept.runs < s.n);
   if (!lacking.length) return null;
   return `falta la aceptación en corridas válidas de ${lacking.map(([n, s]) => `${n} (${s.accept ? s.accept.runs : 0} de ${s.n})`).join(' y ')}: corré accept y row`;
 }
 
-// H1, non-inferiority: B passes when median(B) <= 1.5 x median(A) AND max(B) <= 1.5 x max(A) AND quality is equal or better.
-// Overlapping ranges only stop a claim of superiority; they never stop B from passing.
-function decideMedium(a, b, grades) {
+// H1, non-inferiority: the variant Y passes when median(Y) <= 1.5 x median(X) AND max(Y) <= 1.5 x max(X) AND quality is equal or
+// better, X being the control of the pair. Overlapping ranges only stop a claim of superiority; they never stop Y from passing.
+function decideMedium(a, b, grades, ids = ['A', 'B']) {
+  const [X, Y] = ids;
   const reasons = [];
   if (!a.tokens || !b.tokens) return { verdict: 'pendiente', reasons: ['faltan corridas con tokens en algún brazo'] };
-  const miss = missingAcceptance(a, b);
+  const miss = missingAcceptance(a, b, ids);
   if (miss) return { verdict: 'pendiente', reasons: [miss] };
   const ratio = b.tokens.median / a.tokens.median;
   const ratioMax = b.tokens.max / a.tokens.max;
-  reasons.push(`tokens ponderados: mediana B/A = ${fmt(ratio, 2)} (umbral 1,5); máximo B/A = ${fmt(ratioMax, 2)} (umbral 1,5)`);
-  if (a.cost && b.cost) reasons.push(`costo USD (informativo): mediana B ${fmt(b.cost.median, 4)} / A ${fmt(a.cost.median, 4)}`);
+  reasons.push(`tokens ponderados: mediana ${Y}/${X} = ${fmt(ratio, 2)} (umbral 1,5); máximo ${Y}/${X} = ${fmt(ratioMax, 2)} (umbral 1,5)`);
+  if (a.cost && b.cost) reasons.push(`costo USD (informativo): mediana ${Y} ${fmt(b.cost.median, 4)} / ${X} ${fmt(a.cost.median, 4)}`);
   if (b.tokens.median < a.tokens.median) {
     reasons.push(overlap(a.tokens, b.tokens)
-      ? 'B por debajo de A en la mediana, pero los rangos se pisan: no se afirma superioridad'
-      : 'B por debajo de A con los rangos separados');
+      ? `${Y} por debajo de ${X} en la mediana, pero los rangos se pisan: no se afirma superioridad`
+      : `${Y} por debajo de ${X} con los rangos separados`);
   }
   const over = [];
-  if (b.tokens.median > 1.5 * a.tokens.median) over.push('la mediana de tokens de B pasa 1,5 veces la de A');
-  if (b.tokens.max > 1.5 * a.tokens.max) over.push('el máximo de tokens de B pasa 1,5 veces el máximo de A');
+  if (b.tokens.median > 1.5 * a.tokens.median) over.push(`la mediana de tokens de ${Y} pasa 1,5 veces la de ${X}`);
+  if (b.tokens.max > 1.5 * a.tokens.max) over.push(`el máximo de tokens de ${Y} pasa 1,5 veces el máximo de ${X}`);
   if (over.length) return { verdict: 'no pasa', reasons: [...reasons, ...over] };
-  const qa = qualityOf(grades, 'A');
-  const qb = qualityOf(grades, 'B');
+  const qa = qualityOf(grades, X);
+  const qb = qualityOf(grades, Y);
   if (qa.n < a.n || qb.n < b.n) {
-    reasons.push(`falta la nota de calidad a ciegas de corridas válidas (A ${qa.n} de ${a.n}, B ${qb.n} de ${b.n}): corré blind y unblind`);
+    reasons.push(`falta la nota de calidad a ciegas de corridas válidas (${X} ${qa.n} de ${a.n}, ${Y} ${qb.n} de ${b.n}): corré blind y unblind`);
     return { verdict: 'pendiente', reasons };
   }
   const bad = [];
-  if (qb.quality < qa.quality) bad.push(`calidad: mediana de nota B ${qb.quality} < A ${qa.quality}`);
-  if (qb.serious > qa.serious) bad.push(`calidad: hallazgos graves B ${qb.serious} > A ${qa.serious} (mediana)`);
+  if (qb.quality < qa.quality) bad.push(`calidad: mediana de nota ${Y} ${qb.quality} < ${X} ${qa.quality}`);
+  if (qb.serious > qa.serious) bad.push(`calidad: hallazgos graves ${Y} ${qb.serious} > ${X} ${qa.serious} (mediana)`);
   const ra = rate(a.accept);
   const rb = rate(b.accept);
-  if (ra !== null && rb !== null && rb < ra) bad.push(`calidad: corridas verdes en aceptación B ${fmt(rb * 100, 0)}% < A ${fmt(ra * 100, 0)}%`);
+  if (ra !== null && rb !== null && rb < ra) bad.push(`calidad: corridas verdes en aceptación ${Y} ${fmt(rb * 100, 0)}% < ${X} ${fmt(ra * 100, 0)}%`);
   if (bad.length) return { verdict: 'no pasa', reasons: [...reasons, ...bad] };
-  reasons.push(`calidad: nota mediana B ${qb.quality} >= A ${qa.quality}, hallazgos graves B ${qb.serious} <= A ${qa.serious}`);
+  reasons.push(`calidad: nota mediana ${Y} ${qb.quality} >= ${X} ${qa.quality}, hallazgos graves ${Y} ${qb.serious} <= ${X} ${qa.serious}`);
   reasons.push('no inferioridad (H1): se cumple');
   return { verdict: 'pasa', reasons };
 }
 
-function decideSmall(a, b) {
+function decideSmall(a, b, ids = ['A', 'B']) {
+  const [X, Y] = ids;
   const reasons = [];
   let fail = false;
   let open = false;
@@ -175,33 +177,33 @@ function decideSmall(a, b) {
   for (const [name, key] of [['tiempo de pared', 'wall'], ['tokens ponderados', 'tokens']]) {
     if (!a[key] || !b[key]) return { verdict: 'pendiente', reasons: [`faltan datos de ${name} en algún brazo`] };
     if (b[key].median <= a[key].median) {
-      reasons.push(`${name}: mediana B ${fmt(b[key].median)} <= A ${fmt(a[key].median)}`);
+      reasons.push(`${name}: mediana ${Y} ${fmt(b[key].median)} <= ${X} ${fmt(a[key].median)}`);
     } else if (overlap(a[key], b[key])) {
       open = true;
-      reasons.push(`${name}: mediana B ${fmt(b[key].median)} > A ${fmt(a[key].median)} pero los rangos se pisan (riesgo abierto)`);
+      reasons.push(`${name}: mediana ${Y} ${fmt(b[key].median)} > ${X} ${fmt(a[key].median)} pero los rangos se pisan (riesgo abierto)`);
     } else {
       fail = true;
-      reasons.push(`${name}: mediana B ${fmt(b[key].median)} > A ${fmt(a[key].median)} con rangos separados`);
+      reasons.push(`${name}: mediana ${Y} ${fmt(b[key].median)} > ${X} ${fmt(a[key].median)} con rangos separados`);
     }
   }
-  if (a.cost && b.cost) reasons.push(`costo USD (informativo): mediana B ${fmt(b.cost.median, 4)} / A ${fmt(a.cost.median, 4)}`);
-  const miss = missingAcceptance(a, b);
+  if (a.cost && b.cost) reasons.push(`costo USD (informativo): mediana ${Y} ${fmt(b.cost.median, 4)} / ${X} ${fmt(a.cost.median, 4)}`);
+  const miss = missingAcceptance(a, b, ids);
   if (miss) { pending = true; reasons.push(miss); }
   if (b.accept) {
     if (b.accept.greenRuns < b.accept.runs) {
       fail = true;
-      reasons.push(`resultado incorrecto: ${b.accept.runs - b.accept.greenRuns} de ${b.accept.runs} corridas de B no pasan la aceptación`);
+      reasons.push(`resultado incorrecto: ${b.accept.runs - b.accept.greenRuns} de ${b.accept.runs} corridas de ${Y} no pasan la aceptación`);
     } else if (!miss) {
-      reasons.push('resultado correcto en todas las corridas de B');
+      reasons.push(`resultado correcto en todas las corridas de ${Y}`);
     }
   }
   if (b.full.overBaseline) {
     fail = true;
-    reasons.push(`suite completa: ${b.full.overBaseline} corridas de B con más fallas que el piso (baselineFull)`);
+    reasons.push(`suite completa: ${b.full.overBaseline} corridas de ${Y} con más fallas que el piso (baselineFull)`);
   }
   if (b.full.baselineMissing) {
     pending = true;
-    reasons.push(`suite completa: falta el piso baselineFull de la tarea en <privateRoot>/tasks.json (${b.full.baselineMissing} corridas de B sin piso)`);
+    reasons.push(`suite completa: falta el piso baselineFull de la tarea en <privateRoot>/tasks.json (${b.full.baselineMissing} corridas de ${Y} sin piso)`);
   }
   if (fail) return { verdict: 'no pasa', reasons };
   if (pending) return { verdict: 'pendiente', reasons };
@@ -209,7 +211,7 @@ function decideSmall(a, b) {
 }
 
 export function summarize(rowsIn, {
-  kinds = {}, grades = [], includeContaminated = false, experiment = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR,
+  kinds = {}, grades = [], includeContaminated = false, experiment = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, pairs = [['A', 'B']],
 } = {}) {
   const notes = [];
   let rowsAll = rowsIn;
@@ -257,57 +259,67 @@ export function summarize(rowsIn, {
   if (fallback) notes.push(`${fallback} filas sin tokens por modelo: se usó el ponderado guardado en el CSV en vez de recalcularlo`);
 
   const tasks = [];
+  const pairList = pairs && pairs.length ? pairs : [['A', 'B']];
   for (const task of [...new Set(current.map((r) => r.task))].sort()) {
-    const mine = validRows.filter((r) => r.task === task);
-    const bad = invalidRows.filter((r) => r.task === task);
-    const arms = {};
-    for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
-    const nA = arms.A ? arms.A.n : 0;
-    const nB = arms.B ? arms.B.n : 0;
-    // Evidence level: E3 from 3 valid runs per arm, E2 with 2, none with 1 or fewer (one run per arm shows no spread).
-    const evidence = Math.min(nA, nB) >= 3 ? 'E3' : Math.min(nA, nB) >= 2 ? 'E2' : 'sin evidencia';
     const kind = kinds[task] || null;
-    let decision;
-    if (!arms.A || !arms.B) decision = { verdict: 'pendiente', reasons: ['falta un brazo con corridas válidas'] };
-    else if (kind === 'medium') decision = decideMedium(arms.A, arms.B, gradesFor(grades, task, mine));
-    else if (kind === 'small') decision = decideSmall(arms.A, arms.B);
-    else decision = { verdict: 'pendiente', reasons: ['tipo de tarea no definido (medium o small): usá la configuración "tasks" o --medium / --small'] };
-    const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
-    // An arm whose every attempt ends without changes (for example it always stops to ask a question) is a result of the
-    // measurement, not a reason to wait: it is named as such and the task is decided from it.
-    const systematicNoChanges = [];
-    const lines = [];
-    for (const a of ['A', 'B']) {
-      const attempts = current.filter((r) => r.task === task && r.arm === a);
-      if (attempts.length && attempts.every((r) => reasonsOf(r).includes('no_changes'))) {
-        systematicNoChanges.push(a);
-        lines.push(`el brazo ${a} termina sin cambios en todas las corridas: ${attempts.length}/${attempts.length}`);
+    // Each rule is evaluated once per pair [control, variant]; a pair with no runs of this task does not appear.
+    for (const pair of pairList) {
+      const [X, Y] = pair;
+      const inPair = (r) => r.arm === X || r.arm === Y;
+      const mine = validRows.filter((r) => r.task === task && inPair(r));
+      const bad = invalidRows.filter((r) => r.task === task && inPair(r));
+      if (!mine.length && !bad.length) continue;
+      const arms = {};
+      for (const a of [X, Y]) {
+        const rowsOfArm = mine.filter((r) => r.arm === a);
+        if (rowsOfArm.length) arms[a] = armStats(rowsOfArm);
       }
+      const nX = arms[X] ? arms[X].n : 0;
+      const nY = arms[Y] ? arms[Y].n : 0;
+      // Evidence level: E3 from 3 valid runs per arm, E2 with 2, none with 1 or fewer (one run per arm shows no spread).
+      const evidence = Math.min(nX, nY) >= 3 ? 'E3' : Math.min(nX, nY) >= 2 ? 'E2' : 'sin evidencia';
+      let decision;
+      if (!arms[X] || !arms[Y]) decision = { verdict: 'pendiente', reasons: ['falta un brazo con corridas válidas'] };
+      else if (kind === 'medium') decision = decideMedium(arms[X], arms[Y], gradesFor(grades, task, mine), pair);
+      else if (kind === 'small') decision = decideSmall(arms[X], arms[Y], pair);
+      else decision = { verdict: 'pendiente', reasons: ['tipo de tarea no definido (medium o small): usá la configuración "tasks" o --medium / --small'] };
+      const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
+      // An arm whose every attempt ends without changes (for example it always stops to ask a question) is a result of the
+      // measurement, not a reason to wait: it is named as such and the task is decided from it.
+      const systematicNoChanges = [];
+      const lines = [];
+      for (const a of pair) {
+        const attempts = current.filter((r) => r.task === task && r.arm === a);
+        if (attempts.length && attempts.every((r) => reasonsOf(r).includes('no_changes'))) {
+          systematicNoChanges.push(a);
+          lines.push(`el brazo ${a} termina sin cambios en todas las corridas: ${attempts.length}/${attempts.length}`);
+        }
+      }
+      if (systematicNoChanges.length) {
+        decision = {
+          verdict: systematicNoChanges.includes(X) ? 'no comparable' : 'no pasa',
+          reasons: [...lines, ...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`)],
+          provisional: decision.verdict,
+        };
+      } else if (invalid.length) {
+        decision = {
+          verdict: `pendiente: ${invalid.length} corridas inválidas`,
+          reasons: [...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`), 'las cifras de abajo son provisionales, sin esas corridas', ...decision.reasons],
+          provisional: decision.verdict,
+        };
+      }
+      // A comparison in which no run called a skill of its plugin measures the base model, not the method.
+      const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
+      const known = Object.entries(activation).filter(([, v]) => v.m > 0);
+      const activationNotes = [];
+      if (known.length && known.every(([, v]) => v.n === 0)) {
+        activationNotes.push('ningún corrida activó el plugin: la comparación de esta tarea mide al modelo base');
+      } else {
+        for (const [a, v] of known) if (v.n === 0) activationNotes.push(`el brazo ${a} no activó el plugin en ninguna corrida (0/${v.m})`);
+      }
+      const eol = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol]));
+      tasks.push({ task, kind, pair, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes, eol });
     }
-    if (systematicNoChanges.length) {
-      decision = {
-        verdict: systematicNoChanges.includes('A') ? 'no comparable' : 'no pasa',
-        reasons: [...lines, ...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`)],
-        provisional: decision.verdict,
-      };
-    } else if (invalid.length) {
-      decision = {
-        verdict: `pendiente: ${invalid.length} corridas inválidas`,
-        reasons: [...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`), 'las cifras de abajo son provisionales, sin esas corridas', ...decision.reasons],
-        provisional: decision.verdict,
-      };
-    }
-    // A comparison in which no run called a skill of its plugin measures the base model, not the method.
-    const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
-    const known = Object.entries(activation).filter(([, v]) => v.m > 0);
-    const activationNotes = [];
-    if (known.length && known.every(([, v]) => v.n === 0)) {
-      activationNotes.push('ningún corrida activó el plugin: la comparación de esta tarea mide al modelo base');
-    } else {
-      for (const [a, v] of known) if (v.n === 0) activationNotes.push(`el brazo ${a} no activó el plugin en ninguna corrida (0/${v.m})`);
-    }
-    const eol = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol]));
-    tasks.push({ task, kind, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes, eol });
   }
   return { tasks, notes };
 }
@@ -322,7 +334,7 @@ const range = (s, d = 2) => (s ? `mediana ${fmt(s.median, d)} (rango ${fmt(s.min
 export function formatSummary(res) {
   const out = [];
   for (const t of res.tasks) {
-    out.push(`== ${t.task}${t.kind ? ` (${t.kind})` : ''} ==`);
+    out.push(`== ${t.task}${t.kind ? ` (${t.kind})` : ''}${t.pair ? ` [par ${t.pair[0]} contra ${t.pair[1]}]` : ''} ==`);
     out.push(`evidence: ${t.evidence}`);
     for (const [a, s] of Object.entries(t.arms)) {
       const acc = s.accept ? `${s.accept.pass}/${s.accept.pass + s.accept.fail} tests (${s.accept.greenRuns}/${s.accept.runs} corridas verdes)` : 'sin dato';
