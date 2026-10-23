@@ -151,6 +151,7 @@ export async function runTask(cfg, args, deps = {}) {
     otherPlugin: other ? cfg.arms[other].pluginName : null,
     otherPluginDir: other ? cfg.arms[other].pluginDir : null,
     weights: cfg.weights,
+    modelFactor: cfg.modelFactor,
   });
   const escapedCwd = findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDirName: path.basename(dir) });
   const metrics = {

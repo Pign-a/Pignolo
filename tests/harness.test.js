@@ -483,6 +483,89 @@ test('run: tocar el repo fuente, la carpeta privada u otra corrida se marca esca
   } finally { cleanup(env); }
 });
 
+// ---------------------------------------------------------------- corridas inválidas, pesos por modelo, texto final
+
+test('run: tope de presupuesto superado, error y corte por tiempo quedan marcados como inválidos', async () => {
+  const env = setup({ timeoutMs: 800 });
+  try {
+    const { runTask } = await imp('execute.mjs');
+    const cfgA = await prepared(env, 'A', 1);
+    const budget = await withEnv({ FAKE_CLAUDE_MODE: 'budget,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(budget.resultSubtype, 'error_max_budget_usd');
+    assert.deepStrictEqual(budget.invalidReasons.sort(), ['budget_cap', 'is_error']);
+    await prepared(env, 'A', 2);
+    const failed = await withEnv({ FAKE_CLAUDE_MODE: 'fail,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 2 }));
+    assert.deepStrictEqual(failed.invalidReasons.sort(), ['exit_nonzero', 'is_error', 'result_not_success']);
+    await prepared(env, 'A', 3);
+    const hung = await withEnv({ FAKE_CLAUDE_MODE: 'hang' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 3 }));
+    assert.deepStrictEqual(hung.invalidReasons.sort(), ['no_result', 'timed_out']);
+    await prepared(env, 'A', 4);
+    const ok = await withEnv({ FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 4 }));
+    assert.deepStrictEqual(ok.invalidReasons, []);
+    const { invalidReasons } = await imp('metrics.mjs');
+    assert.deepStrictEqual(invalidReasons({ hasResult: true, resultSubtype: 'error_max_turns', isError: true, exitCode: 0, timedOut: false, contaminationHits: [] }).sort(), ['is_error', 'result_not_success']);
+    assert.deepStrictEqual(invalidReasons({ hasResult: true, resultSubtype: 'success', isError: false, exitCode: 0, timedOut: false, contaminationHits: [] }), []);
+  } finally { cleanup(env); }
+});
+
+test('metrics: un solo juego de pesos, multiplicado por el factor de la familia del modelo', async () => {
+  const { weightedTokens, parseStream } = await imp('metrics.mjs');
+  const t = { input: 100, output: 10, cacheRead: 1000, cacheWrite: 100 };
+  const base = weightedTokens(t); // 100 + 50 + 100 + 125
+  assert.strictEqual(base, 375);
+  assert.strictEqual(weightedTokens(t, undefined, 5), 1875);
+  const { modelFactorFor } = await imp('metrics.mjs');
+  const factors = { opus: 5, sonnet: 1, haiku: 0.33 };
+  assert.strictEqual(modelFactorFor('claude-opus-4-1-20250805', factors), 5);
+  assert.strictEqual(modelFactorFor('claude-sonnet-4-5[1m]', factors), 1);
+  assert.strictEqual(modelFactorFor('claude-haiku-4-5', factors), 0.33);
+  assert.strictEqual(modelFactorFor('mystery-model', factors), 1, 'sin familia conocida: 1');
+  const mu = (n) => ({ inputTokens: n, outputTokens: n, cacheReadInputTokens: n, cacheCreationInputTokens: n });
+  const stream = [
+    JSON.stringify({ type: 'system', subtype: 'init', model: 'claude-opus-4-1', plugins: [{ name: 'superpowers' }] }),
+    JSON.stringify({ type: 'result', subtype: 'success', total_cost_usd: 3, modelUsage: { 'claude-opus-4-1': mu(100), 'claude-haiku-4-5': mu(100), 'weird-model': mu(10) } }),
+  ].join('\n');
+  const m = parseStream(stream, { ownPlugin: 'superpowers', otherPlugin: 'pignolo', modelFactor: factors });
+  const per = 100 * 1 + 100 * 5 + 100 * 0.1 + 100 * 1.25; // 735
+  assert.strictEqual(m.weightedTokens, Math.round((per * 5 + per * 0.33 + 73.5) * 100) / 100);
+  assert.deepStrictEqual(m.tokensByModel['claude-opus-4-1'], { input: 100, output: 100, cacheRead: 100, cacheWrite: 100 });
+  assert.deepStrictEqual(m.unknownModels, ['weird-model']);
+  assert.deepStrictEqual(m.tokens, { input: 210, output: 210, cacheRead: 210, cacheWrite: 210 });
+});
+
+test('run: guarda el final del texto del resultado (solo en metrics.json) para ver si terminó con una pregunta', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'ask' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.ok(m.finalText.length <= 1024 && m.finalText.endsWith('A or B?'), 'las últimas líneas, acotadas a ~1 KB');
+    const ok = await prepared(env, 'B', 1);
+    const m2 = await withEnv({ FAKE_CLAUDE_MODE: 'ok' }, () => runTask(ok, { task: 't1', arm: 'B', rep: 1 }));
+    assert.strictEqual(m2.finalText, 'Done.');
+  } finally { cleanup(env); }
+});
+
+test('row: una corrida inválida se marca con sus motivos y una fila de otro experimento se rechaza', async () => {
+  const env = setup();
+  try {
+    writeRun(env, 't1', 'A', 1, {
+      acceptance: ACC, changes: CHG,
+      metrics: { resultSubtype: 'error_max_budget_usd', isError: true, exitCode: 1, timedOut: true, invalidReasons: ['budget_cap', 'is_error', 'timed_out'] },
+    });
+    writeRun(env, 't1', 'B', 1, { acceptance: ACC, changes: CHG, metrics: { experiment: 'otro-exp' } });
+    const { loadConfig } = await imp('config.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    const [r] = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'));
+    assert.deepStrictEqual([r.invalid, r.invalid_reason, r.result_subtype, r.is_error, r.exit_code, r.timed_out], ['true', 'budget_cap;is_error;timed_out', 'error_max_budget_usd', 'true', '1', 'true']);
+    assert.throws(() => appendRow(cfg, { task: 't1', arm: 'B', rep: 1 }), /otro-exp/);
+    appendRow({ ...cfg, experiment: 'otro-exp' }, { task: 't1', arm: 'B', rep: 1 });
+    assert.strictEqual(parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'))[1].experiment, 'otro-exp');
+  } finally { cleanup(env); }
+});
+
 // ---------------------------------------------------------------- accept
 
 test('accept: calcula el resumen de cambios ANTES de copiar los tests y registra los conteos', async () => {
@@ -540,16 +623,23 @@ function writeRun(env, task, arm, rep, { metrics = {}, acceptance, changes, patc
   const dir = runDir(env, task, arm, rep);
   fs.mkdirSync(dir, { recursive: true });
   const m = {
-    task, arm, rep, model: 'sonnet', finishedAt: '2026-10-23T12:00:00.000Z', costUsd: 1.5,
+    task, arm, rep, experiment: 'toy-exp', model: 'sonnet', finishedAt: '2026-10-23T12:00:00.000Z', costUsd: 1.5,
     weightedTokens: 1200, tokens: { input: 150, output: 30, cacheRead: 1500, cacheWrite: 600 },
-    wallS: 42.5, turns: 4, agents: 2, timedOut: false, contamination: false, ...metrics,
+    tokensByModel: { 'fake-model': { input: 100, output: 20, cacheRead: 1000, cacheWrite: 400 }, 'fake-sub': { input: 50, output: 10, cacheRead: 500, cacheWrite: 200 } },
+    wallS: 42.5, durationMs: 40000, turns: 4, agents: 2, agentsMain: 1, resultSubtype: 'success', isError: false, exitCode: 0,
+    init: { model: 'fake-model', claude_code_version: '9.9.9-fake' }, invalidReasons: [],
+    timedOut: false, contamination: false, ...metrics,
   };
   fs.writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(m));
   if (acceptance) fs.writeFileSync(path.join(dir, 'acceptance.json'), JSON.stringify(acceptance));
   if (changes) fs.writeFileSync(path.join(dir, 'changes.json'), JSON.stringify(changes));
   if (patch !== undefined) fs.writeFileSync(path.join(dir, 'changes.patch'), patch);
 }
-const ACC = { accept: { pass: 2, fail: 1, source: 'json' }, full: { pass: 3, fail: 0, source: 'summary' } };
+const ACC = {
+  accept: { pass: 2, fail: 1, source: 'json', exitCode: 1, suitesFailed: 0 },
+  full: { pass: 3, fail: 0, source: 'summary', exitCode: 0, suitesFailed: null },
+  baselineFull: { fail: 0 },
+};
 const CHG = { filesChanged: 1, linesAdded: 3, linesRemoved: 0, files: ['src/feature.js'] };
 
 test('row: agrega una fila con las columnas del contrato y rechaza duplicados', async () => {
@@ -560,7 +650,10 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     const { appendRow, COLUMNS, parseCsv } = await imp('row.mjs');
     const cfg = loadConfig(env.cfgPath);
     assert.strictEqual(COLUMNS.join(','),
-      'experiment,task,arm,rep,timestamp,model,cost_usd,weighted_tokens,input,output,cache_read,cache_write,wall_s,turns,agents,accept_pass,accept_fail,full_pass,full_fail,timed_out,contamination,files_changed,lines_added,lines_removed,note');
+      ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
+        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'result_subtype', 'is_error',
+        'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
+        'full_fail', 'full_baseline_fail', 'contamination', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -568,9 +661,13 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     const [r] = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'));
     assert.deepStrictEqual(r, {
       experiment: 'toy-exp', task: 't1', arm: 'A', rep: '1', timestamp: '2026-10-23T12:00:00.000Z', model: 'sonnet',
+      model_resolved: 'fake-model', claude_version: '9.9.9-fake',
       cost_usd: '1.5', weighted_tokens: '1200', input: '150', output: '30', cache_read: '1500', cache_write: '600',
-      wall_s: '42.5', turns: '4', agents: '2', accept_pass: '2', accept_fail: '1', full_pass: '3', full_fail: '0',
-      timed_out: 'false', contamination: 'false', files_changed: '1', lines_added: '3', lines_removed: '0',
+      model_tokens: 'fake-model=100/20/1000/400|fake-sub=50/10/500/200',
+      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', result_subtype: 'success', is_error: 'false', exit_code: '0',
+      timed_out: 'false', invalid: 'false', invalid_reason: '',
+      accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
+      contamination: 'false', files_changed: '1', lines_added: '3', lines_removed: '0',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);

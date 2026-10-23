@@ -1,13 +1,31 @@
 // Metrics from a claude stream-json log.
-import { DEFAULT_WEIGHTS } from './config.mjs';
+import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
 
 const r2 = (x) => Math.round(x * 100) / 100;
+const FINAL_TEXT_BYTES = 1024;
 
-export function weightedTokens(t, w = DEFAULT_WEIGHTS) {
-  return r2(t.input * w.input + t.output * w.output + t.cacheRead * w.cacheRead + t.cacheWrite * w.cacheWrite);
+const rawWeighted = (t, w) => t.input * w.input + t.output * w.output + t.cacheRead * w.cacheRead + t.cacheWrite * w.cacheWrite;
+
+// One weight set for every model; `factor` scales it for the model family (see modelFactorFor).
+export function weightedTokens(t, w = DEFAULT_WEIGHTS, factor = 1) {
+  return r2(rawWeighted(t, w) * factor);
+}
+
+// First family name that is a substring of the model id; null when none matches.
+export function familyOf(model, factors = DEFAULT_MODEL_FACTOR) {
+  const id = String(model || '').toLowerCase();
+  for (const family of Object.keys(factors)) if (id.includes(family.toLowerCase())) return family;
+  return null;
+}
+
+export function modelFactorFor(model, factors = DEFAULT_MODEL_FACTOR) {
+  const f = familyOf(model, factors);
+  return f === null ? 1 : Number(factors[f]);
 }
 
 const num = (x) => (typeof x === 'number' && Number.isFinite(x) ? x : 0);
+const sum = (a, b) => ({ input: a.input + b.input, output: a.output + b.output, cacheRead: a.cacheRead + b.cacheRead, cacheWrite: a.cacheWrite + b.cacheWrite });
+const zero = () => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
 
 function fromUsage(u) {
   return {
@@ -17,15 +35,15 @@ function fromUsage(u) {
 }
 
 function fromModelUsage(mu) {
-  const t = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
-  for (const m of Object.values(mu)) {
+  const byModel = {};
+  for (const [name, m] of Object.entries(mu)) {
     if (!m || typeof m !== 'object') continue;
-    t.input += num(m.inputTokens);
-    t.output += num(m.outputTokens);
-    t.cacheRead += num(m.cacheReadInputTokens);
-    t.cacheWrite += num(m.cacheCreationInputTokens);
+    byModel[name] = {
+      input: num(m.inputTokens), output: num(m.outputTokens),
+      cacheRead: num(m.cacheReadInputTokens), cacheWrite: num(m.cacheCreationInputTokens),
+    };
   }
-  return t;
+  return byModel;
 }
 
 // A name belongs to a plugin when it is the plugin itself or one of its namespaced items.
@@ -38,7 +56,7 @@ export function belongsTo(name, plugin) {
 
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);
 
-export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS } = {}) {
+export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR } = {}) {
   let result = null;
   let badLines = 0;
   const agentIds = new Set();
@@ -86,16 +104,28 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
 
   let tokens = null;
   let tokenSource = null;
+  let tokensByModel = null;
   let usageMainThread = null;
   if (result) {
     if (result.usage && typeof result.usage === 'object') usageMainThread = fromUsage(result.usage);
     if (result.modelUsage && typeof result.modelUsage === 'object' && Object.keys(result.modelUsage).length) {
-      tokens = fromModelUsage(result.modelUsage);
+      tokensByModel = fromModelUsage(result.modelUsage);
       tokenSource = 'modelUsage';
     } else if (usageMainThread) {
-      tokens = usageMainThread;
+      tokensByModel = { [(init && init.model) || 'unknown']: usageMainThread };
       tokenSource = 'usage';
     }
+    if (tokensByModel) tokens = Object.values(tokensByModel).reduce(sum, zero());
+  }
+  let weighted = null;
+  const unknownModels = [];
+  if (tokensByModel) {
+    let total = 0;
+    for (const [model, t] of Object.entries(tokensByModel)) {
+      if (familyOf(model, modelFactor) === null) unknownModels.push(model);
+      total += rawWeighted(t, weights) * modelFactorFor(model, modelFactor);
+    }
+    weighted = r2(total);
   }
   const ownPluginLoaded = loaded.some((n) => belongsTo(n, ownPlugin));
   if (!ownPluginLoaded) hits.push('own_plugin_not_loaded');
@@ -104,15 +134,19 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     hasResult: Boolean(result),
     resultSubtype: result ? result.subtype ?? null : null,
     isError: result ? Boolean(result.is_error) : null,
+    finalText: result && typeof result.result === 'string' ? result.result.slice(-FINAL_TEXT_BYTES) : null,
     costUsd: result && typeof result.total_cost_usd === 'number' ? result.total_cost_usd : null,
     durationMs: result && typeof result.duration_ms === 'number' ? result.duration_ms : null,
     turns: result && typeof result.num_turns === 'number' ? result.num_turns : null,
     tokens,
     tokenSource,
+    tokensByModel,
     usageMainThread,
     modelUsage: result && result.modelUsage && typeof result.modelUsage === 'object' ? result.modelUsage : null,
     weights,
-    weightedTokens: tokens ? weightedTokens(tokens, weights) : null,
+    modelFactor,
+    unknownModels,
+    weightedTokens: weighted,
     agents: agentIds.size,
     agentsMain: mainIds.size,
     contamination: uniqueHits.length > 0,
@@ -168,8 +202,17 @@ export function findEscape(text, { sourceRepo, privateRoot, workRoot, runDirName
 // Reasons why a run cannot be trusted. Empty list: the run is valid.
 export function invalidReasons(m) {
   const r = [];
-  if (m.contaminationHits && m.contaminationHits.includes('own_plugin_not_loaded')) r.push('own_plugin_not_loaded');
-  if (m.contaminationHits && m.contaminationHits.some((h) => h !== 'own_plugin_not_loaded')) r.push('contaminated');
+  if (!m.hasResult) r.push('no_result');
+  if (m.timedOut) r.push('timed_out');
+  else if ((m.exitCode !== null && m.exitCode !== undefined && m.exitCode !== 0) || m.signal) r.push('exit_nonzero');
+  if (m.isError) r.push('is_error');
+  if (m.hasResult) {
+    if (/budget/i.test(String(m.resultSubtype))) r.push('budget_cap');
+    else if (m.resultSubtype !== 'success') r.push('result_not_success');
+  }
+  const hits = m.contaminationHits || [];
+  if (hits.includes('own_plugin_not_loaded')) r.push('own_plugin_not_loaded');
+  if (hits.some((h) => h !== 'own_plugin_not_loaded')) r.push('contaminated');
   if (m.escapedCwd) r.push('escaped_cwd');
   return r;
 }

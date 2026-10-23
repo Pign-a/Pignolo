@@ -4,10 +4,30 @@ import path from 'node:path';
 import { runPaths } from './config.mjs';
 
 export const COLUMNS = [
-  'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'cost_usd', 'weighted_tokens', 'input', 'output',
-  'cache_read', 'cache_write', 'wall_s', 'turns', 'agents', 'accept_pass', 'accept_fail', 'full_pass', 'full_fail',
-  'timed_out', 'contamination', 'files_changed', 'lines_added', 'lines_removed', 'note',
+  'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
+  'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main',
+  'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
+  'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
+  'contamination', 'files_changed', 'lines_added', 'lines_removed', 'note',
 ];
+
+// "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
+export function encodeModelTokens(byModel) {
+  if (!byModel) return '';
+  return Object.entries(byModel).map(([k, t]) => `${k}=${t.input}/${t.output}/${t.cacheRead}/${t.cacheWrite}`).join('|');
+}
+export function decodeModelTokens(text) {
+  if (!text) return null;
+  const out = {};
+  for (const part of String(text).split('|')) {
+    const at = part.lastIndexOf('=');
+    if (at < 0) return null;
+    const n = part.slice(at + 1).split('/').map(Number);
+    if (n.length !== 4 || n.some((x) => !Number.isFinite(x))) return null;
+    out[part.slice(0, at)] = { input: n[0], output: n[1], cacheRead: n[2], cacheWrite: n[3] };
+  }
+  return out;
+}
 
 const cell = (v) => {
   if (v === null || v === undefined) return '';
@@ -53,6 +73,9 @@ export function appendRow(cfg, args) {
   const a = readJson(path.join(dir, 'acceptance.json'));
   const c = readJson(path.join(dir, 'changes.json'));
   const userNote = args.note || '';
+  if (m.experiment && m.experiment !== cfg.experiment) {
+    throw new Error(`la corrida se hizo con el experimento "${m.experiment}" y la fila saldría como "${cfg.experiment}"; pasá --experiment ${m.experiment}`);
+  }
 
   const exists = fs.existsSync(cfg.csvPath);
   const text = exists ? fs.readFileSync(cfg.csvPath, 'utf8') : '';
@@ -69,15 +92,24 @@ export function appendRow(cfg, args) {
     notes.push('accept-por-codigo-de-salida');
   }
   if (m.tokenSource === 'usage') notes.push('tokens-solo-hilo-principal');
+  for (const f of (c && c.flags) || []) notes.push(f);
+  const reasons = [...new Set([...(m.invalidReasons || []), ...((a && a.invalidReasons) || []), ...((c && c.invalidReasons) || [])])];
   const row = {
     experiment: cfg.experiment, task, arm, rep, timestamp: m.finishedAt, model: m.model,
+    model_resolved: m.init && m.init.model, claude_version: m.init && m.init.claude_code_version,
     cost_usd: m.costUsd, weighted_tokens: m.weightedTokens,
     input: m.tokens && m.tokens.input, output: m.tokens && m.tokens.output,
     cache_read: m.tokens && m.tokens.cacheRead, cache_write: m.tokens && m.tokens.cacheWrite,
-    wall_s: m.wallS, turns: m.turns, agents: m.agents,
+    model_tokens: encodeModelTokens(m.tokensByModel),
+    wall_s: m.wallS, duration_ms: m.durationMs, turns: m.turns, agents: m.agents, agents_main: m.agentsMain,
+    result_subtype: m.resultSubtype, is_error: m.isError, exit_code: m.exitCode,
+    timed_out: m.timedOut, invalid: reasons.length > 0, invalid_reason: reasons.join(';'),
+    accept_exit: a && a.accept && a.accept.exitCode,
     accept_pass: a && a.accept && a.accept.pass, accept_fail: a && a.accept && a.accept.fail,
+    accept_suites_failed: a && a.accept && a.accept.suitesFailed,
     full_pass: a && a.full && a.full.pass, full_fail: a && a.full && a.full.fail,
-    timed_out: m.timedOut, contamination: m.contamination,
+    full_baseline_fail: a && a.baselineFull && a.baselineFull.fail,
+    contamination: m.contamination,
     files_changed: c && c.filesChanged, lines_added: c && c.linesAdded, lines_removed: c && c.linesRemoved,
     note: notes.filter(Boolean).join(';'),
   };
