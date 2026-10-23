@@ -94,6 +94,9 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     ...cfg,
     weights: { ...DEFAULT_WEIGHTS, ...(cfg.weights || {}) },
     modelFactor: { ...DEFAULT_MODEL_FACTOR, ...(cfg.modelFactor || {}) },
+    // The experiment named in the file; a --experiment flag changes cfg.experiment but not this.
+    baseExperiment: cfg.experiment || DEFAULT_EXPERIMENT,
+    graderSpendPath: cfg.graderSpendPath || path.join(cfg.privateRoot, 'grader-spend.csv'),
   };
 }
 
@@ -107,9 +110,17 @@ export function check(cfg, { task, arm, rep }) {
   return { task, arm, rep: n };
 }
 
+// Runs of the configured experiment live in <workRoot>/<task>-<arm>-<rep>; runs of any other experiment (calibration)
+// live in <workRoot>/<experiment>/<task>-<arm>-<rep>, so a calibration run can never take the folder of a real one.
 export function runPaths(cfg, args) {
   const { task, arm, rep } = check(cfg, args);
-  const dir = path.join(cfg.workRoot, `${task}-${arm}-${rep}`);
+  const base = cfg.baseExperiment || cfg.experiment;
+  let root = cfg.workRoot;
+  if (cfg.experiment && cfg.experiment !== base) {
+    if (!ID.test(cfg.experiment)) throw new Error(`nombre de experimento inválido: ${cfg.experiment}`);
+    root = path.join(cfg.workRoot, cfg.experiment);
+  }
+  const dir = path.join(root, `${task}-${arm}-${rep}`);
   return { task, arm, rep, dir, repo: path.join(dir, 'repo'), taskDir: path.join(cfg.privateRoot, task) };
 }
 

@@ -158,14 +158,57 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
   };
 }
 
-// First tool_use whose input names the source repo, the private folder or a sibling run folder.
-// Everything is compared with forward slashes and lowercase. Returns { match, tool, command } or null.
-export function findEscape(text, { sourceRepo, privateRoot, workRoot, runDirName }) {
-  const slash = (p) => String(p).replace(/\\/g, '/').toLowerCase();
-  const norm = (p) => slash(p).replace(/\/+$/, '');
-  const needles = [['sourceRepo', norm(sourceRepo)], ['privateRoot', norm(privateRoot)]];
-  const work = `${norm(workRoot)}/`;
-  const own = String(runDirName).toLowerCase();
+// Escape detection: does a tool call of the agent reach the source repo, the private folder or another run?
+// Paths are compared lowercase, with forward slashes, repeated slashes collapsed (doubled backslashes) and the
+// git-bash (/c/...) and WSL (/mnt/c/...) drive forms turned into c:/... . A match must sit on a path boundary:
+// the character before and after the needle is not part of a name, so X/app does not match X/app-runs.
+const IDENT = /[a-z0-9._-]/;
+
+function normalizeText(t) {
+  return String(t).toLowerCase()
+    .replace(/\\/g, '/')
+    .replace(/\/{2,}/g, '/')
+    .replace(/(^|[\s"'`=;,(<>|&])\/mnt\/([a-z])\//g, '$1$2:/')
+    .replace(/(^|[\s"'`=;,(<>|&])\/([a-z])\//g, '$1$2:/');
+}
+const normPath = (p) => normalizeText(p).replace(/\/+$/, '');
+
+// First index where `needle` appears on a path boundary at or after `from`, or -1.
+function indexAtBoundary(hay, needle, from = 0) {
+  let i = hay.indexOf(needle, from);
+  while (i >= 0) {
+    const before = i === 0 ? '' : hay[i - 1];
+    const after = hay[i + needle.length] || '';
+    if ((!before || !IDENT.test(before)) && (!after || !IDENT.test(after))) return i;
+    i = hay.indexOf(needle, i + 1);
+  }
+  return -1;
+}
+
+// Every string inside a tool input (not its JSON text, so backslashes are not doubled by the encoding).
+function strings(v, out = []) {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => strings(x, out));
+  else if (v && typeof v === 'object') Object.values(v).forEach((x) => strings(x, out));
+  return out;
+}
+
+const posixNormalize = (p) => {
+  const parts = [];
+  for (const seg of p.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') parts.pop(); else parts.push(seg);
+  }
+  return (p.startsWith('/') ? '/' : '') + parts.join('/');
+};
+
+// First tool_use that leaves the run folder. Returns { match, tool, command } or null.
+export function findEscape(text, { sourceRepo, privateRoot, workRoot, runDir }) {
+  const needles = [['sourceRepo', normPath(sourceRepo)], ['privateRoot', normPath(privateRoot)]];
+  const work = normPath(workRoot);
+  const run = normPath(runDir);
+  const ownRel = run.startsWith(`${work}/`) ? run.slice(work.length + 1) : run.split('/').pop();
+  const repoDir = `${run}/repo`;
   for (const line of String(text).split(/\r?\n/)) {
     if (!line.includes('tool_use')) continue;
     let o;
@@ -173,25 +216,36 @@ export function findEscape(text, { sourceRepo, privateRoot, workRoot, runDirName
     if (!o || o.type !== 'assistant' || !o.message || !Array.isArray(o.message.content)) continue;
     for (const b of o.message.content) {
       if (!b || b.type !== 'tool_use') continue;
-      // JSON.stringify doubles the backslashes of Windows paths; undo that before comparing.
-      const raw = JSON.stringify(b.input === undefined ? '' : b.input);
-      const hay = slash(raw.replace(/\\\\/g, '\\'));
+      const joined = strings(b.input).join('\n');
+      const hay = normalizeText(joined);
       let match = null;
-      for (const [name, n] of needles) if (n && hay.includes(n)) { match = name; break; }
+      for (const [name, n] of needles) if (n && indexAtBoundary(hay, n) >= 0) { match = name; break; }
       if (!match) {
         let from = 0;
         for (;;) {
-          const at = hay.indexOf(work, from);
+          const at = indexAtBoundary(hay, work, from);
           if (at < 0) break;
-          const seg = hay.slice(at + work.length).match(/^[^/"\s\\]*/)[0];
+          const rest = hay.slice(at + work.length);
+          if (!rest.startsWith('/')) { match = 'workRoot'; break; }
+          const rel = rest.slice(1);
+          const own = rel.startsWith(ownRel) && !IDENT.test(rel[ownRel.length] || '');
           // The shared snapshot of node_modules is reached through the junction; its manifest guards it.
-          if (seg !== own && seg !== '_nm') { match = 'otherRun'; break; }
+          if (!own && !rel.startsWith('_nm')) { match = 'otherRun'; break; }
           from = at + work.length;
+        }
+      }
+      if (!match) {
+        // Relative paths with ".." that leave the run folder, resolved from the repo (where the agent starts).
+        for (const tok of hay.split(/[\s"'`;|&<>()=,]+/)) {
+          if (!tok || tok.includes('://') || !tok.split('/').includes('..')) continue;
+          const abs = tok.startsWith('/') || /^[a-z]:\//.test(tok);
+          const resolved = posixNormalize(abs ? tok : `${repoDir}/${tok}`);
+          if (resolved !== run && !resolved.startsWith(`${run}/`)) { match = 'relativeEscape'; break; }
         }
       }
       if (match) {
         const i = b.input;
-        const shown = i && typeof i === 'object' ? (i.command ?? i.file_path ?? i.path ?? raw) : raw;
+        const shown = i && typeof i === 'object' ? (i.command ?? i.file_path ?? i.path ?? joined) : joined;
         return { match, tool: b.name || null, command: String(shown).slice(0, 200) };
       }
     }
@@ -216,6 +270,8 @@ export function invalidReasons(m) {
   if (m.escapedCwd) r.push('escaped_cwd');
   if (m.nm && m.nm.snapshotChanged) r.push('nm_changed');
   if (m.nm && m.nm.sourceChanged) r.push('source_nm_changed');
+  if (m.nm && m.nm.dropFailed) r.push('drop_failed');
+  if (m.postRunError && m.postRunError.length) r.push('post_run_error');
   if (m.treesError) r.push('trees_unmeasurable');
   else if (m.trees && m.trees.noChanges) r.push('no_changes');
   return r;

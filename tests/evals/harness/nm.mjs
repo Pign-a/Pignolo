@@ -38,36 +38,132 @@ export function manifest(dir, ignore = DEFAULT_NM_IGNORE) {
 const brief = (m) => (m ? { count: m.count, lockHash: m.lockHash, digest: m.digest } : null);
 export { brief as manifestBrief };
 
+const lower = (p) => path.resolve(p).toLowerCase();
+const within = (child, parent) => child === parent || child.startsWith(parent + path.sep);
+
+// Links (symlinks and junctions) among the top-level entries, every @scope/* entry and the children of .pnpm that
+// lead outside `root` (or nowhere). Returns a list of readable descriptions; empty when all is contained.
+export function linksOutside(root) {
+  const bad = [];
+  let rootReal;
+  try { rootReal = lower(fs.realpathSync(root)); } catch { return [`${root}: no existe`]; }
+  const check = (p, shown) => {
+    let st;
+    try { st = fs.lstatSync(p); } catch { return; }
+    if (!st.isSymbolicLink()) return;
+    let target;
+    try { target = lower(fs.realpathSync(p)); } catch { bad.push(`${shown} (enlace roto)`); return; }
+    if (!within(target, rootReal)) bad.push(`${shown} -> ${target}`);
+  };
+  let top = [];
+  try { top = fs.readdirSync(root, { withFileTypes: true }); } catch { return bad; }
+  for (const e of top) {
+    const p = path.join(root, e.name);
+    check(p, e.name);
+    let isDir = e.isDirectory();
+    if (e.isSymbolicLink()) continue;
+    if ((e.name.startsWith('@') && isDir) || e.name === '.pnpm') {
+      let inner = [];
+      try { inner = fs.readdirSync(p); } catch { /* unreadable */ }
+      for (const n of inner) check(path.join(p, n), `${e.name}/${n}`);
+    }
+  }
+  return bad;
+}
+
+export function assertNoEscapingLinks(root, what) {
+  const bad = linksOutside(root);
+  if (bad.length) {
+    throw new Error(`${what} tiene enlaces que salen de la carpeta (${bad.slice(0, 5).join('; ')}${bad.length > 5 ? '; ...' : ''}); el agente podría escribir fuera de la copia. Resolvelos (por ejemplo instalando sin enlaces) antes de medir`);
+  }
+}
+
+// Old trash folders from drops that could not finish are removed when they are not locked any more.
+function cleanTrash(cfg) {
+  let names = [];
+  try { names = fs.readdirSync(cfg.workRoot); } catch { return; }
+  for (const n of names) {
+    if (n.startsWith('_nm.trash-')) { try { removeTreeSafe(path.join(cfg.workRoot, n)); } catch { /* still locked: try next time */ } }
+  }
+}
+
 // Creates the snapshot if it is missing (a copy of the source's node_modules). Returns null when the source has none.
+// Refuses, before anything is copied or spent, when the source has links that lead outside it.
 export function ensureSnapshot(cfg) {
   const src = sourceNm(cfg);
   if (!fs.existsSync(src)) return null;
   const { dir, file } = snapshotPaths(cfg);
   if (fs.existsSync(dir) && fs.existsSync(file)) return { dir, created: false };
-  removeTreeSafe(dir);
   fs.mkdirSync(cfg.workRoot, { recursive: true });
+  cleanTrash(cfg);
+  assertNoEscapingLinks(src, 'el node_modules de la fuente');
+  removeTreeSafe(dir);
   const tmp = `${dir}.tmp`;
   removeTreeSafe(tmp);
-  // Links inside node_modules are copied as links, never resolved: nothing in the snapshot may lead back to the source.
+  // Links inside node_modules are kept as links where the platform allows it; a second check follows the copy.
   fs.cpSync(src, tmp, { recursive: true, verbatimSymlinks: true });
+  try {
+    assertNoEscapingLinks(tmp, 'la copia de node_modules');
+  } catch (e) {
+    removeTreeSafe(tmp);
+    throw e;
+  }
   fs.renameSync(tmp, dir);
-  fs.writeFileSync(file, JSON.stringify(manifest(dir, cfg.nmIgnore), null, 2));
+  const m = manifest(dir, cfg.nmIgnore);
+  const s = manifest(src, cfg.nmIgnore);
+  fs.writeFileSync(file, JSON.stringify({ ...m, sourceDigest: s ? s.digest : null }, null, 2));
   return { dir, created: true };
 }
 
-// The snapshot must still be what was copied; otherwise something changed it since the last run.
-export function snapshotIntact(cfg) {
+// 'missing' (no copy), 'intact', or 'tampered' (the copy no longer matches the manifest taken when it was made).
+export function snapshotState(cfg) {
   const { dir, file } = snapshotPaths(cfg);
+  if (!fs.existsSync(dir) || !fs.existsSync(file)) return 'missing';
   let saved = null;
   try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* none */ }
   const now = manifest(dir, cfg.nmIgnore);
-  return Boolean(saved && now && saved.digest === now.digest);
+  return saved && now && saved.digest === now.digest ? 'intact' : 'tampered';
+}
+export const snapshotIntact = (cfg) => snapshotState(cfg) === 'intact';
+
+// Moves the copy out of the way FIRST (so the name is free at once) and then deletes it with the safe delete.
+// Never throws: a locked file leaves the renamed folder behind (cleaned by a later prepare) and is reported.
+export function dropSnapshot(cfg, { remove = removeTreeSafe, now = Date.now() } = {}) {
+  const { dir, file } = snapshotPaths(cfg);
+  const result = { renamed: false, trash: null, leftover: false, error: null };
+  try { fs.rmSync(file, { force: true }); } catch (e) { result.error = `manifiesto: ${e.code || e.message}`; }
+  if (!fs.existsSync(dir)) return result;
+  const trash = `${dir}.trash-${now}`;
+  try {
+    fs.renameSync(dir, trash);
+    result.renamed = true;
+    result.trash = trash;
+  } catch (e) {
+    result.error = `renombrar: ${e.code || e.message}`;
+    try { remove(dir); } catch (e2) { result.error += `; borrar: ${e2.code || e2.message}`; result.leftover = true; }
+    return result;
+  }
+  try { remove(trash); } catch (e) { result.leftover = true; result.error = `borrar: ${e.code || e.message}`; }
+  return result;
 }
 
-export function dropSnapshot(cfg) {
-  const { dir, file } = snapshotPaths(cfg);
-  removeTreeSafe(dir);
-  fs.rmSync(file, { force: true });
+// Free, before any spend: a copy that was merely altered is dropped and copied again from the source, as long as
+// the source is still the one the copy was made from. Returns 'ok' | 'repaired'. Throws when the source changed.
+export function repairSnapshot(cfg, opts = {}) {
+  const state = snapshotState(cfg);
+  if (state === 'intact') return 'ok';
+  if (state === 'tampered') {
+    let saved = null;
+    try { saved = JSON.parse(fs.readFileSync(snapshotPaths(cfg).file, 'utf8')); } catch { /* none */ }
+    const s = manifest(sourceNm(cfg), cfg.nmIgnore);
+    if (!saved || !s || !saved.sourceDigest || saved.sourceDigest !== s.digest) {
+      throw new Error('la copia de node_modules fue alterada y el node_modules de la fuente ya no es el que se copió; no se vuelve a copiar solo. Revisá la fuente y limpiá las corridas con "clean" antes de seguir');
+    }
+    const d = dropSnapshot(cfg, opts);
+    if (d.leftover && fs.existsSync(snapshotPaths(cfg).dir)) throw new Error(`no se pudo quitar la copia alterada (${d.error}); cerrá lo que la use y reintentá`);
+  }
+  ensureSnapshot(cfg);
+  return 'repaired';
 }
 
 // Links <tree>/node_modules to the snapshot when the tree has none.

@@ -423,10 +423,10 @@ test('run: tope total de gasto (suma del CSV y de corridas sin fila) antes de la
     fs.writeFileSync(cfg.csvPath, `${COLUMNS.join(',')}\n${csvRow({ experiment: 'toy-exp-calib', task: 't0', arm: 'A', rep: 1, timestamp: 't', cost_usd: 36 })}\n`);
     await assert.rejects(() => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }), /tope total/);
     assert.ok(!fs.existsSync(path.join(dir, 'stream.jsonl')), 'no se lanzó nada');
-    // 34 + 5 = 39 <= 40: corre
-    fs.writeFileSync(cfg.csvPath, `${COLUMNS.join(',')}\n${csvRow({ experiment: 'toy-exp', task: 't0', arm: 'A', rep: 1, timestamp: 't', cost_usd: 34 })}\n`);
+    // 33 + 1,25 x 5 = 39,25 <= 40: corre (el margen del 25 % cubre lo que una corrida puede pasarse del tope)
+    fs.writeFileSync(cfg.csvPath, `${COLUMNS.join(',')}\n${csvRow({ experiment: 'toy-exp', task: 't0', arm: 'A', rep: 1, timestamp: 't', cost_usd: 33 })}\n`);
     await runTask(cfg, { task: 't1', arm: 'A', rep: 1 });
-    // la corrida de recién (0,5) no tiene fila todavía y cuenta: 34 + 0,5 + 5 <= 40, pero una sin fila de 2 la rompe
+    // la corrida de recién (0,5) no tiene fila todavía y cuenta: 33 + 0,5 + 6,25 <= 40, pero una sin fila de 2 la rompe
     writeRun(env, 't9', 'B', 1, { metrics: { costUsd: 2 } });
     const cfgB = await prepared(env, 'B', 1);
     await assert.rejects(() => runTask(cfgB, { task: 't1', arm: 'B', rep: 1 }), /tope total/);
@@ -435,6 +435,8 @@ test('run: tope total de gasto (suma del CSV y de corridas sin fila) antes de la
     fs.rmSync(runDir(env, 't9', 'B', 1), { recursive: true, force: true });
     fs.rmSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json'));
     const { spentUsd } = await imp('ledger.mjs');
+    assert.strictEqual(spentUsd(cfg), 30, 'una corrida con stream.jsonl y sin metrics.json (interrumpida) cuenta como el tope por corrida: 20 + 5 + 5');
+    fs.rmSync(path.join(runDir(env, 't1', 'A', 1), 'stream.jsonl'));
     assert.strictEqual(spentUsd(cfg), 25, '20 + 5 (sin costo = tope por corrida)');
   } finally { cleanup(env); }
 });
@@ -567,14 +569,22 @@ test('run: si la fuente cambia durante la corrida se marca source_nm_changed', a
   } finally { cleanup(env); }
 });
 
-test('run: una copia de node_modules alterada entre corridas frena antes de gastar', async () => {
+test('run: una copia de node_modules alterada se repone sola, gratis y antes de gastar; si la fuente cambió, frena', async () => {
   const env = setup();
   try {
     const cfg = await prepared(env, 'A', 1);
-    fs.mkdirSync(path.join(env.work, '_nm', 'tampered'));
     const { runTask } = await imp('execute.mjs');
-    await assert.rejects(() => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }), /_nm|node_modules/);
-    assert.ok(!fs.existsSync(path.join(runDirName(env, 't1', 'A', 1), 'stream.jsonl')));
+    fs.mkdirSync(path.join(env.work, '_nm', 'tampered'));
+    const m = await runTask(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'tampered')), 'se volvió a copiar desde la fuente');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')));
+    assert.ok(!m.invalidReasons.includes('nm_changed'));
+    // Alterada Y la fuente ya no es la que se copió: no se repone sola y no se gasta nada.
+    await prepared(env, 'A', 2);
+    fs.mkdirSync(path.join(env.work, '_nm', 'tampered'));
+    fs.mkdirSync(path.join(env.src, 'node_modules', 'new-dep'));
+    await assert.rejects(() => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }), /fuente/);
+    assert.ok(!fs.existsSync(path.join(runDirName(env, 't1', 'A', 2), 'stream.jsonl')));
   } finally { cleanup(env); }
 });
 
@@ -674,6 +684,55 @@ test('accept: los conteos son solo de código (pathspec, también con espacios) 
   } finally { cleanup(env); }
 });
 
+// ---------------------------------------------------------------- robustez después de gastar, tope y carpetas
+
+test('ledger: cuenta calibración en su subcarpeta, corridas interrumpidas y el registro de gasto del revisor; exige 25 % de margen', async () => {
+  const env = setup();
+  try {
+    const cfg = await loadWith(env, {});
+    const { spentUsd, assertWithinTotalCap } = await imp('ledger.mjs');
+    put(env.work, 'toy-calib/t1-A-1/metrics.json', JSON.stringify({ task: 't1', arm: 'A', rep: 1, finishedAt: 'x', costUsd: 3 }));
+    put(env.work, 't1-A-2/stream.jsonl', '{}\n');
+    put(env.work, 't1-B-1/prepare.json', '{}');
+    put(env.priv, 'grader-spend.csv', 'date,usd,note\n2026-10-23,1.5,pack t1\n2026-10-24,0.5,\n');
+    assert.strictEqual(spentUsd(cfg), 3 + 5 + 2, 'calibración 3, interrumpida 5 (tope por corrida), revisor 2; una corrida solo preparada no cuesta');
+    assert.doesNotThrow(() => assertWithinTotalCap({ ...cfg, totalCapUsd: 16.25 }));
+    assert.throws(() => assertWithinTotalCap({ ...cfg, totalCapUsd: 16 }), /tope total/);
+  } finally { cleanup(env); }
+});
+
+test('run: si no se puede borrar la copia de node_modules (EBUSY) la corrida igual queda escrita, con drop_failed', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const busy = () => { throw Object.assign(new Error('resource busy or locked'), { code: 'EBUSY' }); };
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'nm-modify,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }, { removeTree: busy }));
+    assert.ok(m.invalidReasons.includes('nm_changed') && m.invalidReasons.includes('drop_failed'));
+    assert.ok(m.nm.drop.trash.includes('_nm.trash-') && fs.existsSync(m.nm.drop.trash), 'la carpeta renombrada queda para borrarla después');
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm')), 'el nombre _nm quedó libre');
+    assert.ok(fs.existsSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json')));
+    // La próxima preparación vuelve a copiar y limpia la basura anterior.
+    await prepared(env, 'A', 2);
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')));
+    assert.ok(!fs.existsSync(m.nm.drop.trash), 'la basura se borró cuando ya no estaba bloqueada');
+  } finally { cleanup(env); }
+});
+
+test('run: cualquier error después de gastar se anota (post_run_error) y metrics.json se escribe igual', async () => {
+  const env = setup();
+  try {
+    const cfg = { ...(await prepared(env, 'A', 1)), trackProcesses: true };
+    const { runTask } = await imp('execute.mjs');
+    let calls = 0;
+    const m = await runTask(cfg, { task: 't1', arm: 'A', rep: 1 }, { listProcesses: () => { calls += 1; if (calls === 2) throw new Error('tasklist roto'); return []; } });
+    assert.ok(m.invalidReasons.includes('post_run_error'));
+    assert.match(m.postRunError.join(' '), /tasklist roto/);
+    assert.strictEqual(m.costUsd, 0.5, 'lo medido se conserva');
+    assert.ok(fs.existsSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json')));
+  } finally { cleanup(env); }
+});
+
 // ---------------------------------------------------------------- corridas inválidas, pesos por modelo, texto final
 
 test('run: tope de presupuesto superado, error y corte por tiempo quedan marcados como inválidos', async () => {
@@ -752,9 +811,42 @@ test('row: una corrida inválida se marca con sus motivos y una fila de otro exp
     const [r] = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'));
     assert.deepStrictEqual([r.invalid, r.invalid_reason, r.result_subtype, r.is_error, r.exit_code, r.timed_out], ['true', 'budget_cap;is_error;timed_out', 'error_max_budget_usd', 'true', '1', 'true']);
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'B', rep: 1 }), /otro-exp/);
+    // Las corridas de otro experimento viven en su propia subcarpeta de workRoot.
+    fs.mkdirSync(path.join(env.work, 'otro-exp'));
+    fs.renameSync(runDir(env, 't1', 'B', 1), path.join(env.work, 'otro-exp', 't1-B-1'));
     appendRow({ ...cfg, experiment: 'otro-exp' }, { task: 't1', arm: 'B', rep: 1 });
     assert.strictEqual(parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'))[1].experiment, 'otro-exp');
   } finally { cleanup(env); }
+});
+
+test('escapes: la coincidencia es en el borde de la ruta; formas de git-bash, barras dobles y ".." que salen de la corrida', async () => {
+  const { findEscape } = await imp('metrics.mjs');
+  const ctx = { sourceRepo: 'C:\\X\\app', privateRoot: 'C:\\X\\priv', workRoot: 'C:\\X\\work', runDir: 'C:\\X\\work\\t1-A-1' };
+  const stream = (input) => JSON.stringify({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input }] } });
+  const hit = (command) => findEscape(stream({ command }), ctx);
+  // No son escapes: prefijos parecidos, la propia carpeta, la copia compartida y ".." que se queda adentro.
+  for (const ok of [
+    'ls C:\\X\\app-runs\\foo', 'ls C:/X/app-runs', 'cat C:\\X\\private-runs\\a', 'cat /c/X/private-runs/a', 'echo C:\\X\\application',
+    'type C:\\X\\work\\t1-A-1\\repo\\src\\a.js', 'cat /c/X/work/t1-A-1/repo/a', 'dir C:\\X\\work\\_nm\\dep',
+    'cd ..', 'cat ../wt/a.js', 'cat src/../lib/a.js', 'curl http://example.com/a/../b', 'grep -r "a..b" src',
+  ]) assert.strictEqual(hit(ok), null, ok);
+  // Sí lo son.
+  for (const [bad, why] of [
+    ['cat C:\\X\\app\\src\\a.js', 'fuente'], ['ls C:/X/app', 'fuente con barras'], ['cat /c/X/app/src/a.js', 'git-bash'],
+    ['cd "C:\\\\X\\\\priv\\\\t1"', 'barras dobles'], ['ls /mnt/c/X/priv', 'WSL'], ['ls C:\\X\\work', 'la raíz de las corridas'],
+    ['cat C:\\X\\work\\t1-B-1\\repo\\a', 'otra corrida'], ['cat C:\\X\\work\\t1-A-10\\repo\\a', 'otra corrida con el mismo prefijo'],
+    ['cd ../..', 'sale de la corrida'], ['cat ../../t1-B-1/repo/a', 'sale y entra en otra'], ['ls C:/X/app;ls', 'borde con ;'],
+  ]) {
+    const r = hit(bad);
+    assert.ok(r && r.command.length <= 200, `${why}: ${bad}`);
+  }
+  assert.strictEqual(hit('cat C:\\X\\app\\a').match, 'sourceRepo');
+  assert.strictEqual(hit('cd ../..').match, 'relativeEscape');
+  // Calibración: la propia carpeta vive en <workRoot>/<experimento>/<corrida>.
+  const calib = { ...ctx, runDir: 'C:\\X\\work\\calib\\t1-A-1' };
+  assert.strictEqual(findEscape(stream({ command: 'cat C:\\X\\work\\calib\\t1-A-1\\repo\\a' }), calib), null);
+  assert.ok(findEscape(stream({ command: 'cat C:\\X\\work\\calib\\t1-B-1\\repo\\a' }), calib));
+  assert.ok(findEscape(stream({ file_path: 'C:\\X\\priv\\t1\\prompt.md' }), ctx), 'también en otros campos del input');
 });
 
 // ---------------------------------------------------------------- accept
@@ -1308,9 +1400,11 @@ test('CLI: una corrida de calibración (--experiment) cuenta para el tope pero n
   try {
     const step = (...a) => { const r = cli(env, ...a); assert.strictEqual(r.status, 0, r.err); return r; };
     step('prepare', '--task', 't1', '--arm', 'A', '--rep', '1');
+    step('prepare', '--task', 't1', '--arm', 'A', '--rep', '1', '--experiment', 'toy-calib');
+    assert.ok(fs.existsSync(path.join(env.work, 't1-A-1')) && fs.existsSync(path.join(env.work, 'toy-calib', 't1-A-1')), 'la calibración tiene su carpeta y no pisa la real');
     step('run', '--task', 't1', '--arm', 'A', '--rep', '1', '--experiment', 'toy-calib');
-    step('accept', '--task', 't1', '--arm', 'A', '--rep', '1');
-    assert.match(cli(env, 'row', '--task', 't1', '--arm', 'A', '--rep', '1').err, /toy-calib/, 'la fila debe llevar el mismo experimento que la corrida');
+    step('accept', '--task', 't1', '--arm', 'A', '--rep', '1', '--experiment', 'toy-calib');
+    assert.notStrictEqual(cli(env, 'row', '--task', 't1', '--arm', 'A', '--rep', '1').status, 0, 'sin --experiment apunta a la carpeta real, que no corrió');
     step('row', '--task', 't1', '--arm', 'A', '--rep', '1', '--experiment', 'toy-calib');
     assert.match(fs.readFileSync(env.cfg.csvPath, 'utf8'), /^toy-calib,t1,A,1,/m);
     const real = step('summary', '--csv', env.cfg.csvPath).out;

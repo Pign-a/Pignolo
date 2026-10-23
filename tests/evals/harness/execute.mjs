@@ -5,7 +5,7 @@ import { runPaths, otherArm } from './config.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
 import { parseStream, findEscape, invalidReasons } from './metrics.mjs';
 import { assertWithinTotalCap } from './ledger.mjs';
-import { manifest, manifestBrief, ensureSnapshot, snapshotIntact, snapshotPaths, sourceNm, dropSnapshot } from './nm.mjs';
+import { manifest, manifestBrief, repairSnapshot, snapshotPaths, sourceNm, dropSnapshot } from './nm.mjs';
 import { measureTrees } from './trees.mjs';
 
 // The child never inherits the parent environment: only what the system needs to run, plus what the harness sets.
@@ -126,12 +126,10 @@ export async function runTask(cfg, args, deps = {}) {
   assertWithinTotalCap(cfg);
 
   // node_modules: the run is linked to one snapshot copy; the snapshot and the source must come out of the run as they went in.
+  // A copy that was merely altered is dropped and copied again from the (unchanged) source: free, before any spend.
   let nmBefore = null;
   if (fs.existsSync(sourceNm(cfg))) {
-    ensureSnapshot(cfg);
-    if (!snapshotIntact(cfg)) {
-      throw new Error(`la copia de node_modules (${snapshotPaths(cfg).dir}) ya no coincide con su manifiesto; algo la cambió. Borrala (con cuidado: contiene enlaces) y prepará de nuevo`);
-    }
+    repairSnapshot(cfg, { remove: deps.removeTree });
     nmBefore = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
   }
 
@@ -154,44 +152,58 @@ export async function runTask(cfg, args, deps = {}) {
     stderrPath: path.join(dir, 'stderr.txt'),
   });
   if (r.error) throw new Error(`no se pudo lanzar ${cfg.claudeBin}: ${r.error}`);
-  const procAfter = cfg.trackProcesses === false ? null : lister();
+
+  // From here on the money is spent: nothing below may throw before metrics.json is on disk. Every step is guarded and
+  // a failure is written down (postRunError) and makes the run invalid instead of losing it.
+  const post = [];
+  const guard = (label, fn, fallback = null) => {
+    try { return fn(); } catch (e) { post.push(`${label}: ${e && e.message ? e.message : e}`); return fallback; }
+  };
+  const procAfter = guard('procesos', () => (cfg.trackProcesses === false ? null : lister()));
 
   let nm = { checked: false };
   if (nmBefore) {
-    const after = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
-    nm = {
-      checked: true,
-      snapshotChanged: !after.snapshot || after.snapshot.digest !== nmBefore.snapshot.digest,
-      sourceChanged: !after.source || after.source.digest !== nmBefore.source.digest,
-      snapshotBefore: manifestBrief(nmBefore.snapshot), snapshotAfter: manifestBrief(after.snapshot),
-      sourceBefore: manifestBrief(nmBefore.source), sourceAfter: manifestBrief(after.source),
-    };
-    // A changed copy is thrown away (links are removed as links) so the next prepare copies again from the source.
-    if (nm.snapshotChanged) dropSnapshot(cfg);
-    if (nm.sourceChanged) process.stderr.write(`ATENCION: el node_modules de la fuente cambió durante la corrida ${task}/${arm}/${rep}; revisalo antes de seguir\n`);
+    nm = guard('node_modules', () => {
+      const after = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
+      const out = {
+        checked: true,
+        snapshotChanged: !after.snapshot || after.snapshot.digest !== nmBefore.snapshot.digest,
+        sourceChanged: !after.source || after.source.digest !== nmBefore.source.digest,
+        snapshotBefore: manifestBrief(nmBefore.snapshot), snapshotAfter: manifestBrief(after.snapshot),
+        sourceBefore: manifestBrief(nmBefore.source), sourceAfter: manifestBrief(after.source),
+        drop: null, dropFailed: false,
+      };
+      // A changed copy is moved aside and thrown away (links are removed as links) so the next prepare copies again.
+      if (out.snapshotChanged) {
+        out.drop = dropSnapshot(cfg, { remove: deps.removeTree });
+        out.dropFailed = Boolean(out.drop.leftover || out.drop.error);
+      }
+      if (out.sourceChanged) process.stderr.write(`ATENCION: el node_modules de la fuente cambió durante la corrida ${task}/${arm}/${rep}; revisalo antes de seguir\n`);
+      return out;
+    }, { checked: false });
   }
 
-  let trees = null;
-  let treesError = null;
-  try { trees = measureTrees(repo, cfg.blindExcludePaths); } catch (e) { treesError = e.message; }
+  const trees = guard('árboles', () => measureTrees(repo, cfg.blindExcludePaths));
+  const treesError = trees ? null : (post.find((p) => p.startsWith('árboles')) || 'árboles: sin datos');
 
   const other = otherArm(cfg, arm);
-  const text = fs.readFileSync(streamPath, 'utf8');
-  const m = parseStream(text, {
+  const opts = {
     ownPlugin: cfg.arms[arm].pluginName,
     otherPlugin: other ? cfg.arms[other].pluginName : null,
     otherPluginDir: other ? cfg.arms[other].pluginDir : null,
     weights: cfg.weights,
     modelFactor: cfg.modelFactor,
-  });
-  const escapedCwd = findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDirName: path.basename(dir) });
+  };
+  const text = guard('stream', () => fs.readFileSync(streamPath, 'utf8'), '');
+  const m = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);
+  const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {
     task, arm, rep, experiment: cfg.experiment, model: cfg.model, effort: cfg.effort,
     startedAt, finishedAt: new Date().toISOString(),
     wallS: r.wallS, timedOut: r.timedOut, exitCode: r.code, signal: r.signal,
     droppedEnvNames: dropped,
-    leftover_processes: procBefore && procAfter ? newProcesses(procBefore, procAfter) : null,
-    config_dir_delta: delta(cfgBefore, listNames(cfg.configDir)),
+    leftover_processes: guard('procesos', () => (procBefore && procAfter ? newProcesses(procBefore, procAfter) : null)),
+    config_dir_delta: guard('configDir', () => delta(cfgBefore, listNames(cfg.configDir))),
     escapedCwd,
     nm,
     trees: trees && {
@@ -202,7 +214,18 @@ export async function runTask(cfg, args, deps = {}) {
     treesError,
     ...m,
   };
+  metrics.postRunError = post;
   metrics.invalidReasons = invalidReasons(metrics);
-  fs.writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(metrics, null, 2));
+  try {
+    fs.writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(metrics, null, 2));
+  } catch (e) {
+    // Last resort: a minimal record, so the ledger and the author still see that this run happened.
+    metrics.postRunError.push(`escribir metrics.json: ${e.message}`);
+    metrics.invalidReasons = invalidReasons(metrics);
+    fs.writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify({
+      task, arm, rep, experiment: cfg.experiment, finishedAt: metrics.finishedAt, costUsd: metrics.costUsd ?? null,
+      postRunError: metrics.postRunError, invalidReasons: metrics.invalidReasons,
+    }));
+  }
   return metrics;
 }
