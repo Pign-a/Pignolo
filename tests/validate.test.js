@@ -250,3 +250,74 @@ test('base del diff: ancestro, fecha más reciente, rama principal, árbol de tr
   assert.ok(par);
   assert.match(par, /no `?Validado:/i);
 });
+
+// ---- fix round 2: anuncio de frentes como paso propio y basura como disparador de hygiene ----
+const secBy = (t, n) => t.split(/^## /m).find((s) => s.startsWith(`${n}.`));
+const fronts = () => read(DIR, 'references', 'fronts.md');
+
+test('anuncio: la línea Frentes: es un paso propio de la sección 3, con su razón y la lista vacía', () => {
+  const s3 = secBy(skill(), 3);
+  assert.ok(s3, 'falta la sección 3');
+  const par = paragraphs(s3).find((p) => /^3\.1 Announce the fronts/.test(p));
+  assert.ok(par, 'falta el paso 3.1 "Announce the fronts"');
+  assert.ok(par.includes('Frentes:'), 'el paso lleva la línea');
+  assert.match(par, /before launching any agent/i);
+  assert.match(par, /as its own paragraph/);
+  assert.match(par, /never inside a sentence or list item/);
+  assert.match(par, /correct the plan before money is spent/);
+  assert.match(par, /only machine-readable record of what was delegated/);
+  assert.match(par, /empty list prints `Frentes:` alone/);
+  assert.match(par, /even when the list is empty/);
+  assert.match(par, /(lines? )?after it/);
+});
+
+test('anuncio: la sección 4 lanza solo después de imprimir la línea Frentes', () => {
+  const s4 = secBy(skill(), 4);
+  assert.ok(s4, 'falta la sección 4');
+  assert.match(s4.replace(/^4\. Run\n+/, ''), /^Launch only after the Frentes line is printed/);
+});
+
+test('basura: la evidencia de basura delega hygiene sin importar el tamaño; el hilo principal no la lista', () => {
+  const s3 = secBy(skill(), 3);
+  const par = paragraphs(s3).find((p) => /small diff/i.test(p) && /5 files/.test(p));
+  assert.ok(par, 'falta el párrafo del diff chico en la sección 3');
+  assert.match(par, /hygiene/);
+  assert.match(par, /whatever the size/);
+  assert.match(par, /junk/);
+  assert.match(par, /main thread/);
+  assert.match(par, /no evidence/i, 'un diff chico sin evidencia sigue en el hilo principal');
+  assert.match(par, /security/);
+});
+
+test('basura: fronts.md hace de la basura un disparador propio de hygiene, sin importar el tamaño del diff', () => {
+  const t = fronts();
+  const sec = t.split(/^## /m).find((s) => s.startsWith('hygiene'));
+  assert.ok(sec, 'falta la sección hygiene');
+  assert.match(sec, /Enters whenever junk evidence exists in the diff or the repo, regardless of diff size/);
+  assert.match(sec, /Never "always"/);
+  assert.match(sec, /Only lists, never deletes/);
+  const intro = paragraphs(t).find((p) => /Small diff means/.test(p));
+  assert.ok(intro, 'falta la definición de diff chico');
+  assert.match(intro, /junk/);
+  assert.match(intro, /hygiene/);
+  assert.match(intro, /whatever the size/);
+});
+
+test('basura: los ejemplos resueltos suman un script chico con solo un .log -> Frentes: hygiene, y el formulario con basura', () => {
+  const sec = fronts().split(/^## /m).find((s) => s.startsWith('Worked examples'));
+  assert.ok(sec);
+  const lines = sec.split('\n').filter((l) => l.startsWith('- '));
+  assert.ok(lines.some((l) => l.includes('`Frentes: hygiene`') && /\.log/.test(l)), 'falta el script chico con un .log');
+  assert.ok(lines.some((l) => l.includes('`Frentes: security, hygiene`') && /form/i.test(l) && /junk|screenshot|\.log/.test(l)));
+  assert.ok(lines.some((l) => l.includes('`Frentes:`') && /script/i.test(l) && /main thread/.test(l)), 'cli-script sin cambios');
+});
+
+test('anuncio: fronts.md trae un ejemplo bueno (la línea sola) y uno malo (prosa en lugar de la línea)', () => {
+  const sec = fronts().split(/^## /m).find((s) => s.startsWith('Announcing the line'));
+  assert.ok(sec, 'falta la sección "Announcing the line"');
+  assert.match(sec, /Good:/);
+  assert.match(sec, /Bad:/);
+  assert.match(sec, /^Frentes: security, hygiene$/m, 'el ejemplo bueno es la línea sola');
+  const bad = sec.split('\n').find((l) => l.startsWith('Bad:'));
+  assert.ok(bad && !/^Bad:\s*`?Frentes:/.test(bad), 'el ejemplo malo es prosa');
+});
