@@ -1,0 +1,27 @@
+{
+  "experiment": "pignolo2",
+  "sourceRepo": "/absolute/path/to/the/private/source/repo",
+  "privateRoot": "/absolute/path/to/the/private/inputs/folder",
+  "workRoot": "/absolute/path/to/a/folder/for/run/copies",
+  "configDir": "/absolute/path/to/a/dedicated/claude/config/dir",
+  "claudeBin": "claude",
+  "claudeArgsPrefix": [],
+  "extraArgs": [],
+  "model": "sonnet",
+  "permissionMode": "bypassPermissions",
+  "perRunCapUsd": 5,
+  "timeoutMs": 1800000,
+  "acceptTimeoutMs": 900000,
+  "arms": {
+    "A": { "pluginName": "superpowers", "pluginDir": "/absolute/path/to/the/superpowers/plugin" },
+    "B": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin" }
+  },
+  "copyDirs": ["relative/path/of/a/gitignored/generated/folder"],
+  "weights": { "input": 1, "output": 5, "cacheRead": 0.1, "cacheWrite": 1.25 },
+  "seed": 1,
+  "tasks": {
+    "task-id-1": { "kind": "medium" },
+    "task-id-2": { "kind": "small" }
+  },
+  "blindExcludePaths": [".claude/", ".superpowers/", ".pignolo/", "docs/superpowers/", "docs/pignolo/"]
+}

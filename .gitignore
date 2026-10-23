@@ -4,3 +4,4 @@ tests/evals/generated/
 tests/evals/**/results/
 tests/bench/plans/results/
 tests/bench/brainstorm/results/
+tests/evals/harness/harness.local.json
