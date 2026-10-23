@@ -5,6 +5,9 @@ import { runPaths, check } from './config.mjs';
 
 const LABELS = 'XYZWVUTSRQPONMLK'.split('');
 
+// <privateRoot>/blind-keys/<task>.json: a sibling of blind/, never inside what the grader reads.
+export const blindKeyFile = (cfg, task) => path.join(cfg.privateRoot, 'blind-keys', `${task}.json`);
+
 function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
@@ -26,27 +29,17 @@ export function shuffle(list, seed) {
   return a;
 }
 
-// Drops the sections of a unified diff whose path starts with one of the prefixes.
-export function filterPatch(patch, prefixes) {
-  const parts = patch.split(/^(?=diff --git )/m);
-  return parts.filter((p) => {
-    const m = p.match(/^diff --git a\/(\S+) b\//);
-    if (!m) return true;
-    return !prefixes.some((x) => m[1] === x.replace(/\/$/, '') || m[1].startsWith(x.endsWith('/') ? x : `${x}/`));
-  }).join('');
-}
-
+// Counts are taken from the (already filtered) blind diff. Files are the "diff --git" headers, so paths with spaces work.
 function countLines(patch) {
   let added = 0;
   let removed = 0;
-  const files = new Set();
+  let files = 0;
   for (const l of patch.split('\n')) {
-    const m = l.match(/^diff --git a\/(\S+) b\//);
-    if (m) files.add(m[1]);
+    if (l.startsWith('diff --git ')) files += 1;
     else if (l.startsWith('+') && !l.startsWith('+++')) added += 1;
     else if (l.startsWith('-') && !l.startsWith('---')) removed += 1;
   }
-  return { filesChanged: files.size, linesAdded: added, linesRemoved: removed };
+  return { filesChanged: files, linesAdded: added, linesRemoved: removed };
 }
 
 const GRADER_PROMPT = `# Grader instructions
@@ -67,6 +60,10 @@ You review one candidate change at a time. Each candidate is a folder \`pack-<k>
 
 A serious finding is only something that affects correctness, data or the requirements. Style preferences are not findings.
 
+## Out of scope
+
+Process notes and project documents (plans, session notes, roadmaps, design or security write-ups, agent instruction files) have already been left out of the diffs, and if a trace of one is still visible it is out of scope: it must not be penalized or rewarded. Judge the code change only.
+
 ## Output
 
 For each candidate, output exactly one JSON object and nothing else:
@@ -83,15 +80,21 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
   const repList = [...new Set(reps.map(Number))].sort((a, b) => a - b);
   if (!repList.length || repList.some((r) => !Number.isInteger(r) || r < 1)) throw new Error('--reps necesita una lista de enteros, por ejemplo 1,2,3');
   const base = path.join(cfg.privateRoot, 'blind', task);
-  if (fs.existsSync(base) && !force) throw new Error(`ya existe ${base}; usá --force para regenerar los paquetes (se rehacen desde las corridas)`);
+  const keyFile = blindKeyFile(cfg, task);
+  if ((fs.existsSync(base) || fs.existsSync(keyFile)) && !force) {
+    throw new Error(`ya existe ${fs.existsSync(base) ? base : keyFile}; usá --force para regenerar los paquetes (se rehacen desde las corridas)`);
+  }
 
   const runs = [];
   for (const arm of Object.keys(cfg.arms).sort()) {
     for (const rep of repList) {
       const { dir } = runPaths(cfg, { task, arm, rep });
-      const pf = path.join(dir, 'changes.patch');
+      // accept wrote this diff with the process notes and project documents already left out (git pathspec excludes).
+      const pf = path.join(dir, 'changes.blind.patch');
       if (!fs.existsSync(pf)) throw new Error(`falta ${pf}; corré accept para ${task}/${arm}/${rep}`);
-      runs.push({ arm, rep, patch: filterPatch(fs.readFileSync(pf, 'utf8'), cfg.blindExcludePaths) });
+      let timestamp = null;
+      try { timestamp = JSON.parse(fs.readFileSync(path.join(dir, 'metrics.json'), 'utf8')).finishedAt || null; } catch { /* no metrics */ }
+      runs.push({ arm, rep, timestamp, patch: fs.readFileSync(pf, 'utf8') });
     }
   }
   if (runs.length > LABELS.length) throw new Error('demasiadas corridas para etiquetar');
@@ -115,13 +118,15 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
   const key = {};
   order.forEach((r, i) => {
     const label = LABELS[i];
-    key[label] = { arm: r.arm, rep: r.rep };
+    key[label] = { arm: r.arm, rep: r.rep, timestamp: r.timestamp };
     const pack = path.join(base, `pack-${i + 1}`);
     fs.mkdirSync(pack);
     fs.writeFileSync(path.join(pack, 'diff.patch'), r.patch);
     fs.writeFileSync(path.join(pack, 'meta.json'), JSON.stringify({ label, task, ...countLines(r.patch) }, null, 2));
   });
-  fs.writeFileSync(path.join(base, 'key.json'), JSON.stringify(key, null, 2));
+  // The key lives OUTSIDE the folder the grader is pointed at.
+  fs.mkdirSync(path.dirname(keyFile), { recursive: true });
+  fs.writeFileSync(keyFile, JSON.stringify(key, null, 2));
   fs.writeFileSync(path.join(base, 'grader-prompt.md'), GRADER_PROMPT);
   fs.copyFileSync(path.join(taskDir, 'prompt.md'), path.join(base, 'task-prompt.md'));
   return { packs: order.length, dir: base, leaks };
@@ -129,7 +134,7 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
 
 export function unblind(cfg, { task, input, force = false }) {
   check(cfg, { task, arm: Object.keys(cfg.arms)[0], rep: 1 });
-  const keyFile = path.join(cfg.privateRoot, 'blind', task, 'key.json');
+  const keyFile = blindKeyFile(cfg, task);
   if (!fs.existsSync(keyFile)) throw new Error(`falta ${keyFile}; corré blind primero`);
   const key = JSON.parse(fs.readFileSync(keyFile, 'utf8'));
   let items = JSON.parse(fs.readFileSync(input, 'utf8').replace(/^﻿/, ''));
@@ -144,7 +149,7 @@ export function unblind(cfg, { task, input, force = false }) {
       if (!Number.isFinite(it[f]) || it[f] < 0 || it[f] > 5) throw new Error(`${f} debe ser un número de 0 a 5 (etiqueta ${it.label})`);
     }
     if (!Array.isArray(it.serious_findings)) throw new Error(`serious_findings debe ser una lista (etiqueta ${it.label})`);
-    return { task, arm: k.arm, rep: k.rep, label: it.label, correctness: it.correctness, quality: it.quality, serious_findings: it.serious_findings };
+    return { task, arm: k.arm, rep: k.rep, timestamp: k.timestamp ?? null, label: it.label, correctness: it.correctness, quality: it.quality, serious_findings: it.serious_findings };
   });
   const same = (g, a) => g.task === a.task && g.arm === a.arm && g.rep === a.rep;
   for (const a of added) {

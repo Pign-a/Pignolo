@@ -835,7 +835,7 @@ test('accept: el timeout del comando se registra y no cuelga', async () => {
 
 // ---------------------------------------------------------------- row
 
-function writeRun(env, task, arm, rep, { metrics = {}, acceptance, changes, patch } = {}) {
+function writeRun(env, task, arm, rep, { metrics = {}, acceptance, changes, patch, blindPatch } = {}) {
   const dir = runDir(env, task, arm, rep);
   fs.mkdirSync(dir, { recursive: true });
   const m = {
@@ -850,6 +850,7 @@ function writeRun(env, task, arm, rep, { metrics = {}, acceptance, changes, patc
   if (acceptance) fs.writeFileSync(path.join(dir, 'acceptance.json'), JSON.stringify(acceptance));
   if (changes) fs.writeFileSync(path.join(dir, 'changes.json'), JSON.stringify(changes));
   if (patch !== undefined) fs.writeFileSync(path.join(dir, 'changes.patch'), patch);
+  if (blindPatch !== undefined) fs.writeFileSync(path.join(dir, 'changes.blind.patch'), blindPatch);
 }
 const ACC = {
   accept: { pass: 2, fail: 1, source: 'json', exitCode: 1, suitesFailed: 0 },
@@ -926,6 +927,7 @@ function blindEnv() {
       writeRun(env, 't1', arm, rep, {
         changes: { filesChanged: 1, linesAdded: n, linesRemoved: 0, files: ['src/feature.js'] },
         patch: PATCH(n, arm === 'A' && rep === 1 ? PROCESS_ARTIFACT : ''),
+        blindPatch: PATCH(n),
       });
     }
   }
@@ -961,8 +963,15 @@ test('blind: los paquetes no revelan el brazo, la clave queda aparte y el orden 
       const text = fs.readFileSync(f, 'utf8');
       assert.ok(!/superpowers|pignolo|t1-[AB]-\d|"arm"|"rep"/i.test(text), `${f} revela el brazo`);
     }
+    // La clave vive FUERA de la carpeta que se le da al revisor, en <privateRoot>/blind-keys/<tarea>.json.
+    const keyFile = path.join(env.priv, 'blind-keys', 't1.json');
+    assert.ok(fs.existsSync(keyFile));
+    for (const f of allFiles(base)) {
+      assert.ok(!/key/i.test(path.basename(f)), `${f}: nada de clave junto a los paquetes`);
+      assert.ok(!/"arm"|"rep"|"A"|"B"/.test(fs.readFileSync(f, 'utf8')), `${f} no trae la asignación`);
+    }
     assert.ok(!fs.readFileSync(path.join(base, 'pack-1', 'diff.patch'), 'utf8').includes('plan.md'));
-    const key = JSON.parse(fs.readFileSync(path.join(base, 'key.json'), 'utf8'));
+    const key = JSON.parse(fs.readFileSync(keyFile, 'utf8'));
     assert.deepStrictEqual(Object.keys(key).sort(), ['W', 'X', 'Y', 'Z']);
     assert.deepStrictEqual(Object.values(key).map((v) => `${v.arm}${v.rep}`).sort(), ['A1', 'A2', 'B1', 'B2']);
     for (const p of packs) {
@@ -975,17 +984,19 @@ test('blind: los paquetes no revelan el brazo, la clave queda aparte y el orden 
     assert.match(prompt, /serious_findings/);
     assert.match(prompt, /correctness/);
     assert.ok(!/superpowers|pignolo|key\.json contents/i.test(prompt));
+    assert.match(prompt, /process notes/i);
+    assert.match(prompt, /must not be penali[sz]ed/i);
     assert.ok(fs.existsSync(path.join(base, 'task-prompt.md')));
 
     // Reproducible con la misma semilla, otra semilla cambia el orden.
-    const first = fs.readFileSync(path.join(base, 'key.json'), 'utf8');
+    const first = fs.readFileSync(keyFile, 'utf8');
     assert.throws(() => blind(cfg, { task: 't1', reps: [1, 2] }), /ya existe/);
     blind(cfg, { task: 't1', reps: [1, 2], force: true });
-    assert.strictEqual(fs.readFileSync(path.join(base, 'key.json'), 'utf8'), first);
+    assert.strictEqual(fs.readFileSync(keyFile, 'utf8'), first);
     const orders = new Set();
     for (const seed of [1, 2, 3, 4, 5, 6]) {
       blind({ ...cfg, seed }, { task: 't1', reps: [1, 2], force: true });
-      orders.add(fs.readFileSync(path.join(base, 'key.json'), 'utf8'));
+      orders.add(fs.readFileSync(keyFile, 'utf8'));
     }
     assert.ok(orders.size > 1, 'la semilla influye');
     const { shuffle } = await imp('blind.mjs');
@@ -996,8 +1007,8 @@ test('blind: los paquetes no revelan el brazo, la clave queda aparte y el orden 
 test('blind: si un diff nombra un plugin, se detiene salvo --allow-leaks', async () => {
   const env = setup();
   try {
-    writeRun(env, 't1', 'A', 1, { changes: CHG, patch: PATCH(1, '+// written with Superpowers\n') });
-    writeRun(env, 't1', 'B', 1, { changes: CHG, patch: PATCH(2) });
+    writeRun(env, 't1', 'A', 1, { changes: CHG, blindPatch: PATCH(1, '+// written with Superpowers\n') });
+    writeRun(env, 't1', 'B', 1, { changes: CHG, blindPatch: PATCH(2) });
     const { loadConfig } = await imp('config.mjs');
     const { blind } = await imp('blind.mjs');
     const cfg = loadConfig(env.cfgPath);
@@ -1016,7 +1027,7 @@ test('unblind: pasa las notas del revisor a grades.json usando la clave', async 
     const { blind, unblind } = await imp('blind.mjs');
     const cfg = loadConfig(env.cfgPath);
     blind(cfg, { task: 't1', reps: [1, 2] });
-    const key = JSON.parse(fs.readFileSync(path.join(env.priv, 'blind', 't1', 'key.json'), 'utf8'));
+    const key = JSON.parse(fs.readFileSync(path.join(env.priv, 'blind-keys', 't1.json'), 'utf8'));
     const input = Object.keys(key).map((label) => ({ label, serious_findings: label === 'X' ? ['f1'] : [], correctness: 4, quality: 3 }));
     const inFile = path.join(env.root, 'grader.json');
     fs.writeFileSync(inFile, JSON.stringify(input));
@@ -1025,6 +1036,7 @@ test('unblind: pasa las notas del revisor a grades.json usando la clave', async 
     assert.strictEqual(grades.length, 4);
     const x = grades.find((g) => g.arm === key.X.arm && g.rep === key.X.rep);
     assert.deepStrictEqual(x.serious_findings, ['f1']);
+    assert.strictEqual(x.timestamp, '2026-10-23T12:00:00.000Z', 'la nota recuerda de qué corrida es (la que se rehace no hereda notas viejas)');
     assert.strictEqual(x.task, 't1');
     assert.throws(() => unblind(cfg, { task: 't1', input: inFile }), /ya hay nota/);
     fs.writeFileSync(inFile, JSON.stringify([{ label: 'Q', quality: 1 }]));
