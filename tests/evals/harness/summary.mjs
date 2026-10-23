@@ -230,7 +230,9 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
   const noData = mine.filter((r) => r.fronts_ok === '' || r.fronts_ok === null || r.fronts_ok === undefined);
   const wrong = mine.filter((r) => !matched.includes(r) && !noData.includes(r));
   const reasons = [`fixture ${fixtureName}: ${matched.length}/${mine.length} corridas con los frentes esperados [${want.join(';')}]`];
-  for (const r of wrong) reasons.push(`${runId(r)}: obtuvo [${r.fronts_got || ''}] esperaba [${want.join(';')}]`);
+  for (const r of wrong) {
+    reasons.push(`${runId(r)}: obtuvo [${r.fronts_got || ''}] esperaba [${want.join(';')}]${r.fronts_message ? ` (línea Frentes en el mensaje ${r.fronts_message})` : ''}${r.fronts_reason ? `: ${r.fronts_reason}` : ''}`);
+  }
   const total = stat(mine.map((r) => r.agents));
   const front = stat(mine.map((r) => r.agents_main));
   reasons.push(`agentes (total, con los de comandos nativos): ${total ? `mediana ${fmt(total.median, 0)} (rango ${fmt(total.min, 0)} a ${fmt(total.max, 0)})` : 'sin dato'}; lanzados por el hilo principal: ${front ? `mediana ${fmt(front.median, 0)} (rango ${fmt(front.min, 0)} a ${fmt(front.max, 0)})` : 'sin dato'}`);

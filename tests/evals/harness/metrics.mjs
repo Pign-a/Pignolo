@@ -218,6 +218,26 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
   };
 }
 
+// The text blocks of every top-level assistant message (subagent messages carry a parent_tool_use_id and are skipped), in
+// order; a message with no text block (only tool calls) is not listed. The stream has one assistant event per message.
+export function assistantTexts(text) {
+  const out = [];
+  for (const line of String(text).split(/\r?\n/)) {
+    if (!line.includes('"assistant"')) continue;
+    let o;
+    try { o = JSON.parse(line); } catch { continue; }
+    if (!o || o.type !== 'assistant' || o.parent_tool_use_id || !o.message || !Array.isArray(o.message.content)) continue;
+    const blocks = o.message.content.filter((b) => b && b.type === 'text' && typeof b.text === 'string').map((b) => b.text);
+    if (blocks.length) out.push(blocks.join('\n'));
+  }
+  return out;
+}
+
+// assistant-text.txt: the messages separated by a "----- mensaje N -----" line.
+export function formatAssistantText(list) {
+  return list.map((t, i) => `----- mensaje ${i + 1} -----\n${t}\n`).join('');
+}
+
 // Escape detection lives in escape.mjs.
 export { findEscape } from './escape.mjs';
 

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runPaths, otherArm, isFixtureTask, taskConfig, assertArmAllowed } from './config.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
-import { parseStream, findEscape, invalidReasons } from './metrics.mjs';
+import { parseStream, findEscape, invalidReasons, assistantTexts, formatAssistantText } from './metrics.mjs';
 import { assertWithinTotalCap } from './ledger.mjs';
 import { manifest, manifestBrief, repairSnapshot, snapshotPaths, sourceNm, dropSnapshot } from './nm.mjs';
 import { measureTrees } from './trees.mjs';
@@ -209,6 +209,8 @@ export async function runTask(cfg, args, deps = {}) {
   const parsed = guard('métricas', () => parseStream(text, opts), null) || parseStream('', opts);
   // The full final text is kept for fixture tasks (the fronts line is read from it); metrics.json only keeps the last KB.
   const { resultText, ...m } = parsed;
+  // Every top-level assistant message, not only the last: a skill may print its contract line before launching its agents.
+  guard('assistant-text.txt', () => fs.writeFileSync(path.join(dir, 'assistant-text.txt'), formatAssistantText(assistantTexts(text))));
   if (isFixture) guard('final.txt', () => fs.writeFileSync(path.join(dir, 'final.txt'), resultText ?? ''));
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {

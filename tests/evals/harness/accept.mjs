@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
+import { assistantTexts, formatAssistantText } from './metrics.mjs';
 import { runPaths, HARNESS_DIR, isFixtureTask, taskConfig, assertArmAllowed } from './config.mjs';
 import { runProcess } from './proc.mjs';
 import { buildChildEnv } from './env.mjs';
@@ -130,20 +131,64 @@ function prepareTree(cfg, mainRepo, tree) {
   }
 }
 
-// Front-detection fixtures: no tests to copy. The "Frentes:" line of the full final text is compared with what was written in advance.
+// The assistant messages of a run as [{ message, text }]: assistant-text.txt, rebuilt from stream.jsonl when it is missing (runs
+// made before it existed); null when neither is there.
+function assistantMessages(dir) {
+  const file = path.join(dir, 'assistant-text.txt');
+  let text = null;
+  if (fs.existsSync(file)) text = fs.readFileSync(file, 'utf8');
+  else if (fs.existsSync(path.join(dir, 'stream.jsonl'))) {
+    text = formatAssistantText(assistantTexts(fs.readFileSync(path.join(dir, 'stream.jsonl'), 'utf8')));
+    fs.writeFileSync(file, text);
+  }
+  if (text === null) return null;
+  const parts = text.split(/^----- mensaje (\d+) -----\r?$/m);
+  const out = [];
+  for (let k = 1; k + 1 < parts.length; k += 2) out.push({ message: Number(parts[k]), text: parts[k + 1] });
+  return out;
+}
+
+// A line that mentions the contract but is not the plain line (bold, a bullet, a quote...): worth telling apart from a missing line.
+function formattedFrontsLine(texts) {
+  let found = null;
+  for (const t of texts) {
+    for (const line of String(t).replace(/\r/g, '').split('\n')) {
+      if (/(^|[^A-Za-z])Frentes[*_`]*:/.test(line) && !/^Frentes:/.test(line)) found = line.trim().slice(0, 200);
+    }
+  }
+  return found;
+}
+
+// Front-detection fixtures: no tests to copy. The "Frentes:" line (a plain line at the start of a line; the LAST one of the whole
+// conversation, since a skill may print it before its agents and again at the end) is compared with what was written in advance.
 function acceptFixture(cfg, { task, arm, rep, dir }) {
   const require = createRequire(import.meta.url);
   const { compareFronts, extractFronts, decodeInput } = require('../compare-fronts.js');
   const finalFile = path.join(dir, 'final.txt');
-  if (!fs.existsSync(finalFile)) throw new Error(`falta ${finalFile}; corré run primero`);
+  const messages = assistantMessages(dir);
+  const hasFinal = fs.existsSync(finalFile);
+  if (messages === null && !hasFinal) throw new Error(`faltan assistant-text.txt / stream.jsonl y ${finalFile}; corré run primero`);
   const name = taskConfig(cfg, task).fixture;
   const expected = JSON.parse(fs.readFileSync(path.join(HARNESS_DIR, '..', 'fronts-expected.json'), 'utf8'));
-  const text = decodeInput(fs.readFileSync(finalFile));
-  const result = compareFronts(text, name, expected);
+  // Candidates in conversation order; the final result text is the last one.
+  const candidates = (messages || []).map((m) => ({ source: 'assistant-text', message: m.message, text: m.text }));
+  if (hasFinal) candidates.push({ source: 'final.txt', message: 'final', text: decodeInput(fs.readFileSync(finalFile)) });
+  const hit = [...candidates].reverse().find((c) => extractFronts(c.text) !== null) || null;
+  let result;
+  let got = [];
+  let foundIn = { source: null, message: null };
+  if (hit) {
+    result = compareFronts(hit.text, name, expected);
+    got = extractFronts(hit.text) || [];
+    foundIn = { source: hit.source, message: hit.message };
+  } else {
+    const formatted = formattedFrontsLine(candidates.map((c) => c.text));
+    result = { ok: false, reason: formatted ? `línea Frentes con formato (markdown): ${formatted}` : 'sin línea de frentes' };
+  }
   let metrics = {};
   try { metrics = JSON.parse(fs.readFileSync(path.join(dir, 'metrics.json'), 'utf8')); } catch { /* no metrics */ }
   const out = {
-    task, arm, rep, fixture: name, ok: result.ok, reason: result.reason, got: extractFronts(text) || [], expected: expected[name],
+    task, arm, rep, fixture: name, ok: result.ok, reason: result.reason, got, expected: expected[name], foundIn,
     missing: result.missing, extra: result.extra,
     // Total agents (the ficha counts native-command agents too) and the ones launched by the main thread.
     agents: metrics.agents ?? null, agentsMain: metrics.agentsMain ?? null, acceptedAt: new Date().toISOString(),

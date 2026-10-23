@@ -77,7 +77,7 @@ function setup(over = {}) {
     perRunCapUsd: 5,
     totalCapUsd: 40,
     trackProcesses: false,
-    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM', 'FAKE_CLAUDE_RESULT'],
+    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM', 'FAKE_CLAUDE_RESULT', 'FAKE_CLAUDE_TEXTS'],
     timeoutMs: 20000,
     acceptTimeoutMs: 20000,
     arms: {
@@ -1536,7 +1536,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1550,7 +1550,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', activation_via: 'skill_tool', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
-      contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
+      contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', fronts_message: '', fronts_reason: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
@@ -2275,6 +2275,76 @@ test('fixture: accept compara la línea Frentes con lo esperado (coincide, sin l
     await acceptRun(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
     const row = appendRow(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
     assert.deepStrictEqual([row.fronts_ok, row.fronts_got, row.agents], ['true', '', 0]);
+  } finally { cleanup(env); }
+});
+
+test('assistantTexts: los bloques de texto de los mensajes de primer nivel, en orden, sin los de subagentes ni los que solo llaman herramientas', async () => {
+  const { assistantTexts, formatAssistantText } = await imp('metrics.mjs');
+  const msg = (content, parent = null) => JSON.stringify({ type: 'assistant', parent_tool_use_id: parent, message: { content } });
+  const stream = [
+    JSON.stringify({ type: 'system', subtype: 'init' }),
+    msg([{ type: 'text', text: 'Primero.' }, { type: 'tool_use', id: 'a', name: 'Read', input: {} }]),
+    msg([{ type: 'tool_use', id: 'b', name: 'Read', input: {} }]),
+    msg([{ type: 'text', text: 'Del subagente.' }], 'toolu_1'),
+    JSON.stringify({ type: 'user', message: { content: [{ type: 'text', text: 'no es del asistente' }] } }),
+    msg([{ type: 'text', text: 'Frentes: security' }, { type: 'text', text: 'Segundo bloque.' }]),
+    'esto no es json',
+  ].join('\n');
+  assert.deepStrictEqual(assistantTexts(stream), ['Primero.', 'Frentes: security\nSegundo bloque.']);
+  assert.strictEqual(formatAssistantText(['a', 'b']), '----- mensaje 1 -----\na\n----- mensaje 2 -----\nb\n');
+  assert.deepStrictEqual(assistantTexts(''), []);
+});
+
+test('fixture: la línea Frentes se busca en TODOS los mensajes del asistente (la última gana), no solo en el texto final', async () => {
+  const env = setup();
+  try {
+    const cfg = await fxCfg(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const texts = (...list) => JSON.stringify(list.map((t) => (typeof t === 'string' ? { text: t } : t)));
+    const cases = [
+      // [descripción, mensajes, resultado final, esperado]
+      ['solo en un mensaje intermedio', texts('Voy a revisar.', 'Frentes: security, hygiene', 'Informe final sin la línea.'), 'Informe final sin la línea.', { ok: true, got: ['security', 'hygiene'], message: 3 }],
+      ['en dos mensajes: gana el último', texts('Frentes: security', 'Mientras tanto.', 'Frentes: security, hygiene'), 'Fin.', { ok: true, got: ['security', 'hygiene'], message: 4 }],
+      ['solo dentro de un subagente: se ignora', texts({ text: 'Frentes: security, hygiene', sub: true }), 'Fin.', { ok: false, got: [], reason: 'sin línea de frentes', message: null }],
+      ['en ningún lado', texts('Nada.'), 'Fin.', { ok: false, got: [], reason: 'sin línea de frentes', message: null }],
+      ['con formato markdown: no se acepta pero se avisa', texts('**Frentes:** security, hygiene'), 'Fin.', { ok: false, got: [], reason: 'línea Frentes con formato (markdown): **Frentes:** security, hygiene', message: null }],
+      ['solo en el resultado final', texts('Trabajando.'), 'Listo. // Frentes: security, hygiene', { ok: true, got: ['security', 'hygiene'], message: 'final' }],
+    ];
+    let rep = 0;
+    for (const [label, tx, result, want] of cases) {
+      rep += 1;
+      await prepare(cfg, { task: 'fx-land', arm: 'B', rep });
+      await withEnv({ FAKE_CLAUDE_MODE: 'ok', FAKE_CLAUDE_TEXTS: tx, FAKE_CLAUDE_RESULT: result }, () => runTask(cfg, { task: 'fx-land', arm: 'B', rep }));
+      const runDirX = path.join(env.work, `fx-land-B-${rep}`);
+      assert.ok(fs.readFileSync(path.join(runDirX, 'assistant-text.txt'), 'utf8').startsWith('----- mensaje 1 -----\nWorking.'), label);
+      assert.ok(fs.existsSync(path.join(runDirX, 'final.txt')), 'final.txt sigue igual');
+      await acceptRun(cfg, { task: 'fx-land', arm: 'B', rep });
+      const f = JSON.parse(fs.readFileSync(path.join(runDirX, 'fronts.json'), 'utf8'));
+      assert.strictEqual(f.ok, want.ok, label);
+      assert.deepStrictEqual(f.got, want.got, label);
+      assert.strictEqual(f.reason, want.reason, label);
+      assert.strictEqual(f.foundIn.message, want.message, label);
+      const row = appendRow(cfg, { task: 'fx-land', arm: 'B', rep });
+      assert.deepStrictEqual([row.fronts_ok, row.fronts_message], [String(want.ok), want.message === null ? '' : String(want.message)], label);
+      if (want.reason) assert.strictEqual(row.fronts_reason, want.reason);
+    }
+    // Una corrida vieja sin assistant-text.txt: se reconstruye desde stream.jsonl; sin stream, cae al texto final.
+    await prepare(cfg, { task: 'fx-land', arm: 'B', rep: 7 });
+    await withEnv({ FAKE_CLAUDE_MODE: 'ok', FAKE_CLAUDE_TEXTS: texts('Voy.', 'Frentes: security, hygiene'), FAKE_CLAUDE_RESULT: 'Fin.' }, () => runTask(cfg, { task: 'fx-land', arm: 'B', rep: 7 }));
+    const old = path.join(env.work, 'fx-land-B-7');
+    fs.rmSync(path.join(old, 'assistant-text.txt'));
+    await acceptRun(cfg, { task: 'fx-land', arm: 'B', rep: 7 });
+    assert.ok(fs.existsSync(path.join(old, 'assistant-text.txt')), 'reconstruido desde el stream');
+    assert.deepStrictEqual([JSON.parse(fs.readFileSync(path.join(old, 'fronts.json'), 'utf8')).ok, JSON.parse(fs.readFileSync(path.join(old, 'fronts.json'), 'utf8')).foundIn.source], [true, 'assistant-text']);
+    fs.rmSync(path.join(old, 'assistant-text.txt'));
+    fs.rmSync(path.join(old, 'stream.jsonl'));
+    fs.writeFileSync(path.join(old, 'final.txt'), 'Resumen. \nFrentes: security\n');
+    await acceptRun(cfg, { task: 'fx-land', arm: 'B', rep: 7 });
+    const fb = JSON.parse(fs.readFileSync(path.join(old, 'fronts.json'), 'utf8'));
+    assert.deepStrictEqual([fb.got, fb.foundIn.source], [['security'], 'final.txt']);
   } finally { cleanup(env); }
 });
 

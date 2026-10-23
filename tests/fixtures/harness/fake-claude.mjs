@@ -3,6 +3,7 @@
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
 //   slash | noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
+// FAKE_CLAUDE_TEXTS: JSON list of {text, sub} extra assistant messages after the first one ("sub": a subagent message).
 // FAKE_CLAUDE_RESULT: final result text (" // " becomes a new line).
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -142,6 +143,11 @@ if (has('hang')) {
     blocks.push({ type: 'tool_use', id: 'toolu_9', name: 'Bash', input: { command: `type ${process.env.FAKE_CLAUDE_ESCAPE_PATH}` } });
   }
   out({ type: 'assistant', parent_tool_use_id: null, message: { content: blocks } });
+  if (process.env.FAKE_CLAUDE_TEXTS) {
+    for (const t of JSON.parse(process.env.FAKE_CLAUDE_TEXTS)) {
+      out({ type: 'assistant', parent_tool_use_id: t.sub ? 'toolu_1' : null, message: { content: [{ type: 'text', text: t.text }] } });
+    }
+  }
   // Same tool_use repeated (partial-message duplicates) and one inside a sub-agent.
   if (!has('noagents')) {
     out({ type: 'assistant', parent_tool_use_id: null, message: { content: [
