@@ -149,6 +149,7 @@ function decideMedium(a, b, grades) {
   if (ra !== null && rb !== null && rb < ra) bad.push(`calidad: corridas verdes en aceptación B ${fmt(rb * 100, 0)}% < A ${fmt(ra * 100, 0)}%`);
   if (bad.length) return { verdict: 'no pasa', reasons: [...reasons, ...bad] };
   reasons.push(`calidad: nota mediana B ${qb.quality} >= A ${qa.quality}, hallazgos graves B ${qb.serious} <= A ${qa.serious}`);
+  reasons.push('no inferioridad (H1): se cumple');
   return { verdict: 'pasa', reasons };
 }
 
@@ -249,7 +250,8 @@ export function summarize(rowsIn, {
     for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
     const nA = arms.A ? arms.A.n : 0;
     const nB = arms.B ? arms.B.n : 0;
-    const evidence = Math.min(nA, nB) >= 3 ? 'E3' : 'E2';
+    // Evidence level: E3 from 3 valid runs per arm, E2 with 2, none with 1 or fewer (one run per arm shows no spread).
+    const evidence = Math.min(nA, nB) >= 3 ? 'E3' : Math.min(nA, nB) >= 2 ? 'E2' : 'sin evidencia';
     const kind = kinds[task] || null;
     let decision;
     if (!arms.A || !arms.B) decision = { verdict: 'pendiente', reasons: ['falta un brazo con corridas válidas'] };
@@ -257,14 +259,31 @@ export function summarize(rowsIn, {
     else if (kind === 'small') decision = decideSmall(arms.A, arms.B);
     else decision = { verdict: 'pendiente', reasons: ['tipo de tarea no definido (medium o small): usá la configuración "tasks" o --medium / --small'] };
     const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
-    if (invalid.length) {
+    // An arm whose every attempt ends without changes (for example it always stops to ask a question) is a result of the
+    // measurement, not a reason to wait: it is named as such and the task is decided from it.
+    const systematicNoChanges = [];
+    const lines = [];
+    for (const a of ['A', 'B']) {
+      const attempts = current.filter((r) => r.task === task && r.arm === a);
+      if (attempts.length && attempts.every((r) => reasonsOf(r).includes('no_changes'))) {
+        systematicNoChanges.push(a);
+        lines.push(`el brazo ${a} termina sin cambios en todas las corridas: ${attempts.length}/${attempts.length}`);
+      }
+    }
+    if (systematicNoChanges.length) {
+      decision = {
+        verdict: systematicNoChanges.includes('A') ? 'no comparable' : 'no pasa',
+        reasons: [...lines, ...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`)],
+        provisional: decision.verdict,
+      };
+    } else if (invalid.length) {
       decision = {
         verdict: `pendiente: ${invalid.length} corridas inválidas`,
         reasons: [...invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`), 'las cifras de abajo son provisionales, sin esas corridas', ...decision.reasons],
         provisional: decision.verdict,
       };
     }
-    tasks.push({ task, kind, arms, evidence, decision, invalid });
+    tasks.push({ task, kind, arms, evidence, decision, invalid, systematicNoChanges });
   }
   return { tasks, notes };
 }

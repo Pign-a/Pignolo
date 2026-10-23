@@ -93,7 +93,7 @@ export async function runTask(cfg, args, deps = {}) {
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}; corré prepare primero`);
   const streamPath = path.join(dir, 'stream.jsonl');
   if (fs.existsSync(streamPath)) {
-    throw new Error(`esta corrida ya se ejecutó (${streamPath}); para repetirla preparala de nuevo en otra carpeta y anotá --note rerun`);
+    throw new Error(`esta corrida ya se ejecutó (${streamPath}); para repetirla corré "run.mjs clean", prepará de nuevo y anotá --note rerun`);
   }
   let prompt;
   try {

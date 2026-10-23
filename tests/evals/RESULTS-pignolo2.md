@@ -52,7 +52,9 @@ Para el revisor a ciegas los brazos se nombran `X` e `Y`, asignados al azar por 
 2. su máximo de tokens ponderados es como máximo 1,5 veces el máximo de superpowers, **y**
 3. su calidad es igual o mejor (mediana de nota igual o mayor, no más hallazgos graves que el control y no menos corridas verdes en la aceptación).
 
-La condición de que los rangos (mínimo a máximo) de los dos brazos no se pisen **vale solo para afirmar superioridad** (que Pignolo 2 es mejor que superpowers en una métrica), no para la no inferioridad: con los rangos pisados, Pignolo 2 puede pasar H1, pero no se afirma que sea mejor y el resultado se informa como "sin diferencia demostrada" en esa comparación. Si pasa el umbral de tokens pero no la calidad, o al revés, no pasa. Se anota que no hay repetición suficiente para E3.
+La condición de que los rangos (mínimo a máximo) de los dos brazos no se pisen **vale solo para afirmar superioridad** (que Pignolo 2 es mejor que superpowers en una métrica), no para la no inferioridad. Con los rangos pisados y la mediana de Pignolo 2 por debajo, el resumen escribe "no se afirma superioridad"; y cuando se cumplen las tres condiciones de arriba lo informa como "no inferioridad (H1): se cumple". Si pasa el umbral de tokens pero no la calidad, o al revés, no pasa. Se anota que no hay repetición suficiente para E3.
+
+Si todas las corridas de un brazo terminan sin cambios (por ejemplo se detiene a hacer una pregunta), eso es un resultado y no una espera: el resumen escribe "el brazo X termina sin cambios en todas las corridas: n/n". Si es Pignolo 2, la tarea no pasa; si es el control, no es comparable.
 
 _Aclaración del 2026-10-23, escrita antes de cualquier corrida real: la versión anterior de esta regla pedía rangos separados también para pasar, lo que mezclaba la no inferioridad con la superioridad. Todavía no se corrió nada, así que el cambio no depende de ningún dato._
 
@@ -66,7 +68,7 @@ Las tareas concretas son `[pendiente: las elige el autor]` y se fijan antes de c
 
 **Repeticiones:** 3 por brazo y por tarea (cada corrida chica cuesta mucho menos de 300 mil tokens), intercaladas. Nivel E3 para esta medición.
 
-**Regla de decisión.** Pignolo 2 pasa si, en ambas tareas, su mediana de tiempo de pared y su mediana de tokens ponderados son menores o iguales que las de superpowers, y el resultado es correcto (el test pasa, el cambio es el pedido y nada más). Cualquier exceso de la mediana de Pignolo 2 sobre la de superpowers cuenta como falla de la anti-meta, salvo que los rangos se pisen: en ese caso es "sin diferencia demostrada" y se registra como riesgo abierto, no como aprobado.
+**Regla de decisión.** Pignolo 2 pasa si, en ambas tareas, su mediana de tiempo de pared y su mediana de tokens ponderados son menores o iguales que las de superpowers, y el resultado es correcto (el test pasa, el cambio es el pedido y nada más). "Correcto" se mide así: el comando de aceptación sale con código 0, ninguna suite falla (un archivo de test que no se puede importar es una suite fallida), ningún test falla y pasa al menos uno; y la suite completa del proyecto no tiene más fallas que el piso de la tarea (`baselineFull`, las fallas que ya tenía el commit base): si hay más fallas que el piso, falla la anti-meta. Cualquier exceso de la mediana de Pignolo 2 sobre la de superpowers cuenta como falla de la anti-meta, salvo que los rangos se pisen: en ese caso es "sin diferencia demostrada" y se registra como riesgo abierto, no como aprobado.
 
 ## 7. Medición 3: detección de frentes
 
@@ -90,6 +92,7 @@ Antes de correr se hace un sondeo de una corrida chica por brazo para calibrar e
 
 - Cada corrida en un worktree nuevo desde el mismo commit; carga pareja o corridas intercaladas, anotando cuántos agentes más había.
 - Nada se descarta en silencio: una corrida cortada o fallida se anota con su motivo y, si se repite, las dos quedan en el registro. Una corrida inválida (cortada por tiempo, con error, que superó el tope por corrida, contaminada, que tocó fuera de su carpeta o que terminó sin cambios) sale de las cifras, se lista y deja la tarea pendiente hasta repetirla.
+- Nivel de evidencia de cada cifra: E3 con 3 o más corridas válidas por brazo, E2 con 2, "sin evidencia" con 1 o menos (una sola corrida por brazo no muestra dispersión).
 - Dónde quedó el código de cada corrida (carpeta, worktree o rama) se registra, y la aceptación y los conteos se miden en el árbol con más cambios contra el commit base.
 - Datos crudos: una fila por corrida en el CSV de la prueba (id del experimento, brazo, repetición, métricas).
 - Resultado por brazo: mediana y rango; nunca un número sin su dispersión. Resultados negativos también se publican.

@@ -1411,7 +1411,7 @@ test('summary: la salida de texto lleva mediana con rango, nivel de evidencia y 
   assert.match(text, /evidence: E3/);
   assert.match(text, /aceptación/);
   const text2 = formatSummary(summarize([...arm('m', 'A', [100]), ...arm('m', 'B', [130])], { kinds: {} }));
-  assert.match(text2, /evidence: E2/);
+  assert.match(text2, /evidence: sin evidencia/);
   assert.match(text2, /tipo de tarea no definido/);
 });
 
@@ -1525,6 +1525,40 @@ test('summary: filtra por experimento, las notas cuentan solo para las corridas 
   const na = summarize(noAcc, { kinds: { m: 'medium' }, grades, experiment: 'real' }).tasks[0].decision;
   assert.strictEqual(na.verdict, 'pendiente');
   assert.match(na.reasons.join(' '), /aceptación/);
+});
+
+test('summary: un brazo que termina sin cambios en todas las corridas es un RESULTADO, no un pendiente eterno', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const empty = (i) => ({ invalid: true, invalid_reason: 'no_changes', files_changed: 0 });
+  const rowsB = summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], empty)], { kinds: { s: 'small' } });
+  const t = rowsB.tasks[0];
+  assert.strictEqual(t.decision.verdict, 'no pasa');
+  assert.match(t.decision.reasons[0], /el brazo B termina sin cambios en todas las corridas: 3\/3/);
+  assert.deepStrictEqual(t.systematicNoChanges, ['B']);
+  assert.match(formatSummary(rowsB), /el brazo B termina sin cambios en todas las corridas: 3\/3/);
+  const control = summarize([...arm('m', 'A', [100, 110, 120], empty), ...arm('m', 'B', [80, 85, 90])], { kinds: { m: 'medium' } }).tasks[0];
+  assert.strictEqual(control.decision.verdict, 'no comparable');
+  assert.match(control.decision.reasons[0], /el brazo A termina sin cambios en todas las corridas: 3\/3/);
+  // Si solo algunas corridas terminan sin cambios, sigue siendo pendiente hasta repetirlas.
+  const some = summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], (i) => (i === 0 ? { invalid: true, invalid_reason: 'no_changes' } : {}))], { kinds: { s: 'small' } }).tasks[0];
+  assert.strictEqual(some.decision.verdict, 'pendiente: 1 corridas inválidas');
+  assert.deepStrictEqual(some.systematicNoChanges, []);
+});
+
+test('ficha: el texto preinscrito dice lo mismo que el código (superioridad, no inferioridad, piso de la suite, evidencia)', async () => {
+  const ficha = fs.readFileSync(path.join(__dirname, 'evals', 'RESULTS-pignolo2.md'), 'utf8');
+  const { summarize } = await imp('summary.mjs');
+  // Las frases las produce el código; la ficha tiene que contener las mismas.
+  const grades = [...grade('m', 'A', [4, 4, 4]), ...grade('m', 'B', [4, 4, 4])];
+  const over = summarize([...arm('m', 'A', [100, 110, 130]), ...arm('m', 'B', [90, 100, 125])], { kinds: { m: 'medium' }, grades }).tasks[0].decision;
+  assert.ok(over.reasons.some((r) => r.includes('no se afirma superioridad')));
+  assert.ok(over.reasons.includes('no inferioridad (H1): se cumple'));
+  const small = summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], { full_fail: 3, full_baseline_fail: 2 })], { kinds: { s: 'small' } }).tasks[0].decision;
+  assert.ok(small.reasons.some((r) => r.includes('baselineFull')));
+  for (const phrase of ['no se afirma superioridad', 'no inferioridad (H1): se cumple', 'baselineFull', 'sin evidencia', 'termina sin cambios en todas las corridas', 'más fallas que el piso']) {
+    assert.ok(ficha.includes(phrase), `la ficha no contiene: ${phrase}`);
+  }
+  assert.ok(!/sin diferencia demostrada.*feature mediana/i.test(ficha), 'la ficha no promete "sin diferencia demostrada" para la tarea mediana');
 });
 
 // ---------------------------------------------------------------- CLI

@@ -69,7 +69,7 @@ function stripContext(dir) {
 export async function prepare(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   const copyDirs = validateCopyDirs(cfg.copyDirs).map((rel) => path.normalize(rel));
-  if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; movela o borrala a mano)`);
+  if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; borrala con "run.mjs clean")`);
   let base;
   try {
     base = fs.readFileSync(path.join(taskDir, 'base.txt'), 'utf8').trim();
