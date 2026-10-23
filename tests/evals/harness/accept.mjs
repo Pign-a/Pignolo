@@ -161,6 +161,8 @@ function formattedFrontsLine(texts) {
 
 // Front-detection fixtures: no tests to copy. The "Frentes:" line (a plain line at the start of a line; the LAST one of the whole
 // conversation, since a skill may print it before its agents and again at the end) is compared with what was written in advance.
+const FRONT_IDS = ['security', 'database', 'code', 'tests', 'hygiene', 'docs'];
+
 function acceptFixture(cfg, { task, arm, rep, dir }) {
   const require = createRequire(import.meta.url);
   const { compareFronts, extractFronts, decodeInput } = require('../compare-fronts.js');
@@ -187,8 +189,24 @@ function acceptFixture(cfg, { task, arm, rep, dir }) {
   }
   let metrics = {};
   try { metrics = JSON.parse(fs.readFileSync(path.join(dir, 'metrics.json'), 'utf8')); } catch { /* no metrics */ }
+  // Secondary figure: the fronts delegated, read from the agents the main thread launched ("<plugin>:review-<id>"), not from any
+  // printed line. null when the metrics predate agentTypes (run remetric first). It never replaces the line-based result.
+  let frontsByAgents = null;
+  let frontsByAgentsOk = null;
+  if (Array.isArray(metrics.agentTypes)) {
+    const plugin = cfg.arms[arm].pluginName;
+    const ids = new Set();
+    for (const t of metrics.agentTypes) {
+      const m = String(t).match(/^([^:]+):review-([a-z]+)$/);
+      if (m && m[1] === plugin && FRONT_IDS.includes(m[2])) ids.add(m[2]);
+    }
+    frontsByAgents = FRONT_IDS.filter((id) => ids.has(id));
+    const want = new Set(expected[name]);
+    frontsByAgentsOk = frontsByAgents.length === want.size && frontsByAgents.every((id) => want.has(id));
+  }
   const out = {
     task, arm, rep, fixture: name, ok: result.ok, reason: result.reason, got, expected: expected[name], foundIn,
+    frontsByAgents, frontsByAgentsOk,
     missing: result.missing, extra: result.extra,
     // Total agents (the ficha counts native-command agents too) and the ones launched by the main thread.
     agents: metrics.agents ?? null, agentsMain: metrics.agentsMain ?? null, acceptedAt: new Date().toISOString(),

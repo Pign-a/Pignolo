@@ -238,6 +238,15 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
   reasons.push(`agentes (total, con los de comandos nativos): ${total ? `mediana ${fmt(total.median, 0)} (rango ${fmt(total.min, 0)} a ${fmt(total.max, 0)})` : 'sin dato'}; lanzados por el hilo principal: ${front ? `mediana ${fmt(front.median, 0)} (rango ${fmt(front.min, 0)} a ${fmt(front.max, 0)})` : 'sin dato'}`);
   const over = mine.filter((r) => noData.indexOf(r) < 0 && ((rule.total !== undefined && r.agents > rule.total) || (rule.front !== undefined && r.agents_main > rule.front)));
   for (const r of over) reasons.push(`${runId(r)}: ${rule.text} (obtuvo ${rule.total !== undefined ? r.agents : r.agents_main})`);
+  // SECONDARY figure, outside the pre-registered rule: the fronts the main thread delegated (agents launched), whether or not the
+  // model printed the contract line.
+  const withAgents = mine.filter((r) => r.fronts_by_agents_ok === 'true' || r.fronts_by_agents_ok === 'false');
+  const byAgentsOk = withAgents.filter((r) => r.fronts_by_agents_ok === 'true');
+  const printed = mine.filter((r) => r.fronts_message !== '' && r.fronts_message !== null && r.fronts_message !== undefined);
+  const secondary = [];
+  secondary.push(`frentes delegados (medido por los agentes lanzados, no por la línea Frentes): ${byAgentsOk.length}/${withAgents.length} corridas con los frentes esperados [${want.join(';')}]; imprimieron la línea Frentes: ${printed.length}/${mine.length}${mine.length - withAgents.length ? `; sin dato de agentes: ${mine.length - withAgents.length}` : ''}`);
+  for (const r of withAgents.filter((x) => x.fronts_by_agents_ok === 'false')) secondary.push(`${runId(r)}: agentes → [${r.fronts_by_agents || ''}] esperaba [${want.join(';')}]`);
+  secondary.push('esta cifra secundaria no cambia el veredicto de la regla preinscrita (la de la línea Frentes)');
   const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
   let verdict;
   if (invalid.length) {
@@ -249,13 +258,14 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
     reasons.push(`falta la comparación de frentes en ${noData.map(runId).join(', ')}: corré accept y row`);
   } else if (wrong.length || over.length) verdict = 'no pasa';
   else verdict = 'pasa';
+  reasons.push(...secondary);
   const n = Math.min(...Object.values(arms).map((s) => s.n), Infinity);
   const evidence = n >= 3 ? 'E3' : n >= 2 ? 'E2' : 'sin evidencia';
   const act = activationOf(arms);
   return {
     task, kind: 'fixture', fixture: fixtureName, pair: null, arms, evidence, decision: { verdict, reasons }, invalid, systematicNoChanges: [],
     ...act, eol: Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol])),
-    fixtureDetail: { runs: mine.length, matched: matched.length, noData: noData.length },
+    fixtureDetail: { runs: mine.length, matched: matched.length, noData: noData.length, secondary: { matched: byAgentsOk.length, runs: mine.length, printed: printed.length, noData: mine.length - withAgents.length } },
   };
 }
 

@@ -77,7 +77,7 @@ function setup(over = {}) {
     perRunCapUsd: 5,
     totalCapUsd: 40,
     trackProcesses: false,
-    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM', 'FAKE_CLAUDE_RESULT', 'FAKE_CLAUDE_TEXTS'],
+    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM', 'FAKE_CLAUDE_RESULT', 'FAKE_CLAUDE_TEXTS', 'FAKE_CLAUDE_AGENTS', 'FAKE_CLAUDE_SUBAGENTS'],
     timeoutMs: 20000,
     acceptTimeoutMs: 20000,
     arms: {
@@ -1534,9 +1534,9 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     const cfg = loadConfig(env.cfgPath);
     assert.strictEqual(COLUMNS.join(','),
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
-        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via', 'result_subtype', 'is_error',
+        'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'agent_types', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1547,10 +1547,10 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       model_resolved: 'fake-model', claude_version: '9.9.9-fake',
       cost_usd: '1.5', weighted_tokens: '1200', input: '150', output: '30', cache_read: '1500', cache_write: '600',
       model_tokens: 'fake-model=100/20/1000/400|fake-sub=50/10/500/200',
-      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', activation_via: 'skill_tool', result_subtype: 'success', is_error: 'false', exit_code: '0',
+      wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', agent_types: '', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', activation_via: 'skill_tool', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
-      contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', fronts_message: '', fronts_reason: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
+      contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', fronts_message: '', fronts_reason: '', fronts_by_agents: '', fronts_by_agents_ok: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
@@ -2346,6 +2346,107 @@ test('fixture: la línea Frentes se busca en TODOS los mensajes del asistente (l
     const fb = JSON.parse(fs.readFileSync(path.join(old, 'fronts.json'), 'utf8'));
     assert.deepStrictEqual([fb.got, fb.foundIn.source], [['security'], 'final.txt']);
   } finally { cleanup(env); }
+});
+
+test('agentTypes: los subagent_type de las llamadas a Agent/Task del hilo principal, sin repetir ids ni los de subagentes', async () => {
+  const { parseStream } = await imp('metrics.mjs');
+  const msg = (content, parent = null) => JSON.stringify({ type: 'assistant', parent_tool_use_id: parent, message: { content } });
+  const use = (id, name, input) => ({ type: 'tool_use', id, name, input });
+  const stream = [
+    JSON.stringify({ type: 'system', subtype: 'init', plugins: [{ name: 'pignolo' }] }),
+    msg([use('a', 'Agent', { subagent_type: 'pignolo:review-security' }), use('b', 'Task', { subagent_type: 'pignolo:review-code' }), use('r', 'Read', {})]),
+    msg([use('a', 'Agent', { subagent_type: 'pignolo:review-security' })]),
+    msg([use('c', 'Agent', { subagent_type: 'general-purpose' }), use('d', 'Agent', { prompt: 'sin tipo' })]),
+    msg([use('e', 'Agent', { subagent_type: 'pignolo:review-docs' })], 'a'),
+  ].join('\n');
+  const m = parseStream(stream, { ownPlugin: 'pignolo', otherPlugin: 'superpowers' });
+  assert.deepStrictEqual(m.agentTypes, ['pignolo:review-security', 'pignolo:review-code', 'general-purpose']);
+  assert.deepStrictEqual([m.agents, m.agentsMain], [5, 4], 'los conteos de agentes siguen como estaban');
+  assert.deepStrictEqual(parseStream('', {}).agentTypes, []);
+});
+
+test('fixture: los frentes delegados se miden por los agentes lanzados, independiente de la línea Frentes', async () => {
+  const env = setup();
+  try {
+    const cfg = await fxCfg(env);
+    const { prepare } = await imp('prepare.mjs');
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const cases = [
+      // [descripción, agentes del hilo principal, agentes de un subagente, resultado, esperado]
+      ['agentes y sin línea', 'pignolo:review-security,pignolo:review-hygiene', '', 'Los frentes son seguridad e higiene.', { ok: false, by: ['security', 'hygiene'], byOk: true }],
+      ['línea y sin agentes', '', '', 'Frentes: security, hygiene', { ok: true, by: [], byOk: false }],
+      ['los dos', 'pignolo:review-hygiene,pignolo:review-security', '', 'Frentes: security, hygiene', { ok: true, by: ['security', 'hygiene'], byOk: true }],
+      ['una llamada de un subagente se ignora', 'pignolo:review-security', 'pignolo:review-hygiene', 'Nada.', { ok: false, by: ['security'], byOk: false }],
+      ['otro plugin, tipos que no son review-<id> y un id desconocido no cuentan', 'superpowers:review-code,pignolo:something,pignolo:review-unknown,pignolo:review-security,pignolo:review-hygiene', '', 'Nada.', { ok: false, by: ['security', 'hygiene'], byOk: true }],
+    ];
+    let rep = 0;
+    for (const [label, agents, subs, result, want] of cases) {
+      rep += 1;
+      await prepare(cfg, { task: 'fx-land', arm: 'B', rep });
+      const m = await withEnv({ FAKE_CLAUDE_MODE: 'noagents', FAKE_CLAUDE_AGENTS: agents, FAKE_CLAUDE_SUBAGENTS: subs, FAKE_CLAUDE_RESULT: result }, () => runTask(cfg, { task: 'fx-land', arm: 'B', rep }));
+      assert.deepStrictEqual(m.agentTypes, agents ? agents.split(',') : [], label);
+      await acceptRun(cfg, { task: 'fx-land', arm: 'B', rep });
+      const f = JSON.parse(fs.readFileSync(path.join(env.work, `fx-land-B-${rep}`, 'fronts.json'), 'utf8'));
+      assert.strictEqual(f.ok, want.ok, `${label}: la regla preinscrita sigue siendo la línea`);
+      assert.deepStrictEqual(f.frontsByAgents, want.by, label);
+      assert.strictEqual(f.frontsByAgentsOk, want.byOk, label);
+      const row = appendRow(cfg, { task: 'fx-land', arm: 'B', rep });
+      assert.deepStrictEqual([row.agent_types, row.fronts_by_agents, row.fronts_by_agents_ok], [agents ? agents.split(',').join(';') : '', want.by.join(';'), String(want.byOk)], label);
+    }
+    // cli-script: ningún agente es lo esperado (conjunto vacío); sin datos de agentes (métrica vieja) no hay veredicto secundario.
+    await prepare(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    await withEnv({ FAKE_CLAUDE_MODE: 'noagents', FAKE_CLAUDE_RESULT: 'Nada que revisar.' }, () => runTask(cfg, { task: 'fx-cli', arm: 'B', rep: 1 }));
+    await acceptRun(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    const cli0 = JSON.parse(fs.readFileSync(path.join(env.work, 'fx-cli-B-1', 'fronts.json'), 'utf8'));
+    assert.deepStrictEqual([cli0.ok, cli0.frontsByAgents, cli0.frontsByAgentsOk], [false, [], true]);
+    const mf = path.join(env.work, 'fx-cli-B-1', 'metrics.json');
+    const mm = JSON.parse(fs.readFileSync(mf, 'utf8'));
+    delete mm.agentTypes;
+    fs.writeFileSync(mf, JSON.stringify(mm));
+    await acceptRun(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    const cli1 = JSON.parse(fs.readFileSync(path.join(env.work, 'fx-cli-B-1', 'fronts.json'), 'utf8'));
+    assert.deepStrictEqual([cli1.frontsByAgents, cli1.frontsByAgentsOk], [null, null]);
+    assert.strictEqual(appendRow(cfg, { task: 'fx-cli', arm: 'B', rep: 1 }).fronts_by_agents_ok, '');
+    // remetric recalcula agentTypes en una corrida vieja.
+    const { remetricRun } = await imp('remetric.mjs');
+    remetricRun(cfg, { task: 'fx-cli', arm: 'B', rep: 1 });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(mf, 'utf8')).agentTypes, []);
+    await prepare(cfg, { task: 'fx-land', arm: 'B', rep: 9 });
+    await withEnv({ FAKE_CLAUDE_MODE: 'noagents', FAKE_CLAUDE_AGENTS: 'pignolo:review-security' }, () => runTask(cfg, { task: 'fx-land', arm: 'B', rep: 9 }));
+    const mf9 = path.join(env.work, 'fx-land-B-9', 'metrics.json');
+    const old = JSON.parse(fs.readFileSync(mf9, 'utf8'));
+    delete old.agentTypes;
+    fs.writeFileSync(mf9, JSON.stringify(old));
+    remetricRun(cfg, { task: 'fx-land', arm: 'B', rep: 9 });
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(mf9, 'utf8')).agentTypes, ['pignolo:review-security']);
+  } finally { cleanup(env); }
+});
+
+test('summary de fixtures: cifra SECUNDARIA de frentes delegados (por agentes), rotulada, sin cambiar el veredicto de la regla preinscrita', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const fx = (rep, ok, got, by, byOk, msg, extra = {}) => mk('fx-land', 'B', rep, 100, { fronts_ok: String(ok), fronts_got: got, fronts_message: msg, fronts_by_agents: by, fronts_by_agents_ok: byOk === null ? '' : String(byOk), accept_pass: null, accept_fail: null, accept_exit: null, accept_suites_failed: null, full_pass: null, full_fail: null, full_baseline_fail: null, agents: 2, agents_main: 2, ...extra });
+  const kinds = { 'fx-land': 'fixture' };
+  const fixtures = { 'fx-land': 'landing-form' };
+  // Línea: 1 de 3 la imprimió (y acertó); agentes: 3 de 3 delegaron los frentes esperados.
+  const rows = [fx(1, true, 'security;hygiene', 'security;hygiene', true, '3'), fx(2, false, '', 'security;hygiene', true, ''), fx(3, false, '', 'security;hygiene', true, '')];
+  const r = summarize(rows, { kinds, fixtures });
+  const t = r.tasks[0];
+  assert.strictEqual(t.decision.verdict, 'no pasa', 'la regla preinscrita (línea) manda: 1 de 3');
+  const text = formatSummary(r);
+  assert.match(text, /frentes delegados \(medido por los agentes lanzados, no por la línea Frentes\): 3\/3 corridas con los frentes esperados/);
+  assert.match(text, /imprimieron la línea Frentes: 1\/3/);
+  assert.match(text, /no cambia el veredicto de la regla preinscrita/);
+  assert.deepStrictEqual(t.fixtureDetail.secondary, { matched: 3, runs: 3, printed: 1, noData: 0 });
+  // El mismo veredicto con otra cifra secundaria; el secundario no rescata ni condena.
+  const flip = summarize([fx(1, true, 'security;hygiene', 'security', false, '3'), fx(2, true, 'security;hygiene', 'security;hygiene;code', false, '2'), fx(3, true, 'security;hygiene', '', null, '5')], { kinds, fixtures });
+  assert.strictEqual(flip.tasks[0].decision.verdict, 'pasa');
+  const t2 = formatSummary(flip);
+  assert.match(t2, /0\/2 corridas con los frentes esperados/);
+  assert.match(t2, /fx-land\/B\/1: agentes → \[security\] esperaba \[security;hygiene\]/);
+  assert.match(t2, /imprimieron la línea Frentes: 3\/3/);
+  assert.match(t2, /sin dato de agentes: 1/);
 });
 
 test('summary de fixtures: aciertos exactos, obtenido contra esperado, agentes y la regla de la ficha por repo', async () => {

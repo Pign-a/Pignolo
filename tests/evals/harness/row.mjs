@@ -6,10 +6,10 @@ import { summarizeNeutralConfig } from './neutralconfig.mjs';
 
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
-  'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via',
+  'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'agent_types', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via',
   'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
-  'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note',
+  'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -120,7 +120,7 @@ export function appendRow(cfg, args) {
     input: m.tokens && m.tokens.input, output: m.tokens && m.tokens.output,
     cache_read: m.tokens && m.tokens.cacheRead, cache_write: m.tokens && m.tokens.cacheWrite,
     model_tokens: encodeModelTokens(m.tokensByModel),
-    wall_s: m.wallS, duration_ms: m.durationMs, turns: m.turns, agents: m.agents, agents_main: m.agentsMain, prompt_prefix_id: m.promptPrefix ? arm : '',
+    wall_s: m.wallS, duration_ms: m.durationMs, turns: m.turns, agents: m.agents, agents_main: m.agentsMain, agent_types: (m.agentTypes || []).join(';'), prompt_prefix_id: m.promptPrefix ? arm : '',
     skill_calls: m.skillCalls, own_skill_calls: m.ownSkillCalls, own_hook_ran: m.ownHookRan, activation_via: m.activationVia || '',
     result_subtype: m.resultSubtype, is_error: m.isError, exit_code: m.exitCode,
     timed_out: m.timedOut, invalid: reasons.length > 0, invalid_reason: reasons.join(';'),
@@ -134,6 +134,8 @@ export function appendRow(cfg, args) {
     neutral_config: summarizeNeutralConfig(m.neutralConfigContent),
     fronts_ok: fr ? String(fr.ok) : '', fronts_got: fr ? (fr.got || []).join(';') : '',
     fronts_message: fr && fr.foundIn && fr.foundIn.message !== null && fr.foundIn.message !== undefined ? String(fr.foundIn.message) : '', fronts_reason: fr && fr.reason ? fr.reason : '',
+    fronts_by_agents: fr && Array.isArray(fr.frontsByAgents) ? fr.frontsByAgents.join(';') : '',
+    fronts_by_agents_ok: fr && typeof fr.frontsByAgentsOk === 'boolean' ? String(fr.frontsByAgentsOk) : '',
     files_changed: c && c.filesChanged, lines_added: c && c.linesAdded, lines_removed: c && c.linesRemoved,
     eol_only_files: c && c.eolOnlyCount, eol_converted_files: c && c.eolConvertedCount,
     note: notes.filter(Boolean).join(';'),

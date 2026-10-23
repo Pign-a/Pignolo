@@ -4,6 +4,7 @@
 //   slash | noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_TEXTS: JSON list of {text, sub} extra assistant messages after the first one ("sub": a subagent message).
+// FAKE_CLAUDE_AGENTS / FAKE_CLAUDE_SUBAGENTS: comma lists of subagent_type launched by the main thread / by a subagent.
 // FAKE_CLAUDE_RESULT: final result text (" // " becomes a new line).
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -143,6 +144,14 @@ if (has('hang')) {
     blocks.push({ type: 'tool_use', id: 'toolu_9', name: 'Bash', input: { command: `type ${process.env.FAKE_CLAUDE_ESCAPE_PATH}` } });
   }
   out({ type: 'assistant', parent_tool_use_id: null, message: { content: blocks } });
+  if (process.env.FAKE_CLAUDE_AGENTS) {
+    const types = process.env.FAKE_CLAUDE_AGENTS.split(',').filter(Boolean);
+    out({ type: 'assistant', parent_tool_use_id: null, message: { content: types.map((t, i) => ({ type: 'tool_use', id: `toolu_a${i}`, name: 'Agent', input: { subagent_type: t, prompt: 'x' } })) } });
+  }
+  if (process.env.FAKE_CLAUDE_SUBAGENTS) {
+    const types = process.env.FAKE_CLAUDE_SUBAGENTS.split(',').filter(Boolean);
+    out({ type: 'assistant', parent_tool_use_id: 'toolu_a0', message: { content: types.map((t, i) => ({ type: 'tool_use', id: `toolu_b${i}`, name: 'Agent', input: { subagent_type: t, prompt: 'y' } })) } });
+  }
   if (process.env.FAKE_CLAUDE_TEXTS) {
     for (const t of JSON.parse(process.env.FAKE_CLAUDE_TEXTS)) {
       out({ type: 'assistant', parent_tool_use_id: t.sub ? 'toolu_1' : null, message: { content: [{ type: 'text', text: t.text }] } });

@@ -65,6 +65,7 @@ const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'st
 
 export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [], ownHooksDeclared = false, prompt = '' } = {}) {
   const initCommands = new Set();
+  const agentTypes = [];
   // Activation of the plugin under test: Skill tool calls (all, and the arm's own), and whether its hook output shows up.
   const skillIds = new Set();
   const ownSkills = [];
@@ -129,7 +130,11 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
           const id = b.id || `noid-${anon++}`;
           if (!agentIds.has(id)) {
             agentIds.add(id);
-            if (!o.parent_tool_use_id) mainIds.add(id);
+            if (!o.parent_tool_use_id) {
+              mainIds.add(id);
+              // Which agents the main thread chose to launch (names only): a measure of selection that does not depend on what the model prints.
+              if (b.input && typeof b.input.subagent_type === 'string' && b.input.subagent_type) agentTypes.push(b.input.subagent_type);
+            }
           }
         }
       }
@@ -200,6 +205,7 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     weightedTokens: weighted,
     agents: agentIds.size,
     agentsMain: mainIds.size,
+    agentTypes,
     contamination: uniqueHits.length > 0,
     contaminationHits: uniqueHits,
     ownPluginLoaded,
