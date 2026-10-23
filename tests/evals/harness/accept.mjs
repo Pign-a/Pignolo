@@ -103,6 +103,10 @@ function summarizeChanges(cfg, repo, dir) {
     shortstat: patches.shortstat,
     filesChanged: m.filesChanged, linesAdded: m.linesAdded, linesRemoved: m.linesRemoved, files,
     rawFilesChanged: m.rawFilesChanged,
+    // Counts above ignore line endings; these are the same code-only counts without ignoring them, and the line-ending files.
+    rawLinesAdded: m.rawLinesAdded, rawLinesRemoved: m.rawLinesRemoved,
+    eolOnlyFiles: m.eolOnlyFiles, eolOnlyCount: m.eolOnlyFiles.length,
+    eolConvertedFiles: m.eolConvertedFiles, eolConvertedCount: m.eolConvertedFiles.length,
     measuredTree: tree, measuredKind: m.kind, measuredBranch: m.branch,
     candidates: t.candidates, worktrees: t.worktrees, branchesAhead: t.branchesAhead,
     flags: t.flags, noChanges: t.noChanges, invalidReasons: t.noChanges ? ['no_changes'] : [],

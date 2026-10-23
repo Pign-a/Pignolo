@@ -2,6 +2,7 @@
 // the measured tree is the candidate with the largest change against the base commit.
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { git } from './prepare.mjs';
 
 const slash = (p) => String(p).replace(/\\/g, '/');
@@ -58,14 +59,47 @@ function parseNumstat(text) {
 
 const q = (cwd, args) => git(cwd, ['-c', 'core.quotepath=false', ...args]);
 
-// Stages everything in a tree and counts its change against `base`, code only (excludes applied).
+// Line endings. Project files may use CRLF and an agent may rewrite a whole file as LF: every line then "changes" and the
+// size of the change is pure noise. Counts therefore ignore a CR at the end of a line (--ignore-cr-at-eol); the files that
+// only changed their line endings, and the ones that switched their dominant ending, are listed apart.
+const bufferOf = (cwd, args) => {
+  const r = spawnSync('git', args, { cwd, windowsHide: true, maxBuffer: 256 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout : null;
+};
+function dominantEol(buf) {
+  let crlf = 0;
+  let lf = 0;
+  for (let i = 0; i < buf.length; i += 1) {
+    if (buf[i] === 0) return null; // binary
+    if (buf[i] === 10) { if (i > 0 && buf[i - 1] === 13) crlf += 1; else lf += 1; }
+  }
+  if (!crlf && !lf) return null;
+  return crlf > lf ? 'crlf' : 'lf';
+}
+// Files (among `files`) whose dominant line ending at `ref` differs from the one at base; ref null reads the index.
+function eolConverted(cwd, files, ref) {
+  const out = [];
+  for (const f of files.slice(0, 500)) {
+    const before = bufferOf(cwd, ['show', `base:${f}`]);
+    const after = bufferOf(cwd, ['show', ref === null ? `:${f}` : `${ref}:${f}`]);
+    if (!before || !after) continue;
+    const a = dominantEol(before);
+    const b = dominantEol(after);
+    if (a && b && a !== b) out.push(f);
+  }
+  return out.sort();
+}
+const eolPart = (strict, ignored) => ({ eolOnlyFiles: strict.files.filter((f) => !ignored.files.includes(f)).sort() });
+
+// Stages everything in a tree and counts its change against `base`, code only (excludes applied, line endings ignored).
 function treeChanges(tree, others, excludes) {
   const nested = others.filter((o) => inside(o, tree)).map((o) => `:(exclude)${slash(path.relative(tree, o))}`);
   q(tree, ['add', '-A', '--', '.', ...nested]);
   const specs = ['--', '.', ...nested, ...excludeSpecs(excludes)];
-  const code = parseNumstat(q(tree, ['diff', '--cached', '--numstat', '--no-renames', 'base', ...specs]));
+  const code = parseNumstat(q(tree, ['diff', '--cached', '--numstat', '--no-renames', '--ignore-cr-at-eol', 'base', ...specs]));
+  const strict = parseNumstat(q(tree, ['diff', '--cached', '--numstat', '--no-renames', 'base', ...specs]));
   const raw = parseNumstat(q(tree, ['diff', '--cached', '--numstat', '--no-renames', 'base', '--', '.', ...nested]));
-  return { code, raw, nested };
+  return { code, strict, raw, nested, eolConverted: eolConverted(tree, strict.files, null), ...eolPart(strict, code) };
 }
 
 // Candidates: the run folder, every other worktree and every branch ahead of base that no worktree has checked out.
@@ -77,11 +111,12 @@ export function measureTrees(repo, excludes) {
   const others = worktrees.filter((w) => !same(w.path, repo)).map((w) => w.path);
   const candidates = [];
   for (const w of [main, ...worktrees.filter((x) => !same(x.path, repo))]) {
-    const { code, raw } = treeChanges(w.path, [...others, main.path].filter((o) => !same(o, w.path)), excludes);
+    const { code, strict, raw, eolOnlyFiles, eolConverted: converted } = treeChanges(w.path, [...others, main.path].filter((o) => !same(o, w.path)), excludes);
     candidates.push({
       kind: same(w.path, repo) ? 'main' : 'worktree', path: w.path, branch: w.branch, head: w.head,
       filesChanged: code.files.length, files: code.files, linesAdded: code.added, linesRemoved: code.removed,
       rawFilesChanged: raw.files.length, rawLines: raw.added + raw.removed,
+      rawLinesAdded: strict.added, rawLinesRemoved: strict.removed, eolOnlyFiles, eolConvertedFiles: converted,
     });
   }
   const branchesAhead = [];
@@ -90,12 +125,15 @@ export function measureTrees(repo, excludes) {
     const ahead = Number(q(repo, ['rev-list', '--count', `base..${b}`]));
     if (ahead > 0) branchesAhead.push({ branch: b, ahead });
     if (ahead > 0 && !checkedOut.has(b)) {
-      const code = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', 'base', b, '--', '.', ...excludeSpecs(excludes)]));
+      const code = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', '--ignore-cr-at-eol', 'base', b, '--', '.', ...excludeSpecs(excludes)]));
+      const strict = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', 'base', b, '--', '.', ...excludeSpecs(excludes)]));
       const raw = parseNumstat(q(repo, ['diff', '--numstat', '--no-renames', 'base', b]));
       candidates.push({
         kind: 'branch', path: null, branch: b, head: null,
         filesChanged: code.files.length, files: code.files, linesAdded: code.added, linesRemoved: code.removed,
         rawFilesChanged: raw.files.length, rawLines: raw.added + raw.removed,
+        rawLinesAdded: strict.added, rawLinesRemoved: strict.removed,
+        eolOnlyFiles: eolPart(strict, code).eolOnlyFiles, eolConvertedFiles: eolConverted(repo, strict.files, b),
       });
     }
   }
@@ -122,7 +160,8 @@ export function treePatches(tree, others, excludes) {
   const common = ['diff', '--cached', '--no-renames', 'base'];
   return {
     raw: q(tree, [...common, '--binary', '--', '.', ...nested]),
-    blind: q(tree, [...common, '--', '.', ...nested, ...excludeSpecs(excludes)]),
-    shortstat: q(tree, [...common, '--shortstat', '--', '.', ...nested, ...excludeSpecs(excludes)]),
+    // The grader never sees line-ending noise: a file that only changed its endings is not in the diff at all.
+    blind: q(tree, [...common, '--ignore-cr-at-eol', '--', '.', ...nested, ...excludeSpecs(excludes)]),
+    shortstat: q(tree, [...common, '--ignore-cr-at-eol', '--shortstat', '--', '.', ...nested, ...excludeSpecs(excludes)]),
   };
 }

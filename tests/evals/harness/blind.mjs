@@ -62,6 +62,8 @@ A serious finding is only something that affects correctness, data or the requir
 
 ## Out of scope
 
+Differences in line endings are not part of the review.
+
 Process notes and project documents (plans, session notes, roadmaps, design or security write-ups, agent instruction files) have already been left out of the diffs, and if a trace of one is still visible it is out of scope: it must not be penalized or rewarded. Judge the code change only.
 
 ## Output
@@ -94,7 +96,13 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
       if (!fs.existsSync(pf)) throw new Error(`falta ${pf}; corré accept para ${task}/${arm}/${rep}`);
       let timestamp = null;
       try { timestamp = JSON.parse(fs.readFileSync(path.join(dir, 'metrics.json'), 'utf8')).finishedAt || null; } catch { /* no metrics */ }
-      runs.push({ arm, rep, timestamp, patch: fs.readFileSync(pf, 'utf8') });
+      // Line-ending facts go to the key only (after grading they are a quality note, never part of the blind grade).
+      let eol = { converted: [], only: [] };
+      try {
+        const c = JSON.parse(fs.readFileSync(path.join(dir, 'changes.json'), 'utf8'));
+        eol = { converted: c.eolConvertedFiles || [], only: c.eolOnlyFiles || [] };
+      } catch { /* no changes.json */ }
+      runs.push({ arm, rep, timestamp, eol, patch: fs.readFileSync(pf, 'utf8') });
     }
   }
   if (runs.length > LABELS.length) throw new Error('demasiadas corridas para etiquetar');
@@ -118,7 +126,7 @@ export function blind(cfg, { task, reps, force = false, allowLeaks = false }) {
   const key = {};
   order.forEach((r, i) => {
     const label = LABELS[i];
-    key[label] = { arm: r.arm, rep: r.rep, timestamp: r.timestamp };
+    key[label] = { arm: r.arm, rep: r.rep, timestamp: r.timestamp, eol: r.eol };
     const pack = path.join(base, `pack-${i + 1}`);
     fs.mkdirSync(pack);
     fs.writeFileSync(path.join(pack, 'diff.patch'), r.patch);

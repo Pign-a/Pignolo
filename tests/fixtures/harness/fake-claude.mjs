@@ -1,7 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
+//   eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
 // FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
@@ -70,6 +70,17 @@ if (has('hang')) {
     w('.gitignore', '.worktrees/\n');
     w('docs/my notes/file with space.md', 'real doc\n');
     w('src/feature.js', feature);
+  }
+  if (has('eol')) {
+    // Converts a big CRLF file to LF (changing one line) and another one with ONLY the line endings.
+    const big = path.join(process.cwd(), 'src', 'big.ts');
+    fs.writeFileSync(big, fs.readFileSync(big, 'utf8').replace(/\r\n/g, '\n').replace('line 5\n', 'line five\n'));
+    const only = path.join(process.cwd(), 'src', 'only.ts');
+    fs.writeFileSync(only, fs.readFileSync(only, 'utf8').replace(/\r\n/g, '\n'));
+  }
+  if (has('eol-few')) {
+    const few = path.join(process.cwd(), 'src', 'few.ts');
+    fs.writeFileSync(few, fs.readFileSync(few, 'utf8').replace('line 3\r\n', 'line three\r\n'));
   }
   if (has('only-excluded')) {
     fs.appendFileSync(path.join(process.cwd(), 'CLAUDE.md'), 'a note only\n');

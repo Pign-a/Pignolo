@@ -9,7 +9,7 @@ export const COLUMNS = [
   'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'own_hook_ran',
   'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
-  'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'note',
+  'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -131,6 +131,7 @@ export function appendRow(cfg, args) {
     neutral_plugins: (m.neutralPluginsLoaded || []).join(';'),
     neutral_config: summarizeNeutralConfig(m.neutralConfigContent),
     files_changed: c && c.filesChanged, lines_added: c && c.linesAdded, lines_removed: c && c.linesRemoved,
+    eol_only_files: c && c.eolOnlyCount, eol_converted_files: c && c.eolConvertedCount,
     note: notes.filter(Boolean).join(';'),
   };
   fs.mkdirSync(path.dirname(cfg.csvPath), { recursive: true });

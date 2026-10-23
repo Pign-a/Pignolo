@@ -8,7 +8,7 @@ import { modelFactorFor } from './metrics.mjs';
 
 const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'duration_ms', 'turns',
   'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail',
-  'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed'];
+  'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files'];
 const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid'];
 
 export function normalizeRows(rows) {
@@ -86,6 +86,16 @@ function armStats(rows) {
     timedOut: rows.filter((r) => r.timed_out).length,
     // Did the run exercise the plugin under test? A run activated it when it called at least one of the plugin's own skills.
     // Rows without the data (older CSV) are not counted either way. The plugin's own hook is shown apart.
+    // Informative quality note, outside the decision rule: files whose line endings were converted (for example CRLF to LF).
+    eol: (() => {
+      const known = rows.filter((r) => r.eol_converted_files !== null && r.eol_converted_files !== undefined);
+      return {
+        converted: known.reduce((t, r) => t + r.eol_converted_files, 0),
+        only: known.reduce((t, r) => t + (r.eol_only_files || 0), 0),
+        runs: known.filter((r) => r.eol_converted_files > 0).length,
+        m: known.length,
+      };
+    })(),
     activation: { n: rows.filter((r) => r.own_skill_calls !== null && r.own_skill_calls > 0).length, m: rows.filter((r) => r.own_skill_calls !== null).length },
     hook: { n: rows.filter((r) => r.own_hook_ran === 'true').length, m: rows.filter((r) => r.own_hook_ran === 'true' || r.own_hook_ran === 'false').length },
     accept: accRows.length ? { pass, fail, runs: accRows.length, greenRuns: accRows.filter(isGreen).length } : null,
@@ -296,7 +306,8 @@ export function summarize(rowsIn, {
     } else {
       for (const [a, v] of known) if (v.n === 0) activationNotes.push(`el brazo ${a} no activó el plugin en ninguna corrida (0/${v.m})`);
     }
-    tasks.push({ task, kind, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes });
+    const eol = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol]));
+    tasks.push({ task, kind, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes, eol });
   }
   return { tasks, notes };
 }
@@ -321,6 +332,7 @@ export function formatSummary(res) {
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);
       out.push(`   aceptación: ${acc}`);
+      if (s.eol.m) out.push(`   fin de línea (nota, no entra en la regla): ${s.eol.converted} archivos convertidos en ${s.eol.runs}/${s.eol.m} corridas${s.eol.only ? `, ${s.eol.only} con solo cambio de fin de línea` : ''}`);
       out.push(`   activaron el plugin: ${s.activation.m ? `${s.activation.n}/${s.activation.m}` : 'sin dato'}${s.hook.m ? ` (hook propio visto: ${s.hook.n}/${s.hook.m})` : ''}`);
     }
     out.push(`decisión: ${t.decision.verdict}`);

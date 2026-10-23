@@ -787,6 +787,92 @@ test('run: una corrida que termina sin cambios (por ejemplo con una pregunta) qu
   } finally { cleanup(env); }
 });
 
+// Un repo cuyos archivos usan CRLF: un brazo convierte uno grande a LF, el otro cambia unas líneas.
+function eolEnv() {
+  const env = setup();
+  const crlf = (n) => Array.from({ length: n }, (_, i) => `line ${i}`).join('\r\n') + '\r\n';
+  put(env.src, 'src/big.ts', crlf(100));
+  put(env.src, 'src/only.ts', crlf(10));
+  put(env.src, 'src/few.ts', crlf(20));
+  git(env.src, 'add', '-A');
+  git(env.src, 'commit', '-q', '-m', 'crlf files');
+  fs.writeFileSync(path.join(env.priv, 't1', 'base.txt'), `${git(env.src, 'rev-parse', 'HEAD')}\n`);
+  return env;
+}
+
+test('fin de línea: los conteos ignoran CRLF/LF, se listan los archivos solo-EOL y los convertidos, y el diff a ciegas no trae ruido', async () => {
+  const env = eolEnv();
+  try {
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const cfgA = await prepared(env, 'A', 1);
+    assert.ok(fs.readFileSync(path.join(runDirName(env, 't1', 'A', 1), 'repo', 'src', 'big.ts'), 'utf8').includes('\r\n'), 'el export conserva CRLF');
+    await withEnv({ FAKE_CLAUDE_MODE: 'eol' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 1 }));
+    await acceptRun(cfgA, { task: 't1', arm: 'A', rep: 1 });
+    const a = JSON.parse(fs.readFileSync(path.join(runDirName(env, 't1', 'A', 1), 'changes.json'), 'utf8'));
+    // Ignorando el fin de línea: una sola línea cambiada en big.ts.
+    assert.deepStrictEqual([a.filesChanged, a.linesAdded, a.linesRemoved, a.files], [1, 1, 1, ['src/big.ts']]);
+    // Sin ignorarlo (solo código): 100 + 10 líneas de ruido.
+    assert.deepStrictEqual([a.rawLinesAdded, a.rawLinesRemoved], [110, 110]);
+    assert.deepStrictEqual(a.eolOnlyFiles, ['src/only.ts']);
+    assert.deepStrictEqual(a.eolConvertedFiles, ['src/big.ts', 'src/only.ts']);
+    assert.deepStrictEqual([a.eolOnlyCount, a.eolConvertedCount], [1, 2]);
+    // El diff a ciegas: sin el archivo solo-EOL, sin ruido de archivo entero y sin CRs.
+    const blindPatch = fs.readFileSync(path.join(runDirName(env, 't1', 'A', 1), 'changes.blind.patch'), 'utf8');
+    assert.ok(!blindPatch.includes('only.ts'));
+    assert.ok(blindPatch.includes('line five'));
+    assert.ok(blindPatch.split('\n').length < 40, `el diff a ciegas tiene ${blindPatch.split('\n').length} líneas`);
+    assert.ok(!blindPatch.includes('line 50'), 'sin líneas sueltas del archivo entero');
+    // El parche completo conserva todo.
+    assert.ok(fs.readFileSync(path.join(runDirName(env, 't1', 'A', 1), 'changes.patch'), 'utf8').includes('only.ts'));
+    const rowA = appendRow(cfgA, { task: 't1', arm: 'A', rep: 1 });
+    assert.deepStrictEqual([rowA.lines_added, rowA.lines_removed, rowA.files_changed, rowA.eol_only_files, rowA.eol_converted_files], [1, 1, 1, 1, 2]);
+    // El otro brazo: cambia unas líneas y mantiene CRLF.
+    await prepared(env, 'B', 1);
+    await withEnv({ FAKE_CLAUDE_MODE: 'eol-few' }, () => runTask(cfgA, { task: 't1', arm: 'B', rep: 1 }));
+    await acceptRun(cfgA, { task: 't1', arm: 'B', rep: 1 });
+    const b = JSON.parse(fs.readFileSync(path.join(runDirName(env, 't1', 'B', 1), 'changes.json'), 'utf8'));
+    assert.deepStrictEqual([b.filesChanged, b.linesAdded, b.linesRemoved, b.rawLinesAdded, b.eolOnlyFiles, b.eolConvertedFiles], [1, 1, 1, 1, [], []]);
+    assert.deepStrictEqual(appendRow(cfgA, { task: 't1', arm: 'B', rep: 1 }).eol_converted_files, 0);
+  } finally { cleanup(env); }
+});
+
+test('fin de línea: meta.json y los paquetes no dicen nada de EOL; la clave sí guarda los convertidos; la consigna lo deja fuera de la revisión', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { blind } = await imp('blind.mjs');
+    writeRun(env, 't1', 'A', 1, { changes: { ...CHG, eolConvertedFiles: ['src/big.ts', 'src/only.ts'], eolOnlyFiles: ['src/only.ts'], eolConvertedCount: 2, eolOnlyCount: 1 }, patch: PATCH(1), blindPatch: PATCH(1) });
+    writeRun(env, 't1', 'B', 1, { changes: { ...CHG, eolConvertedFiles: [], eolOnlyFiles: [], eolConvertedCount: 0, eolOnlyCount: 0 }, patch: PATCH(2), blindPatch: PATCH(2) });
+    const cfg = loadConfig(env.cfgPath);
+    blind(cfg, { task: 't1', reps: [1] });
+    const base = path.join(env.priv, 'blind', 't1');
+    for (const f of allFiles(base)) assert.ok(!/eol|line ending|crlf/i.test(path.basename(f) === 'grader-prompt.md' ? '' : fs.readFileSync(f, 'utf8')), `${f} no debe decir nada de EOL`);
+    for (const f of allFiles(base).filter((x) => x.endsWith('meta.json'))) assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(f, 'utf8'))).sort(), ['filesChanged', 'label', 'linesAdded', 'linesRemoved', 'task']);
+    const key = JSON.parse(fs.readFileSync(path.join(env.priv, 'blind-keys', 't1.json'), 'utf8'));
+    const a = Object.values(key).find((k) => k.arm === 'A');
+    const b = Object.values(key).find((k) => k.arm === 'B');
+    assert.deepStrictEqual(a.eol, { converted: ['src/big.ts', 'src/only.ts'], only: ['src/only.ts'] });
+    assert.deepStrictEqual(b.eol, { converted: [], only: [] });
+    assert.match(fs.readFileSync(path.join(base, 'grader-prompt.md'), 'utf8'), /Differences in line endings are not part of the review/);
+  } finally { cleanup(env); }
+});
+
+test('summary: los archivos con fin de línea convertido salen como nota informativa por brazo, fuera de la regla', async () => {
+  const { summarize, formatSummary } = await imp('summary.mjs');
+  const noisy = (i) => ({ eol_only_files: i === 0 ? 1 : 0, eol_converted_files: i === 0 ? 3 : 0 });
+  const rows = [...arm('s', 'A', [100, 110, 120], noisy), ...arm('s', 'B', [80, 85, 90], { eol_only_files: 0, eol_converted_files: 0 })];
+  const r = summarize(rows, { kinds: { s: 'small' } });
+  assert.deepStrictEqual(r.tasks[0].eol.A, { converted: 3, only: 1, runs: 1, m: 3 });
+  assert.deepStrictEqual(r.tasks[0].eol.B, { converted: 0, only: 0, runs: 0, m: 3 });
+  const text = formatSummary(r);
+  assert.match(text, /fin de línea \(nota, no entra en la regla\): 3 archivos convertidos en 1\/3 corridas/);
+  assert.strictEqual(r.tasks[0].decision.verdict, summarize([...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90])], { kinds: { s: 'small' } }).tasks[0].decision.verdict, 'no cambia el veredicto');
+  // Filas sin el dato: no se imprime nada.
+  assert.doesNotMatch(formatSummary(summarize(arm('s', 'A', [100]), { kinds: {} })), /fin de línea/);
+});
+
 test('accept: los conteos son solo de código (pathspec, también con espacios) y el parche completo conserva todo', async () => {
   const env = setup();
   try {
@@ -1450,7 +1536,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1464,7 +1550,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', result_subtype: 'success', is_error: 'false', exit_code: '0',
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
-      contamination: 'false', neutral_plugins: '', neutral_config: '', files_changed: '1', lines_added: '3', lines_removed: '0',
+      contamination: 'false', neutral_plugins: '', neutral_config: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
