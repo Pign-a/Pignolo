@@ -75,6 +75,9 @@ function setup(over = {}) {
     model: 'sonnet',
     permissionMode: 'bypassPermissions',
     perRunCapUsd: 5,
+    totalCapUsd: 40,
+    trackProcesses: false,
+    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH'],
     timeoutMs: 20000,
     acceptTimeoutMs: 20000,
     arms: {
@@ -88,6 +91,7 @@ function setup(over = {}) {
     experiment: 'toy-exp',
     ...over,
   };
+  fs.mkdirSync(cfg.configDir, { recursive: true });
   const cfgPath = path.join(root, 'harness.local.json');
   fs.writeFileSync(cfgPath, JSON.stringify(cfg));
   return { root, src, priv, work, cfg, cfgPath, base };
@@ -185,8 +189,9 @@ test('run: arma el argv exacto, fija CLAUDE_CONFIG_DIR y calcula las métricas',
     const m = await withEnv({ FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_MODE: 'ok' }, () => runTask(cfg, { task: 't1', arm: 'B', rep: 1 }));
     const seen = JSON.parse(fs.readFileSync(log, 'utf8'));
     assert.deepStrictEqual(seen.argv, [
-      '-p', 'Add a feature.\nSecond line.',
+      '-p',
       '--model', 'sonnet',
+      '--effort', 'medium',
       '--plugin-dir', cfg.arms.B.pluginDir,
       '--permission-mode', 'bypassPermissions',
       '--output-format', 'stream-json',
@@ -196,6 +201,7 @@ test('run: arma el argv exacto, fija CLAUDE_CONFIG_DIR y calcula las métricas',
     ]);
     assert.strictEqual(fs.realpathSync(seen.cwd), fs.realpathSync(path.join(runDir(env, 't1', 'B', 1), 'repo')));
     assert.strictEqual(seen.configDir, cfg.configDir);
+    assert.strictEqual(seen.stdin, 'Add a feature.\nSecond line.', 'el prompt va por stdin, nunca como argumento (un "-" inicial no es una opción)');
     const dir = runDir(env, 't1', 'B', 1);
     assert.ok(fs.readFileSync(path.join(dir, 'stream.jsonl'), 'utf8').includes('"type":"result"'));
     assert.strictEqual(fs.readFileSync(path.join(dir, 'stderr.txt'), 'utf8').trim(), 'fake stderr');
@@ -283,6 +289,197 @@ test('run: si no existe la carpeta preparada, pide prepare', async () => {
     const { loadConfig } = await imp('config.mjs');
     const { runTask } = await imp('execute.mjs');
     await assert.rejects(() => runTask(loadConfig(env.cfgPath), { task: 't1', arm: 'A', rep: 9 }), /prepare/);
+  } finally { cleanup(env); }
+});
+
+// ---------------------------------------------------------------- config, entorno y chequeos previos
+
+async function loadWith(env, over) {
+  const f = path.join(env.root, 'variant.json');
+  fs.writeFileSync(f, JSON.stringify({ ...env.cfg, ...over }));
+  const { loadConfig } = await imp('config.mjs');
+  return loadConfig(f);
+}
+
+test('config: exige tope total, valida effort, "%" en workRoot, anidamiento de carpetas y copyDirs', async () => {
+  const env = setup();
+  try {
+    const ok = await loadWith(env, {});
+    assert.strictEqual(ok.effort, 'medium', 'effort por defecto');
+    assert.deepStrictEqual(ok.modelFactor, { opus: 5, sonnet: 1, haiku: 0.33 });
+    assert.ok(ok.blindExcludePaths.includes('docs/sessions/') && ok.blindExcludePaths.includes('CLAUDE.md') && ok.blindExcludePaths.includes('.worktrees/'));
+    await assert.rejects(() => loadWith(env, { totalCapUsd: undefined }), /totalCapUsd/);
+    await assert.rejects(() => loadWith(env, { totalCapUsd: 0 }), /totalCapUsd/);
+    await assert.rejects(() => loadWith(env, { effort: 'enorme' }), /effort/);
+    await assert.rejects(() => loadWith(env, { workRoot: path.join(env.root, '100%work') }), /%/);
+    await assert.rejects(() => loadWith(env, { workRoot: path.join(env.priv, 'work') }), /workRoot.*privateRoot|privateRoot.*workRoot/);
+    await assert.rejects(() => loadWith(env, { workRoot: path.join(env.src, 'work') }), /workRoot.*sourceRepo|sourceRepo.*workRoot/);
+    await assert.rejects(() => loadWith(env, { privateRoot: env.root }), /privateRoot/);
+    for (const bad of ['', '.', '..', '../x', 'a/../../x', path.resolve('/abs')]) {
+      await assert.rejects(() => loadWith(env, { copyDirs: [bad] }), /copyDirs/, `copyDirs ${JSON.stringify(bad)}`);
+    }
+    const { runPaths } = await imp('config.mjs');
+    assert.ok(runPaths(ok, { task: 't1', arm: 'A', rep: 1 }).dir.startsWith(ok.workRoot));
+  } finally { cleanup(env); }
+});
+
+test('run: el hijo recibe solo el entorno de la lista blanca, --effort y el prompt por stdin', async () => {
+  const env = setup({ effort: 'high' });
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const log = path.join(env.root, 'stub.json');
+    const secrets = { ANTHROPIC_API_KEY: 'sk-secret-value', GITHUB_TOKEN: 'tok-secret-value', CLAUDECODE: '1', CLAUDE_CODE_FOO: 'x', MY_APP_SECRET: 'zzz-secret-value', HARMLESS_VAR: 'harmless' };
+    const m = await withEnv({ FAKE_CLAUDE_LOG: log, FAKE_CLAUDE_MODE: 'ok', ...secrets }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    const seen = JSON.parse(fs.readFileSync(log, 'utf8'));
+    const names = seen.envNames.map((n) => n.toUpperCase());
+    for (const n of Object.keys(secrets)) assert.ok(!names.includes(n), `${n} no debe llegar al hijo`);
+    for (const n of ['CLAUDE_CONFIG_DIR', 'DISABLE_AUTOUPDATER', 'FAKE_CLAUDE_MODE']) assert.ok(names.includes(n), `falta ${n}`);
+    assert.ok(names.includes('PATH') || names.includes('SYSTEMROOT'), 'lo básico del sistema sí pasa');
+    assert.deepStrictEqual(seen.argv.slice(seen.argv.indexOf('--effort'), seen.argv.indexOf('--effort') + 2), ['--effort', 'high']);
+    assert.ok(!seen.argv.includes('Add a feature.\nSecond line.'), 'el prompt no va en argv');
+    for (const n of ['ANTHROPIC_API_KEY', 'CLAUDECODE', 'CLAUDE_CODE_FOO', 'GITHUB_TOKEN', 'MY_APP_SECRET']) assert.ok(m.droppedEnvNames.includes(n), `se anota ${n}`);
+    assert.ok(!m.droppedEnvNames.includes('HARMLESS_VAR'), 'lo inocuo no se anota');
+    assert.ok(m.droppedEnvNames.every((n) => /^(CLAUDE|ANTHROPIC)|TOKEN|KEY|SECRET/i.test(n)));
+    const blob = fs.readFileSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json'), 'utf8');
+    assert.ok(!/sk-secret-value|tok-secret-value|zzz-secret-value/.test(blob), 'solo nombres, nunca valores');
+    assert.strictEqual(m.init.model, 'fake-model');
+    assert.strictEqual(m.init.claude_code_version, '9.9.9-fake');
+  } finally { cleanup(env); }
+});
+
+test('run: chequeo previo gratis: plugin del brazo equivocado, configDir contaminado', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const dir = runDir(env, 't1', 'A', 1);
+    // 1. pluginDir que no es el plugin del brazo
+    const wrong = { ...cfg, arms: { ...cfg.arms, A: { pluginName: 'superpowers', pluginDir: cfg.arms.B.pluginDir } } };
+    await assert.rejects(() => runTask(wrong, { task: 't1', arm: 'A', rep: 1 }), /plugin.*superpowers|superpowers.*pignolo/);
+    const noManifest = { ...cfg, arms: { ...cfg.arms, A: { pluginName: 'superpowers', pluginDir: env.root } } };
+    await assert.rejects(() => runTask(noManifest, { task: 't1', arm: 'A', rep: 1 }), /plugin\.json/);
+    // 2. configDir inexistente o con plugins, CLAUDE.md, hooks o enabledPlugins
+    await assert.rejects(() => runTask({ ...cfg, configDir: path.join(env.root, 'nope') }, { task: 't1', arm: 'A', rep: 1 }), /configDir/);
+    const polluted = [
+      ['plugins/cache/x/plugin.json', '{}', /plugins/],
+      ['CLAUDE.md', '# memoria', /CLAUDE\.md/],
+      ['settings.json', '{"hooks":{"Stop":[]}}', /hooks/],
+      ['settings.json', '{"enabledPlugins":{"a@b":true}}', /enabledPlugins/],
+      ['skills/mine/SKILL.md', 'x', /skills/],
+    ];
+    for (const [rel, content, re] of polluted) {
+      const bad = path.join(env.root, 'polluted');
+      fs.rmSync(bad, { recursive: true, force: true });
+      put(bad, rel, content);
+      await assert.rejects(() => runTask({ ...cfg, configDir: bad }, { task: 't1', arm: 'A', rep: 1 }), re, rel);
+    }
+    // Un configDir con login (credenciales) y un settings.json inocuo está bien.
+    const good = path.join(env.root, 'good');
+    put(good, '.credentials.json', '{}');
+    put(good, 'settings.json', '{"theme":"dark"}');
+    put(good, 'plugins/known_marketplaces.json', '{}');
+    const m = await runTask({ ...cfg, configDir: good }, { task: 't1', arm: 'A', rep: 1 });
+    assert.strictEqual(m.hasResult, true);
+    assert.ok(fs.existsSync(path.join(dir, 'stream.jsonl')));
+  } finally { cleanup(env); }
+});
+
+test('run: si el plugin del brazo no figura cargado, la corrida queda contaminada e inválida', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'noplugin' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.ownPluginLoaded, false);
+    assert.strictEqual(m.contamination, true);
+    assert.ok(m.contaminationHits.includes('own_plugin_not_loaded'));
+    assert.ok(m.invalidReasons.includes('own_plugin_not_loaded'));
+  } finally { cleanup(env); }
+});
+
+test('run: cualquier plugin cargado que no sea el del brazo cuenta como contaminación', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'contaminated', FAKE_CLAUDE_EXTRA_PLUGIN: 'some-third-plugin' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.contamination, true);
+    assert.ok(m.contaminationHits.includes('plugin:some-third-plugin'));
+    assert.ok(m.invalidReasons.includes('contaminated'));
+  } finally { cleanup(env); }
+});
+
+test('run: tope total de gasto (suma del CSV y de corridas sin fila) antes de lanzar nada', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { COLUMNS } = await imp('row.mjs');
+    const csvRow = (o) => COLUMNS.map((c) => o[c] ?? '').join(',');
+    const dir = runDir(env, 't1', 'A', 1);
+    // 36 USD ya gastados en el CSV (otro experimento): 36 + 5 > 40
+    fs.writeFileSync(cfg.csvPath, `${COLUMNS.join(',')}\n${csvRow({ experiment: 'toy-exp-calib', task: 't0', arm: 'A', rep: 1, timestamp: 't', cost_usd: 36 })}\n`);
+    await assert.rejects(() => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }), /tope total/);
+    assert.ok(!fs.existsSync(path.join(dir, 'stream.jsonl')), 'no se lanzó nada');
+    // 34 + 5 = 39 <= 40: corre
+    fs.writeFileSync(cfg.csvPath, `${COLUMNS.join(',')}\n${csvRow({ experiment: 'toy-exp', task: 't0', arm: 'A', rep: 1, timestamp: 't', cost_usd: 34 })}\n`);
+    await runTask(cfg, { task: 't1', arm: 'A', rep: 1 });
+    // la corrida de recién (0,5) no tiene fila todavía y cuenta: 34 + 0,5 + 5 <= 40, pero una sin fila de 2 la rompe
+    writeRun(env, 't9', 'B', 1, { metrics: { costUsd: 2 } });
+    const cfgB = await prepared(env, 'B', 1);
+    await assert.rejects(() => runTask(cfgB, { task: 't1', arm: 'B', rep: 1 }), /tope total/);
+    // una corrida sin costo conocido (cortada) cuenta como el tope por corrida
+    fs.writeFileSync(cfg.csvPath, `${COLUMNS.join(',')}\n${csvRow({ experiment: 'toy-exp', task: 't0', arm: 'A', rep: 1, timestamp: 't', cost_usd: 20 })}\n${csvRow({ experiment: 'toy-exp', task: 't0', arm: 'B', rep: 1, timestamp: 'u', cost_usd: '' })}\n`);
+    fs.rmSync(runDir(env, 't9', 'B', 1), { recursive: true, force: true });
+    fs.rmSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json'));
+    const { spentUsd } = await imp('ledger.mjs');
+    assert.strictEqual(spentUsd(cfg), 25, '20 + 5 (sin costo = tope por corrida)');
+  } finally { cleanup(env); }
+});
+
+test('run: procesos que sobran después de la corrida se registran (sin matarlos)', async () => {
+  const env = setup();
+  try {
+    const cfg = { ...(await prepared(env, 'A', 1)), trackProcesses: true };
+    const { runTask } = await imp('execute.mjs');
+    const calls = [];
+    const lists = [['a.exe', 'b.exe', 'node.exe'], ['a.exe', 'b.exe', 'node.exe', 'node.exe', 'orphan.exe']];
+    const m = await runTask(cfg, { task: 't1', arm: 'A', rep: 1 }, { listProcesses: () => { calls.push(1); return lists[calls.length - 1]; } });
+    assert.strictEqual(calls.length, 2);
+    assert.deepStrictEqual(m.leftover_processes.sort(), ['node.exe', 'orphan.exe']);
+  } finally { cleanup(env); }
+});
+
+test('run: se registran los nombres que aparecen o desaparecen en configDir', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    put(cfg.configDir, 'settings.json', '{}');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'cfg-write' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.ok(m.config_dir_delta.added.includes('cache-x'));
+    assert.ok(m.config_dir_delta.added.includes('cache-x/f.txt'));
+    assert.deepStrictEqual(m.config_dir_delta.removed, []);
+    assert.ok(!JSON.stringify(m.config_dir_delta).includes('"x"'), 'solo nombres, nada de contenido');
+  } finally { cleanup(env); }
+});
+
+test('run: tocar el repo fuente, la carpeta privada u otra corrida se marca escaped_cwd', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const own = path.join(runDir(env, 't1', 'A', 1), 'repo', 'src');
+    const clean = await withEnv({ FAKE_CLAUDE_MODE: 'escape', FAKE_CLAUDE_ESCAPE_PATH: own }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.ok(!clean.invalidReasons.includes('escaped_cwd'), 'su propia carpeta no es un escape');
+    for (const [label, target] of [['fuente', path.join(env.src, 'src', 'app.js')], ['privada', path.join(env.priv, 't1', 'accept', 'x')], ['otra corrida', path.join(env.work, 't1-B-1', 'repo', 'x')]]) {
+      const c = await prepared(env, 'B', label === 'otra corrida' ? 2 : label === 'fuente' ? 3 : 4);
+      const rep = label === 'otra corrida' ? 2 : label === 'fuente' ? 3 : 4;
+      const m = await withEnv({ FAKE_CLAUDE_MODE: 'escape', FAKE_CLAUDE_ESCAPE_PATH: target }, () => runTask(c, { task: 't1', arm: 'B', rep }));
+      assert.ok(m.invalidReasons.includes('escaped_cwd'), label);
+      assert.ok(m.escapedCwd.command.length <= 200 && m.escapedCwd.command.includes('type '), label);
+    }
   } finally { cleanup(env); }
 });
 
