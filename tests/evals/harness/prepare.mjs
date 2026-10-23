@@ -3,7 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
-import { runPaths } from './config.mjs';
+import { runPaths, validateCopyDirs } from './config.mjs';
+import { ensureSnapshot, snapshotPaths } from './nm.mjs';
+import { removeTreeSafe } from './fsutil.mjs';
 
 const NEUTRAL = path.join(path.dirname(fileURLToPath(import.meta.url)), 'neutral-claude.md');
 const CONTEXT_FILES = new Set(['claude.md', 'claude.local.md', 'agents.md', '.mcp.json']);
@@ -13,6 +15,14 @@ export function git(cwd, args) {
   if (r.error) throw new Error(`no se pudo ejecutar git: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`git ${args.join(' ')} falló: ${(r.stderr || '').trim()}`);
   return r.stdout.trim();
+}
+
+// Like git() but keeps the output exactly as git printed it (patches need their final newline).
+export function gitRaw(cwd, args) {
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true, maxBuffer: 256 * 1024 * 1024 });
+  if (r.error) throw new Error(`no se pudo ejecutar git: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`git ${args.join(' ')} falló: ${(r.stderr || '').trim()}`);
+  return r.stdout;
 }
 
 function exportArchive(sourceRepo, base, dest) {
@@ -56,17 +66,9 @@ function stripContext(dir) {
   }
 }
 
-function safeRel(rel) {
-  const n = path.normalize(rel);
-  if (path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) {
-    throw new Error(`copyDirs: ruta no permitida: ${rel}`);
-  }
-  return n;
-}
-
 export async function prepare(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
-  const copyDirs = (cfg.copyDirs || []).map(safeRel);
+  const copyDirs = validateCopyDirs(cfg.copyDirs).map((rel) => path.normalize(rel));
   if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; movela o borrala a mano)`);
   let base;
   try {
@@ -83,8 +85,9 @@ export async function prepare(cfg, args) {
     stripContext(repo);
     fs.copyFileSync(NEUTRAL, path.join(repo, 'CLAUDE.md'));
 
-    const nm = path.join(cfg.sourceRepo, 'node_modules');
-    if (fs.existsSync(nm)) fs.symlinkSync(nm, path.join(repo, 'node_modules'), 'junction');
+    // The run links to ONE snapshot copy of the source's node_modules, never to the source itself.
+    const snap = ensureSnapshot(cfg);
+    if (snap) fs.symlinkSync(snapshotPaths(cfg).dir, path.join(repo, 'node_modules'), 'junction');
     else warnings.push('la fuente no tiene node_modules');
     for (const rel of copyDirs) {
       const from = path.join(cfg.sourceRepo, rel);
@@ -106,10 +109,8 @@ export async function prepare(cfg, args) {
     const baseCommit = git(repo, ['rev-parse', 'HEAD']);
     fs.writeFileSync(path.join(dir, 'prepare.json'), JSON.stringify({ task, arm, rep, baseCommit, createdAt: new Date().toISOString(), warnings }, null, 2));
   } catch (e) {
-    // The folder was created by this call, so cleaning it is safe. The junction goes first so the
-    // source node_modules can never be reached by the recursive delete.
-    try { fs.rmdirSync(path.join(repo, 'node_modules')); } catch { /* absent or not a link */ }
-    fs.rmSync(dir, { recursive: true, force: true });
+    // The folder was created by this call, so cleaning it is safe; links are removed as links, never followed.
+    removeTreeSafe(dir);
     throw e;
   }
   return { task, arm, rep, runDir: dir, repo, warnings };

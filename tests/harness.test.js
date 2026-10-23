@@ -77,7 +77,7 @@ function setup(over = {}) {
     perRunCapUsd: 5,
     totalCapUsd: 40,
     trackProcesses: false,
-    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH'],
+    extraEnvAllow: ['FAKE_CLAUDE_MODE', 'FAKE_CLAUDE_LOG', 'FAKE_CLAUDE_EXTRA_PLUGIN', 'FAKE_CLAUDE_ESCAPE_PATH', 'FAKE_CLAUDE_SRC_NM'],
     timeoutMs: 20000,
     acceptTimeoutMs: 20000,
     arms: {
@@ -130,8 +130,9 @@ test('prepare: node_modules es una junction, copyDirs se copia, commit base y gi
     const repo = path.join(runDir(env, 't1', 'B', 2), 'repo');
     const nm = path.join(repo, 'node_modules');
     assert.ok(fs.lstatSync(nm).isSymbolicLink(), 'junction');
+    // La junction apunta a la copia (snapshot) bajo workRoot, nunca al node_modules de la fuente.
     assert.strictEqual(path.resolve(fs.readlinkSync(nm)).toLowerCase().replace(/\\+$/, ''),
-      path.join(env.src, 'node_modules').toLowerCase());
+      path.join(env.work, '_nm').toLowerCase());
     assert.ok(fs.existsSync(path.join(nm, 'dep', 'index.js')));
     assert.strictEqual(fs.readFileSync(path.join(repo, 'generated', 'client', 'index.js'), 'utf8'),
       'module.exports = "client";\n');
@@ -483,6 +484,196 @@ test('run: tocar el repo fuente, la carpeta privada u otra corrida se marca esca
   } finally { cleanup(env); }
 });
 
+// ---------------------------------------------------------------- node_modules (copia aislada) y árbol medido
+
+test('prepare: node_modules se copia UNA vez a _nm; borrar una corrida no toca la fuente ni la copia', async () => {
+  const env = setup();
+  try {
+    await prepared(env, 'A', 1);
+    const snap = path.join(env.work, '_nm');
+    assert.ok(fs.existsSync(path.join(snap, 'dep', 'index.js')), 'copia del contenido');
+    assert.ok(fs.existsSync(path.join(env.work, '_nm.manifest.json')));
+    fs.writeFileSync(path.join(snap, 'marker.txt'), 'm');
+    await prepared(env, 'B', 1);
+    assert.ok(fs.existsSync(path.join(snap, 'marker.txt')), 'la segunda preparación no vuelve a copiar');
+    assert.ok(!fs.existsSync(path.join(env.src, 'node_modules', 'marker.txt')));
+    const { removeTreeSafe } = await imp('fsutil.mjs');
+    removeTreeSafe(runDirName(env, 't1', 'A', 1));
+    assert.ok(!fs.existsSync(runDirName(env, 't1', 'A', 1)));
+    assert.ok(fs.existsSync(path.join(env.src, 'node_modules', 'dep', 'index.js')), 'la fuente intacta');
+    assert.ok(fs.existsSync(path.join(snap, 'dep', 'index.js')), 'la copia intacta');
+    assert.ok(fs.existsSync(path.join(runDirName(env, 't1', 'B', 1), 'repo', 'node_modules', 'dep', 'index.js')), 'la otra corrida sigue enlazada');
+  } finally { cleanup(env); }
+});
+const runDirName = (env, task, arm, rep) => path.join(env.work, `${task}-${arm}-${rep}`);
+
+test('nm: el manifiesto cambia con paquetes o lockfile, no con cachés de herramientas', async () => {
+  const env = setup();
+  try {
+    const { manifest } = await imp('nm.mjs');
+    const d = path.join(env.root, 'nmtest');
+    put(d, 'a/index.js', '1');
+    put(d, 'b/index.js', '1');
+    put(d, '@s/x/index.js', '1');
+    put(d, '.package-lock.json', '{"v":1}');
+    const m0 = manifest(d);
+    assert.deepStrictEqual(m0.names, ['.package-lock.json', '@s/x', 'a', 'b']);
+    assert.strictEqual(m0.count, 4);
+    assert.ok(m0.lockHash && m0.digest);
+    put(d, '.vite/vitest/results.json', '{}');
+    assert.strictEqual(manifest(d).digest, m0.digest, 'una caché de herramienta no cuenta');
+    put(d, 'c/index.js', '1');
+    assert.notStrictEqual(manifest(d).digest, m0.digest);
+    fs.rmSync(path.join(d, 'c'), { recursive: true });
+    assert.strictEqual(manifest(d).digest, m0.digest);
+    put(d, '.package-lock.json', '{"v":2}');
+    assert.notStrictEqual(manifest(d).digest, m0.digest);
+    put(d, '@s/y/index.js', '1');
+    assert.ok(manifest(d).names.includes('@s/y'));
+  } finally { cleanup(env); }
+});
+
+test('run: si el agente cambia node_modules la corrida es inválida y la copia se descarta; la fuente no se toca', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { manifest } = await imp('nm.mjs');
+    const srcBefore = manifest(path.join(env.src, 'node_modules')).digest;
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'nm-modify' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.nm.snapshotChanged, true);
+    assert.ok(m.invalidReasons.includes('nm_changed'));
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm')), 'la copia modificada se borró');
+    assert.strictEqual(manifest(path.join(env.src, 'node_modules')).digest, srcBefore, 'la fuente intacta');
+    assert.ok(!fs.existsSync(path.join(env.src, 'node_modules', 'zz-new')));
+    assert.strictEqual(m.nm.sourceChanged, false);
+    // La próxima preparación vuelve a copiar desde la fuente intacta, sin lo que dejó el agente.
+    await prepared(env, 'A', 2);
+    assert.ok(fs.existsSync(path.join(env.work, '_nm', 'dep', 'index.js')));
+    assert.ok(!fs.existsSync(path.join(env.work, '_nm', 'zz-new')));
+    const ok = await withEnv({ FAKE_CLAUDE_MODE: 'ok' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 2 }));
+    assert.ok(!ok.invalidReasons.includes('nm_changed') && ok.nm.snapshotChanged === false);
+  } finally { cleanup(env); }
+});
+
+test('run: si la fuente cambia durante la corrida se marca source_nm_changed', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'src-nm-modify', FAKE_CLAUDE_SRC_NM: path.join(env.src, 'node_modules') }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.nm.sourceChanged, true);
+    assert.ok(m.invalidReasons.includes('source_nm_changed'));
+  } finally { cleanup(env); }
+});
+
+test('run: una copia de node_modules alterada entre corridas frena antes de gastar', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    fs.mkdirSync(path.join(env.work, '_nm', 'tampered'));
+    const { runTask } = await imp('execute.mjs');
+    await assert.rejects(() => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }), /_nm|node_modules/);
+    assert.ok(!fs.existsSync(path.join(runDirName(env, 't1', 'A', 1), 'stream.jsonl')));
+  } finally { cleanup(env); }
+});
+
+test('árbol medido: el código en un worktree se mide y se acepta ahí (con node_modules y copyDirs)', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'worktree' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.trees.measured.kind, 'worktree');
+    assert.strictEqual(m.trees.noChanges, false);
+    assert.ok(!m.invalidReasons.includes('no_changes'));
+    assert.ok(m.trees.branchesAhead.length === 0, 'el worktree tiene cambios sin commit: la rama no está adelantada');
+    await acceptRun(cfg, { task: 't1', arm: 'A', rep: 1 });
+    const dir = runDirName(env, 't1', 'A', 1);
+    const wt = path.join(dir, 'wt');
+    const c = JSON.parse(fs.readFileSync(path.join(dir, 'changes.json'), 'utf8'));
+    assert.strictEqual(path.resolve(c.measuredTree).toLowerCase(), path.resolve(wt).toLowerCase());
+    assert.deepStrictEqual(c.files, ['src/feature.js']);
+    assert.strictEqual(c.candidates.length, 2);
+    assert.deepStrictEqual(c.flags, []);
+    assert.ok(fs.existsSync(path.join(wt, 'test', 'new.test.js')), 'los tests de aceptación se copian al árbol medido');
+    assert.ok(!fs.existsSync(path.join(dir, 'repo', 'test', 'new.test.js')));
+    assert.ok(fs.lstatSync(path.join(wt, 'node_modules')).isSymbolicLink() && fs.existsSync(path.join(wt, 'node_modules', 'dep', 'index.js')));
+    assert.strictEqual(fs.readFileSync(path.join(wt, 'generated', 'client', 'index.js'), 'utf8'), 'module.exports = "client";\n');
+  } finally { cleanup(env); }
+});
+
+test('árbol medido: cambios en dos árboles se registran todos y se marca multiple_trees', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    await withEnv({ FAKE_CLAUDE_MODE: 'worktree,edit' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    await acceptRun(cfg, { task: 't1', arm: 'A', rep: 1 });
+    const c = JSON.parse(fs.readFileSync(path.join(runDirName(env, 't1', 'A', 1), 'changes.json'), 'utf8'));
+    assert.deepStrictEqual(c.flags, ['multiple_trees']);
+    assert.strictEqual(c.candidates.filter((x) => x.filesChanged > 0).length, 2);
+    assert.strictEqual(c.candidates.length, 2);
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.match(parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'))[0].note, /multiple_trees/);
+  } finally { cleanup(env); }
+});
+
+test('árbol medido: código solo en una rama (sin worktree) se mide y se acepta en un worktree propio', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'branch-only' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.deepStrictEqual(m.trees.branchesAhead, [{ branch: 'feature', ahead: 1 }]);
+    assert.strictEqual(m.trees.measured.kind, 'branch');
+    assert.ok(!m.invalidReasons.includes('no_changes'));
+    await acceptRun(cfg, { task: 't1', arm: 'A', rep: 1 });
+    const dir = runDirName(env, 't1', 'A', 1);
+    const c = JSON.parse(fs.readFileSync(path.join(dir, 'changes.json'), 'utf8'));
+    assert.deepStrictEqual(c.files, ['src/feature.js']);
+    assert.ok(path.resolve(c.measuredTree).toLowerCase().endsWith(`${path.sep}measured`));
+    assert.ok(fs.existsSync(path.join(dir, 'measured', 'test', 'new.test.js')));
+  } finally { cleanup(env); }
+});
+
+test('run: una corrida que termina sin cambios (por ejemplo con una pregunta) queda inválida por no_changes', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'ask' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.trees.noChanges, true);
+    assert.ok(m.invalidReasons.includes('no_changes'));
+    assert.ok(m.finalText.endsWith('A or B?'));
+  } finally { cleanup(env); }
+});
+
+test('accept: los conteos son solo de código (pathspec, también con espacios) y el parche completo conserva todo', async () => {
+  const env = setup();
+  try {
+    const cfg = await prepared(env, 'A', 1);
+    const { runTask } = await imp('execute.mjs');
+    const { acceptRun } = await imp('accept.mjs');
+    await withEnv({ FAKE_CLAUDE_MODE: 'process-files' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
+    await acceptRun(cfg, { task: 't1', arm: 'A', rep: 1 });
+    const dir = runDirName(env, 't1', 'A', 1);
+    const c = JSON.parse(fs.readFileSync(path.join(dir, 'changes.json'), 'utf8'));
+    assert.deepStrictEqual(c.files, ['docs/my notes/file with space.md', 'src/feature.js']);
+    assert.strictEqual(c.linesAdded, 4);
+    assert.ok(c.rawFilesChanged > c.filesChanged, 'el total sin excluir se conserva aparte');
+    const raw = fs.readFileSync(path.join(dir, 'changes.patch'), 'utf8');
+    assert.ok(raw.includes('docs/superpowers/plan.md') && raw.includes('.superpowers/note.md') && raw.includes('docs/sessions/s.md'));
+    const blindPatch = fs.readFileSync(path.join(dir, 'changes.blind.patch'), 'utf8');
+    for (const hidden of ['plan.md', '.superpowers', 'docs/sessions', 'CLAUDE.md', '.gitignore']) assert.ok(!blindPatch.includes(hidden), `${hidden} fuera del diff a ciegas`);
+    assert.ok(blindPatch.includes('file with space.md') && blindPatch.includes('src/feature.js'));
+  } finally { cleanup(env); }
+});
+
 // ---------------------------------------------------------------- corridas inválidas, pesos por modelo, texto final
 
 test('run: tope de presupuesto superado, error y corte por tiempo quedan marcados como inválidos', async () => {
@@ -498,7 +689,7 @@ test('run: tope de presupuesto superado, error y corte por tiempo quedan marcado
     assert.deepStrictEqual(failed.invalidReasons.sort(), ['exit_nonzero', 'is_error', 'result_not_success']);
     await prepared(env, 'A', 3);
     const hung = await withEnv({ FAKE_CLAUDE_MODE: 'hang' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 3 }));
-    assert.deepStrictEqual(hung.invalidReasons.sort(), ['no_result', 'timed_out']);
+    assert.deepStrictEqual(hung.invalidReasons.sort(), ['no_changes', 'no_result', 'timed_out']);
     await prepared(env, 'A', 4);
     const ok = await withEnv({ FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 4 }));
     assert.deepStrictEqual(ok.invalidReasons, []);

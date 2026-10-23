@@ -214,5 +214,9 @@ export function invalidReasons(m) {
   if (hits.includes('own_plugin_not_loaded')) r.push('own_plugin_not_loaded');
   if (hits.some((h) => h !== 'own_plugin_not_loaded')) r.push('contaminated');
   if (m.escapedCwd) r.push('escaped_cwd');
+  if (m.nm && m.nm.snapshotChanged) r.push('nm_changed');
+  if (m.nm && m.nm.sourceChanged) r.push('source_nm_changed');
+  if (m.treesError) r.push('trees_unmeasurable');
+  else if (m.trees && m.trees.noChanges) r.push('no_changes');
   return r;
 }

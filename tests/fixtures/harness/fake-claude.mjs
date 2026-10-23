@@ -1,9 +1,10 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
-//   nm-modify | worktree | cfg-write | escape
+//   nm-modify | src-nm-modify | worktree | branch-only | process-files | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_ESCAPE_PATH: path named by the tool_use of the `escape` mode.
+// FAKE_CLAUDE_SRC_NM: the (forbidden) source node_modules written by `src-nm-modify`.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -52,6 +53,20 @@ if (has('hang')) {
     fs.mkdirSync(path.join(process.cwd(), 'node_modules', 'zz-new'), { recursive: true });
     fs.writeFileSync(path.join(process.cwd(), 'node_modules', 'zz-new', 'index.js'), 'module.exports = 2;\n');
   }
+  if (has('src-nm-modify')) {
+    fs.mkdirSync(path.join(process.env.FAKE_CLAUDE_SRC_NM, 'zz-src'), { recursive: true });
+    fs.writeFileSync(path.join(process.env.FAKE_CLAUDE_SRC_NM, 'zz-src', 'index.js'), 'module.exports = 3;\n');
+  }
+  if (has('process-files')) {
+    const w = (rel, text) => { fs.mkdirSync(path.dirname(path.join(process.cwd(), rel)), { recursive: true }); fs.appendFileSync(path.join(process.cwd(), rel), text); };
+    w('docs/superpowers/plan.md', 'plan\n');
+    w('.superpowers/note.md', 'note\n');
+    w('docs/sessions/s.md', 'session\n');
+    w('CLAUDE.md', 'more notes\n');
+    w('.gitignore', '.worktrees/\n');
+    w('docs/my notes/file with space.md', 'real doc\n');
+    w('src/feature.js', feature);
+  }
   if (has('cfg-write') && process.env.CLAUDE_CONFIG_DIR) {
     fs.mkdirSync(path.join(process.env.CLAUDE_CONFIG_DIR, 'cache-x'), { recursive: true });
     fs.writeFileSync(path.join(process.env.CLAUDE_CONFIG_DIR, 'cache-x', 'f.txt'), 'x');
@@ -62,6 +77,16 @@ if (has('hang')) {
     if (r.status !== 0) process.stderr.write(`worktree failed: ${r.stderr}\n`);
     fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
     fs.writeFileSync(path.join(wt, 'src', 'feature.js'), feature);
+  }
+  if (has('branch-only')) {
+    const wt = path.join(process.cwd(), '..', 'wt');
+    const sh = (...a) => spawnSync('git', a, { cwd: wt, encoding: 'utf8' });
+    spawnSync('git', ['worktree', 'add', '-q', '-b', 'feature', wt], { cwd: process.cwd(), encoding: 'utf8' });
+    fs.mkdirSync(path.join(wt, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(wt, 'src', 'feature.js'), feature);
+    sh('add', '-A');
+    sh('commit', '-q', '-m', 'feature');
+    spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: process.cwd(), encoding: 'utf8' });
   }
   const blocks = [
     { type: 'text', text: 'Working.' },

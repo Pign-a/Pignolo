@@ -5,6 +5,8 @@ import { runPaths, otherArm } from './config.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
 import { parseStream, findEscape, invalidReasons } from './metrics.mjs';
 import { assertWithinTotalCap } from './ledger.mjs';
+import { manifest, manifestBrief, ensureSnapshot, snapshotIntact, snapshotPaths, sourceNm, dropSnapshot } from './nm.mjs';
+import { measureTrees } from './trees.mjs';
 
 // The child never inherits the parent environment: only what the system needs to run, plus what the harness sets.
 const ENV_ALLOW = [
@@ -123,6 +125,16 @@ export async function runTask(cfg, args, deps = {}) {
   checkConfigDir(cfg.configDir);
   assertWithinTotalCap(cfg);
 
+  // node_modules: the run is linked to one snapshot copy; the snapshot and the source must come out of the run as they went in.
+  let nmBefore = null;
+  if (fs.existsSync(sourceNm(cfg))) {
+    ensureSnapshot(cfg);
+    if (!snapshotIntact(cfg)) {
+      throw new Error(`la copia de node_modules (${snapshotPaths(cfg).dir}) ya no coincide con su manifiesto; algo la cambió. Borrala (con cuidado: contiene enlaces) y prepará de nuevo`);
+    }
+    nmBefore = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
+  }
+
   const stdinPath = path.join(dir, 'prompt.stdin.txt');
   fs.writeFileSync(stdinPath, prompt);
   const lister = deps.listProcesses || listProcessNames;
@@ -144,6 +156,25 @@ export async function runTask(cfg, args, deps = {}) {
   if (r.error) throw new Error(`no se pudo lanzar ${cfg.claudeBin}: ${r.error}`);
   const procAfter = cfg.trackProcesses === false ? null : lister();
 
+  let nm = { checked: false };
+  if (nmBefore) {
+    const after = { snapshot: manifest(snapshotPaths(cfg).dir, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
+    nm = {
+      checked: true,
+      snapshotChanged: !after.snapshot || after.snapshot.digest !== nmBefore.snapshot.digest,
+      sourceChanged: !after.source || after.source.digest !== nmBefore.source.digest,
+      snapshotBefore: manifestBrief(nmBefore.snapshot), snapshotAfter: manifestBrief(after.snapshot),
+      sourceBefore: manifestBrief(nmBefore.source), sourceAfter: manifestBrief(after.source),
+    };
+    // A changed copy is thrown away (links are removed as links) so the next prepare copies again from the source.
+    if (nm.snapshotChanged) dropSnapshot(cfg);
+    if (nm.sourceChanged) process.stderr.write(`ATENCION: el node_modules de la fuente cambió durante la corrida ${task}/${arm}/${rep}; revisalo antes de seguir\n`);
+  }
+
+  let trees = null;
+  let treesError = null;
+  try { trees = measureTrees(repo, cfg.blindExcludePaths); } catch (e) { treesError = e.message; }
+
   const other = otherArm(cfg, arm);
   const text = fs.readFileSync(streamPath, 'utf8');
   const m = parseStream(text, {
@@ -162,6 +193,13 @@ export async function runTask(cfg, args, deps = {}) {
     leftover_processes: procBefore && procAfter ? newProcesses(procBefore, procAfter) : null,
     config_dir_delta: delta(cfgBefore, listNames(cfg.configDir)),
     escapedCwd,
+    nm,
+    trees: trees && {
+      measured: { kind: trees.measured.kind, path: trees.measured.path, branch: trees.measured.branch },
+      candidates: trees.candidates, worktrees: trees.worktrees, branchesAhead: trees.branchesAhead,
+      noChanges: trees.noChanges, flags: trees.flags,
+    },
+    treesError,
     ...m,
   };
   metrics.invalidReasons = invalidReasons(metrics);

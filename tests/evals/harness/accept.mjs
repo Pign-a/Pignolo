@@ -4,6 +4,8 @@ import path from 'node:path';
 import { runPaths } from './config.mjs';
 import { runProcess } from './proc.mjs';
 import { git } from './prepare.mjs';
+import { measureTrees, treePatches, excludeSpecs } from './trees.mjs';
+import { linkNodeModules, ensureSnapshot } from './nm.mjs';
 
 const ANSI = /\u001b\[[0-9;]*m/g;
 
@@ -68,25 +70,44 @@ async function runCmd(cfg, repo, dir, name, command) {
 }
 
 // Must run before the acceptance files are copied: they must not count as the agent's change.
-function summarizeChanges(repo, dir) {
-  git(repo, ['add', '-A']);
-  const g = (...a) => git(repo, ['-c', 'core.quotepath=false', ...a]);
-  const numstat = g('diff', '--cached', '--numstat', '--no-renames', 'base');
-  let added = 0;
-  let removed = 0;
-  for (const l of numstat.split('\n').filter(Boolean)) {
-    const [a, d] = l.split('\t');
-    if (a !== '-') added += Number(a);
-    if (d !== '-') removed += Number(d);
+// Counts are code-only (process notes and project documents excluded with git pathspecs); the raw patch keeps everything.
+function summarizeChanges(cfg, repo, dir) {
+  let t = measureTrees(repo, cfg.blindExcludePaths);
+  if (t.measured.kind === 'branch') {
+    // The code is only on a branch: check it out in a worktree of its own so it can be accepted.
+    const wt = path.join(dir, 'measured');
+    if (!fs.existsSync(wt)) git(repo, ['worktree', 'add', '-q', wt, t.measured.branch]);
+    t = measureTrees(repo, cfg.blindExcludePaths);
   }
-  const files = g('diff', '--cached', '--name-only', '--no-renames', 'base').split('\n').filter(Boolean);
+  const m = t.measured;
+  const tree = m.path;
+  const others = t.worktrees.map((w) => w.path).filter((p) => path.resolve(p).toLowerCase() !== path.resolve(tree).toLowerCase());
+  const patches = treePatches(tree, others, cfg.blindExcludePaths);
+  const files = m.files;
   const changes = {
-    shortstat: g('diff', '--cached', '--shortstat', '--no-renames', 'base'),
-    filesChanged: files.length, linesAdded: added, linesRemoved: removed, files,
+    shortstat: patches.shortstat,
+    filesChanged: m.filesChanged, linesAdded: m.linesAdded, linesRemoved: m.linesRemoved, files,
+    rawFilesChanged: m.rawFilesChanged,
+    measuredTree: tree, measuredKind: m.kind, measuredBranch: m.branch,
+    candidates: t.candidates, worktrees: t.worktrees, branchesAhead: t.branchesAhead,
+    flags: t.flags, noChanges: t.noChanges, invalidReasons: t.noChanges ? ['no_changes'] : [],
   };
-  fs.writeFileSync(path.join(dir, 'changes.patch'), g('diff', '--cached', '--binary', '--no-renames', 'base'));
+  fs.writeFileSync(path.join(dir, 'changes.patch'), patches.raw);
+  fs.writeFileSync(path.join(dir, 'changes.blind.patch'), patches.blind);
   fs.writeFileSync(path.join(dir, 'changes.json'), JSON.stringify(changes, null, 2));
   return changes;
+}
+
+// The acceptance tests run in the measured tree: it needs the dependencies and the ignored folders the project needs.
+function prepareTree(cfg, mainRepo, tree) {
+  if (path.resolve(tree).toLowerCase() === path.resolve(mainRepo).toLowerCase()) return;
+  ensureSnapshot(cfg);
+  linkNodeModules(cfg, tree);
+  for (const rel of cfg.copyDirs || []) {
+    const from = path.join(mainRepo, rel);
+    const to = path.join(tree, rel);
+    if (fs.existsSync(from) && !fs.existsSync(to)) fs.cpSync(from, to, { recursive: true });
+  }
 }
 
 export async function acceptRun(cfg, args) {
@@ -96,18 +117,21 @@ export async function acceptRun(cfg, args) {
   const fullCmd = readCmd(path.join(taskDir, 'full-cmd.txt'));
 
   // A second pass keeps the first summary: the acceptance files are already in the tree by then.
-  if (!fs.existsSync(path.join(dir, 'changes.json'))) summarizeChanges(repo, dir);
+  if (!fs.existsSync(path.join(dir, 'changes.json'))) summarizeChanges(cfg, repo, dir);
+  const changes = JSON.parse(fs.readFileSync(path.join(dir, 'changes.json'), 'utf8'));
+  const tree = changes.measuredTree || repo;
+  prepareTree(cfg, repo, tree);
 
   const acceptDir = path.join(taskDir, 'accept');
   if (fs.existsSync(acceptDir)) {
     for (const rel of walk(acceptDir)) {
-      const to = path.join(repo, rel);
+      const to = path.join(tree, rel);
       fs.mkdirSync(path.dirname(to), { recursive: true });
       fs.copyFileSync(path.join(acceptDir, rel), to);
     }
   }
-  const accept = await runCmd(cfg, repo, dir, 'accept', acceptCmd);
-  const full = await runCmd(cfg, repo, dir, 'full', fullCmd);
+  const accept = await runCmd(cfg, tree, dir, 'accept', acceptCmd);
+  const full = await runCmd(cfg, tree, dir, 'full', fullCmd);
   const out = { task, arm, rep, acceptedAt: new Date().toISOString(), accept, full };
   fs.writeFileSync(path.join(dir, 'acceptance.json'), JSON.stringify(out, null, 2));
   return out;
