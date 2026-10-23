@@ -14,9 +14,9 @@ pignolo todavía no tiene versiones publicadas. Solo se corrige la rama `main`.
 **No abras un issue público.** Usá el reporte privado de GitHub: pestaña **Security** del repositorio → **Report a vulnerability**.
 
 Incluí, si podés:
-- qué parte afecta (guardia de git, respaldos, hooks, skills, pignolo-ui);
+- qué parte afecta (las skills o agentes del plugin, la auditoría de interfaz `ui-audit`, sus scripts);
 - cómo reproducirlo, con el comando o el archivo mínimo;
-- qué impacto ves (pérdida de datos, un comando destructivo que no se bloquea, una fuga de datos al publicar).
+- qué impacto ves (pérdida de datos, ejecución de un comando no pedido, una fuga de datos a un archivo versionado o a una página).
 
 ## Qué esperar
 
@@ -27,8 +27,8 @@ Incluí, si podés:
 ## Alcance
 
 Cuentan como vulnerabilidades, entre otras:
-- un comando destructivo del conjunto catastrófico (borrar `.git`, `~/.pignolo`, la raíz del repo) que la guardia deja pasar;
-- una forma de perder trabajo sin commitear que las instantáneas no cubren y que no esté en el registro de riesgo residual;
-- que pignolo-ui publique o apruebe contenido con datos personales pese al chequeo de fuga.
+- un script del plugin (por ejemplo los de `ui-audit`) que ejecute código o lea o escriba fuera de lo que se le pidió;
+- una skill o agente que filtre secretos o datos personales a un archivo versionado, a un registro de sesión o a una página generada;
+- que `ui-audit` abra, siga o publique algo fuera del proyecto y de la URL que se le indicó.
 
-No cuentan: lo declarado como riesgo residual o fuera de alcance en los specs (por ejemplo, un agente adversarial o prompt injection, §1.9 del spec del núcleo). La guardia es una capa contra errores de un agente útil pero falible, no una frontera de seguridad.
+No cuentan: lo declarado como fuera de alcance en el diseño (por ejemplo, un agente adversarial o prompt injection). Pignolo 2 no bloquea comandos ni trae guardia de git: es una metodología, no una frontera de seguridad.

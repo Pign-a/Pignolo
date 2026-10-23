@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0 — sin publicar
+
+Pignolo 2: reescrito en limpio como un solo plugin, `pignolo`, que reemplaza a superpowers con menos reglas y sin nada que bloquee. Diseño: `docs/specs/2026-10-23-pignolo-2-design.md`.
+
+- **Seis skills.**
+  - `/pignolo:start`: deja el proyecto listo (`CLAUDE.md`, `security.md`, `design.md`, `roadmap.md`); adopta repos existentes.
+  - `/pignolo:work`: trabaja un pedido con el cuidado que pide su riesgo, sin documentos previos obligatorios.
+  - `/pignolo:validate`: revisa lo hecho con frentes en paralelo según la evidencia, desde el último commit validado.
+  - `/pignolo:session`: deja un registro por día en `docs/sessions/` y mantiene al día el contexto de `CLAUDE.md`.
+  - `/pignolo:ui`: identidad y pantallas con opciones en HTML local navegable (`design/`).
+  - `/pignolo:ui-audit`: auditoría de una pantalla con mediciones, reglas y un auditor independiente; solo si se pide.
+- **Ocho agentes.** `review-security`, `review-database`, `review-code`, `review-tests`, `review-hygiene`, `review-docs`, `ui-option`, `ui-auditor`.
+- **Se elimina.** La guardia de git y sus hooks, el registro de tareas, los lotes y carriles, las auditorías de plan, los jueces, el panel (`pignolo-panel`), la publicación al lienzo y `pignolo-ui` como plugin aparte (su auditoría vive ahora en `plugins/pignolo/ui-audit/`).
+- **Pignolo 2 reemplaza a superpowers:** se usa uno u otro, no los dos activos a la vez.
+- **El plugin anterior** queda en la etiqueta local `legacy` (y en las ramas viejas); no se publica con esta versión.
+- Pendiente antes de publicar: la medición contra superpowers (diseño §9), con el OK del autor para el gasto.
+
 ## 0.24.1 — sin publicar
 
 Tres errores vistos en un uso real del autor (2026-10-05, anónimo): un `project.md` que git ignoraba, tareas de un plan registradas con otro id y un panel con las 48 tarjetas sin título y "todo".

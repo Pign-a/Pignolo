@@ -1,5 +1,25 @@
 # Gaps de mejora detectados al ejecutar
 
+Nota: todo lo que sigue a la sección de Pignolo 2, de G1 hasta el último G, es histórico y habla del plugin anterior (etiqueta `legacy`).
+
+## Pignolo 2 (1.0.0)
+
+Gaps de las revisiones de las tareas 1 a 8. Los marcados `en plan (T9)` se arreglan en la pasada de arreglos de la tarea 9.
+
+| # | Gap | Evidencia | Propuesta | Costo | Estado |
+|---|---|---|---|---|---|
+| P2-1 | Tests flojos en start, work, validate, session y ui: varios comprueban solo que una palabra esté (`validate.test.js:70-77,81,89,95-96,136`, `work.test.js:125`); `start` no prueba la variante "Sin interfaz" de design.md ni el campo `Plan elegido` de roadmap.md; `session` no prueba dato/opinión/supuesto ni "solo lo que cambió" | Revisiones de las tareas 2 a 6 | Reemplazar por aserciones sobre el contenido (ejemplos literales) y agregar los dos casos que faltan en `start` | Bajo | abierto |
+| P2-2 | `start/SKILL.md` queda justo bajo el tope: 755 palabras con el frontmatter, aunque el test cuenta solo el cuerpo | `wc -w` da 755; el cuerpo, que es lo que cuenta `tests/plugin-layout.test.js:62-70`, da 699 (51 de margen). Pasa por cómo se cuenta (sin frontmatter), no por sobrar espacio; es la skill con menos holgura de las seis | Mantener el criterio (el frontmatter no es instrucción); si `start` crece, recortar antes de subir el tope | Gratis | abierto |
+| P2-3 | `validate`: "por encima del límite chico" se lee distinto en `SKILL.md:51` y `fronts.md:94`; un `Validado:` igual a HEAD cae al merge-base y vuelve a revisar toda la rama tras una validación limpia sin commits nuevos; los ejemplos de `Frentes:` de fronts.md no los parsea ningún test | Revisión de la tarea 4 | Unificar la frase con los números (≤5 archivos y ≤200 líneas); si el sha es HEAD, decir "nada nuevo desde la última validación"; parsear los ejemplos en un test | Bajo | abierto |
+| P2-4 | `session`: pueden quedar dos listas "Puntos abiertos" en el archivo de un día; se perdieron de la skill original "bugs encontrados" (causa, arreglo, cómo se verificó) y "límite de la sesión" (qué commits son de ella); lo investigado durante `start` o `work` solo se guarda si `session` corre después | Revisión de la tarea 5 | Decir que la última lista del registro más reciente es la vigente; devolver las dos secciones; evaluar que `work` deje una nota de la investigación | Bajo | abierto |
+| P2-5 | `ui`: el `href` de una pieza acepta `javascript:`; un estado desconocido se muestra como pendiente en silencio; `ui-option.md:41` dice "carpeta vacía" aunque haya tres agentes a la vez; el CSS de tokens va inlineado en cada opción (idea: un `tokens.css` compartido); no hay traspaso de una pantalla elegida a `work` | Revisión de la tarea 6 | Aceptar solo rutas relativas o http(s); marcar el estado desconocido; reescribir la frase; decidir si vale el `tokens.css`; cerrar `ui` ofreciendo implementarla con `/pignolo:work` | Bajo | abierto |
+| P2-6 | `ui-audit`: el orden de pasos de `prepare-run.md` (init pide `--url` o `--file`, pero `config get` con `devUrl` es el paso 2; a `config set` le falta el prefijo `node`); no se dice que las cadenas "sin design.md" y "sin navegador" van a `facts.json.degraded`; el exit 1 de `design-md validate` no tiene manejo; el despacho pasa el modelo pero no el esfuerzo; el test de R5 usa un proyecto vacío (más fuerte: escribir la plantilla como design.md y comprobar `run.json.design`) | Revisión de la tarea 7b | Reordenar los pasos, nombrar `degraded`, tratar el exit 1, pasar el esfuerzo, endurecer el test | Bajo | en plan (T9) |
+| P2-7 | Restos en `ui-audit/lib`: la rama secuencial y `verdict()` de `report-build`, `implementsPath`, los ayudantes de escritura de tokens, el chequeo de directorio de `norms --run`; `RUN_ROOT` sigue siendo `.pignolo-ui` | Revisión de la tarea 7a | Borrar lo que no se usa y renombrar `RUN_ROOT` (cambia la carpeta de corrida: decisión del autor) | Bajo | abierto |
+| P2-8 | Scripts históricos que apuntan a código borrado: `tests/evals/plan-cases.js`, `tests/bench/plans/run.js`, `tests/bench/revision/cases.json`, `tests/guard/medidos.json` | Tarea 1: requieren librerías que ya no existen | Solo corren desde la etiqueta `legacy`; moverlos a `docs/history/` o borrarlos (borrar es decisión del autor) | Gratis | abierto |
+
+Abajo, el historial del plugin anterior.
+
+
 Archivo vivo (pedido del autor, 2026-09-30): lo que aprendemos ejecutando los planes de pignolo y que pignolo podría hacer mejor para sus usuarios. Objetivo: ejecutar planes con baja probabilidad de error **sin que cueste mucho más**. Cada gap lleva la evidencia medida, una propuesta y su costo. Cuando un gap entra en un hito, se anota a cuál.
 
 Estados: **abierto** · **en plan** (hito) · **hecho** (versión).
