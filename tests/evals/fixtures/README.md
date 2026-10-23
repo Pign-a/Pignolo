@@ -13,7 +13,8 @@ Los valores con forma de credencial son marcadores obvios, nunca claves reales. 
 ## Preparar una corrida
 
 1. Copiar la carpeta a un directorio temporal fuera de este repositorio.
-2. `git init` y un commit base con un archivo sin relación (por ejemplo `NOTES.txt`), para que haya un "antes".
-3. Copiar el contenido del fixture y hacer un segundo commit. Ese es el diff que `validate` revisa como "los últimos commits".
+2. `git init -b main` y un commit base con un archivo sin relación (por ejemplo `NOTES.txt`), para que haya un "antes".
+3. Pasar a una rama aparte que sale de ese commit base (`git switch -c trabajo`), copiar el contenido del fixture y hacer un segundo commit allí. `validate` toma como base el merge-base de `HEAD` con `main`, que es siempre el commit base, así que revisa exactamente el fixture y no depende de cuántos commits haya.
+   Entre `git add -A` y `git commit` correr `git status`: un `.gitignore` global puede descartar archivos como `*.log` (la basura que el fixture necesita), y sin ellos el diff cambia.
 4. Con el plugin del brazo activo, decir "validá" sin más contexto y guardar la salida en un archivo.
 5. Comparar: `node tests/evals/compare-fronts.js <fixture> <archivo-de-salida>`.

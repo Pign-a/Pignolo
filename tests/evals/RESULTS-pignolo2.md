@@ -72,7 +72,7 @@ Tres repos de juguete en `tests/evals/fixtures/` (ver su `README.md`), con lo es
 
 | Repo de juguete | Frentes esperados | Por qué |
 |---|---|---|
-| `landing-form` | `security, hygiene` | Cuatro archivos y 26 líneas (diff chico por tamaño) con formulario y traza suelta: la evidencia de formulario y basura impide tratarlo como diff chico sin frentes |
+| `landing-form` | `security, hygiene` | 4 archivos, 26 líneas (diff chico por tamaño) con formulario y traza suelta: la evidencia de formulario y basura impide tratarlo como diff chico sin frentes |
 | `app-db` | `security, database, code, tests, hygiene` | Supera el límite de diff chico (10 archivos, 134 líneas); esquema y migración, autenticación, runner de tests, trazas sueltas; `docs` no entra porque nada de lo que la documentación menciona se borró ni se renombró (sin evidencia) |
 | `cli-script` | ninguno | 2 archivos, 12 líneas, sin formulario, basura, autenticación ni datos |
 
