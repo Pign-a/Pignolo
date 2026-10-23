@@ -1415,6 +1415,43 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
   } finally { cleanup(env); }
 });
 
+test('row: un CSV con encabezado de una versión anterior se migra solo (con copia .bak); columnas desconocidas lo frenan', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { appendRow, parseCsv, COLUMNS } = await imp('row.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    // Encabezado viejo: menos columnas y en otro orden (el de la primera versión, con wall_s antes de cost_usd).
+    const old = ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'wall_s', 'cost_usd', 'weighted_tokens', 'accept_pass', 'accept_fail', 'timed_out', 'note'];
+    const oldText = `${old.join(',')}\ntoy-exp,t0,A,1,2026-10-23T10:00:00.000Z,sonnet,40,1.25,900,3,0,false,"nota, con coma y ""comillas"""\ntoy-exp,t0,B,1,2026-10-23T11:00:00.000Z,sonnet,50,2.5,1100,3,0,false,\n`;
+    fs.writeFileSync(cfg.csvPath, oldText);
+    writeRun(env, 't1', 'A', 1, { acceptance: ACC, changes: CHG });
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.strictEqual(fs.readFileSync(`${cfg.csvPath}.bak`, 'utf8'), oldText, 'copia de seguridad idéntica al archivo anterior');
+    const text = fs.readFileSync(cfg.csvPath, 'utf8');
+    assert.strictEqual(text.split(/\r?\n/)[0], COLUMNS.join(','), 'encabezado nuevo');
+    const rows = parseCsv(text);
+    assert.strictEqual(rows.length, 3, 'las dos filas viejas y la nueva');
+    assert.deepStrictEqual([rows[0].task, rows[0].arm, rows[0].cost_usd, rows[0].wall_s, rows[0].note], ['t0', 'A', '1.25', '40', 'nota, con coma y "comillas"']);
+    assert.deepStrictEqual([rows[1].cost_usd, rows[1].weighted_tokens, rows[1].accept_pass], ['2.5', '1100', '3']);
+    for (const c of ['neutral_plugins', 'neutral_config', 'invalid', 'model_tokens', 'accept_exit']) assert.strictEqual(rows[0][c], '', `${c} vacío en las filas viejas`);
+    assert.strictEqual(rows[2].task, 't1');
+    // Ya migrado: otra fila no vuelve a migrar ni pisa la copia.
+    writeRun(env, 't1', 'B', 1, { acceptance: ACC, changes: CHG });
+    appendRow(cfg, { task: 't1', arm: 'B', rep: 1 });
+    assert.strictEqual(fs.readFileSync(`${cfg.csvPath}.bak`, 'utf8'), oldText);
+    assert.strictEqual(parseCsv(fs.readFileSync(cfg.csvPath, 'utf8')).length, 4);
+    // Una columna que no existe en el esquema nuevo: se niega y no toca nada.
+    const odd = `experiment,task,arm,rep,columna_inventada\nx,t0,A,1,z\n`;
+    fs.writeFileSync(cfg.csvPath, odd);
+    fs.rmSync(`${cfg.csvPath}.bak`);
+    writeRun(env, 't1', 'A', 2, { acceptance: ACC, changes: CHG });
+    assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 2 }), /columna_inventada/);
+    assert.strictEqual(fs.readFileSync(cfg.csvPath, 'utf8'), odd);
+    assert.ok(!fs.existsSync(`${cfg.csvPath}.bak`), 'sin migración no hay copia');
+  } finally { cleanup(env); }
+});
+
 test('row: un conteo por código de salida se avisa en la nota', async () => {
   const env = setup();
   try {

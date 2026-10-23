@@ -5,3 +5,6 @@ tests/evals/**/results/
 tests/bench/plans/results/
 tests/bench/brainstorm/results/
 tests/evals/harness/harness.local.json
+tests/evals/*.csv.bak
+tests/evals/*.csv.*.bak
+tests/evals/*.csv.tmp

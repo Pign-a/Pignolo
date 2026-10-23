@@ -64,6 +64,21 @@ export function parseCsv(text) {
   return rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])));
 }
 
+// A CSV written by an older version has fewer columns (or the same in another order). It is rewritten once with the
+// current header, mapping the old columns by name and leaving the new ones empty; a column that does not exist in the
+// current schema is refused. Returns the migrated text, or null when the header is already the current one.
+export function migratedCsvText(text) {
+  const head = text.split(/\r?\n/)[0].replace(/^\uFEFF/, '');
+  if (head === COLUMNS.join(',')) return null;
+  const old = head.split(',').map((c) => c.trim());
+  const unknown = old.filter((c) => !COLUMNS.includes(c));
+  if (unknown.length) {
+    throw new Error(`el CSV tiene columnas que no existen en el esquema actual (${unknown.join(', ')}); no se migra solo, revisalo a mano`);
+  }
+  const rows = parseCsv(text);
+  return `${COLUMNS.join(',')}\n${rows.map((r) => serializeRow(r)).join('\n')}${rows.length ? '\n' : ''}`;
+}
+
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 const isRerun = (note) => /(^|;)\s*rerun\s*(;|$)/.test(note || '');
 
@@ -79,10 +94,11 @@ export function appendRow(cfg, args) {
   }
 
   const exists = fs.existsSync(cfg.csvPath);
-  const text = exists ? fs.readFileSync(cfg.csvPath, 'utf8') : '';
+  let text = exists ? fs.readFileSync(cfg.csvPath, 'utf8') : '';
+  let migrated = null;
   if (exists && text.trim()) {
-    const head = text.split(/\r?\n/)[0];
-    if (head !== COLUMNS.join(',')) throw new Error(`el CSV ${cfg.csvPath} tiene un encabezado distinto al esperado`);
+    migrated = migratedCsvText(text);
+    if (migrated !== null) text = migrated;
     const dup = parseCsv(text).find((r) => r.experiment === cfg.experiment && r.task === task && r.arm === arm && Number(r.rep) === rep);
     if (dup && !isRerun(userNote)) {
       throw new Error(`ya existe una fila para ${task}/${arm}/${rep}; una repetición de la corrida necesita --note rerun`);
@@ -117,6 +133,13 @@ export function appendRow(cfg, args) {
     note: notes.filter(Boolean).join(';'),
   };
   fs.mkdirSync(path.dirname(cfg.csvPath), { recursive: true });
+  if (migrated !== null) {
+    // First a copy of the file as it was, then the new content through a temporary file so a cut never leaves it half written.
+    const bak = fs.existsSync(`${cfg.csvPath}.bak`) ? `${cfg.csvPath}.${Date.now()}.bak` : `${cfg.csvPath}.bak`;
+    fs.copyFileSync(cfg.csvPath, bak);
+    fs.writeFileSync(`${cfg.csvPath}.tmp`, migrated);
+    fs.renameSync(`${cfg.csvPath}.tmp`, cfg.csvPath);
+  }
   let out = '';
   if (!exists || !text.trim()) out += `${COLUMNS.join(',')}\n`;
   else if (!/\n$/.test(text)) out += '\n';
