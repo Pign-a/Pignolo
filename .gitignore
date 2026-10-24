@@ -11,3 +11,4 @@ tests/evals/*.csv.tmp
 
 # Calificaciones a ciegas de Pignolo 2 (contienen nombres de código de una app privada)
 tests/evals/pignolo2-grades.json
+tests/evals/harness/harness.*.local.json
