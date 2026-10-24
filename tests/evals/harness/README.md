@@ -1,9 +1,12 @@
 # Arnés de medición de Pignolo 2
 
-Corre la misma tarea en dos brazos y junta las métricas que pide la ficha `tests/evals/RESULTS-pignolo2.md`:
+Corre la misma tarea en varios brazos y junta las métricas que pide la ficha `tests/evals/RESULTS-pignolo2.md`. La comparación rigurosa tiene tres brazos (la unidad de análisis es la **tarea** y el prompt es idéntico en los tres):
 
-- **Brazo A:** Claude Code con solo el plugin `superpowers`.
-- **Brazo B:** Claude Code con solo el plugin Pignolo 2 (`plugins/pignolo`).
+- **Brazo N:** Claude Code **sin ningún plugin** (el control).
+- **Brazo S:** Claude Code con solo el plugin `superpowers`.
+- **Brazo P:** Claude Code con solo el plugin Pignolo 2 (`plugins/pignolo`).
+
+Los ids de brazo son libres (`^[A-Z][A-Z0-9]{0,3}$`): las configuraciones y los CSV viejos con `A` y `B` (superpowers y Pignolo 2) siguen funcionando igual.
 
 El arnés es **genérico**: no lleva nombres, código, commits ni rutas de ningún proyecto. Las tareas reales viven en una carpeta privada que se indica en un archivo de configuración fuera de git (`harness.local.json`). Lo único que se versiona de una medición real es `tests/evals/pignolo2-runs.csv` (métricas con ids de tarea genéricos) y, si se quiere, `tests/evals/pignolo2-grades.json` (notas del revisor a ciegas).
 
@@ -23,6 +26,38 @@ Los ids de brazo son una mayúscula y hasta tres mayúsculas o dígitos (`A`, `B
 
 `pairs` es una lista de `[control, variante]` (por defecto `[["A","B"]]`); `summary` evalúa las reglas **una vez por par**, con el control primero, y rotula cada bloque `[par A contra B]`. Un par sin corridas de la tarea no aparece. El ejemplo trae el par autónomo `A`/`B` y el forzado `AF`/`BF`. El paquete a ciegas mezcla las corridas de **todos** los brazos de una tarea (las etiquetas se barajan entre ellos) y `unblind` las devuelve a brazo y repetición; un brazo que no corrió esa tarea se salta, y `blind --arms A,B` elige cuáles.
 
+## Brazo sin plugin y contrastes
+
+Un brazo puede **omitir** `pluginDir` y `pluginName` (o ponerlos en `null`): es el brazo sin plugin. Los dos van juntos: uno solo de los dos es un error de configuración. En una corrida de ese brazo:
+
+- `claude` se lanza **sin `--plugin-dir`**.
+- La activación no aplica: `ownPluginLoaded`, `ownSkillCalls` y `ownHookRan` no se calculan; el CSV trae `activation_via` y `own_hook_ran` en `n/a` y `own_skill_calls` vacío, y `summary` no cuenta al brazo en `activaron el plugin`.
+- **Contaminación = cualquier plugin cargado que no sea neutral**: un plugin que aparece en el `init` y no coincide con `neutralPlugins` ni es de `plugins/synced` (el contenido sincronizado de la cuenta) contamina, y también las skills, agentes o comandos de los plugins de los otros brazos. En los brazos con plugin pasa lo mismo con los plugins de **todos** los demás brazos.
+- El chequeo previo de `configDir` (sin `CLAUDE.md`, sin plugins instalados, sin hooks...) corre igual.
+
+`contrasts` es la lista de comparaciones que hace el análisis, `{ "control": "N", "test": "S", "label": "..." }` o `["N", "S", "etiqueta"]`; los brazos tienen que existir y ser distintos. El arnés solo las expone: las lee `summary` (campo `contrasts` del JSON, y una línea `contrastes:` en el texto) y el análisis estadístico. Si la configuración no trae `pairs`, los pares de `summary` salen de los contrastes (control primero). Los pares pueden nombrar cualquier brazo, también el que no tiene plugin.
+
+Ejemplo de configuración de tres brazos (rutas de ejemplo; el archivo completo es `harness.example.json`):
+
+```json
+{
+  "arms": {
+    "N": { "pluginName": null, "pluginDir": null },
+    "S": { "pluginName": "superpowers", "pluginDir": "/path/to/the/superpowers/plugin" },
+    "P": { "pluginName": "pignolo", "pluginDir": "/path/to/the/pignolo/plugin" }
+  },
+  "contrasts": [
+    { "control": "N", "test": "S", "label": "superpowers contra nada" },
+    { "control": "N", "test": "P", "label": "pignolo contra nada" },
+    { "control": "S", "test": "P", "label": "pignolo contra superpowers" }
+  ],
+  "tasks": {
+    "task-1": { "kind": "medium", "set": "dev" },
+    "task-2": { "kind": "medium", "set": "validation" }
+  }
+}
+```
+
 ## Tareas de fixture (detección de frentes)
 
 Una tarea de configuración `{ "kind": "fixture", "fixture": "<carpeta de tests/evals/fixtures>", "prompt": "<texto>", "arms": ["B"] }` mide la medición 3 de la ficha. Solo corren los brazos de `arms` (los demás se rechazan con un mensaje claro). No usa la carpeta privada, el repo fuente, `node_modules` ni `copyDirs`:
@@ -36,7 +71,7 @@ Una tarea de configuración `{ "kind": "fixture", "fixture": "<carpeta de tests/
 
 ## Qué gasta plata y qué no
 
-Solo `run` lanza `claude -p` y gasta tokens. Todo lo demás (`prepare`, `accept`, `row`, `blind`, `unblind`, `summary`) es local y gratis. Las pruebas del arnés (`tests/harness.test.js`) usan un `claude` falso (`tests/fixtures/harness/fake-claude.mjs`) y no gastan nada.
+Solo `run` lanza `claude -p` y gasta tokens (y `batch`, que lo llama una vez por corrida; `batch --dry-run` no gasta). Todo lo demás (`prepare`, `accept` con su panel de calidad, `quality`, `row`, `freeze`, `schedule`, `blind`, `unblind`, `summary`) es local y gratis. Las pruebas del arnés (`tests/harness.test.js` y `tests/harness-quality.test.js`) usan un `claude` falso (`tests/fixtures/harness/fake-claude.mjs`) y no gastan nada.
 
 `run` pasa `--max-budget-usd` (tope por corrida, `perRunCapUsd`) y un tiempo máximo (`timeoutMs`). Además hay un **tope total** (`totalCapUsd`): `run` no lanza nada si lo ya gastado más 1,25 veces `perRunCapUsd` (el margen cubre lo que una corrida puede pasarse del tope) supera `totalCapUsd`. Lo gastado es la suma de `cost_usd` de **todas** las filas del CSV (de cualquier experimento, la calibración incluida), más las corridas que ya gastaron y todavía no tienen fila (`metrics.json` sin fila), más las interrumpidas (`stream.jsonl` sin `metrics.json`), más el registro de gasto fuera de `run` (abajo). Una corrida sin costo conocido (cortada por tiempo, interrumpida, sin resultado) cuenta como `perRunCapUsd`, lo máximo que pudo costar.
 
@@ -52,7 +87,8 @@ El revisor a ciegas y cualquier otro gasto que no pase por `run` se anotan en `<
 | `privateRoot` | carpeta privada con las tareas (ver abajo), los paquetes a ciegas y sus claves |
 | `workRoot` | dónde se crean las carpetas de corrida `<tarea>-<brazo>-<rep>/` y la copia `_nm` |
 | `configDir` | `CLAUDE_CONFIG_DIR` dedicado a la medición (sin plugins instalados, sin `CLAUDE.md`, sin hooks) |
-| `arms.A`, `arms.B` | `pluginName` y `pluginDir` de cada brazo (`--plugin-dir`); el `name` de `.claude-plugin/plugin.json` tiene que coincidir con `pluginName` |
+| `arms.<id>` | `pluginName` y `pluginDir` de cada brazo (`--plugin-dir`); el `name` de `.claude-plugin/plugin.json` tiene que coincidir con `pluginName`. Sin los dos (o en `null`) es el brazo sin plugin |
+| `contrasts` | comparaciones del análisis: `{ control, test, label }` o `[control, test, etiqueta]`; definen los `pairs` por defecto (ver "Brazo sin plugin y contrastes") |
 | `model`, `permissionMode`, `perRunCapUsd`, `timeoutMs` | se pasan tal cual a `claude -p` |
 | `effort` | nivel de esfuerzo que se pasa con `--effort` (`low`, `medium`, `high`, `xhigh`, `max`); por defecto `medium`, el mismo en los dos brazos |
 | `totalCapUsd` | tope de gasto de toda la medición (obligatorio) |
@@ -62,7 +98,10 @@ El revisor a ciegas y cualquier otro gasto que no pase por `run` se anotan en `<
 | `copyDirs` | carpetas o archivos ignorados por git que la tarea necesita (por ejemplo el cliente generado de la base) y que se copian de la fuente; rutas relativas, sin `.`, `..` ni vacías |
 | `weights`, `modelFactor` | pesos de los tokens y factor por familia de modelo, ver "Calibración" |
 | `seed` | semilla del mezclado a ciegas (el mismo valor reproduce el mismo orden) |
-| `tasks` | `{ "<id>": { "kind": "medium" \| "small" } }`, lo usa `summary` para aplicar la regla de cada tipo |
+| `tasks` | `{ "<id>": { "kind": "medium" \| "small", "set": "dev" \| "validation" } }`: `kind` lo usa `summary` para aplicar la regla de cada tipo; `set` (por defecto `dev`) separa las tareas de desarrollo de las de validación, que exigen un freeze (ver "Desarrollo, validación y freeze") |
+| `qualityTimeoutMs`, `mutationTimeoutMs` | tiempo máximo de cada herramienta del panel de calidad (tsc, eslint, coverage) y del comando de mutación; por defecto 300000 y 1800000 |
+| `tscCmd`, `eslintCmd` | reemplazan a `npx tsc --noEmit --pretty false` y `npx eslint --format json` (un texto, que corre por el shell, o una lista `[ejecutable, ...argumentos]`); sirven para las pruebas con herramientas falsas |
+| `preregRepo` | repo donde tiene que existir el commit de la ficha que se pasa a `freeze --prereg`; por defecto este repo |
 | `blindExcludePaths` | notas de proceso y documentos del proyecto que se sacan del diff a ciegas y de los conteos de código (ver "Revisor a ciegas"); el ejemplo trae la lista por defecto |
 | `nmIgnore` | carpetas de herramientas dentro de `node_modules` que no cuentan como cambio (por defecto `.vite`, `.vitest`, `.cache`, `.turbo`, `.parcel-cache`, `.eslintcache`) |
 | `claudeBin`, `claudeArgsPrefix`, `extraArgs` | para apuntar a otro ejecutable o sumar flags sin tocar el código |
@@ -110,6 +149,10 @@ El prompt de la tarea no va como argumento: se escribe en `prompt.stdin.txt` de 
     accept/**          tests de aceptación; se copian al árbol medido con la misma ruta relativa a accept/
     accept-cmd.txt     un solo comando de shell que corre los tests de aceptación (en la raíz del árbol medido)
     full-cmd.txt       un solo comando de shell que corre la suite completa del proyecto
+    gold-files.txt     (opcional) las rutas que tocó la solución real, una por línea; mide el alcance (ver "Panel de calidad automático")
+    coverage-cmd.txt   (opcional) comando que escribe el JSON de cobertura en {json}
+    mutation-cmd.txt   (opcional) comando que escribe el JSON de mutación en {json}
+  freeze.json          lo escribe `freeze` (ver "Desarrollo, validación y freeze")
   blind/<task>/        lo genera `blind`: paquetes, consigna del revisor (la carpeta que se le da al revisor)
   blind-keys/<task>.json   la clave (etiqueta a brazo y repetición), FUERA de lo que lee el revisor
 ```
@@ -155,7 +198,11 @@ Intercalá los brazos (A, B, A, B...) como pide la ficha. Todos los comandos ace
 |---|---|
 | `prepare` | exporta el commit base con `git archive \| tar -x`, borra `CLAUDE.md`, `AGENTS.md`, `CLAUDE.local.md`, `.mcp.json` y cualquier `.claude/` (también anidados), escribe el `CLAUDE.md` neutral (`neutral-claude.md`), enlaza `node_modules` a la copia `_nm/node_modules` como junction, copia `copyDirs`, y hace `git init` con identidad local `eval` y un commit `base` (etiqueta `base`) en `main`. `node_modules` y `copyDirs` quedan en `.git/info/exclude`. No pisa una carpeta existente. |
 | `run` | revisa plugin, `configDir` y tope total (gratis), lee `prompt.md`, lanza `claude` con `cwd` en el repo de la corrida, guarda `stream.jsonl` y `stderr.txt`, mide el tiempo de pared, mata el árbol de procesos al pasar `timeoutMs` y escribe `metrics.json`. No se puede correr dos veces la misma carpeta. Registra los procesos que sobran (`leftover_processes`, sin matarlos), los nombres que aparecen o desaparecen en `configDir` (`config_dir_delta`), la versión de Claude Code y el modelo resuelto (`init`), y marca `escaped_cwd` si una herramienta nombra la fuente, la carpeta privada u otra corrida (el primer comando, 200 caracteres, queda en `metrics.json`). |
-| `accept` | calcula **primero** el resumen de cambios (`changes.json`, `changes.patch`, `changes.blind.patch`), **después** copia los tests de aceptación y corre `accept-cmd.txt` y `full-cmd.txt` en el árbol medido; escribe `acceptance.json` (código de salida, suites fallidas y piso de la suite completa). Repetirlo conserva el primer resumen. |
+| `accept` | calcula **primero** el resumen de cambios (`changes.json`, `changes.patch`, `changes.blind.patch`), **después** copia los tests de aceptación y corre `accept-cmd.txt` y `full-cmd.txt` en el árbol medido; escribe `acceptance.json` (código de salida, suites fallidas y piso de la suite completa) y al final corre el panel de calidad (`quality`). Repetirlo conserva el primer resumen. |
+| `quality --task T --arm X --rep N` | calcula el panel de calidad automático de una corrida ya aceptada (necesita `changes.json`) y lo escribe en `quality.json`. Gratis: no gasta tokens (ver "Panel de calidad automático"). |
+| `freeze --prereg <hash> [--force]` / `freeze --check` | escribe `<privateRoot>/freeze.json` con el hash de las tareas de validación y la identidad de los brazos / verifica sin escribir nada (ver "Desarrollo, validación y freeze"). |
+| `schedule --tasks a,b,c --arms N,S,P --seed K [--reps R] [--force]` | imprime y escribe `<workRoot>/schedule-K.json`, un orden aleatorio de corridas (ver "Orden aleatorio y batch"). |
+| `batch --schedule archivo [--dry-run]` | recorre un calendario ejecutando prepare, run, accept (con el panel de calidad) y row de cada entrada; `--dry-run` solo muestra el plan y los chequeos (ver "Orden aleatorio y batch"). |
 | `clean [--force]` | borra la carpeta de una corrida con el borrado seguro: toda junction o enlace (`node_modules` de la corrida, de `measured/` o de cualquier worktree dentro de la carpeta) se quita como enlace antes de seguir, sin recorrerlo. Se niega si la corrida tiene datos que no están en el CSV (corré `row` antes, o `--force`). Es la única forma prevista de borrar una corrida: no se borra a mano. |
 | `remetric` | recalcula desde el `stream.jsonl` existente los campos de `metrics.json` que salen de leer el stream (costos, tokens por modelo, agentes, activación, contaminación, escapes, `init`, motivos de invalidez) con la configuración actual, **sin correr claude** y sin tocar nada más (cambios, árboles, `node_modules`, tiempos y registro de `configDir` quedan como estaban). Guarda una vez `metrics.json.bak` y muestra qué campos cambiaron. Después, `row --note rerun` escribe la fila corregida (la original sigue en el CSV; el ledger cuenta una sola vez cada corrida aunque tenga dos filas con la misma marca de tiempo). |
 | `row` | agrega una fila a `pignolo2-runs.csv`. Si el archivo existente tiene un encabezado de una versión anterior (columnas de menos, o en otro orden), lo reescribe una vez con el encabezado actual: mapea las columnas viejas por nombre, deja vacías las nuevas, conserva todas las filas y antes guarda una copia `pignolo2-runs.csv.bak` (ignorada por git); si el archivo trae una columna que no existe en el esquema actual, se niega y no toca nada. Rechaza otra fila de la misma tarea/brazo/repetición salvo con `--note rerun`. |
@@ -165,7 +212,9 @@ Intercalá los brazos (A, B, A, B...) como pide la ficha. Todos los comandos ace
 
 ### Columnas del CSV
 
-`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, agent_types, prompt_prefix_id, skill_calls, own_skill_calls, own_hook_ran, activation_via, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, fronts_ok, fronts_got, fronts_message, fronts_reason, fronts_by_agents, fronts_by_agents_ok, files_changed, lines_added, lines_removed, eol_only_files, eol_converted_files, note`.
+`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, agent_types, prompt_prefix_id, skill_calls, own_skill_calls, own_hook_ran, activation_via, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, fronts_ok, fronts_got, fronts_message, fronts_reason, fronts_by_agents, fronts_by_agents_ok, files_changed, lines_added, lines_removed, eol_only_files, eol_converted_files, set, freeze_hash, prereg_commit, tsc_base_errors, tsc_result_errors, tsc_new_errors, eslint_new_errors, eslint_new_warnings, out_of_scope_files, out_of_scope_lines, diff_files, diff_lines, new_test_files, tests_added, coverage_lines_covered, coverage_lines_total, mutation_killed, mutation_survived, mutation_timeout, quality_note, note`.
+
+Las columnas desde `set` hasta `quality_note` son de la ampliación de tres brazos: un CSV viejo se migra solo al próximo `row` (con la copia `.bak`) y esas celdas quedan vacías.
 
 `skill_calls` cuenta todas las llamadas a la herramienta `Skill`; `own_skill_calls` las de una skill del propio plugin del brazo (su nombre o `plugin:skill`; `superpowers-extra:x` o `pignolo:work` en el brazo de superpowers no); los nombres distintos quedan en `metrics.json` (`ownSkillNames`). `own_hook_ran` es `true` si algún mensaje de hook (`hook_started` / `hook_response`) nombra al plugin, `false` si hubo hooks, ninguno lo nombra y el plugin declara `hooks/hooks.json`, y `unknown` en cualquier otro caso (por ejemplo un plugin sin hooks).
 
@@ -204,6 +253,59 @@ El diff que ve el revisor sale de `accept` ya filtrado con pathspecs de git (no 
 - Evidencia: **E3** con 3 o más repeticiones válidas por brazo, **E2** con 2, "sin evidencia" con 1 o menos. Nunca se imprime una cifra sin su rango. El costo en USD se imprime al lado de los tokens ponderados.
 - Las corridas repetidas (`rerun`) reemplazan a la original en las cifras; las dos quedan en el CSV. Las inválidas (cortadas por tiempo, con error, que superaron el tope, contaminadas, con `escaped_cwd`...) se listan y dejan la tarea en `pendiente: <n> corridas inválidas`; las que superaron el tope se nombran aparte ("superó el tope"). Las notas a ciegas cuentan solo para las corridas usadas: una nota de una corrida que se rehízo no se hereda.
 - Las filas de otro experimento (por ejemplo `pignolo2-calib`) se ignoran y se nombran.
+
+## Panel de calidad automático
+
+`accept` termina corriendo `quality` (también se puede correr solo: `run.mjs quality --task T --arm X --rep N`, después de `accept`). No gasta tokens. Usa las herramientas del propio proyecto sobre **dos árboles**: el árbol medido y el commit base. El base es una exportación desechable de la etiqueta `base` de la corrida (`git archive`, dentro de `<corrida>/quality-base`), con `node_modules` enlazado a la misma copia y los `copyDirs`; se borra al terminar. La fuente nunca se toca. El detalle crudo queda en `<corrida>/quality.json` y las cifras en las columnas del CSV.
+
+Una herramienta que falta nunca rompe `accept`: la cifra queda **vacía (null)** y `quality_note` dice por qué (por ejemplo `tsc:sin_tsconfig`, `tsc:tsc_no_instalado`, `eslint:sin_config_eslint`, `scope:sin_gold_files`, `tsc:resultado_tiempo_agotado`, `coverage:sin_json_valido`).
+
+| Cifra (columna) | Cómo se calcula |
+|---|---|
+| `tsc_base_errors`, `tsc_result_errors`, `tsc_new_errors` | `npx tsc --noEmit --pretty false` (con tope `qualityTimeoutMs`, por defecto 300000) en el base y en el resultado; hace falta `tsconfig.json` y `node_modules/.bin/tsc`. Cada error se reduce a `archivo(código,mensaje)` **sin número de línea** (las líneas se corren cuando el agente agrega código). `tsc_new_errors` es la diferencia de multiconjuntos: lo que el resultado tiene de más que el base. Los errores de los archivos de aceptación que `accept` copia al árbol no cuentan (son los tests de la tarea, no la solución). |
+| `eslint_new_errors`, `eslint_new_warnings` | `npx eslint --format json` sobre los archivos de **código** agregados o modificados (solo los que existen en el resultado) con la configuración del propio proyecto, en el base (solo los que ya existían) y en el resultado. Por regla y archivo, diferencia de multiconjuntos. `null` si el proyecto no tiene configuración de eslint o no está instalado. |
+| `out_of_scope_files`, `out_of_scope_lines` | archivos cambiados (sin `blindExcludePaths`) que no figuran en `gold-files.txt` de la carpeta de la tarea, y cuántas líneas (agregadas más quitadas, sin fin de línea) sumaron. `gold-files.txt` lista una ruta por línea (relativa a la raíz del repo, con `/`; se ignoran líneas vacías y las que empiezan con `#`). `null` si el archivo no está. |
+| `diff_files`, `diff_lines` | archivos cambiados y líneas agregadas más quitadas, de código y sin contar fin de línea (los mismos conteos de `changes.json`). |
+| `new_test_files`, `tests_added` | archivos de test agregados (rutas en `test/`, `tests/`, `__tests__/`, `spec/`, o nombres `*.test.*`, `*.spec.*`, `*_test.py`, `*_test.go`, `test_*.py`) y apariciones nuevas de `it(`, `test(` (con `.only`, `.skip`, `.each`...), `def test_` y `func Test` en las líneas agregadas. Es un indicador descriptivo barato, **no** una medida de la calidad de los tests. |
+| `coverage_lines_covered`, `coverage_lines_total` | opcional: `coverage-cmd.txt` en la carpeta de la tarea. |
+| `mutation_killed`, `mutation_survived`, `mutation_timeout` | opcional: `mutation-cmd.txt` en la carpeta de la tarea. |
+
+**Cobertura y mutación (opcionales).** El arnés no sabe leer ninguna herramienta en particular: el comando de la tarea tiene que escribir un archivo JSON simple en la ruta que recibe en `{json}` (como `accept-cmd.txt`), con exactamente estos campos numéricos:
+
+```json
+{ "linesCovered": 80, "linesTotal": 100 }
+{ "killed": 7, "survived": 2, "timeout": 1 }
+```
+
+El primero es para `coverage-cmd.txt` y el segundo para `mutation-cmd.txt`. El comando corre en el árbol medido (con los tests de aceptación ya copiados) y el código de salida no importa si el JSON está bien. Con tope `qualityTimeoutMs` (cobertura) y `mutationTimeoutMs` (mutación, por defecto 30 minutos). Sin el archivo de comando la cifra queda `null` sin nota; con el comando pero sin un JSON válido queda `null` con la nota `coverage:sin_json_valido` (o `mutation:...`). Si una herramienta real imprime otra cosa, el propio comando de la tarea tiene que traducirla a ese JSON.
+
+`summary` imprime, por tarea y brazo, la mediana y el rango de `tsc_new_errors`, `eslint_new_errors`, `out_of_scope_files`, `diff_lines` y `tests_added`, y al final **el costo por tarea resuelta** de cada brazo: el gasto total de sus corridas válidas dividido por las tareas que resolvió. Una tarea cuenta como resuelta por un brazo cuando **más de la mitad** de las corridas válidas de ese brazo (con datos de aceptación) son verdes; la unidad es la tarea, no la corrida. Se desglosa por conjunto (`dev` / `validation`) cuando hay de los dos.
+
+## Desarrollo, validación y freeze
+
+Las tareas de la configuración llevan `set: "dev"` (por defecto) o `set: "validation"`. Las de desarrollo sirven para ajustar el arnés y los métodos; las de validación son las que cuentan para la conclusión y **no se pueden tocar después de pre-registrar** la ficha.
+
+`run.mjs freeze --prereg <hash del commit de la ficha>` escribe `<privateRoot>/freeze.json` (fuera de git):
+
+- `freezeHash`: sha256 del JSON canónico (claves ordenadas) del contenido que sigue. Más `preregCommit` (el hash completo del commit de la ficha; tiene que existir en `preregRepo`) y la fecha.
+- Por cada tarea de validación: sha256 de `prompt.md`, `base.txt` (y el commit al que resuelve en la fuente), `accept/**` en orden, `accept-cmd.txt`, `full-cmd.txt`, y `gold-files.txt`, `coverage-cmd.txt` y `mutation-cmd.txt` si existen. (Una tarea de fixture hashea su carpeta de fixture y el prompt de la configuración.)
+- Por cada brazo: el plugin, el hash del texto de su `promptPrefix`, y la salida de `claude --version`, el modelo y el esfuerzo de la configuración.
+- **Identidad del plugin.** Dentro de un repo git, el hash del árbol git de la **carpeta del plugin** en `HEAD` (cambia solo si cambia el plugin; el hash del commit de todo el repo se mueve con cualquier commit ajeno, como el de los resultados, y rompería el freeze). El commit del repo queda anotado en `freeze.json` (`info`) para trazabilidad, sin entrar en el hash. Un plugin con cambios sin commitear no se congela ni se acepta. Fuera de git: un hash del contenido de la carpeta.
+
+`run` de una tarea de validación **se niega, antes de gastar**, si no existe `freeze.json`, si su `freezeHash` no coincide con su contenido, si algo recalculado ya no coincide (el mensaje dice qué: `cambió accept/x`, `el contenido del plugin cambió`, `claudeVersion cambió`, `la tarea T es de validación pero no figura en el freeze`...), o si la tarea no figura. Si todo coincide, `metrics.json` y el CSV guardan `freeze_hash` y `prereg_commit` (y `set`). Las tareas de desarrollo no piden nada.
+
+`freeze --check` imprime la verificación (`ok`, `problems`, `freezeHash`, `preregCommit`) sin escribir nada y sale con código distinto de cero si algo cambió. `freeze` se niega a pisar un `freeze.json` existente; con `--force` el anterior pasa a `freeze.json.<fecha>.bak` y se escribe uno nuevo.
+
+## Orden aleatorio y batch
+
+`run.mjs schedule --tasks a,b,c --arms N,S,P --seed K [--reps R]` arma un orden aleatorio reproducible: las tareas se barajan, cada tarea es un **bloque** con los brazos barajados dentro (cada brazo una vez por bloque), con una semilla propia por barajado, así la misma `--seed` y los mismos argumentos dan siempre el mismo orden. Con `--reps R` se repite la pasada completa R veces (cada una con su propio orden). Imprime una línea por corrida y escribe `<workRoot>/schedule-K.json` (`seed`, `reps`, `tasks`, `arms`, `entries` con `index`, `block`, `task`, `arm`, `rep`); no pisa un archivo con otro contenido sin `--force`. Una tarea que limita sus brazos (un fixture) solo recibe los suyos. `run` **no** exige seguir el calendario.
+
+`run.mjs batch --schedule schedule-K.json [--dry-run] [--experiment E]` ejecuta, en serie y por entrada, `prepare`, `run`, `accept` (que corre el panel de calidad) y `row`, y escribe **una línea por corrida**: `[i/n] tarea brazo rep r | costo ... USD | pared ... s | turnos ... | agentes ... | activación ... | aceptación pasa/falla | válida / inválida: motivos`.
+
+- Se detiene en el **primer error del arnés** (un paso que lanza una excepción: falta un archivo, tope total de gasto, freeze que no se cumple, una corrida interrumpida...). Una corrida inválida no es un error: se registra con su motivo y el batch sigue.
+- Se puede volver a lanzar con el mismo calendario: salta lo que ya tiene su fila en el CSV y termina lo que quedó a medias (preparada, corrida sin aceptar...). Una carpeta con `stream.jsonl` y sin `metrics.json` (corrida interrumpida) frena el batch: su gasto ya cuenta en el ledger y hay que revisarla o limpiarla a mano con `clean --force`.
+- Antes de empezar verifica los plugins, el `configDir` y, si hay tareas de validación, el freeze. El ledger y los topes son los de siempre: cada `run` revisa `totalCapUsd` y `perRunCapUsd`.
+- `--dry-run` imprime el plan (qué paso falta de cada entrada), el gasto acumulado, el peor caso de las corridas por lanzar (`perRunCapUsd` por corrida), si ese peor caso entra en el tope total, si la próxima corrida pasa el chequeo del ledger, el estado del freeze y los chequeos previos. No prepara, no corre ni gasta nada.
 
 ## Calibración: qué verificar en la primera corrida real
 
