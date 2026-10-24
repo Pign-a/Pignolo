@@ -29,7 +29,17 @@ The identity itself is a big decision, so it goes through three options (section
 
 Three options, in separate HTML files, only for big pieces: the identity, full screens, and large parts such as navigation, a modal, a sidebar or a data table. A button or a title never gets options: decide it directly and move on, because comparing three buttons costs more than any of them is worth. Generate each option with the `ui-option` agent, one per axis, launched together; the brief, the axes and the sample-data rules are in `references/options.md`.
 
-## 5. The navigator
+## 5. Building screens
+
+A first version comes out overloaded when nothing decided what the screen is for before drawing it, and nothing checked it afterwards against fixed criteria. For a new screen or piece:
+
+- **Brief**: before drawing a new screen, fix its user, job, one primary action, up to 3 key data, what is left out and its regions in reading order, as text (`references/brief.md`).
+- **Pattern sheet**: before building a piece, read its sheet from the project's `design/patterns/` first, or research that one pattern with the piece's context and save the sheet there (`references/patterns.md`); `design.md` tokens always win over a sheet's measures.
+- **Critique**: after generating, review once against the fixed rubric, ideally on a screenshot, and fix only the items that fail, never what passes (`references/critique.md`).
+
+A small tweak skips these steps; a new piece or screen runs them, because that is where an unexamined first version costs most to fix.
+
+## 6. The navigator
 
 ```
 design/
@@ -41,6 +51,6 @@ design/
 
 The status of each piece (`decidido` or `pendiente`) lives in the data embedded in `index.html`. Create it from `templates/index.html` and regenerate it from the template whenever a piece is added or decided: replace only the `<script id="data" type="application/json">` block, keep the rest. When you write that JSON by hand, write every `<` as `\u003c` and check that the block parses before you finish: a name containing `</script>` would otherwise close the element early and spill the data onto the page, and a stray comma would make the index read as empty when it is only corrupt. Set a piece to `decidido` when the author chooses an option, and record the choice in `design.md`.
 
-## 6. Close
+## 7. Close
 
 Tell the author in Spanish which pieces are decided, which are pending, and the path of `design/index.html`. Do not publish, upload or open anything remote. Do not commit unless asked.

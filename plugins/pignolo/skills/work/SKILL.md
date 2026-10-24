@@ -38,6 +38,8 @@ Check `git status`. If there is uncommitted work and the change is large, warn t
 
 `security.md`, `design.md` (or `DESIGN.md`, the same file on Windows) and the roadmap are useful when present, and `work` reads them: they tell you what the project protects and how it should look. When they are absent, do not stop and do not demand them. Work from the evidence in the repo, and offer `/pignolo:start` once, at the end, only if it would have changed a decision.
 
+When the request creates or redesigns a screen, panel, navigation or interface component, follow the screen-building section of `/pignolo:ui` for that part, because interfaces built without it come out overloaded and flat.
+
 ## At a milestone
 
 When a roadmap milestone closes, offer `/pignolo:validate` once, because a milestone is the moment when a review finds problems that are still cheap to fix. Never offer it per task.

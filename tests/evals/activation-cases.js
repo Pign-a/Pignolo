@@ -67,6 +67,40 @@ const PLAN_CASES = [
   ...PLAN_NEGATIVE.map((prompt, i) => ({ id: `QN${i + 1}`, prompt, expect: null })),
 ];
 
+// Conjunto aparte para la fase 0 del flujo de pantallas (docs/specs/2026-10-24-ui-flujo-design.md, sección 12): ¿se carga `ui`
+// con los pedidos naturales de construir una pantalla? Pedidos de una app de finanzas personales, con palabras genéricas:
+// sin nombres de una app real ni datos. No toca las 30 frases ya medidas. Sin correr todavía.
+// Se elige como el de `plan`: el runner lo selecciona con `--set ui` (UI_CASES) y califica con gradeUi.
+const UI = 'pignolo:ui';
+const UI_POSITIVE_ES = [
+  'hacé la pantalla de resumen del mes: una lista de movimientos y un botón principal para cargar un gasto',
+  'armá el dashboard del mes con el total gastado, lo que queda disponible y los últimos movimientos',
+  'construí la pantalla de cierre de mes con el resumen de ingresos, gastos y saldo',
+  'necesito la pantalla del simulador: un formulario con selector de mes, monto y un botón para calcular',
+  'hacé la lista de compromisos del mes con filtros por estado y por categoría',
+  'armá la página de configuración con moneda, categorías y preferencias de avisos',
+  'construí el panel de navegación lateral de la app, con las secciones principales y la que está activa',
+  'agregá una pantalla para ver las cuotas pendientes, con un filtro por mes y un botón para marcar una como pagada',
+  'armá el formulario para cargar un ingreso con fecha, monto y categoría',
+  'rediseñá la pantalla de resumen mensual: tiene demasiadas cosas y no se entiende cuál es la importante',
+];
+const UI_POSITIVE_EN = [
+  "build the screen that shows this month's overview: a list of transactions and one main button to add an expense",
+  'make the settings page for currency, categories and notification preferences',
+  'create the month-close summary screen with income, expenses and balance',
+  'set up the navigation shell for the app: a sidebar with the main sections and a header',
+];
+const UI_NEGATIVE = [
+  'el endpoint de movimientos devuelve 500 cuando el mes no tiene datos, arreglalo',
+  'en el título de la pantalla de resumen dice "Resúmen", corregí la tilde',
+  'agregá una migración que sume la columna categoría a la tabla de movimientos',
+  'explicame cómo se calcula el saldo disponible del mes en este proyecto',
+];
+const UI_CASES = [
+  ...[...UI_POSITIVE_ES, ...UI_POSITIVE_EN].map((prompt, i) => ({ id: `B${String(i + 1).padStart(2, '0')}`, prompt, expect: UI })),
+  ...UI_NEGATIVE.map((prompt, i) => ({ id: `BN${i + 1}`, prompt, expect: null })),
+];
+
 const CASES = [
   ...POSITIVE.map(([prompt, expect], i) => ({ id: `P${String(i + 1).padStart(2, '0')}`, prompt, expect })),
   ...NEGATIVE.map((prompt, i) => ({ id: `N${String(i + 1).padStart(2, '0')}`, prompt, expect: null })),
@@ -107,4 +141,11 @@ function gradePlan(expect, invoked) {
   return expect ? grade(PLAN, list) : !list.includes(PLAN);
 }
 
-module.exports = { EIGHT, CASES, PLAN, PLAN_CASES, invokedSkill, grade, gradePlan };
+// Acierto en el conjunto `ui`: positivas = `pignolo:ui` se invocó (puede ir después de `pignolo:work`, que la línea de work
+// manda a ui); negativas = `pignolo:ui` no aparece en ningún lugar.
+function gradeUi(expect, invoked) {
+  const list = Array.isArray(invoked) ? invoked : (invoked ? [invoked] : []);
+  return expect ? list.includes(UI) : !list.includes(UI);
+}
+
+module.exports = { EIGHT, CASES, PLAN, PLAN_CASES, UI, UI_CASES, invokedSkill, grade, gradePlan, gradeUi };

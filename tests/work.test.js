@@ -59,7 +59,9 @@ test('card.md lista los cuatro campos como ítems de lista', () => {
 test('SKILL.md menciona references/card.md y no pasa de 750 palabras', () => {
   const t = read('SKILL.md');
   assert.ok(t.includes('references/card.md'));
-  assert.ok(t.split(/\s+/).filter(Boolean).length <= 750);
+  // se cuenta el cuerpo (sin el frontmatter), igual que tests/plugin-layout.test.js
+  const body = t.replace(/^---\n[\s\S]*?\n---\n?/, '');
+  assert.ok(body.split(/\s+/).filter(Boolean).length <= 750);
 });
 
 // ---- revisión final F10 y F11 ----
@@ -84,4 +86,16 @@ test('work pasa model y effort explícitos a cada subagente que lanza', () => {
   const sec = t.split(/^## /m).find((s) => s.startsWith('Stay in the main thread'));
   assert.ok(sec);
   assert.match(sec, /`model` and `effort` passed explicitly/);
+});
+
+// ---- paso de work a ui ----
+test('work lleva UNA línea que manda a la sección de armado de pantallas de /pignolo:ui, al final de "Missing documents"', () => {
+  const t = read('SKILL.md');
+  const lines = t.split('\n').filter((l) => /screen-building section of `\/pignolo:ui`/.test(l));
+  assert.strictEqual(lines.length, 1);
+  assert.match(lines[0], /creates or redesigns a screen, panel, navigation or interface component/);
+  assert.match(lines[0], /because/, 'cada regla con su porqué');
+  const sec = t.split(/^## /m).find((s) => s.startsWith('Missing documents'));
+  assert.ok(sec && sec.includes(lines[0]), 'la línea va dentro de Missing documents');
+  assert.ok(!/\bsection \d/.test(lines[0]), 'la sección se cita por nombre');
 });

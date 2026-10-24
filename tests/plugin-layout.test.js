@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const PLUGIN = path.join(ROOT, 'plugins', 'pignolo');
+// PIGNOLO_LAYOUT_PLUGIN apunta a otro árbol del plugin (tests/ui-arms.test.js corre este archivo contra el brazo U3).
+const PLUGIN = process.env.PIGNOLO_LAYOUT_PLUGIN || path.join(ROOT, 'plugins', 'pignolo');
 const SKILLS = ['session', 'start', 'ui', 'ui-audit', 'validate', 'work'];
 
 const exists = (p) => fs.existsSync(p);
@@ -59,14 +60,18 @@ test('las carpetas de skills son exactamente las seis', () => {
   assert.ok(!dirs.includes('code-review'));
 });
 
-test('cada SKILL.md: name igual a la carpeta, description 1..1536, cuerpo <= 750 palabras', () => {
+// ui lleva además la sección de armado de pantallas (tres pasos): su tope sube a 850; el resto sigue en 750.
+const WORD_CAP = { ui: 850 };
+
+test('cada SKILL.md: name igual a la carpeta, description 1..1536, cuerpo dentro del tope de palabras (750; ui 850)', () => {
   for (const name of SKILLS) {
     const { data, body } = frontmatter(path.join(PLUGIN, 'skills', name, 'SKILL.md'));
     assert.strictEqual(data.name, name);
     assert.ok(data.description && data.description.length >= 1 && data.description.length <= 1536,
       `${name}: description fuera de rango`);
     const words = body.split(/\s+/).filter(Boolean).length;
-    assert.ok(words <= 750, `${name}: ${words} palabras`);
+    const cap = WORD_CAP[name] || 750;
+    assert.ok(words <= cap, `${name}: ${words} palabras (tope ${cap})`);
   }
 });
 

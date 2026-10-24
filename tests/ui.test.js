@@ -267,3 +267,115 @@ test('ui-option y options.md: la carpeta contiene solo los archivos nombrados; l
   assert.match(bullet, /in parallel/);
   assert.ok(!/, empty,/.test(bullet), 'options.md sigue diciendo que la carpeta está vacía');
 });
+
+// ---- armado de pantallas: brief, ficha de patrón y crítica ----
+const STEP_REFS = ['brief', 'patterns', 'critique'];
+const section = (name) => skill().split(/^## /m).find((s) => new RegExp(`^\\d+\\. ${name}\\n`).test(s));
+const pluginFiles = (dir, acc = []) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) pluginFiles(p, acc); else acc.push(p);
+  }
+  return acc;
+};
+
+test('"Building screens" va después de Options y antes del navegador; las secciones viejas conservan su sentido', () => {
+  const heads = [...skill().matchAll(/^## (\d+)\. (.+)$/gm)].map((m) => `${m[1]}. ${m[2]}`);
+  assert.deepStrictEqual(heads, ['1. Start from what exists', '2. Identity phase (first, when the project has an interface)',
+    '3. Catalog', '4. Options', '5. Building screens', '6. The navigator', '7. Close']);
+  assert.match(skill(), /three options \(section 4\)/, 'la referencia a Options sigue apuntando a la sección 4');
+});
+
+test('Building screens: tres pasos, cada uno en UNA línea con su referencia; sin tabla ni numeración de pasos', () => {
+  const sec = section('Building screens');
+  assert.ok(sec, 'falta la sección');
+  const bullets = sec.split('\n').filter((l) => l.startsWith('- '));
+  assert.strictEqual(bullets.length, 3);
+  for (const r of STEP_REFS) {
+    const lines = skill().split('\n').filter((l) => l.includes(`references/${r}.md`));
+    assert.strictEqual(lines.length, 1, `references/${r}.md debe aparecer en exactamente una línea`);
+    assert.ok(lines[0].startsWith('- **'), `${r}: la línea es un ítem de la sección`);
+  }
+  assert.ok(!/^\|/m.test(sec), 'sin tabla que nombre los pasos');
+  assert.ok(!/step missing|missing from this list/i.test(skill()));
+  assert.ok(!/\bsections? \d/.test(sec), 'las secciones se citan por nombre, no por número');
+  // la intro no nombra los pasos ni sus archivos: con un paso quitado sigue siendo coherente
+  const intro = sec.split('\n').filter((l) => !l.startsWith('- ')).join('\n');
+  assert.ok(!/brief|pattern sheet|critique|rubric/i.test(intro), 'la intro nombra un paso');
+});
+
+test('Building screens: el brief decide el trabajo, la ficha investiga con contexto, la crítica corrige solo lo que falla', () => {
+  const [brief, pattern, critique] = STEP_REFS.map((r) => section('Building screens').split('\n').find((l) => l.includes(`references/${r}.md`)));
+  for (const w of ['user', 'job', 'primary action', '3 key data', 'left out', 'reading order', 'text']) assert.match(brief, new RegExp(w, 'i'), `brief: falta ${w}`);
+  assert.match(pattern, /design\/patterns\//);
+  assert.match(pattern, /context/i);
+  assert.match(pattern, /tokens always win/i);
+  assert.match(critique, /once/i);
+  assert.match(critique, /screenshot/i);
+  assert.match(critique, /only the items that fail/i);
+  assert.match(critique, /never what passes/i);
+});
+
+test('Building screens: la proporcionalidad son dos frases llanas (retoque salta, pieza o pantalla nueva corre)', () => {
+  const para = section('Building screens').split(/\n\s*\n/).find((p) => /small tweak/i.test(p));
+  assert.ok(para, 'falta la regla de proporcionalidad');
+  assert.match(para, /small tweak skips/i);
+  assert.match(para, /new piece or screen runs/i);
+  assert.ok(!para.includes('|'));
+});
+
+test('references del flujo: cada ruta de paso solo se nombra en SKILL.md y no se nombran entre sí', () => {
+  const refs = path.join(DIR, 'references');
+  const text = Object.fromEntries(STEP_REFS.map((r) => [r, read(refs, `${r}.md`)]));
+  for (const r of STEP_REFS) {
+    for (const other of STEP_REFS.filter((o) => o !== r)) {
+      assert.ok(!text[r].includes(`${other}.md`), `${r}.md nombra ${other}.md`);
+    }
+    // ningún otro archivo del plugin nombra la ruta del paso
+    const files = pluginFiles(PLUGIN).filter((f) => /\.(md|json|html|mjs|js)$/.test(f))
+      .filter((f) => !path.relative(PLUGIN, f).split(path.sep).join('/').startsWith('skills/ui/references/patterns/')) // las fichas viajan con su paso
+      .filter((f) => read(f).includes(`references/${r}.md`));
+    assert.deepStrictEqual(files.map((f) => path.relative(PLUGIN, f).split(path.sep).join('/')), ['skills/ui/SKILL.md']);
+  }
+  // el único vínculo permitido es condicional
+  assert.match(text.critique, /brief if there is one/);
+});
+
+test('brief.md: usuario, trabajo, una acción primaria, hasta 3 datos, lo que se deja afuera y regiones en texto', () => {
+  const t = read(DIR, 'references', 'brief.md');
+  for (const w of ['User', 'Job', 'Primary action', 'Key data', 'Left out on purpose', 'Regions']) assert.match(t, new RegExp(`\\*\\*${w}\\*\\*`), `falta ${w}`);
+  assert.match(t, /two screens/);
+  assert.match(t, /up to 3/);
+  assert.match(t, /reading order/);
+  assert.match(t, /No wireframe file/);
+  assert.match(t, /starting guidance, not a gate/, 'los límites numéricos son guía y no bloquean');
+});
+
+test('patterns.md: orden de búsqueda, investigar con el contexto de la pieza, model y effort explícitos, design.md gana', () => {
+  const t = read(DIR, 'references', 'patterns.md');
+  const iProject = t.indexOf('`design/patterns/`');
+  const iPlugin = t.indexOf('`references/patterns/`');
+  assert.ok(iProject > 0 && iPlugin > iProject, 'primero el proyecto, después el plugin');
+  assert.match(t, /WITH the context of the piece/);
+  assert.match(t, /`model` and `effort` passed explicitly/);
+  assert.match(t, /tokens always win over a sheet's measures/);
+  assert.match(t, /`supuesto`/);
+  // la línea de las fichas del plugin es una sola: quitarla basta para el brazo sin semillas
+  assert.strictEqual(t.split('\n').filter((l) => l.includes('references/patterns/')).length, 1);
+});
+
+test('critique.md: cinco ítems sí/no, cada uno con el síntoma que previene; solo se corrigen los "no"', () => {
+  const t = read(DIR, 'references', 'critique.md');
+  const items = t.split('\n').filter((l) => /^\d\. \*\*/.test(l));
+  assert.strictEqual(items.length, 5);
+  for (const l of items) assert.match(l, /Prevents/, `sin síntoma: ${l.slice(0, 30)}`);
+  const joined = items.join('\n');
+  assert.match(joined, /matches the brief if there is one/);
+  assert.match(joined, /Exactly one primary-styled action per view, and it is the most prominent/);
+  assert.match(joined, /detail blurred, title, section, body and caption read in that order, with at most 4 text roles per region/);
+  assert.match(joined, /outside the job and the key data/);
+  assert.match(joined, /Whitespace separates regions and proximity groups related items/);
+  assert.match(t, /screenshot/);
+  assert.match(t, /fix only the ones that fail/);
+  assert.match(t, /no second pass/);
+});

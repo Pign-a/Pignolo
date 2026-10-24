@@ -6,6 +6,6 @@ Lookup order:
 2. This folder.
 3. If neither has it, research that one pattern from named design systems, then save the sheet in the project's `design/patterns/`.
 
-Sheets give starting numbers and checkable states. Items marked supuesto are conventions without a fetched source.
+Sheets give starting numbers and checkable states. A number with a named source was checked against that page; one marked "convention" has no source (it is the `supuesto` of `references/patterns.md`). Hover and focus-visible are listed as states in every sheet; the 2px focus ring width is a convention (WCAG only requires it to be visible).
 
-Rule: `design.md` tokens always win over a sheet's measures.
+Rule: `design.md` tokens always win over a sheet's measures. Sheet measures are defaults that apply only when `design.md` does not define the same thing.
