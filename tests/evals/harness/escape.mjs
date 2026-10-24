@@ -103,7 +103,9 @@ function climbs(tok) {
 // Does a shell command leave the run folder through "..", starting in `startCwd`? (all paths normalized, lowercase)
 function leavesRunFolder(command, startCwd, run) {
   let cwd = startCwd;
-  const inside = (p) => p === run || p.startsWith(`${run}/`);
+  // The arm's plugin tree (a sibling "arms" folder of the runs) may be read.
+  const arms = `${run.slice(0, run.lastIndexOf('/'))}/arms`;
+  const inside = (p) => p === run || p.startsWith(`${run}/`) || p === arms || p.startsWith(`${arms}/`);
   for (const cmd of parseCommands(withoutHeredocs(command))) {
     const words = cmd.map((t) => t.text);
     if (words[0] === 'cd' || words[0] === 'pushd') {
