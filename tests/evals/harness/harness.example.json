@@ -16,6 +16,7 @@
   "perRunCapUsd": 5,
   "totalCapUsd": 40,
   "timeoutMs": 1800000,
+  "hangSilenceS": 120,
   "acceptTimeoutMs": 900000,
   "qualityTimeoutMs": 300000,
   "mutationTimeoutMs": 1800000,
