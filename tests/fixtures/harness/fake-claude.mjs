@@ -2,6 +2,7 @@
 // FAKE_CLAUDE_MODE is a comma list of modes:
 //   ok (default) | edit | hang | busy | apierror | contaminated | nocost | noplugin | budget | fail | ask
 //   hang: writes the init and goes silent. busy: keeps writing assistant messages until it is killed. apierror: ends with an API overload error result.
+//   native: the init lists the native slash commands code-review and review.
 //   slash | noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_TEXTS: JSON list of {text, sub} extra assistant messages after the first one ("sub": a subagent message).
@@ -51,7 +52,7 @@ if (has('contaminated')) {
 
 out({
   type: 'system', subtype: 'init', cwd: process.cwd(), model: 'fake-model', claude_code_version: '9.9.9-fake',
-  plugins, skills, agents: [], slash_commands: has('slash') && own ? [`${own}:work`] : [],
+  plugins, skills, agents: [], slash_commands: [...(has('slash') && own ? [`${own}:work`] : []), ...(has('native') ? ['code-review', 'review'] : [])],
 });
 
 if (has('hang')) {

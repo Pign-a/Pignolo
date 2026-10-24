@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { assistantTexts, formatAssistantText } from './metrics.mjs';
-import { runPaths, HARNESS_DIR, isFixtureTask, taskConfig, assertArmAllowed } from './config.mjs';
+import { runPaths, HARNESS_DIR, isFixtureTask, isReviewTask, taskConfig, assertArmAllowed } from './config.mjs';
+import { scoreRun } from './score.mjs';
 import { runProcess } from './proc.mjs';
 import { buildChildEnv } from './env.mjs';
 import { git } from './prepare.mjs';
@@ -209,6 +210,8 @@ export async function acceptRun(cfg, args) {
   assertArmAllowed(cfg, task, arm);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}`);
   if (isFixtureTask(cfg, task)) return acceptFixture(cfg, { task, arm, rep, dir });
+  // A seeded-defect review has no hidden tests and no acceptance command: accept is the deterministic score.
+  if (isReviewTask(cfg, task)) return scoreRun(cfg, { task, arm, rep });
   const acceptCmd = readCmd(path.join(taskDir, 'accept-cmd.txt'));
   const fullCmd = readCmd(path.join(taskDir, 'full-cmd.txt'));
 

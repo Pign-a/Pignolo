@@ -95,6 +95,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     // pluginName and pluginDir go together; an arm with neither (omitted or null) runs Claude Code with no plugin at all.
     if (Boolean(arm.pluginName) !== Boolean(arm.pluginDir)) throw new Error(`el brazo ${a}: pluginName y pluginDir van juntos (los dos, o ninguno para un brazo sin plugin)`);
     if (arm.promptPrefix !== undefined && typeof arm.promptPrefix !== 'string') throw new Error(`el promptPrefix del brazo ${a} tiene que ser un texto`);
+    if (arm.reviewPrompt !== undefined && typeof arm.reviewPrompt !== 'string') throw new Error(`el reviewPrompt del brazo ${a} tiene que ser un texto`);
   }
   // Pairs [control, variant]: each summary rule is evaluated once per pair. By default A against B, or the first two arms.
   const armIds = Object.keys(cfg.arms);
@@ -109,6 +110,18 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     if (!Array.isArray(t.arms) || !t.arms.length || t.arms.some((a) => !armIds.includes(a))) {
       throw new Error(`la tarea ${id}: arms tiene que listar brazos configurados (los de la configuración: ${armIds.join(', ')})`);
     }
+  }
+  // Tasks of kind "review" (seeded-defect review): the item folder is <privateRoot>/review/<item>; the prompt of each run is the arm's reviewPrompt.
+  for (const [id, t] of Object.entries(cfg.tasks || {})) {
+    if (!t || t.kind !== 'review') continue;
+    if (!ID.test(id)) throw new Error(`id de tarea inválido: ${id}`);
+    if (typeof t.item !== 'string' || !ID.test(t.item)) throw new Error(`la tarea ${id}: falta item (la carpeta <privateRoot>/review/<item>) o no es válido (${JSON.stringify(t.item)})`);
+    if (t.arms !== undefined && (!Array.isArray(t.arms) || !t.arms.length || t.arms.some((a) => !armIds.includes(a)))) {
+      throw new Error(`la tarea ${id}: arms tiene que listar brazos configurados (los de la configuración: ${armIds.join(', ')})`);
+    }
+  }
+  if (cfg.freezeExtraFiles !== undefined && (!Array.isArray(cfg.freezeExtraFiles) || cfg.freezeExtraFiles.some((f) => typeof f !== 'string' || !f.trim()))) {
+    throw new Error('freezeExtraFiles tiene que ser una lista de rutas (texto)');
   }
   // Tasks (any kind) may carry set: "dev" (default) or "validation". Validation tasks need a freeze before they can run.
   for (const [id, t] of Object.entries(cfg.tasks || {})) {
@@ -157,6 +170,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     mutationTimeoutMs: DEFAULT_MUTATION_TIMEOUT_MS,
     hangSilenceS: DEFAULT_HANG_SILENCE_S,
     activityPollMs: DEFAULT_ACTIVITY_POLL_MS,
+    freezeExtraFiles: [],
     tscCmd: null,
     eslintCmd: null,
     preregRepo: REPO_ROOT,
@@ -169,7 +183,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     baseExperiment: cfg.experiment || DEFAULT_EXPERIMENT,
     pairs,
     contrasts,
-    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, pluginName: a.pluginName || null, pluginDir: a.pluginDir || null, promptPrefix: a.promptPrefix || '' }])),
+    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, pluginName: a.pluginName || null, pluginDir: a.pluginDir || null, promptPrefix: a.promptPrefix || '', reviewPrompt: a.reviewPrompt || '' }])),
     graderSpendPath: cfg.graderSpendPath || path.join(cfg.privateRoot, 'grader-spend.csv'),
   };
 }
@@ -196,7 +210,10 @@ export function runPaths(cfg, args) {
     root = path.join(cfg.workRoot, cfg.experiment);
   }
   const dir = path.join(root, `${task}-${arm}-${rep}`);
-  return { task, arm, rep, dir, repo: path.join(dir, 'repo'), taskDir: path.join(cfg.privateRoot, task) };
+  // A review task keeps its package in <privateRoot>/review/<item>; any other task in <privateRoot>/<task>.
+  const t = taskConfig(cfg, task);
+  const taskDir = t && t.kind === 'review' ? path.join(cfg.privateRoot, 'review', t.item) : path.join(cfg.privateRoot, task);
+  return { task, arm, rep, dir, repo: path.join(dir, 'repo'), taskDir };
 }
 
 // An arm without pluginName/pluginDir runs Claude Code with no plugin at all (the control of a three-arm comparison).
@@ -220,6 +237,8 @@ export const taskSet = (cfg, task) => (cfg.tasks && cfg.tasks[task] && cfg.tasks
 
 // The other plugin: the first arm whose pluginName differs from this arm's (AF and A share a plugin, so AF's other is B).
 export const taskConfig = (cfg, task) => (cfg.tasks && cfg.tasks[task]) || null;
+// Seeded-defect review: { kind: "review", item: "rev-NN" }. The repo has two commits, the base and the one to review (HEAD~1..HEAD).
+export const isReviewTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'review');
 export const isFixtureTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'fixture');
 
 // Only the arms listed in a task's "arms" may run it (fixture tasks always list them).

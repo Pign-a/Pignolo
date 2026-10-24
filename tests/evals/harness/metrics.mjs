@@ -183,6 +183,18 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     if (!initCommands.has(cmd.toLowerCase())) warnings.push('slash_command_unknown');
     else if (result && !result.is_error && !/^error/.test(String(result.subtype || ''))) slashActivations.push(cmd);
   }
+  // A NATIVE command (no "plugin:" part), for example "/code-review HEAD~1..HEAD": it has to be listed in the init slash_commands,
+  // otherwise the run could not have done what its prompt asked.
+  const native = String(prompt).match(/^\s*\/([A-Za-z][\w-]*)(?=\s|$)/);
+  let nativeCommand = null;
+  let nativeCommandListed = null;
+  if (native) {
+    nativeCommand = native[1].toLowerCase();
+    if (init) {
+      nativeCommandListed = initCommands.has(nativeCommand);
+      if (!nativeCommandListed) warnings.push('slash_command_unknown');
+    }
+  }
   for (const c of slashActivations) ownSkills.push(c);
   const ownSkillToolCalls = ownSkillCalls;
   ownSkillCalls += slashActivations.length;
@@ -225,6 +237,8 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     ownHookRan: noPlugin ? 'n/a' : ownHookNamed ? 'true' : (hookMessages > 0 && ownHooksDeclared ? 'false' : 'unknown'),
     init,
     hasInit: init !== null,
+    nativeCommand,
+    nativeCommandListed,
     pluginsLoaded: loaded,
     badLines,
   };
@@ -328,12 +342,13 @@ export function invalidReasons(m) {
   const hits = m.contaminationHits || [];
   if (hits.includes('own_plugin_not_loaded')) r.push('own_plugin_not_loaded');
   if (hits.some((h) => h !== 'own_plugin_not_loaded') || (m.neutralConfigArmNamed && m.neutralConfigArmNamed.length)) r.push('contaminated');
+  if (m.nativeCommand && m.nativeCommandListed === false) r.push('native_command_missing');
   if (m.escapedCwd) r.push('escaped_cwd');
   if (m.nm && m.nm.snapshotChanged) r.push('nm_changed');
   if (m.nm && m.nm.sourceChanged) r.push('source_nm_changed');
   if (m.nm && m.nm.dropFailed) r.push('drop_failed');
   if (m.postRunError && m.postRunError.length) r.push('post_run_error');
   if (m.treesError) r.push('trees_unmeasurable');
-  else if (m.trees && m.trees.noChanges && !m.isFixture && t.termination === 'ok') r.push('no_changes'); // validating does not change the code
+  else if (m.trees && m.trees.noChanges && !m.isFixture && !m.isReview && t.termination === 'ok') r.push('no_changes'); // validating does not change the code
   return r;
 }

@@ -1,7 +1,8 @@
 // Runs `claude -p` for one task/arm/rep and turns the stream into metrics.json.
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import path from 'node:path';
-import { runPaths, otherPlugins, isFixtureTask, taskConfig, assertArmAllowed, hasPlugin, taskSet } from './config.mjs';
+import { runPaths, otherPlugins, isFixtureTask, isReviewTask, taskConfig, assertArmAllowed, hasPlugin, taskSet } from './config.mjs';
 import { requireFreeze } from './freeze.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
 import { parseStream, findEscape, invalidReasons, terminationFields, assistantTexts, formatAssistantText } from './metrics.mjs';
@@ -119,6 +120,7 @@ export async function runTask(cfg, args, deps = {}) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   assertArmAllowed(cfg, task, arm);
   const isFixture = isFixtureTask(cfg, task);
+  const isReview = isReviewTask(cfg, task);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}; corré prepare primero`);
   const streamPath = path.join(dir, 'stream.jsonl');
   if (fs.existsSync(streamPath)) {
@@ -127,6 +129,10 @@ export async function runTask(cfg, args, deps = {}) {
   let prompt;
   if (isFixture) {
     prompt = taskConfig(cfg, task).prompt.trimEnd();
+  } else if (isReview) {
+    // A review run is asked in the natural words of each arm's tool: the arm's reviewPrompt, never a task prompt file.
+    prompt = String(cfg.arms[arm].reviewPrompt || '').trimEnd();
+    if (!prompt) throw new Error(`el brazo ${arm} no tiene reviewPrompt: la tarea de revisión ${task} necesita el pedido de cada brazo en la configuración`);
   } else try {
     prompt = fs.readFileSync(path.join(taskDir, 'prompt.md'), 'utf8').replace(/^﻿/, '').trimEnd();
   } catch {
@@ -219,7 +225,8 @@ export async function runTask(cfg, args, deps = {}) {
   if (isFixture) guard('final.txt', () => fs.writeFileSync(path.join(dir, 'final.txt'), resultText ?? ''));
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {
-    task, arm, rep, experiment: cfg.experiment, promptPrefix, isFixture, model: cfg.model, effort: cfg.effort,
+    task, arm, rep, experiment: cfg.experiment, promptPrefix, isFixture, isReview, reviewPromptSha: isReview ? crypto.createHash('sha256').update(prompt).digest('hex') : null, model: cfg.model, effort: cfg.effort,
+    patchMode: isReview ? ((readJson(path.join(dir, 'prepare.json')) || {}).patchMode ?? null) : null,
     set: taskSet(cfg, task), freezeHash: freeze ? freeze.freezeHash : null, preregCommit: freeze ? freeze.preregCommit : null,
     hasPlugin: hasPlugin(cfg, arm),
     startedAt, finishedAt: new Date().toISOString(),

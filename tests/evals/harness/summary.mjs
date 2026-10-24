@@ -12,6 +12,7 @@ const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache
   'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail',
   'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
   'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
+  'defects_total', 'defects_found', 'findings_total', 'findings_unmatched',
   'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout'];
 // The quality figures the summary prints per task and arm (median and range).
 export const QUALITY_KEYS = ['tsc_new_errors', 'eslint_new_errors', 'out_of_scope_files', 'diff_lines', 'tests_added'];
@@ -58,7 +59,7 @@ export function isGreen(r) {
     && (r.accept_suites_failed === null || r.accept_suites_failed === 0)
     && r.accept_fail === 0 && r.accept_pass !== null && r.accept_pass > 0;
 }
-const hasAccept = (r) => r.accept_pass !== null && r.accept_fail !== null;
+const hasAccept = (r) => r.accept_pass != null && r.accept_fail != null;
 // A censored run counts in the acceptance tally (as a run that is not green) even when its hidden tests were not run.
 const countsInAccept = (r) => hasAccept(r) || isCensored(r);
 
@@ -113,6 +114,15 @@ function armStats(rows) {
         only: known.reduce((t, r) => t + (r.eol_only_files || 0), 0),
         runs: known.filter((r) => r.eol_converted_files > 0).length,
         m: known.length,
+      };
+    })(),
+    // Seeded-defect review (study B): defects found over defects seeded, and the findings the text names (descriptive; the analysis decides).
+    review: (() => {
+      const known = rows.filter((r) => r.defects_total !== null && r.defects_total !== undefined && r.defects_found !== null && r.defects_found !== undefined);
+      if (!known.length) return null;
+      return {
+        runs: known.length, defectsFound: known.reduce((t, r) => t + r.defects_found, 0), defectsTotal: known.reduce((t, r) => t + r.defects_total, 0),
+        findingsTotal: stat(known.map((r) => r.findings_total)), findingsUnmatched: stat(known.map((r) => r.findings_unmatched)),
       };
     })(),
     activation: { n: rows.filter((r) => r.own_skill_calls !== null && r.own_skill_calls > 0).length, m: rows.filter((r) => r.own_skill_calls !== null).length },
@@ -290,6 +300,23 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
   };
 }
 
+// A seeded-defect review item: no pass/fail rule here (the decision belongs to the review analysis); it lists what each arm found.
+function reviewEntry({ task, mine, bad, activationOf }) {
+  const arms = {};
+  for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
+  const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
+  const reasons = invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`);
+  for (const [a, st] of Object.entries(arms)) {
+    if (st.review) reasons.push(`${a}: defectos encontrados ${st.review.defectsFound}/${st.review.defectsTotal}; hallazgos ${range(st.review.findingsTotal, 1)}; sin coincidencia ${range(st.review.findingsUnmatched, 1)}`);
+  }
+  const verdict = invalid.length ? `pendiente: ${invalid.length} corridas inválidas` : 'descriptivo (el análisis de revisión decide)';
+  const n = Math.min(...Object.values(arms).map((s) => s.n), Infinity);
+  return {
+    task, kind: 'review', pair: null, arms, evidence: n >= 3 ? 'E3' : n >= 2 ? 'E2' : 'sin evidencia', decision: { verdict, reasons }, invalid, systematicNoChanges: [],
+    ...activationOf(arms), eol: Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol])),
+  };
+}
+
 function activationOf(arms) {
   const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
   const known = Object.entries(activation).filter(([, v]) => v.m > 0);
@@ -365,6 +392,10 @@ export function summarize(rowsIn, {
   const pairList = pairs && pairs.length ? pairs : [['A', 'B']];
   for (const task of [...new Set(current.map((r) => r.task))].sort()) {
     const kind = kinds[task] || null;
+    if (kind === 'review') {
+      tasks.push(reviewEntry({ task, mine: validRows.filter((r) => r.task === task), bad: invalidRows.filter((r) => r.task === task), activationOf }));
+      continue;
+    }
     if (kind === 'fixture') {
       tasks.push(fixtureEntry({ task, fixtureName: fixtures[task] || task, mine: validRows.filter((r) => r.task === task), bad: invalidRows.filter((r) => r.task === task), expected: expectedFronts, activationOf }));
       continue;
@@ -490,7 +521,8 @@ export function formatSummary(res) {
       out.push(`   costo USD: ${range(s.cost, 4)}`);
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);
-      out.push(`   aceptación: ${acc}`);
+      if (!s.review) out.push(`   aceptación: ${acc}`);
+      if (s.review) out.push(`   revisión: defectos encontrados ${s.review.defectsFound}/${s.review.defectsTotal} en ${s.review.runs} corridas; hallazgos ${range(s.review.findingsTotal, 1)}; sin coincidencia ${range(s.review.findingsUnmatched, 1)}`);
       if (s.censored) out.push(`   terminadas por tope o tiempo: ${s.censored} (válidas, no verdes, costo censurado)`);
       const qline = qualityLine(s.quality);
       if (qline) out.push(`   calidad automática (mediana y rango): ${qline}`);

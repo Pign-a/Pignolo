@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
-import { runPaths, validateCopyDirs, isFixtureTask, taskConfig, assertArmAllowed, FIXTURES_DIR } from './config.mjs';
+import { runPaths, validateCopyDirs, isFixtureTask, isReviewTask, taskConfig, assertArmAllowed, FIXTURES_DIR } from './config.mjs';
 import { ensureSnapshot, snapshotPaths } from './nm.mjs';
 import { removeTreeSafe, linksOutsideTree } from './fsutil.mjs';
 
@@ -98,6 +98,32 @@ async function prepareFixture(cfg, { task, arm, rep, dir, repo }) {
   return { task, arm, rep, runDir: dir, repo, warnings: [] };
 }
 
+// Does the exported tree use CRLF? Looked at on the first file the patch touches (a plain git archive on Windows can export CRLF files).
+function treeUsesCrlf(repo, patchText) {
+  const m = String(patchText).match(/^diff --git a\/(\S+) b\//m);
+  if (!m) return false;
+  try { return fs.readFileSync(path.join(repo, ...m[1].split('/')), 'utf8').includes('\r\n'); } catch { return false; }
+}
+
+// Applies the item's patch to the exported base tree (staged). Order: the patch that matches the line endings of the tree
+// (change.crlf.patch for a CRLF tree, change.patch for an LF one), then the other one, then --ignore-whitespace as a last resort.
+// Returns how it applied: "crlf.patch", "patch" or "<name>+ignore-whitespace" (recorded in prepare.json and metrics.json as patchMode).
+export function applyReviewPatch(repo, taskDir, item, base) {
+  const lf = path.join(taskDir, 'change.patch');
+  const crlf = path.join(taskDir, 'change.crlf.patch');
+  if (!fs.existsSync(lf)) throw new Error(`falta ${lf} (el diff del padre al árbol con los defectos)`);
+  const text = fs.readFileSync(lf, 'utf8');
+  const candidates = [['patch', lf], ...(fs.existsSync(crlf) ? [['crlf.patch', crlf]] : [])];
+  if (treeUsesCrlf(repo, text)) candidates.reverse();
+  const tried = [];
+  for (const [name, file] of candidates) {
+    try { git(repo, ['apply', '--index', '--whitespace=nowarn', file]); return name; } catch (e) { tried.push(`${name}: ${e.message.split('\n')[0]}`); }
+  }
+  const [name, file] = candidates[0];
+  try { git(repo, ['apply', '--index', '--whitespace=nowarn', '--ignore-whitespace', file]); return `${name}+ignore-whitespace`; } catch (e) { tried.push(`${name}+ignore-whitespace: ${e.message.split('\n')[0]}`); }
+  throw new Error(`ningún parche de ${item} se aplica sobre el commit base ${base} (change.patch ni change.crlf.patch, ni con --ignore-whitespace): ${tried.join(' | ')}`);
+}
+
 export async function prepare(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   assertArmAllowed(cfg, task, arm);
@@ -143,7 +169,15 @@ export async function prepare(cfg, args) {
     git(repo, ['commit', '-q', '-m', 'base']);
     git(repo, ['tag', 'base']);
     const baseCommit = git(repo, ['rev-parse', 'HEAD']);
-    fs.writeFileSync(path.join(dir, 'prepare.json'), JSON.stringify({ task, arm, rep, baseCommit, createdAt: new Date().toISOString(), warnings }, null, 2));
+    // Seeded-defect review: the commit to review is the base plus change.patch, so HEAD is the mutated tree and HEAD~1 the base.
+    let reviewCommit = null;
+    let patchMode = null;
+    if (isReviewTask(cfg, task)) {
+      patchMode = applyReviewPatch(repo, taskDir, taskConfig(cfg, task).item, base);
+      git(repo, ['commit', '-q', '-m', 'cambios']);
+      reviewCommit = git(repo, ['rev-parse', 'HEAD']);
+    }
+    fs.writeFileSync(path.join(dir, 'prepare.json'), JSON.stringify({ task, arm, rep, baseCommit, reviewCommit, patchMode, createdAt: new Date().toISOString(), warnings }, null, 2));
   } catch (e) {
     // The folder was created by this call, so cleaning it is safe; links are removed as links, never followed.
     removeTreeSafe(dir);

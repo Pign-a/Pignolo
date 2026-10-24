@@ -9,16 +9,25 @@
 // task, arm and repetition; N is stored in the note column. The spend ledger applies to every rerun like to any run.
 import fs from 'node:fs';
 import path from 'node:path';
-import { runPaths, taskSet, hasPlugin, isFixtureTask } from './config.mjs';
+import crypto from 'node:crypto';
+import { runPaths, taskSet, hasPlugin, isFixtureTask, isReviewTask } from './config.mjs';
 import { loadSchedule } from './schedule.mjs';
 import { prepare } from './prepare.mjs';
 import { runTask, checkPlugin, checkConfigDir } from './execute.mjs';
 import { acceptRun } from './accept.mjs';
+import { scoreRun } from './score.mjs';
 import { appendRow, parseCsv } from './row.mjs';
 import { cleanRun } from './clean.mjs';
 import { isRetryableInfra } from './metrics.mjs';
 import { spentUsd, assertWithinTotalCap, CAP_MARGIN } from './ledger.mjs';
 import { verifyFreeze } from './freeze.mjs';
+
+// sha256 of the prompt a review run of this entry sends (the arm's promptPrefix + reviewPrompt); null for any other task. The text is never printed.
+export function reviewPromptSha(cfg, e) {
+  if (!isReviewTask(cfg, e.task)) return null;
+  const a = cfg.arms[e.arm];
+  return crypto.createHash('sha256').update((a.promptPrefix || '') + String(a.reviewPrompt || '').trimEnd()).digest('hex');
+}
 
 // The ficha allows up to 2 reruns per run for infrastructure faults.
 export const MAX_RETRIES_LIMIT = 2;
@@ -60,7 +69,8 @@ export function entryState(cfg, e) {
   const metrics = readJson(path.join(dir, 'metrics.json'));
   const streamed = fs.existsSync(path.join(dir, 'stream.jsonl'));
   const prepared = fs.existsSync(path.join(repo, '.git'));
-  const accepted = fs.existsSync(path.join(dir, isFixtureTask(cfg, e.task) ? 'fronts.json' : 'acceptance.json'));
+  const review = isReviewTask(cfg, e.task);
+  const accepted = fs.existsSync(path.join(dir, review ? 'review_score.json' : isFixtureTask(cfg, e.task) ? 'fronts.json' : 'acceptance.json'));
   let recorded = false;
   if (metrics && fs.existsSync(cfg.csvPath)) {
     recorded = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8')).some((r) => r.experiment === cfg.experiment && r.task === e.task
@@ -73,7 +83,8 @@ export function entryState(cfg, e) {
   const steps = [];
   if (!prepared && !streamed) steps.push('prepare');
   if (!metrics) steps.push('run');
-  if (!accepted) steps.push('accept');
+  // A seeded-defect review has no acceptance: its step is the deterministic score.
+  if (!accepted) steps.push(review ? 'score' : 'accept');
   steps.push('row');
   return { status: metrics ? 'a medias' : prepared ? 'preparada' : 'pendiente', steps };
 }
@@ -86,6 +97,11 @@ export function summaryLine(index, total, row) {
   let accept = 'sin dato';
   if (row.fronts_by_agents_ok) accept = row.fronts_by_agents_ok === 'true' ? 'pasa' : 'falla';
   else if (row.accept_exit !== null && row.accept_exit !== undefined) accept = green ? 'pasa' : 'falla';
+  let label = 'aceptación';
+  if (row.defects_total !== undefined && row.defects_total !== '' && row.defects_total !== null) {
+    label = 'revisión';
+    accept = `defectos ${row.defects_found}/${row.defects_total}, hallazgos ${row.findings_total} (${row.findings_unmatched} sin coincidencia)`;
+  }
   // A run cut by the budget cap or by the time while the agent worked is a result: valid, not green, with a censored cost.
   const censored = row.censored === true || row.censored === 'true';
   if (censored) accept = 'no verde (censurada)';
@@ -93,7 +109,7 @@ export function summaryLine(index, total, row) {
     : censored ? `válida (terminada por ${row.termination === 'budget_cap' ? 'tope' : 'tiempo'}: censurada, costo ${fmtNum(row.cost_usd, 4)} USD)` : 'válida';
   return `[${index}/${total}] ${row.task} ${row.arm} rep ${row.rep} | costo ${fmtNum(row.cost_usd, 4)} USD | pared ${fmtNum(row.wall_s, 1)} s`
     + ` | turnos ${fmtNum(row.turns, 0)} | agentes ${fmtNum(row.agents, 0)} | activación ${row.activation_via || 'sin dato'}`
-    + ` | aceptación ${accept} | ${status}`;
+    + ` | ${label} ${accept} | ${status}`;
 }
 
 // Free checks shared by --dry-run and the real batch.
@@ -107,6 +123,9 @@ function preflight(cfg, schedule) {
     } catch (e) { problems.push(e.message); }
   }
   try { checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName).filter(Boolean) }); } catch (e) { problems.push(e.message); }
+  for (const e of schedule.entries) {
+    if (isReviewTask(cfg, e.task) && !cfg.arms[e.arm].reviewPrompt) problems.push(`el brazo ${e.arm} no tiene reviewPrompt (lo pide la tarea de revisión ${e.task})`);
+  }
   const validation = [...new Set(schedule.entries.map((e) => e.task))].filter((t) => taskSet(cfg, t) === 'validation');
   let freeze = null;
   if (validation.length) {
@@ -133,7 +152,8 @@ export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra
   if (dryRun) {
     log(`calendario ${path.basename(file)}: ${total} corridas (semilla ${schedule.seed}), experimento ${cfg.experiment}`);
     for (const s of states) {
-      log(`[${s.e.index || states.indexOf(s) + 1}/${total}] bloque ${s.e.block ?? '-'} ${s.e.task} ${s.e.arm} rep ${s.e.rep}: ${s.status}${s.steps.length ? ` -> ${s.steps.join(', ')}` : ''}`);
+      const rp = reviewPromptSha(cfg, s.e);
+      log(`[${s.e.index || states.indexOf(s) + 1}/${total}] bloque ${s.e.block ?? '-'} ${s.e.task} ${s.e.arm} rep ${s.e.rep}: ${s.status}${s.steps.length ? ` -> ${s.steps.join(', ')}` : ''}${rp ? ` | revisión: pedido del brazo ${s.e.arm} sha256 ${rp.slice(0, 12)}` : ''}`);
     }
     const toRun = states.filter((s) => s.steps.includes('run')).length;
     const spent = spentUsd(cfg);
@@ -158,7 +178,7 @@ export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra
       const extra = toRun * maxRetries + retryCandidates.reduce((n, c) => n + (maxRetries - c.attempt + 1), 0);
       log(`peor caso con reintentos: ${Math.round((toRun + extra) * perRun * 10000) / 10000} USD`);
     }
-    return { dryRun: true, entries: states.map((s) => ({ ...s.e, status: s.status, steps: s.steps })), spent, toRun, worstCaseUsd: worst, problems: pre.problems, retryCandidates };
+    return { dryRun: true, entries: states.map((s) => ({ ...s.e, status: s.status, steps: s.steps, reviewPromptSha: reviewPromptSha(cfg, s.e) })), spent, toRun, worstCaseUsd: worst, problems: pre.problems, retryCandidates };
   }
 
   if (pre.problems.length) throw new Error(`chequeos previos del batch: ${pre.problems.join(' | ')}; no se lanza nada`);
@@ -180,6 +200,7 @@ export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra
       if (s.steps.includes('prepare')) { step = 'prepare'; await prepare(cfg, a); }
       if (s.steps.includes('run')) { step = 'run'; await runTask(cfg, a); }
       if (s.steps.includes('accept')) { step = 'accept'; await acceptRun(cfg, a); }
+      if (s.steps.includes('score')) { step = 'score'; scoreRun(cfg, a); }
       step = 'row';
       // An entry that already has rows and is run again is a rerun of an infrastructure fault that was cut half way.
       const row = appendRow(cfg, { ...a, note: rerunNote(cfg, e) });
@@ -212,7 +233,7 @@ export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra
           step = 'clean'; cleanRun(cfg, a);
           step = 'prepare'; await prepare(cfg, a);
           step = 'run'; await runTask(cfg, a);
-          step = 'accept'; await acceptRun(cfg, a);
+          if (isReviewTask(cfg, e.task)) { step = 'score'; scoreRun(cfg, a); } else { step = 'accept'; await acceptRun(cfg, a); }
           step = 'row';
           const row = appendRow(cfg, { ...a, note: `rerun ${attempt}` });
           log(summaryLine(n, total, row));

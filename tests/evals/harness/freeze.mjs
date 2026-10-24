@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { FIXTURES_DIR, taskConfig, isFixtureTask, taskSet } from './config.mjs';
+import { FIXTURES_DIR, HARNESS_DIR, REPO_ROOT, taskConfig, isFixtureTask, isReviewTask, taskSet } from './config.mjs';
 import { buildChildEnv } from './env.mjs';
 
 export const freezePath = (cfg) => path.join(cfg.privateRoot, 'freeze.json');
@@ -48,6 +48,9 @@ function walkFiles(dir, skip = []) {
 
 const OPTIONAL = ['gold-files.txt', 'coverage-cmd.txt', 'mutation-cmd.txt'];
 const REQUIRED_FILES = ['prompt.md', 'base.txt', 'accept-cmd.txt', 'full-cmd.txt'];
+const REVIEW_REQUIRED = ['base.txt', 'change.patch', 'defects.json'];
+// change.crlf.patch is the same change for a tree exported with CRLF; both patches are hashed. notes.md and the like are not.
+const REVIEW_OPTIONAL = ['change.crlf.patch', 'preexisting.json'];
 
 // The hashes of one task package: prompt, base, the acceptance tests (sorted), the commands and, when present, the scope list and
 // the optional coverage and mutation commands. A fixture task hashes its fixture folder and the prompt of the configuration.
@@ -59,6 +62,17 @@ export function taskPackage(cfg, task) {
     for (const f of walkFiles(root)) files[`fixture/${f}`] = sha(fs.readFileSync(path.join(root, f)));
     files['config:prompt'] = sha(String(t.prompt));
     return { files, baseCommit: null };
+  }
+  if (isReviewTask(cfg, task)) {
+    // A seeded-defect review item: the base commit, the patch that makes the commit to review, the ground truth and the pre-existing areas.
+    const rdir = path.join(cfg.privateRoot, 'review', taskConfig(cfg, task).item);
+    const lacking = REVIEW_REQUIRED.filter((f) => !fs.existsSync(path.join(rdir, f)));
+    if (lacking.length) throw new Error(`el ítem de revisión ${task} no tiene ${lacking.join(', ')} en ${rdir}`);
+    for (const f of [...REVIEW_REQUIRED, ...REVIEW_OPTIONAL]) if (fs.existsSync(path.join(rdir, f))) files[f] = sha(fs.readFileSync(path.join(rdir, f)));
+    const rref = fs.readFileSync(path.join(rdir, 'base.txt'), 'utf8').trim();
+    const rbase = rref ? gitOut(cfg.sourceRepo, ['rev-parse', '--verify', '--quiet', `${rref}^{commit}`]) : null;
+    if (!rbase) throw new Error(`el ítem ${task}: base.txt (${rref || 'vacío'}) no se resuelve a un commit de la fuente`);
+    return { files, baseCommit: rbase };
   }
   const dir = path.join(cfg.privateRoot, task);
   const missing = REQUIRED_FILES.filter((f) => !fs.existsSync(path.join(dir, f)));
@@ -112,50 +126,75 @@ export function computeBody(cfg, preregCommit) {
   const tasks = {};
   for (const id of validationTasks(cfg)) {
     const p = taskPackage(cfg, id);
-    tasks[id] = { set: taskSet(cfg, id), baseCommit: p.baseCommit, files: p.files, taskHash: hashOf({ files: p.files, baseCommit: p.baseCommit }) };
+    tasks[id] = { set: taskSet(cfg, id), kind: (taskConfig(cfg, id) || {}).kind || 'work', baseCommit: p.baseCommit, files: p.files, taskHash: hashOf({ files: p.files, baseCommit: p.baseCommit }) };
   }
   const arms = {};
   const info = { plugins: {} };
   for (const [id, a] of Object.entries(cfg.arms)) {
     const { identity, info: i } = pluginIdentity(a.pluginDir);
-    arms[id] = { pluginName: a.pluginName || null, plugin: identity, promptPrefixSha: a.promptPrefix ? sha(a.promptPrefix) : null };
+    arms[id] = { pluginName: a.pluginName || null, plugin: identity, promptPrefixSha: a.promptPrefix ? sha(a.promptPrefix) : null, reviewPromptSha: a.reviewPrompt ? sha(a.reviewPrompt) : null };
     if (i) info.plugins[id] = i;
   }
-  const body = { schema: 1, preregCommit, claudeVersion: claudeVersion(cfg), model: String(cfg.model), effort: String(cfg.effort), tasks, arms };
+  // The neutral CLAUDE.md every run starts with, the scoring script and the files the controller lists (the ficha, the analysis scripts, the schedules).
+  const neutralClaudeSha = sha(fs.readFileSync(path.join(HARNESS_DIR, 'neutral-claude.md')));
+  const scoreSha = sha(fs.readFileSync(path.join(HARNESS_DIR, 'score.mjs')));
+  const extraFiles = {};
+  for (const f of cfg.freezeExtraFiles || []) {
+    const abs = path.isAbsolute(f) ? f : path.join(REPO_ROOT, f);
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) throw new Error(`freezeExtraFiles: no existe ${f}`);
+    extraFiles[slash(f)] = sha(fs.readFileSync(abs));
+  }
+  const body = { schema: 2, preregCommit, claudeVersion: claudeVersion(cfg), model: String(cfg.model), effort: String(cfg.effort), tasks, arms, neutralClaudeSha, scoreSha, extraFiles };
   return { body, info };
 }
 
-// Describes, in words, what differs between the frozen body and the current one.
-export function describeChanges(saved, now) {
+// What differs between the frozen body and the current one, as [{ category, message }]. Categories: preregCommit, claudeVersion, model,
+// effort, tareas, items de revision, brazos, plugin, promptPrefix, reviewPrompt, neutral CLAUDE.md, score.mjs, freezeExtraFiles.
+export function changesByCategory(saved, now) {
   const out = [];
+  const add = (category, message) => out.push({ category, message });
   for (const k of ['preregCommit', 'claudeVersion', 'model', 'effort']) {
-    if (saved[k] !== now[k]) out.push(`${k} cambió (congelado ${JSON.stringify(saved[k])}, ahora ${JSON.stringify(now[k])})`);
+    if (saved[k] !== now[k]) add(k, `${k} cambió (congelado ${JSON.stringify(saved[k])}, ahora ${JSON.stringify(now[k])})`);
   }
   const ids = [...new Set([...Object.keys(saved.tasks || {}), ...Object.keys(now.tasks || {})])].sort();
   for (const id of ids) {
     const a = saved.tasks && saved.tasks[id];
     const b = now.tasks && now.tasks[id];
-    if (!a) { out.push(`la tarea ${id} es de validación pero no figura en el freeze`); continue; }
-    if (!b) { out.push(`la tarea ${id} figura en el freeze pero ya no es de validación en la configuración`); continue; }
-    if (a.baseCommit !== b.baseCommit) out.push(`tarea ${id}: el commit base cambió`);
+    const cat = (b || a).kind === 'review' ? 'items de revision' : 'tareas';
+    if (!a) { add(cat, `la tarea ${id} es de validación pero no figura en el freeze`); continue; }
+    if (!b) { add(cat, `la tarea ${id} figura en el freeze pero ya no es de validación en la configuración`); continue; }
+    if (a.baseCommit !== b.baseCommit) add(cat, `tarea ${id}: el commit base cambió`);
     const names = [...new Set([...Object.keys(a.files), ...Object.keys(b.files)])].sort();
     for (const n of names) {
-      if (a.files[n] === undefined) out.push(`tarea ${id}: archivo nuevo ${n}`);
-      else if (b.files[n] === undefined) out.push(`tarea ${id}: archivo borrado ${n}`);
-      else if (a.files[n] !== b.files[n]) out.push(`tarea ${id}: cambió ${n}`);
+      if (a.files[n] === undefined) add(cat, `tarea ${id}: archivo nuevo ${n}`);
+      else if (b.files[n] === undefined) add(cat, `tarea ${id}: archivo borrado ${n}`);
+      else if (a.files[n] !== b.files[n]) add(cat, `tarea ${id}: cambió ${n}`);
     }
   }
   const armIds = [...new Set([...Object.keys(saved.arms || {}), ...Object.keys(now.arms || {})])].sort();
   for (const id of armIds) {
     const a = saved.arms && saved.arms[id];
     const b = now.arms && now.arms[id];
-    if (!a || !b) { out.push(`brazo ${id}: ${a ? 'ya no está en la configuración' : 'no figura en el freeze'}`); continue; }
-    if (a.pluginName !== b.pluginName) out.push(`brazo ${id}: cambió el plugin (${a.pluginName} a ${b.pluginName})`);
-    if (canonicalJson(a.plugin) !== canonicalJson(b.plugin)) out.push(`brazo ${id}: el contenido del plugin cambió`);
-    if (a.promptPrefixSha !== b.promptPrefixSha) out.push(`brazo ${id}: cambió el promptPrefix`);
+    if (!a || !b) { add('brazos', `brazo ${id}: ${a ? 'ya no está en la configuración' : 'no figura en el freeze'}`); continue; }
+    if (a.pluginName !== b.pluginName) add('plugin', `brazo ${id}: cambió el plugin (${a.pluginName} a ${b.pluginName})`);
+    if (canonicalJson(a.plugin) !== canonicalJson(b.plugin)) add('plugin', `brazo ${id}: el contenido del plugin cambió`);
+    if (a.promptPrefixSha !== b.promptPrefixSha) add('promptPrefix', `brazo ${id}: cambió el promptPrefix`);
+    if ((a.reviewPromptSha ?? null) !== (b.reviewPromptSha ?? null)) add('reviewPrompt', `brazo ${id}: cambió el reviewPrompt`);
+  }
+  if ((saved.neutralClaudeSha ?? null) !== (now.neutralClaudeSha ?? null)) add('neutral CLAUDE.md', 'neutral CLAUDE.md: el texto cambió');
+  if ((saved.scoreSha ?? null) !== (now.scoreSha ?? null)) add('score.mjs', 'score.mjs: el script de puntaje cambió');
+  const sx = saved.extraFiles || {};
+  const nx = now.extraFiles || {};
+  for (const f of [...new Set([...Object.keys(sx), ...Object.keys(nx)])].sort()) {
+    if (sx[f] === undefined) add('freezeExtraFiles', `freezeExtraFiles: archivo nuevo en la lista ${f}`);
+    else if (nx[f] === undefined) add('freezeExtraFiles', `freezeExtraFiles: ${f} ya no está en la lista`);
+    else if (sx[f] !== nx[f]) add('freezeExtraFiles', `freezeExtraFiles: cambió ${f}`);
   }
   return out;
 }
+
+// Describes, in words, what differs between the frozen body and the current one.
+export const describeChanges = (saved, now) => changesByCategory(saved, now).map((c) => c.message);
 
 const readSaved = (cfg) => {
   const file = freezePath(cfg);
@@ -168,20 +207,24 @@ export function verifyFreeze(cfg) {
   const { saved, error } = readSaved(cfg);
   if (error) return { ok: false, problems: [error], freezeHash: null, preregCommit: null };
   const problems = [];
+  const categories = new Set();
   if (!saved || !saved.body || !saved.freezeHash) {
     return { ok: false, problems: ['freeze.json no tiene body ni freezeHash'], freezeHash: null, preregCommit: null };
   }
   if (hashOf(saved.body) !== saved.freezeHash) problems.push('freeze.json fue editado: su freezeHash no coincide con su contenido');
   let now = null;
-  try { now = computeBody(cfg, saved.body.preregCommit); } catch (e) { problems.push(`no se pudo recalcular el freeze: ${e.message}`); }
+  try { now = computeBody(cfg, saved.body.preregCommit); } catch (e) {
+    problems.push(`no se pudo recalcular el freeze: ${e.message}`);
+    categories.add(/freezeExtraFiles/.test(e.message) ? 'freezeExtraFiles' : /ítem de revisión/.test(e.message) ? 'items de revision' : 'recalculo');
+  }
   if (now) {
-    problems.push(...describeChanges(saved.body, now.body));
+    for (const c of changesByCategory(saved.body, now.body)) { problems.push(c.message); categories.add(c.category); }
     for (const [id, i] of Object.entries(now.info.plugins)) {
       if (i.dirty) problems.push(`brazo ${id}: el plugin tiene cambios sin commitear`);
     }
     if (!problems.length && hashOf(now.body) !== saved.freezeHash) problems.push('el freezeHash recalculado no coincide con el guardado');
   }
-  return { ok: problems.length === 0, problems, freezeHash: saved.freezeHash, preregCommit: saved.body.preregCommit };
+  return { ok: problems.length === 0, problems, changedCategories: [...categories].sort(), freezeHash: saved.freezeHash, preregCommit: saved.body.preregCommit };
 }
 
 // For `run`: refuses (throws) unless the freeze verifies and the task is in it. Returns { freezeHash, preregCommit }.

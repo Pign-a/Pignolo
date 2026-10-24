@@ -4,6 +4,7 @@ import path from 'node:path';
 import { runPaths } from './config.mjs';
 import { summarizeNeutralConfig } from './neutralconfig.mjs';
 import { qualityColumns } from './quality.mjs';
+import { reviewScoreColumns } from './score.mjs';
 
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
@@ -14,7 +15,8 @@ export const COLUMNS = [
   'set', 'freeze_hash', 'prereg_commit',
   'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
   'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total',
-  'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note', 'note',
+  'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note',
+  'defects_total', 'defects_found', 'found_by_category', 'findings_total', 'findings_unmatched', 'patch_mode', 'note',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -96,6 +98,7 @@ export function appendRow(cfg, args) {
   const c = readJson(path.join(dir, 'changes.json'));
   const fr = readJson(path.join(dir, 'fronts.json'));
   const qj = readJson(path.join(dir, 'quality.json'));
+  const rs = readJson(path.join(dir, 'review_score.json'));
   const userNote = args.note || '';
   if (m.experiment && m.experiment !== cfg.experiment) {
     throw new Error(`la corrida se hizo con el experimento "${m.experiment}" y la fila saldría como "${cfg.experiment}"; pasá --experiment ${m.experiment}`);
@@ -152,6 +155,9 @@ export function appendRow(cfg, args) {
     set: m.set || 'dev', freeze_hash: m.freezeHash || '', prereg_commit: m.preregCommit || '',
     diff_files: c && c.filesChanged, diff_lines: c && (c.linesAdded || 0) + (c.linesRemoved || 0),
     ...qualityColumns(qj),
+    // Seeded-defect review (study B): the deterministic score. The quality panel does not apply to a review (those cells stay empty).
+    ...reviewScoreColumns(rs),
+    patch_mode: m.patchMode || '',
     note: notes.filter(Boolean).join(';'),
   };
   fs.mkdirSync(path.dirname(cfg.csvPath), { recursive: true });
