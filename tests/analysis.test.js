@@ -21,13 +21,13 @@ function normals(m, seed) {
 }
 
 const COLS = ['experiment', 'task', 'arm', 'rep', 'timestamp', 'cost_usd', 'wall_s', 'turns', 'accept_exit', 'accept_pass', 'accept_fail', 'invalid', 'invalid_reason',
-  'activation_via', 'tsc_new_errors', 'eslint_new_errors', 'out_of_scope_files', 'diff_lines', 'note'];
+  'activation_via', 'tsc_new_errors', 'eslint_new_errors', 'out_of_scope_files', 'diff_lines', 'termination', 'censored', 'note'];
 const cell = (v) => {
   if (v === undefined || v === null) return '';
   const s = String(v);
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
-const toCsv = (rows) => [COLS.join(','), ...rows.map((r) => COLS.map((c) => cell(r[c])).join(','))].join('\n') + '\n';
+const toCsv = (rows, cols = COLS) => [cols.join(','), ...rows.map((r) => cols.map((c) => cell(r[c])).join(','))].join('\n') + '\n';
 const run = (task, arm, rep, extra = {}) => ({
   experiment: 'x', task, arm, rep, timestamp: `ts-${task}-${arm}-${rep}`, cost_usd: 1, wall_s: 60, turns: 10, accept_exit: 0, accept_pass: 5, accept_fail: 0,
   invalid: 'false', activation_via: arm === 'N' ? '' : 'skill_tool', tsc_new_errors: 0, eslint_new_errors: 0, out_of_scope_files: 0, diff_lines: 20, ...extra,
@@ -536,6 +536,292 @@ test('CLI: notas de jueces con --grades y errores claros con entradas malas', ()
     assert.match(m1.stderr, /--experiment/);
     const m2 = cli(['--csv', multi, '--contrasts', 'P:N', '--experiment', 'x', '--resamples', '100']);
     assert.strictEqual(m2.status, 0, m2.stderr);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Segunda versión: cota t, corridas censuradas, conjunto de tareas, Holm solo en los primarios
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('cuantil t de Student: valores de tabla, simetría e ida y vuelta con la CDF', async () => {
+  const m = await load();
+  near(m.studentTQuantile(0.95, 7), 1.8946, 5e-5);
+  near(m.studentTQuantile(0.95, 15), 1.7531, 5e-5);
+  near(m.studentTQuantile(0.95, 19), 1.7291, 5e-5);
+  near(m.studentTQuantile(0.975, 15), 2.1314, 5e-5);
+  near(m.studentTQuantile(0.975, 1), 12.7062, 1e-3); // Cauchy
+  near(m.studentTQuantile(0.95, 2), 2.9200, 1e-4);
+  near(m.studentTQuantile(0.05, 7), -1.8946, 5e-5);
+  near(m.studentTQuantile(0.5, 9), 0, 1e-12);
+  near(m.studentTQuantile(0.975, 1e6), 1.959964, 1e-4); // tiende a la normal
+  near(m.studentTCdf(1.8946, 7), 0.95, 1e-5);
+  near(m.studentTCdf(0, 4), 0.5, 1e-12);
+  for (const df of [3, 7, 19]) for (const p of [0.6, 0.9, 0.99]) near(m.studentTCdf(m.studentTQuantile(p, df), df), p, 1e-9);
+  assert.ok(Number.isNaN(m.studentTQuantile(0.95, 0)));
+});
+
+test('cota t unilateral: media + t(0,95; n-1) * s / raiz(n) sobre los logaritmos', async () => {
+  const m = await load();
+  const logs = [0.1, 0.4, -0.2, 0.3, 0.25, 0.05, 0.5, -0.1];
+  const mu = logs.reduce((s, x) => s + x, 0) / 8;
+  const sd = Math.sqrt(logs.reduce((s, x) => s + (x - mu) ** 2, 0) / 7);
+  const b = m.tUpperBound(logs);
+  near(b.upper, Math.exp(mu + 1.894579 * sd / Math.sqrt(8)), 1e-5);
+  assert.strictEqual(b.df, 7);
+  const k = m.geometricMeanRatio(logs, { resamples: 300 });
+  near(k.upperT95, b.upper, 1e-12);
+  const flat = m.tUpperBound(Array(5).fill(Math.log(1.2)));
+  near(flat.upper, 1.2, 1e-12); // sin dispersión, la cota es la razón
+  assert.strictEqual(m.tUpperBound([0.3]).upper, null);
+  assert.strictEqual(m.geometricMeanRatio([]).upperT95, null);
+});
+
+test('no inferioridad con regla doble: hacen falta las dos cotas por debajo del margen', async () => {
+  const m = await load();
+  assert.strictEqual(m.nonInferiority({ upper95: 1.4, upperT95: 1.45 }, 1.5), true);
+  assert.strictEqual(m.nonInferiority({ upper95: 1.4, upperT95: 1.6 }, 1.5), false);
+  assert.strictEqual(m.nonInferiority({ upper95: 1.6, upperT95: 1.4 }, 1.5), false);
+  assert.strictEqual(m.nonInferiority({ upper95: 1.4, upperT95: null }, 1.5), false);
+  assert.strictEqual(m.nonInferiority({ upper95: 1.4, upperT95: 1.5 }, 1.5), false); // estricto
+  const fails = m.niVerdict({ upper95: 1.4, upperT95: 1.6, ciMethod: 'percentile' }, 10, 1.5);
+  assert.strictEqual(fails.pass, false);
+  assert.strictEqual(fails.binds, 't');
+  assert.match(fails.text, /no inferioridad no demostrada/);
+  assert.match(fails.text, /percentil 1\.400 < margen 1\.5/);
+  assert.match(fails.text, /cota t 1\.600 >= margen 1\.5/);
+  assert.match(fails.text, /limita la cota t/);
+  const bca = m.niVerdict({ upper95: 1.45, upperT95: 1.3, ciMethod: 'bca' }, 20, 1.5);
+  assert.strictEqual(bca.pass, true);
+  assert.strictEqual(bca.binds, 'bootstrap');
+  assert.match(bca.text, /no inferioridad demostrada/);
+  assert.match(bca.text, /BCa 1\.450/);
+  assert.match(bca.text, /limita la cota BCa/);
+  assert.match(m.niVerdict({ upper95: 1.2, upperT95: 1.3, ciMethod: 'percentile' }, 5, 1.5).text, /n insuficiente para decidir.*cota t 1\.300/);
+});
+
+test('analyze: la cota percentil pasa, la cota t falla y la no inferioridad no se declara', async () => {
+  const m = await load();
+  const mult = [1, 1, 1.1, 1.2, 1.2, 1.3, 1.3, 2.4];
+  const rows = [];
+  mult.forEach((k, i) => {
+    rows.push(run(`t${i}`, 'N', 1, { cost_usd: 2 }));
+    rows.push(run(`t${i}`, 'P', 1, { cost_usd: 2 * k }));
+  });
+  const res = m.analyze(m.readRuns(toCsv(rows)).rows, { contrasts: 'P:N', resamples: 2000, seed: 1, method: 'percentile' });
+  const k = res.contrasts[0].itt.cost;
+  assert.ok(k.upper95 < 1.5, `percentil ${k.upper95}`);
+  assert.ok(k.upperT95 >= 1.5, `t ${k.upperT95}`);
+  assert.strictEqual(k.nonInferior, false);
+  assert.strictEqual(k.binds, 't');
+  assert.deepStrictEqual(k.boundsPass, { bootstrap: true, t: false });
+  assert.match(k.nonInferiorityLine, /no inferioridad no demostrada/);
+  assert.match(k.nonInferiorityLine, /limita la cota t/);
+  assert.match(m.formatText(res), /cota t unilateral 95 %/);
+});
+
+test('corridas censuradas: son válidas, su costo entra tal cual y cuentan como no verdes aunque la aceptación diga verde', async () => {
+  const m = await load();
+  const rows = [];
+  for (let i = 1; i <= 8; i += 1) {
+    rows.push(run(`t${i}`, 'N', 1, { cost_usd: 1, termination: 'ok', censored: 'false' }));
+    rows.push(run(`t${i}`, 'P', 1, { cost_usd: 1, termination: 'ok', censored: 'false' }));
+  }
+  // t1: P llegó al tope y no tiene columnas de aceptación; t2: P cortada por tiempo con aceptación en verde (no vale).
+  Object.assign(rows[1], { cost_usd: 2, termination: 'budget_cap', censored: 'true', accept_exit: '', accept_pass: '', accept_fail: '' });
+  Object.assign(rows[3], { cost_usd: 3, termination: 'model_timeout', censored: 'true' });
+  const read = m.readRuns(toCsv(rows));
+  assert.strictEqual(read.rows.length, 16); // ninguna se descarta
+  assert.strictEqual(read.rows.filter((r) => r.censored).length, 2);
+  const c = m.analyze(read.rows, { contrasts: 'P:N', resamples: 200 }).contrasts[0].itt;
+  near(c.cost.ratio, Math.exp((Math.log(2) + Math.log(3)) / 8), 1e-12); // el costo entra tal como se informó
+  assert.deepStrictEqual(c.success.discordant, { controlOnly: 2, testOnly: 0, both: 6, neither: 0 });
+  assert.strictEqual(c.success.wilsonTasks.P.k, 6);
+  assert.strictEqual(c.success.wilsonRuns.P.n, 8); // la censurada sin aceptación cuenta como corrida evaluada
+  assert.deepStrictEqual(c.censored, { P: { runs: 8, censored: 2 }, N: { runs: 8, censored: 0 } });
+  assert.strictEqual(m.isGreen({ accept_exit: 0, accept_fail: 0, accept_pass: 5, censored: true }), false);
+  assert.strictEqual(m.isGreen({ accept_exit: 0, accept_fail: 0, accept_pass: 5, censored: false }), true);
+  const text = m.formatText(m.analyze(read.rows, { contrasts: 'P:N', resamples: 200 }));
+  assert.match(text, /corridas censuradas: P 2 de 8, N 0 de 8/);
+});
+
+test('sensibilidad de costo con las censuradas duplicadas: descriptiva y con las razones recalculadas', async () => {
+  const m = await load();
+  const rows = [];
+  for (let i = 1; i <= 8; i += 1) {
+    rows.push(run(`t${i}`, 'N', 1, { cost_usd: 1 }));
+    rows.push(run(`t${i}`, 'P', 1, { cost_usd: 1 }));
+  }
+  Object.assign(rows[1], { cost_usd: 2, termination: 'budget_cap', censored: 'true' });
+  const res = m.analyze(m.readRuns(toCsv(rows)).rows, { contrasts: 'P:N', resamples: 300 });
+  const s = res.contrasts[0].itt.cost.censoredSensitivity;
+  near(res.contrasts[0].itt.cost.ratio, Math.exp(Math.log(2) / 8), 1e-12);
+  near(s.ratio, Math.exp(Math.log(4) / 8), 1e-12);
+  assert.strictEqual(s.censoredRuns, 1);
+  assert.ok(Number.isFinite(s.upper95) && Number.isFinite(s.upperT95));
+  assert.match(s.line, /sensibilidad/);
+  assert.match(s.line, /duplic/);
+  assert.match(s.line, /descriptiv/);
+  assert.match(m.formatText(res), /sensibilidad.*duplicara/);
+  // Sin censuradas, la sensibilidad coincide con el análisis y lo dice.
+  const none = m.analyze(m.readRuns(toCsv(rows.map((r) => ({ ...r, censored: 'false', termination: 'ok' })))).rows, { contrasts: 'P:N', resamples: 300 });
+  const s0 = none.contrasts[0].itt.cost.censoredSensitivity;
+  assert.strictEqual(s0.censoredRuns, 0);
+  near(s0.ratio, none.contrasts[0].itt.cost.ratio, 1e-12);
+  assert.match(s0.line, /sin corridas censuradas/);
+});
+
+test('columnas de terminación: si falta "censored" se deduce de termination; un CSV viejo no tiene censuradas', async () => {
+  const m = await load();
+  const only = toCsv([run('a', 'P', 1, { termination: 'budget_cap' }), run('a', 'N', 1, { termination: 'model_timeout' }), run('b', 'P', 1, { termination: 'hang' }), run('b', 'N', 1, { termination: 'ok' })],
+    ['task', 'arm', 'rep', 'cost_usd', 'termination']);
+  assert.deepStrictEqual(m.readRuns(only).rows.map((r) => r.censored), [true, true, false, false]);
+  const old = toCsv([run('a', 'P', 1), run('a', 'N', 1)], ['task', 'arm', 'rep', 'cost_usd', 'accept_exit', 'accept_pass', 'accept_fail']);
+  assert.deepStrictEqual(m.readRuns(old).rows.map((r) => r.censored), [false, false]);
+  const res = m.analyze(m.readRuns(old).rows, { contrasts: 'P:N', resamples: 100 });
+  assert.deepStrictEqual(res.contrasts[0].itt.censored, { P: { runs: 1, censored: 0 }, N: { runs: 1, censored: 0 } });
+});
+
+test('corridas inválidas por fallo de infraestructura: se excluyen y se listan con su terminación', async () => {
+  const m = await load();
+  const csv = toCsv([...tenTasks(), run('t01', 'P', 2, { invalid: 'true', invalid_reason: 'infra', termination: 'infra_fault', cost_usd: 99 })]);
+  const r = m.readRuns(csv);
+  assert.strictEqual(r.rows.length, 20);
+  assert.deepStrictEqual(r.invalid, [{ run: 't01/P/2', experiment: 'x', reason: 'infra', termination: 'infra_fault' }]);
+  const text = m.formatText(m.analyze(r.rows, { contrasts: 'P:N', resamples: 100, invalid: r.invalid }));
+  assert.match(text, /t01\/P\/2: infra.*infra_fault/);
+});
+
+test('por protocolo: un brazo cuyas corridas no tienen dato de activación no se filtra, y se dice', async () => {
+  const m = await load();
+  const rows = m.readRuns(toCsv(tenTasks().map((r) => (r.arm === 'P' ? { ...r, activation_via: r.task === 't09' ? 'n/a' : '' } : r)))).rows;
+  const res = m.analyze(rows, { contrasts: 'P:N', resamples: 200 });
+  const c = res.contrasts[0];
+  assert.strictEqual(c.pp.n, 10);
+  assert.deepStrictEqual(c.pp.activationSkipped, ['P']);
+  assert.deepStrictEqual(c.itt.activationSkipped, ['P']);
+  assert.match(c.pp.activation.P.note, /sin dato de activación/);
+  assert.match(m.formatText(res), /no se filtra por activación en P/);
+  // "none" es un dato (el plugin no se activó): ahí sí se filtra y no queda ninguna tarea.
+  const none = m.readRuns(toCsv(tenTasks().map((r) => (r.arm === 'P' ? { ...r, activation_via: 'none' } : r)))).rows;
+  const r2 = m.analyze(none, { contrasts: 'P:N', resamples: 100 }).contrasts[0];
+  assert.strictEqual(r2.pp.n, 0);
+  assert.deepStrictEqual(r2.pp.activationSkipped, []);
+});
+
+test('conjunto de tareas: restrictToTasks deja solo las listadas, también en las inválidas, e informa lo que falta', async () => {
+  const m = await load();
+  const csv = toCsv([...tenTasks(), run('t01', 'P', 2, { invalid: 'true', invalid_reason: 'infra' }), run('t10', 'N', 2, { invalid: 'true', invalid_reason: 'infra' })]);
+  const read = m.readRuns(csv);
+  const kept = m.restrictToTasks(read, ['t01', 't02', 't03', 'fantasma']);
+  assert.deepStrictEqual([...new Set(kept.rows.map((r) => r.task))].sort(), ['t01', 't02', 't03']);
+  assert.deepStrictEqual(kept.invalid.map((e) => e.run), ['t01/P/2']);
+  assert.deepStrictEqual(kept.missingTasks, ['fantasma']);
+  assert.strictEqual(kept.droppedRuns, 14);
+  assert.strictEqual(m.analyze(kept.rows, { contrasts: 'P:N', resamples: 100 }).contrasts[0].itt.n, 3);
+});
+
+test('Holm solo sobre los contrastes primarios; los demás son exploratorios y sin ajuste', async () => {
+  const m = await load();
+  const rows = [];
+  for (let i = 1; i <= 8; i += 1) {
+    const base = 1 + i / 10;
+    rows.push(run(`t${i}`, 'N', 1, { cost_usd: base }));
+    rows.push(run(`t${i}`, 'P', 1, { cost_usd: base * (1.1 + i / 100) }));
+    rows.push(run(`t${i}`, 'S', 1, { cost_usd: base * (i % 2 ? 1.05 : 0.9) }));
+  }
+  const read = m.readRuns(toCsv(rows)).rows;
+  const res = m.analyze(read, { contrasts: 'P:N,P:S,S:N', primary: 'P:N,P:S', resamples: 200 });
+  const [pn, ps, sn] = res.contrasts;
+  assert.deepStrictEqual(res.primary, ['P:N', 'P:S']);
+  assert.deepStrictEqual([pn.role, ps.role, sn.role], ['primario', 'primario', 'exploratorio']);
+  near(pn.itt.cost.pAdjusted, Math.min(1, 2 * pn.itt.cost.p), 1e-12); // multiplicador 2, no 3
+  assert.deepStrictEqual(m.holm([pn.itt.cost.p, ps.itt.cost.p]), [pn.itt.cost.pAdjusted, ps.itt.cost.pAdjusted]);
+  assert.strictEqual(sn.itt.cost.pAdjusted, null);
+  assert.strictEqual(sn.pp.cost.pAdjusted, null);
+  const text = m.formatText(res);
+  assert.match(text, /Contraste S:N .*exploratorio, sin ajuste/);
+  assert.match(text, /Contraste P:N .*primario/);
+  // Sin --primary, todos los contrastes pedidos se ajustan juntos (comportamiento anterior) y se avisa.
+  const all = m.analyze(read, { contrasts: 'P:N,P:S', resamples: 200 });
+  assert.strictEqual(all.primary, null);
+  assert.deepStrictEqual(all.contrasts.map((c) => c.role), ['primario', 'primario']);
+  assert.throws(() => m.analyze(read, { contrasts: 'P:N', primary: 'P:N,P:S', resamples: 100 }), /primario P:S/);
+});
+
+function csvWith(dir, name, rows) {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, toCsv(rows));
+  return file;
+}
+
+test('CLI: --experiment acepta una lista separada por comas y exige que existan todos', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-analysis-'));
+  try {
+    const rows = tenTasks().map((r) => ({ ...r, experiment: Number(r.task.slice(1)) <= 5 ? 'a' : 'b' }));
+    const csv = csvWith(dir, 'runs.csv', [...rows, run('z', 'N', 1, { experiment: 'calib' })]);
+    const two = cli(['--csv', csv, '--contrasts', 'P:N', '--experiment', 'a,b', '--resamples', '100', '--json']);
+    assert.strictEqual(two.status, 0, two.stderr);
+    assert.strictEqual(JSON.parse(two.stdout).contrasts[0].itt.n, 10);
+    const one = cli(['--csv', csv, '--contrasts', 'P:N', '--experiment', 'a', '--resamples', '100', '--json']);
+    assert.strictEqual(JSON.parse(one.stdout).contrasts[0].itt.n, 5);
+    assert.notStrictEqual(cli(['--csv', csv, '--contrasts', 'P:N']).status, 0);
+    const bad = cli(['--csv', csv, '--contrasts', 'P:N', '--experiment', 'a,c']);
+    assert.notStrictEqual(bad.status, 0);
+    assert.match(bad.stderr, /"c"/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI: --tasks-set y --task-set-file dejan solo las tareas del conjunto elegido', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-analysis-'));
+  try {
+    const csv = csvWith(dir, 'runs.csv', [...tenTasks(), run('t01', 'P', 2, { invalid: 'true', invalid_reason: 'infra' }), run('t10', 'P', 2, { invalid: 'true', invalid_reason: 'infra' })]);
+    const set = path.join(dir, 'tasks.json');
+    fs.writeFileSync(set, JSON.stringify({ validation: ['t01', 't02', 't03', 't04', 't05', 't06', 't07', 't08', 'no-esta'], dev: ['t09', 't10'] }));
+    const v = cli(['--csv', csv, '--contrasts', 'P:N', '--tasks-set', 'validation', '--task-set-file', set, '--resamples', '100']);
+    assert.strictEqual(v.status, 0, v.stderr);
+    assert.match(v.stdout, /conjunto de tareas "validation"/);
+    assert.match(v.stdout, /no-esta/);
+    assert.match(v.stdout, /n = 8 tareas/);
+    assert.match(v.stdout, /Corridas inválidas excluidas: 1/);
+    assert.doesNotMatch(v.stdout, /t09|t10/);
+    const dev = cli(['--csv', csv, '--contrasts', 'P:N', '--tasks-set', 'dev', '--task-set-file', set, '--resamples', '100', '--json']);
+    assert.strictEqual(JSON.parse(dev.stdout).contrasts[0].itt.n, 2);
+    for (const args of [['--tasks-set', 'validation'], ['--task-set-file', set], ['--tasks-set', 'otro', '--task-set-file', set], ['--tasks-set', 'validation', '--task-set-file', path.join(dir, 'no.json')]]) {
+      const r = cli(['--csv', csv, '--contrasts', 'P:N', ...args]);
+      assert.notStrictEqual(r.status, 0, args.join(' '));
+      assert.match(r.stderr, /error:/);
+    }
+    fs.writeFileSync(set, JSON.stringify({ dev: ['t09'] }));
+    const missing = cli(['--csv', csv, '--contrasts', 'P:N', '--tasks-set', 'validation', '--task-set-file', set]);
+    assert.notStrictEqual(missing.status, 0);
+    assert.match(missing.stderr, /validation/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('CLI: --primary limita Holm, un arm sin dato de activación sale con código 0, y la ayuda describe todo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-analysis-'));
+  try {
+    const rows = [];
+    for (let i = 1; i <= 8; i += 1) {
+      rows.push(run(`t${i}`, 'N', 1, { cost_usd: 1 + i / 10 }), run(`t${i}`, 'P', 1, { cost_usd: (1 + i / 10) * 1.2, activation_via: '' }), run(`t${i}`, 'S', 1, { cost_usd: 1 + i / 10, activation_via: '' }));
+    }
+    const csv = csvWith(dir, 'runs.csv', rows);
+    const r = cli(['--csv', csv, '--contrasts', 'P:N,P:S,S:N', '--primary', 'P:N,P:S', '--resamples', '100']);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /primarios \(Holm\): P:N, P:S/);
+    assert.match(r.stdout, /no se filtra por activación en P/);
+    const bad = cli(['--csv', csv, '--contrasts', 'P:N', '--primary', 'P:S']);
+    assert.notStrictEqual(bad.status, 0);
+    assert.match(bad.stderr, /primario P:S/);
+    const help = cli(['--help']);
+    assert.strictEqual(help.status, 0);
+    for (const re of [/--primary/, /--task-set-file/, /--tasks-set/, /censur/, /cota t/, /--experiment <a\[,b\]>/]) assert.match(help.stdout, re);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

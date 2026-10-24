@@ -1,6 +1,18 @@
 // Statistics for the pre-registered comparison of three arms (tests/evals/analysis-cli.mjs is the command line).
 // Pure functions, no dependencies. The unit of analysis is the TASK: repetitions of a task and arm are collapsed first.
 // Every ratio is test / control. Every output carries its n and never claims a difference the data do not show.
+//
+// Pre-registered rules implemented here (tests/evals/RESULTS-comparacion-3-brazos.md, section 7):
+// - Non-inferiority of cost needs BOTH one-sided 95 % upper bounds of the geometric mean ratio below the margin: the
+//   percentile / BCa bootstrap one and the t one, exp(mean(d) + t(0.95; n-1) * sd(d) / sqrt(n)) over the per-task log ratios d.
+//   Both are reported and the verdict says which one binds (the larger).
+// - A censored run (termination budget_cap or model_timeout, or censored=true) is valid: its cost enters as reported (a lower
+//   bound) and it is never green. Every contrast reports the censored runs per arm and a descriptive sensitivity with their cost
+//   doubled. Runs with invalid=true (infrastructure faults) are excluded and listed with their termination. Older CSVs without
+//   these columns have no censored runs.
+// - Per-protocol analysis: an arm whose runs carry no activation data at all (empty or n/a) is not filtered; "none" is data.
+// - Holm adjusts only the primary contrasts (analyze option `primary`); the others are exploratory, without adjustment.
+// - restrictToTasks keeps one task set (validation or dev) so the formal analysis never mixes them.
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Numeric basics
@@ -79,6 +91,96 @@ export function normalQuantile(p) {
   return ((((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q) / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
 }
 
+// Student t distribution without dependencies: CDF through the regularized incomplete beta function and quantile by a numeric
+// inverse of that CDF. Checked against table values in tests/analysis.test.js.
+function logGamma(x) {
+  const g = [57.1562356658629235, -59.5979603554754912, 14.1360979747417471, -0.491913816097620199, 0.339946499848118887e-4,
+    0.465236289270485756e-4, -0.983744753048795646e-4, 0.158088703224912494e-3, -0.210264441724104883e-3, 0.217439618115212643e-3,
+    -0.164318106536763890e-3, 0.844182239838527433e-4, -0.261908384015814087e-4, 0.368991826595316234e-5];
+  let y = x;
+  let tmp = x + 5.24218750000000000;
+  tmp = (x + 0.5) * Math.log(tmp) - tmp;
+  let ser = 0.999999999999997092;
+  for (const c of g) { y += 1; ser += c / y; }
+  return tmp + Math.log(2.5066282746310005 * ser / x);
+}
+
+// Continued fraction of the incomplete beta function (modified Lentz).
+function betaContinuedFraction(x, a, b) {
+  const tiny = 1e-300;
+  const qab = a + b;
+  const qap = a + 1;
+  const qam = a - 1;
+  let c = 1;
+  let d = 1 - (qab * x) / qap;
+  if (Math.abs(d) < tiny) d = tiny;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 500; m += 1) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < tiny) d = tiny;
+    c = 1 + aa / c; if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    h *= d * c;
+    aa = (-(a + m) * (qab + m) * x) / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < tiny) d = tiny;
+    c = 1 + aa / c; if (Math.abs(c) < tiny) c = tiny;
+    d = 1 / d;
+    const del = d * c;
+    h *= del;
+    if (Math.abs(del - 1) < 1e-15) break;
+  }
+  return h;
+}
+
+// Regularized incomplete beta function I_x(a, b).
+export function regularizedBeta(x, a, b) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const front = Math.exp(logGamma(a + b) - logGamma(a) - logGamma(b) + a * Math.log(x) + b * Math.log(1 - x));
+  return x < (a + 1) / (a + b + 2) ? (front * betaContinuedFraction(x, a, b)) / a : 1 - (front * betaContinuedFraction(1 - x, b, a)) / b;
+}
+
+export function studentTCdf(t, df) {
+  if (!(df > 0) || Number.isNaN(t)) return NaN;
+  if (t === 0) return 0.5;
+  if (!Number.isFinite(df) || df > 1e7) return normalCdf(t);
+  const tail = 0.5 * regularizedBeta(df / (df + t * t), df / 2, 0.5);
+  return t > 0 ? 1 - tail : tail;
+}
+
+// Quantile of Student's t: bisection on the CDF (monotone), to double precision. NaN when df is not positive.
+export function studentTQuantile(p, df) {
+  if (!(df > 0) || Number.isNaN(p)) return NaN;
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  if (p === 0.5) return 0;
+  if (!Number.isFinite(df) || df > 1e7) return normalQuantile(p);
+  if (p < 0.5) return -studentTQuantile(1 - p, df);
+  let lo = 0;
+  let hi = 1;
+  while (studentTCdf(hi, df) < p && hi < 1e300) { lo = hi; hi *= 2; }
+  for (let i = 0; i < 200; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (studentTCdf(mid, df) < p) lo = mid; else hi = mid;
+    if (hi - lo <= 1e-14 * Math.max(1, hi)) break;
+  }
+  return (lo + hi) / 2;
+}
+
+// One-sided 95 % upper bound of the geometric mean ratio from the t distribution on the per-task log ratios:
+// exp(mean(d) + t(0.95; n-1) * sd(d) / sqrt(n)). Needs n >= 2.
+export function tUpperBound(logRatios, { level = 0.95 } = {}) {
+  const n = logRatios.length;
+  if (n < 2) return { n, df: n - 1, t: null, upperLog: null, upper: null };
+  const mu = mean(logRatios);
+  const sd = Math.sqrt(logRatios.reduce((s, x) => s + (x - mu) ** 2, 0) / (n - 1));
+  const t = studentTQuantile(level, n - 1);
+  const upperLog = mu + (t * sd) / Math.sqrt(n);
+  return { n, df: n - 1, t, upperLog, upper: Math.exp(upperLog) };
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // CSV of runs (the format of tests/evals/pignolo2-runs.csv)
 // ---------------------------------------------------------------------------------------------------------------------
@@ -111,7 +213,9 @@ const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache
   'agents', 'skill_calls', 'own_skill_calls', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed',
   'full_pass', 'full_fail', 'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'tsc_new_errors', 'eslint_new_errors',
   'out_of_scope_files', 'diff_lines'];
-const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid'];
+const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid', 'censored'];
+// Terminations that make a run censored (stopped by the model's own budget or time, not by a fault of the infrastructure).
+const CENSORING_TERMINATIONS = new Set(['budget_cap', 'model_timeout']);
 
 export function normalizeRow(r) {
   const o = { ...r };
@@ -120,6 +224,9 @@ export function normalizeRow(r) {
     o[k] = o[k] === '' || o[k] === null || o[k] === undefined || !Number.isFinite(Number(o[k])) ? null : Number(o[k]);
   }
   for (const k of BOOLEAN) o[k] = o[k] === true || o[k] === 'true';
+  // A run is censored when its `censored` column says so or its `termination` is budget_cap / model_timeout.
+  // Older CSVs have neither column: nothing is censored.
+  if (CENSORING_TERMINATIONS.has(String(o.termination ?? '').trim())) o.censored = true;
   // diff_lines may not be a column: then it is lines added plus lines removed.
   if ((o.diff_lines === undefined || o.diff_lines === null) && (o.lines_added != null || o.lines_removed != null)) {
     o.diff_lines = (o.lines_added || 0) + (o.lines_removed || 0);
@@ -135,19 +242,26 @@ export function readRuns(text) {
   const rows = all.filter((r) => !r.invalid);
   const invalid = all.filter((r) => r.invalid).map((r) => ({
     run: runId(r), experiment: r.experiment || '', reason: r.invalid_reason || 'invalid',
+    ...(r.termination ? { termination: r.termination } : {}),
   }));
   return { rows, invalid, experiments: [...new Set(all.map((r) => r.experiment).filter(Boolean))] };
 }
 
 // Green acceptance of one run (same rule as the harness summary).
+// A censored run (budget cap or model timeout) is never green, whatever its acceptance columns say.
 export function isGreen(r) {
-  return r.accept_exit === 0
+  return !r.censored
+    && r.accept_exit === 0
     && (r.accept_suites_failed == null || r.accept_suites_failed === 0)
     && r.accept_fail === 0 && r.accept_pass != null && r.accept_pass > 0;
 }
-const hasAccept = (r) => r.accept_pass != null && r.accept_fail != null;
+// Runs that count for success: those with acceptance results and the censored ones (not green, even with no acceptance run).
+const hasAccept = (r) => r.censored === true || (r.accept_pass != null && r.accept_fail != null);
 
 const NO_ACTIVATION = new Set(['', 'none', 'n/a', 'na']);
+// No activation data at all (column absent, empty or n/a): different from "none", which says the plugin did not activate.
+const NO_ACTIVATION_DATA = new Set(['', 'n/a', 'na']);
+export const hasActivationData = (row) => !NO_ACTIVATION_DATA.has(String(row.activation_via ?? '').trim().toLowerCase());
 // Did the plugin of this run's arm activate? Arms without the concept (control, default N) always count.
 export function activated(row, noActivationArms = ['N']) {
   if (noActivationArms.includes(row.arm)) return true;
@@ -274,26 +388,31 @@ export function signFlipTest(diffs, { seed = 1, resamples = 10000, exactMax = 15
 // Geometric mean ratio exp(mean(log ratios)) with bootstrap intervals and the sign-flip p value.
 export function geometricMeanRatio(logRatios, { resamples = 10000, seed = 1, method = 'auto' } = {}) {
   const n = logRatios.length;
-  if (!n) return { n: 0, ratio: null, ci90: null, ci95: null, upper95: null, p: null, pMethod: 'none', ciMethod: 'none' };
+  if (!n) return { n: 0, ratio: null, ci90: null, ci95: null, upper95: null, upperT95: null, p: null, pMethod: 'none', ciMethod: 'none' };
   const b = bootstrapMeanCI(logRatios, { resamples, seed, method });
   const ex = (x) => (x === null || x === undefined ? null : Math.exp(x));
   const t = n >= 2 ? signFlipTest(logRatios, { seed, resamples }) : { p: null, method: 'none' };
+  const tb = tUpperBound(logRatios);
   return {
     n,
     ratio: Math.exp(b.estimate),
     ci90: b.ci90 && b.ci90.map(ex),
     ci95: b.ci95 && b.ci95.map(ex),
     upper95: ex(b.upper95),
+    upperT95: tb.upper,
     p: t.p,
     pMethod: t.method,
     ciMethod: b.method,
   };
 }
 
-// Non-inferiority: true when the one-sided 95 % upper bound of the ratio is below the margin.
+// Non-inferiority (pre-registered double rule): true only when BOTH one-sided 95 % upper bounds of the ratio, the percentile / BCa
+// bootstrap one (upper95) and the t one (upperT95), are below the margin. A ratio object with no upperT95 key at all (legacy
+// callers) is judged on the bootstrap bound alone; a null upperT95 never passes.
 export function nonInferiority(ratioCI, margin = 1.5) {
-  const u = ratioCI && ratioCI.upper95;
-  return typeof u === 'number' && Number.isFinite(u) && u < margin;
+  const below = (u) => typeof u === 'number' && Number.isFinite(u) && u < margin;
+  if (!ratioCI || !below(ratioCI.upper95)) return false;
+  return ratioCI.upperT95 === undefined ? true : below(ratioCI.upperT95);
 }
 
 // Equivalence (TOST style, descriptive): the two-sided 90 % interval lies inside [1/m, m].
@@ -482,11 +601,29 @@ export function interpretRatio(r, what = 'costo') {
     : `${what} mayor en el brazo de prueba (razón ${fx(r.ratio)}, IC 95 % ${fci(r.ci95)})`;
 }
 
+const bootstrapName = (r) => (r && r.ciMethod === 'bca' ? 'BCa' : 'percentil');
+
+// Verdict line of the double rule. `binds` is the bound that limits: the larger of the two ('bootstrap' or 't').
 export function niVerdict(r, n, margin) {
   const pass = nonInferiority(r, margin);
-  const tail = `cota superior unilateral 95 % ${fx(r && r.upper95)} ${pass ? '<' : '>='} margen ${margin}`;
-  if (n < MIN_TASKS) return { pass, text: `n insuficiente para decidir (n = ${n} tareas; ${tail}, solo descriptivo)` };
-  return { pass, text: pass ? `no inferioridad demostrada: ${tail}` : `no inferioridad no demostrada: ${tail}` };
+  const hasT = r && r.upperT95 !== undefined;
+  const below = (u) => typeof u === 'number' && Number.isFinite(u) && u < margin;
+  const boundsPass = { bootstrap: below(r && r.upper95), t: hasT ? below(r.upperT95) : null };
+  const boot = bootstrapName(r);
+  let binds = 'bootstrap';
+  if (hasT) {
+    const ub = r.upper95;
+    const ut = r.upperT95;
+    binds = typeof ut === 'number' && (typeof ub !== 'number' || ut > ub) ? 't' : 'bootstrap';
+  }
+  const part = (label, u, ok) => `${label} ${fx(u, 3)} ${ok ? '<' : '>='} margen ${margin}`;
+  const parts = [part(`cota superior unilateral 95 % ${boot}`, r && r.upper95, boundsPass.bootstrap)];
+  if (hasT) parts.push(part('cota t', r.upperT95, boundsPass.t));
+  const bindText = hasT ? `; limita la cota ${binds === 't' ? 't' : boot}` : '';
+  const tail = `${parts.join(' y ')}${bindText}`;
+  const out = { pass, binds, boundsPass };
+  if (n < MIN_TASKS) return { ...out, text: `n insuficiente para decidir (n = ${n} tareas; ${tail}, solo descriptivo)` };
+  return { ...out, text: pass ? `no inferioridad demostrada (las dos cotas bajo el margen): ${tail}` : `no inferioridad no demostrada (se exigen las dos cotas bajo el margen): ${tail}` };
 }
 
 function interpretP(p, favorTest, what, n = Infinity) {
@@ -573,13 +710,21 @@ function analyzePopulation(rows, { test, control, label, opts, grades }) {
   const ratio = geometricMeanRatio(paired.logRatios, { resamples: opts.resamples, seed: opts.seed, method: opts.method });
   const ni = niVerdict(ratio, n, opts.margin);
   const eq = equivalence(ratio, opts.equivMargin);
+  const skipped = opts.skipActivation || [];
   const activation = {};
   for (const arm of [test, control]) {
     const armRows = (opts.allRows || rows).filter((r) => r.arm === arm);
     const act = armRows.filter((r) => activated(r, opts.noActivationArms)).length;
-    activation[arm] = opts.noActivationArms.includes(arm)
-      ? { runs: armRows.length, activated: armRows.length, rate: null, note: 'sin concepto de activación (siempre incluido)' }
-      : { runs: armRows.length, activated: act, rate: armRows.length ? act / armRows.length : null };
+    if (opts.noActivationArms.includes(arm)) {
+      activation[arm] = { runs: armRows.length, activated: armRows.length, rate: null, note: 'sin concepto de activación (siempre incluido)' };
+    } else if (skipped.includes(arm)) {
+      activation[arm] = { runs: armRows.length, activated: null, rate: null, note: `sin dato de activación en ninguna corrida (vacío o n/a): no se filtra por activación en ${arm}` };
+    } else activation[arm] = { runs: armRows.length, activated: act, rate: armRows.length ? act / armRows.length : null };
+  }
+  const censored = {};
+  for (const arm of [test, control]) {
+    const armRows = cellRows.filter((r) => r.arm === arm);
+    censored[arm] = { runs: armRows.length, censored: armRows.filter((r) => r.censored).length };
   }
   const valid = new Map();
   for (const r of cellRows) {
@@ -587,9 +732,11 @@ function analyzePopulation(rows, { test, control, label, opts, grades }) {
     valid.get(runId(r)).add(String(r.timestamp ?? ''));
   }
   return {
-    population: label, n, label: labelFor(n), tasks: paired.tasks, excludedTasks: paired.excluded, activation,
+    population: label, n, label: labelFor(n), tasks: paired.tasks, excludedTasks: paired.excluded, activation, activationSkipped: skipped, censored,
     cost: {
-      ratio: ratio.ratio, ci90: ratio.ci90, ci95: ratio.ci95, upper95: ratio.upper95, p: ratio.p, pMethod: ratio.pMethod, ciMethod: ratio.ciMethod,
+      ratio: ratio.ratio, ci90: ratio.ci90, ci95: ratio.ci95, upper95: ratio.upper95, upperT95: ratio.upperT95, p: ratio.p, pMethod: ratio.pMethod, ciMethod: ratio.ciMethod,
+      binds: ni.binds, boundsPass: ni.boundsPass,
+      censoredSensitivity: censoredSensitivity(cellRows, { test, control, tasks: allTasks, ratio, opts }),
       pAdjusted: null, nonInferior: ni.pass && n >= MIN_TASKS, nonInferiorityLine: ni.text, margin: opts.margin,
       equivalent: eq, equivalenceLine: `equivalencia (IC 90 % dentro de [${fx(1 / opts.equivMargin, 3)}; ${fx(opts.equivMargin, 3)}]): ${eq ? 'sí' : 'no'} (descriptivo)`,
       interpretation: interpretRatio(ratio, 'costo'),
@@ -598,6 +745,22 @@ function analyzePopulation(rows, { test, control, label, opts, grades }) {
     judge: grades ? judgeAnalysis(grades, { test, control, tasks: paired.tasks, valid }) : null,
     secondary: secondary(cellRows, { test, control, tasks: paired.tasks }),
     costPerSolved: costPerSolved(cellRows, { test, control, tasks: paired.tasks }),
+  };
+}
+
+// Descriptive sensitivity: the cost ratio recomputed as if the cost of each censored run had been twice what was reported.
+// The reported cost of a censored run is a lower bound of what it would have cost, and doubling is a crude bound, not an estimate.
+function censoredSensitivity(rows, { test, control, tasks, ratio, opts }) {
+  const censoredRuns = rows.filter((r) => r.censored).length;
+  if (!censoredRuns) {
+    return { censoredRuns, ratio: ratio.ratio, upper95: ratio.upper95, upperT95: ratio.upperT95, line: `sensibilidad (descriptiva): sin corridas censuradas, coincide con el análisis (razón ${fx(ratio.ratio)})` };
+  }
+  const doubled = rows.map((r) => (r.censored && typeof r.cost_usd === 'number' ? { ...r, cost_usd: r.cost_usd * 2 } : r));
+  const paired = pairedLogRatios(collapse(doubled, 'cost_usd'), control, test, { tasks });
+  const g = geometricMeanRatio(paired.logRatios, { resamples: opts.resamples, seed: opts.seed, method: opts.method });
+  return {
+    censoredRuns, ratio: g.ratio, upper95: g.upper95, upperT95: g.upperT95,
+    line: `sensibilidad (descriptiva, cota burda): si el costo de cada una de las ${censoredRuns} corridas censuradas se duplicara, la razón sería ${fx(g.ratio)} (cota ${bootstrapName(g)} ${fx(g.upper95)}, cota t ${fx(g.upperT95)}) en vez de ${fx(ratio.ratio)}`,
   };
 }
 
@@ -632,28 +795,61 @@ export function parseContrasts(text) {
 }
 
 // rows: normalized valid rows. invalid: list from readRuns (reported as they are).
+// `primary`: the pre-registered primary contrasts ("P:N,P:S" or a list); Holm adjusts only those and the rest are exploratory
+// with no adjustment. Without it, every requested contrast is primary (null in the result tells so).
+// `taskSet`: information about the task filter applied before (name, listed, missingTasks, droppedRuns), printed as is.
 export function analyze(rows, {
-  contrasts, margin = 1.5, equivMargin = 1.25, seed = 1, resamples = 10000, method = 'auto', grades = null,
-  noActivationArms = ['N'], successRule = 'majority', invalid = [],
+  contrasts, primary = null, margin = 1.5, equivMargin = 1.25, seed = 1, resamples = 10000, method = 'auto', grades = null,
+  noActivationArms = ['N'], successRule = 'majority', invalid = [], taskSet = null,
 } = {}) {
   const valid = rows.filter((r) => !r.invalid);
   const opts = { margin, equivMargin, seed, resamples, method, noActivationArms, successRule };
   const list = (typeof contrasts === 'string' ? parseContrasts(contrasts) : contrasts) || [];
+  const primaryList = primary === null || primary === undefined ? null : (typeof primary === 'string' ? parseContrasts(primary) : primary);
+  const primaryKeys = primaryList && primaryList.map((c) => `${c.test}:${c.control}`);
+  for (const k of primaryKeys || []) {
+    if (!list.some((c) => `${c.test}:${c.control}` === k)) throw new Error(`el contraste primario ${k} no está entre los contrastes pedidos (${list.map((c) => `${c.test}:${c.control}`).join(', ')})`);
+  }
   const results = list.map(({ test, control }) => {
     const inContrast = valid.filter((r) => r.arm === test || r.arm === control);
-    const itt = analyzePopulation(inContrast, { test, control, label: 'ITT (todas las corridas válidas)', opts: { ...opts, allRows: inContrast }, grades });
-    const pp = analyzePopulation(inContrast.filter((r) => activated(r, noActivationArms)), {
-      test, control, label: 'PP (solo corridas con el plugin activado)', opts: { ...opts, allRows: inContrast }, grades,
+    // An arm whose runs carry no activation data at all (older CSV, or the harness could not tell) is not filtered in the
+    // per-protocol analysis: filtering it would empty the arm. An explicit "none" is data and is filtered.
+    const skipActivation = [test, control].filter((arm) => {
+      const armRows = inContrast.filter((r) => r.arm === arm);
+      return !noActivationArms.includes(arm) && armRows.length > 0 && armRows.every((r) => !hasActivationData(r));
     });
-    return { contrast: `${test}:${control}`, test, control, itt, pp };
+    const popOpts = { ...opts, allRows: inContrast, skipActivation };
+    const itt = analyzePopulation(inContrast, { test, control, label: 'ITT (todas las corridas válidas)', opts: popOpts, grades });
+    const pp = analyzePopulation(inContrast.filter((r) => skipActivation.includes(r.arm) || activated(r, noActivationArms)), {
+      test, control, label: 'PP (solo corridas con el plugin activado)', opts: popOpts, grades,
+    });
+    const key = `${test}:${control}`;
+    return { contrast: key, test, control, role: !primaryKeys || primaryKeys.includes(key) ? 'primario' : 'exploratorio', itt, pp };
   });
   for (const key of ['itt', 'pp']) {
-    const adj = holm(results.map((r) => r[key].cost.p));
-    results.forEach((r, i) => { r[key].cost.pAdjusted = adj[i]; });
+    const prim = results.filter((r) => r.role === 'primario');
+    const adj = holm(prim.map((r) => r[key].cost.p));
+    prim.forEach((r, i) => { r[key].cost.pAdjusted = adj[i]; });
   }
   return {
-    margin, equivMargin, seed, resamples, successRule, noActivationArms,
+    margin, equivMargin, seed, resamples, successRule, noActivationArms, primary: primaryKeys, taskSet,
     excludedRuns: invalid, contrasts: results,
+  };
+}
+
+// Keeps only the runs (and the listed invalid runs) of the given tasks: the formal analysis must not mix in other task sets.
+// Returns the filtered rows and invalid list, the number of valid runs dropped and the listed tasks that have no runs at all.
+export function restrictToTasks({ rows, invalid = [] }, taskIds) {
+  const wanted = new Set(taskIds);
+  const present = new Set(rows.map((r) => r.task));
+  const taskOfRun = (run) => run.split('/').slice(0, -2).join('/');
+  const kept = rows.filter((r) => wanted.has(r.task));
+  return {
+    rows: kept,
+    invalid: invalid.filter((e) => wanted.has(taskOfRun(e.run))),
+    droppedRuns: rows.length - kept.length,
+    missingTasks: [...wanted].filter((t) => !present.has(t)),
+    listed: wanted.size,
   };
 }
 
@@ -672,12 +868,15 @@ function formatPopulation(p, c) {
   for (const [arm, a] of Object.entries(p.activation)) {
     L.push(`  activación ${arm}: ${a.rate === null ? a.note : `${a.activated} de ${a.runs} corridas (${pct(a.rate)})`}`);
   }
+  const cs = Object.entries(p.censored).map(([arm, v]) => `${arm} ${v.censored} de ${v.runs}`).join(', ');
+  L.push(`  corridas censuradas: ${cs} (tope de costo o de tiempo; válidas, cuentan como no verdes y su costo es una cota inferior)`);
   const k = p.cost;
-  L.push(`  costo (razón ${c.test}/${c.control}, media geométrica por tarea): ${fx(k.ratio)}  IC 90 % ${fci(k.ci90)}  IC 95 % ${fci(k.ci95)}  cota sup. unilateral 95 % ${fx(k.upper95)}`);
-  L.push(`    p (permutación de signos, ${k.pMethod}) = ${fx(k.p)}; p ajustado (Holm) = ${fx(k.pAdjusted)}; intervalo: ${k.ciMethod}`);
+  L.push(`  costo (razón ${c.test}/${c.control}, media geométrica por tarea): ${fx(k.ratio)}  IC 90 % ${fci(k.ci90)}  IC 95 % ${fci(k.ci95)}  cota sup. unilateral 95 % (${k.ciMethod}) ${fx(k.upper95)}  cota t unilateral 95 % ${fx(k.upperT95)}`);
+  L.push(`    p (permutación de signos, ${k.pMethod}) = ${fx(k.p)}; p ajustado (Holm) = ${k.pAdjusted === null && c.role === 'exploratorio' ? 'no aplica (contraste exploratorio)' : fx(k.pAdjusted)}; intervalo: ${k.ciMethod}`);
   L.push(`    no inferioridad: ${k.nonInferiorityLine}`);
   L.push(`    ${k.equivalenceLine}`);
   L.push(`    interpretación: ${k.interpretation}`);
+  L.push(`    ${k.censoredSensitivity.line}`);
   const s = p.success;
   L.push(`  éxito de la aceptación (n = ${s.n} tareas, regla "${s.rule}"):`);
   L.push(`    discordantes: solo ${c.control} ${s.discordant.controlOnly}, solo ${c.test} ${s.discordant.testOnly}, ambos ${s.discordant.both}, ninguno ${s.discordant.neither}; McNemar exacto p = ${fx(s.mcnemarP)}`);
@@ -710,12 +909,20 @@ export function formatText(result) {
   const L = [];
   L.push(`Análisis de contrastes (margen de no inferioridad ${result.margin}, equivalencia ${result.equivMargin}, semilla ${result.seed}, ${result.resamples} remuestreos)`);
   L.push(`Unidad de análisis: la tarea. Razones = prueba / control. Con menos de ${MIN_TASKS} tareas el resultado es exploratorio.`);
+  L.push(`No inferioridad: se declara solo si las dos cotas superiores unilaterales del 95 % (bootstrap y t) quedan bajo el margen ${result.margin}.`);
+  L.push(result.primary
+    ? `Contrastes primarios (Holm): ${result.primary.join(', ')}; los demás son exploratorios y sin ajuste.`
+    : 'Holm sobre todos los contrastes pedidos (no se indicó --primary).');
+  const ts = result.taskSet;
+  if (ts) {
+    L.push(`Se analiza solo el conjunto de tareas "${ts.name}": ${ts.listed} listadas; ${ts.droppedRuns} corridas de otras tareas descartadas${ts.missingTasks.length ? `; sin corridas: ${ts.missingTasks.join(', ')}` : ''}.`);
+  }
   for (const c of result.contrasts) {
-    L.push('', `=== Contraste ${c.contrast} (prueba ${c.test}, control ${c.control}) ===`);
+    L.push('', `=== Contraste ${c.contrast} (prueba ${c.test}, control ${c.control}) — ${c.role === 'primario' ? 'primario' : 'exploratorio, sin ajuste'} ===`);
     L.push(...formatPopulation(c.itt, c));
     L.push(...formatPopulation(c.pp, c));
   }
   L.push('', `Corridas inválidas excluidas: ${result.excludedRuns.length}`);
-  for (const e of result.excludedRuns) L.push(`  ${e.experiment ? `${e.experiment} ` : ''}${e.run}: ${e.reason}`);
+  for (const e of result.excludedRuns) L.push(`  ${e.experiment ? `${e.experiment} ` : ''}${e.run}: ${e.reason}${e.termination ? ` (terminación: ${e.termination})` : ''}`);
   return L.join('\n');
 }
