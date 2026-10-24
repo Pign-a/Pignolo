@@ -151,7 +151,8 @@ export function findEscape(text, { sourceRepo, privateRoot, workRoot, runDir }) 
           const rel = rest.slice(1);
           const own = rel.startsWith(ownRel) && !IDENT.test(rel[ownRel.length] || '');
           // The shared snapshot of node_modules is reached through the junction; its manifest guards it.
-          if (!own && !rel.startsWith('_nm')) { match = 'otherRun'; break; }
+          // Reading the arm's own plugin tree (workRoot/arms/...) is part of using the plugin, not an escape.
+          if (!own && !rel.startsWith('_nm') && !rel.startsWith('arms/')) { match = 'otherRun'; break; }
           from = at + work.length;
         }
       }

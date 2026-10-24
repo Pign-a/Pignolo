@@ -33,7 +33,9 @@ export function readScenario(cfg, task) {
 export function uiPromptOf(cfg, task, arm) {
   const s = readScenario(cfg, task);
   const prefix = (cfg.arms[arm] && cfg.arms[arm].uiPrefix) || '';
-  return { prompt: prefix + s.text, prefix, scenario: s };
+  // Optional text appended to every arm's prompt (cfg.uiPromptSuffix): the same for all arms, so it adds no difference between them.
+  const suffix = cfg.uiPromptSuffix ? String(cfg.uiPromptSuffix) : '';
+  return { prompt: prefix + s.text + suffix, prefix, suffix, scenario: s };
 }
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.pignolo-ui']);
