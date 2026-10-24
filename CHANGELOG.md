@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 — sin publicar
+## 1.0.0 — 2026-10-24
 
 Pignolo 2: reescrito en limpio como un solo plugin, `pignolo`, que reemplaza a superpowers con menos reglas y sin nada que bloquee. Diseño: `docs/specs/2026-10-23-pignolo-2-design.md`.
 
@@ -16,7 +16,7 @@ Pignolo 2: reescrito en limpio como un solo plugin, `pignolo`, que reemplaza a s
 - **Actualizar:** si tenías instalados los plugins anteriores `pignolo-ui` o `pignolo-panel`, desinstalalos desde `/plugin` antes de usar este: sus skills `define`, `new`, `improve` y `audit` compiten con `ui` y `ui-audit` por los mismos pedidos.
 - **Pignolo 2 reemplaza a superpowers:** se usa uno u otro, no los dos activos a la vez.
 - **El plugin anterior** queda en la etiqueta local `legacy` (y en las ramas viejas); no se publica con esta versión.
-- Pendiente antes de publicar: la medición contra superpowers (diseño §9), con el OK del autor para el gasto.
+- **Medición contra superpowers y contra nada** (preinscrita, 16 tareas y 10 ítems de revisión, un solo modelo y una app; detalle en `tests/evals/RESULTS-estudio-a-trabajo.md` y `RESULTS-estudio-b-revision.md`): `work` cuesta lo mismo que no usar plugin (razón 1,05, no inferior al margen de 1,5) y un 25 % menos que superpowers, sin perder aceptación; `validate` encuentra tantos defectos sembrados como superpowers y como una revisión simple. No se demostró una mejora de calidad: los dos estudios están en el techo. `work` toca más archivos fuera de alcance y hace diffs más grandes que sin plugin. `start`, `session`, `ui` y `ui-audit` no se midieron.
 
 ## 0.24.1 — sin publicar
 
