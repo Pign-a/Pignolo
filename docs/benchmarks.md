@@ -224,6 +224,21 @@ La calificación a ciegas (Opus, 8 corridas, sin filtración reportada) no mostr
 
 **Comparabilidad:** E2 en la feature mediana (2 repeticiones por brazo), E3 en el resto. Una sola app privada, calificador de la misma familia de modelos, y la consigna mediana casi especifica la solución. En los pares autónomos ningún plugin se activó, así que miden al modelo base con distinto contexto cargado. No se midió el flujo conversacional de `start`, la activación en sesiones interactivas, el trabajo de larga duración, otros repos ni otros modelos. Evidencia y cronología de las corridas descartadas: [`RESULTS-pignolo2.md`](../tests/evals/RESULTS-pignolo2.md); datos crudos: [`pignolo2-runs.csv`](../tests/evals/pignolo2-runs.csv).
 
+## 4c. Revisión con defectos sembrados: Pignolo, sin plugin, `/code-review` y superpowers (2026-10-24)
+
+10 diffs de una app privada (8 con 2 a 3 defectos sembrados, 20 en total, y 2 controles limpios), una revisión por brazo, 40 corridas, ~11,3 USD. Preinscrito en [`RESULTS-comparacion-3-brazos.md`](../tests/evals/RESULTS-comparacion-3-brazos.md).
+
+| Brazo | Defectos encontrados | Costo mediano por corrida (USD) | Sin coincidencia en controles limpios (mediana) |
+|---|---|---|---|
+| Pignolo (`validate`) | 19/20 | 0,27 | 7,5 |
+| Pedido llano, sin plugin | 19/20 | 0,22 | 0 |
+| `/code-review` nativo | 17/20 | 0,14 | 6,0 |
+| superpowers | 19/20 | 0,42 | 2,0 |
+
+Ningún contraste primario (P:N, P:C, P:S) es significativo (p ajustado = 1,000) y con 8 ítems eso no es equivalencia. **Efecto techo:** todos encuentran casi todo, así que el benchmark no discrimina en recall; lo que se ve son diferencias de costo y de hallazgos sin coincidencia (que pueden ser problemas reales). No muestra que `validate` mejore la detección; sí que no detectó menos ni costó más que superpowers, y que costó más que un pedido llano y que `/code-review`.
+
+**Comparabilidad:** E3. Una app, un modelo, una repetición por celda; defectos sembrados por un LLM; puntaje determinista que puede ser indulgente. Detalle y salida del análisis: [`RESULTS-estudio-b-revision.md`](../tests/evals/RESULTS-estudio-b-revision.md); datos crudos: [`pignolo2-runs.csv`](../tests/evals/pignolo2-runs.csv).
+
 ## 5. Pendiente: pignolo contra Claude Code solo
 
 La comparación directa (los mismos pedidos, con y sin pignolo, midiendo defectos que llegan al final, costo y tiempo) es una decisión del autor del 2026-09-29: se corre al terminar el plugin y se publica acá, sea cual sea el resultado.
