@@ -17,6 +17,14 @@ export function readPack(dir) {
   let pack;
   try { pack = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { throw new Error(`pack.json no es JSON válido: ${e.message}`); }
   if (!pack || typeof pack.scenario !== 'string' || !pack.scenario) throw new Error('pack.json: falta "scenario"');
+  // The harness's uipack writes { options: [{ label, screens: [{ html, shots: [{ width, file }] }] }] }: use the first screen of each option.
+  if (!Array.isArray(pack.items) && Array.isArray(pack.options)) {
+    pack.items = pack.options.map((o) => {
+      const sc = (o.screens || [])[0] || {};
+      const shot = (w) => ((sc.shots || []).find((x) => x.width === w) || {}).file;
+      return { label: o.label, files: { shot1280: shot(1280), shot390: shot(390), html: sc.html } };
+    });
+  }
   if (!Array.isArray(pack.items) || pack.items.length < 1) throw new Error('pack.json: "items" debe ser una lista no vacía');
   const seen = new Set();
   for (const it of pack.items) {
