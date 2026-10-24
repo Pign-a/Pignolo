@@ -1,21 +1,25 @@
 # Comparación de tres brazos: sin plugin, superpowers y Pignolo
 
-**Estado: borrador, sin preinscribir.**
+**Estado: preinscrita, pendiente de congelar.**
 
-_Esta ficha se escribe y se commitea antes de cualquier corrida de validación, como pide `docs/protocolo-de-pruebas.md`. Hasta que el autor llene los campos de abajo y congele el conjunto de tareas, nada de lo que dice es una preinscripción. Es el seguimiento de [`RESULTS-pignolo2.md`](RESULTS-pignolo2.md), cuya medición tuvo tres tareas en total y por eso solo permite afirmaciones exploratorias (ver su sección "Corrección de las etiquetas de evidencia (2026-10-23)"). Las corridas pagas esperan el OK explícito del autor._
+_Esta ficha se escribe y se commitea antes de cualquier corrida de validación, como pide `docs/protocolo-de-pruebas.md`. El autor fijó los campos y confirmó los márgenes el 2026-10-24; la preinscripción queda cerrada cuando se congela el conjunto de tareas (sección 12). Es el seguimiento de [`RESULTS-pignolo2.md`](RESULTS-pignolo2.md), cuya medición tuvo tres tareas en total y por eso solo permite afirmaciones exploratorias (ver su sección "Corrección de las etiquetas de evidencia (2026-10-23)"). Las corridas pagas esperan el OK explícito del autor._
 
-## Campos que fija el autor antes de congelar
+## Campos que fijó el autor (decisiones del 2026-10-24)
 
 | Campo | Valor |
 |---|---|
-| Tope de gasto total (USD) | `[a fijar]` |
-| Número de tareas de validación N | `[a fijar]` (la ficha calcula costo y potencia para 20; la grilla de potencia va de 8 a 30) |
-| Hash de congelado (SHA-256 del archivo de congelado, ver sección 12) | `[a fijar]` |
-| Commit de esta ficha (el que llena estos campos) | `[a fijar]` |
-| Semilla del calendario y del bootstrap | `[a fijar]` |
-| Márgenes marcados `[propuesto, el autor confirma]` | confirmar o cambiar cada uno antes de congelar |
+| Tope de gasto total acumulado (USD) | 75. El libro de gastos cuenta todos los experimentos: unos 29,2 USD ya se gastaron en el desarrollo y en mediciones anteriores, así que quedan unos 45 USD para validación, juez y repeticiones |
+| Tope por corrida (USD) | 3 |
+| Número de tareas de validación N | 16 (7 chicas y 9 medianas), elegidas por `tests/evals/select-validation.mjs` entre 20 candidatas empaquetadas (9 chicas y 11 medianas); las 4 no elegidas son una reserva ordenada (ver 4.2). La grilla de potencia de la sección 9 va de 8 a 30 tareas y incluye n = 16 |
+| Semilla de la selección de tareas | 20261024 |
+| Semilla del calendario de corridas | 20261025 |
+| Semilla del bootstrap | 20261026 |
+| Semilla del sorteo de la revisión humana del juez | 20261027 |
+| Márgenes marcados `[confirmado por el autor 2026-10-24]` | confirmados con los números propuestos (ver secciones 5, 7 y 8) |
+| Hash de congelado (SHA-256 del archivo de congelado, ver sección 12) | `[lo escribe el comando de congelado / el commit de preinscripción]` |
+| Commit de esta ficha (el que llena estos campos) | `[lo escribe el comando de congelado / el commit de preinscripción]` |
 
-La semilla y la confirmación de los márgenes hacen falta para que la preinscripción sea reproducible.
+Las cuatro semillas y la confirmación de los márgenes hacen falta para que la preinscripción sea reproducible.
 
 ## 1. Pregunta e hipótesis
 
@@ -97,14 +101,21 @@ Las tres tareas de la medición anterior (una mediana y dos chicas, de la app pr
 
 ### 4.2 Conjunto de validación
 
-**N tareas** (`[a fijar]`; el costo y la potencia se calculan para 20) elegidas por una **regla mecánica escrita antes de mirar candidatos** a partir de commits reales de la app privada. Las tareas se identifican con ids genéricos (`v01`, `v02`...); nada de nombres, rutas ni funciones de la app aparece en el repositorio.
+**N = 16 tareas** (7 chicas y 9 medianas), elegidas con una **regla mecánica escrita antes de mirar resultados** a partir de commits reales de una rama de una app privada del autor. Las tareas se identifican con ids genéricos (`v01`, `v02`...); nada de nombres, rutas, funciones ni hashes de la app aparece en el repositorio.
 
-**Regla de selección.**
+**Cómo se armaron las 20 candidatas.**
 
-1. Universo: commits sin fusión de la rama principal, ordenados por fecha, sin los del conjunto de desarrollo ni sus vecinos.
-2. Elegible si cumple todo esto: toca al menos un archivo de producción y al menos un archivo de test; el commit padre instala y su suite existente pasa (salvo fallas previas documentadas); los tests del commit corren sin red ni secretos en menos de 5 minutos; el cambio es de comportamiento (no es solo renombre, formato, documentación, dependencias o archivos generados); el diff de producción no pasa de 400 líneas sin contar archivos generados.
-3. Estratos: **chica** = 1 o 2 archivos de producción y hasta 60 líneas de producción; **mediana** = 3 a 8 archivos y de 61 a 400 líneas. La mezcla propuesta para N = 20 es 8 chicas y 12 medianas `[propuesto, el autor confirma]`.
-4. Muestreo: se baraja cada estrato con una PRNG con semilla registrada y se recorren los candidatos en ese orden hasta llenar la cuota. Un candidato que no pasa la verificación mecánica (4.3) o la auditoría (4.4) se reemplaza por el siguiente de la lista y el motivo queda anotado. El reemplazo no depende de ningún resultado de los brazos, porque todavía no corrió ninguno.
+1. **Estratos por tamaño del commit real:** **chica** = de 30 a 200 líneas cambiadas en el commit real; **mediana** = de 201 a 1200 líneas cambiadas. (No se definen por archivos ni por líneas de producción.)
+2. **Regla mecánica de muestreo, escrita antes de mirar resultados:** entre los commits elegibles de cada estrato, ordenados por fecha, se toma uno de cada k, con **k = 2 en las chicas y k = 3 en las medianas**. Los commits del conjunto de desarrollo y sus vecinos quedan afuera.
+3. **Verificación mecánica de cada candidata:** los tests ocultos (los del commit real, ver 4.3) fallan (rojo) en el commit padre y pasan (verde) en el commit real, y la suite completa del padre estaba en verde.
+4. **Reemplazos antes de cualquier corrida con un modelo:** algunos commits con más de 100 aserciones nuevas, o cuyo padre no tenía la suite en verde, se reemplazaron por el siguiente elegible de su estrato. Ningún reemplazo dependió de resultados de los brazos, porque todavía no había corrido ninguno.
+5. **Auditoría de cada aserción oculta contra el prompt** (ver 4.4): entre las 20 candidatas no quedó ninguna aserción subespecificada.
+
+El resultado son **20 candidatas empaquetadas: 9 chicas y 11 medianas**.
+
+**Selección final de las 16.** La hace `node tests/evals/select-validation.mjs --input <candidatas> --output <selección> --small 7 --medium 9 --seed 20261024`. El script ordena las candidatas de cada estrato por id, baraja cada estrato con Fisher-Yates y una PRNG con semilla (mulberry32, una por estrato derivada de la semilla: la semilla para las chicas y la semilla más 1 para las medianas) y elige las primeras 7 chicas y 9 medianas del estrato barajado. Las 4 que sobran (2 chicas y 2 medianas) son una **reserva en el orden del barajado**: sirven solo para reemplazar, en ese orden y dentro de su estrato, una tarea que se descubra inválida **antes del congelado**. Después del congelado no se reemplaza nada. Misma entrada y misma semilla dan siempre la misma selección; la salida guarda un hash de la entrada y el script solo imprime ids y conteos.
+
+**Limitación declarada (la encontró quien armó las tareas).** Casi todos los prompts filtran buena parte de la solución, porque los tests ocultos aseveran textos exactos, HTML y firmas, y para que esas aserciones sean justas el prompt tiene que darlos. Por eso **este diseño mide qué tan bien cada configuración ejecuta una especificación cerrada, no qué tan bien planifica una abierta.** Las conclusiones valen para ese tipo de tarea y no para trabajo con requisitos ambiguos, que es donde un método de planificación podría ayudar más.
 
 ### 4.3 Tests de aceptación ocultos
 
@@ -116,7 +127,7 @@ Son los tests del commit real, adaptados solo en lo imprescindible. Para cada ta
 
 ### 4.4 Auditoría de validez por aserción (antes de congelar)
 
-Cada aserción de los tests ocultos se clasifica: (a) exigida por el prompt, (b) implícita en lo que pide el prompt o en las convenciones del repo, (c) detalle arbitrario no derivable del prompt (un texto exacto, un orden interno, un nombre). Las de tipo (c) se eliminan o se pasan al prompt. Además se audita el prompt: si casi dicta la solución, se reescribe. La hace un agente Opus con registro y la revisa el autor. En una submuestra de 5 tareas, un agente independiente que no ve la solución real implementa el prompt y se comprueba que sus soluciones válidas pasan los tests ocultos (control de falsos rechazos; se descuenta del presupuesto, sección 11).
+Cada aserción de los tests ocultos se clasifica: (a) exigida por el prompt, (b) implícita en lo que pide el prompt o en las convenciones del repo, (c) detalle arbitrario no derivable del prompt (un texto exacto, un orden interno, un nombre). Las de tipo (c) se eliminan o se pasan al prompt (de ahí la limitación declarada en 4.2: pasar al prompt textos exactos, HTML y firmas hace que el prompt filtre parte de la solución). Además se audita el prompt: si casi dicta la solución, se reescribe. La hace un agente Opus con registro y la revisa el autor. **Estado:** la auditoría de aserciones ya se hizo sobre las 20 candidatas y no dejó ninguna subespecificada; una tarea de la reserva que entre antes del congelado ya viene auditada. En una submuestra de 5 tareas, un agente independiente que no ve la solución real implementa el prompt y se comprueba que sus soluciones válidas pasan los tests ocultos (control de falsos rechazos; se descuenta del presupuesto, sección 11).
 
 ### 4.5 Congelado
 
@@ -124,14 +135,14 @@ El conjunto completo (prompts, commits padre, tests ocultos, auditoría, rúbric
 
 ## 5. Diseño
 
-- **Una repetición por tarea y brazo.** La tarea es la unidad. Se justifica con la investigación (Miller: lo que se generaliza es el número de tareas, las repeticiones de una misma tarea no reducen la incertidumbre entre tareas) y con el ruido observado (sección 2.1). La simulación de potencia (sección 9) muestra que pasar de 1 a 2 repeticiones por tarea mejora poco, mientras que duplicar el costo de ejecución es seguro. **Desviación del protocolo:** `docs/protocolo-de-pruebas.md` pide al menos 3 repeticiones por brazo cuando la corrida cuesta menos de ~300 mil tokens; aquí la replicación es entre tareas. En esta ficha, "E3" significa replicación a nivel de tarea con n de 8 o más, y con menos de 8 tareas el resultado es exploratorio `[propuesto, el autor confirma]`.
+- **Una repetición por tarea y brazo.** La tarea es la unidad. Se justifica con la investigación (Miller: lo que se generaliza es el número de tareas, las repeticiones de una misma tarea no reducen la incertidumbre entre tareas) y con el ruido observado (sección 2.1). La simulación de potencia (sección 9) muestra que pasar de 1 a 2 repeticiones por tarea mejora poco, mientras que duplicar el costo de ejecución es seguro. **Desviación del protocolo:** `docs/protocolo-de-pruebas.md` pide al menos 3 repeticiones por brazo cuando la corrida cuesta menos de ~300 mil tokens; aquí la replicación es entre tareas. En esta ficha, "E3" significa replicación a nivel de tarea con n de 8 o más, y con menos de 8 tareas el resultado es exploratorio `[confirmado por el autor 2026-10-24]`.
 - **Orden al azar con semilla.** El calendario baraja el orden de las tareas y, dentro de cada tarea, el orden de los tres brazos. Se guarda el calendario completo en el archivo de congelado.
 - **Brazos intercalados en el tiempo.** Las tres corridas de una tarea van seguidas (bloque de tarea), de modo que la variación horaria de la API y de la máquina pega parecido a los tres brazos.
 - **Espacio de trabajo limpio por corrida:** un árbol nuevo desde el commit padre, sin restos de corridas anteriores.
-- **Topes fijos** por corrida y total (campo del autor). Una corrida que llega al tope por corrida o se corta por tiempo por causa del modelo **es un resultado**, no un fallo de infraestructura: cuenta como no verde, con costo igual al tope (costo censurado, marcado) `[propuesto, el autor confirma]`.
-- **Fallos de infraestructura** (error de la API, límite de uso, caída del arnés, corte de red) se registran aparte con su motivo y se repiten hasta 2 veces. **Nunca se repite una corrida por un mal resultado.**
+- **Topes fijos:** 3 USD por corrida y 75 USD de gasto total acumulado (campos del autor). Una corrida que llega al tope por corrida (`budget_cap`) o se corta por tiempo mientras el modelo seguía trabajando **es un resultado**, no un fallo de infraestructura: cuenta como no verde, con costo igual al tope (costo censurado, marcado) y **no se repite** `[confirmado por el autor 2026-10-24]`.
+- **Fallos de infraestructura** (error de la API, límite de uso, caída del arnés, corte de red) son **inválidos**: se registran aparte con su motivo y se repiten hasta 2 veces por falla (`batch --retry-infra`, sección 12) `[confirmado por el autor 2026-10-24]`. **Nunca se repite una corrida por un mal resultado.** Un tope por corrida o un corte por tiempo del modelo es un resultado; una falla de infraestructura es inválida y se repite: esa es la línea que separa las dos cosas.
 - **Sin mirar:** n fijo; no se agregan tareas ni repeticiones después de ver resultados. Una mirada intermedia está permitida solo para detectar fallas del arnés, se declara en el informe y no es confirmatoria.
-- **Si se agota el presupuesto:** se detiene en el límite de un bloque de tarea (el arnés no arranca un bloque si lo gastado más el tope de sus tres corridas pasa del total). Como el orden es aleatorio, las tareas completas son una muestra válida. Se publica con el n alcanzado; con menos de 8 tareas el resultado es exploratorio. No se amplía el tope para "rescatar" un resultado.
+- **Si se agota el presupuesto:** el arnés no lanza una corrida si lo gastado (de **todos** los experimentos, juez incluido) más 1,25 veces el tope por corrida pasa del tope total; el bloque de tarea en curso puede quedar incompleto, y entonces solo cuentan los bloques completos (los tres brazos de la tarea) y el bloque incompleto se informa aparte. Como el orden es aleatorio, las tareas completas son una muestra válida. Se publica con el n alcanzado; con menos de 8 tareas el resultado es exploratorio. No se amplía el tope para "rescatar" un resultado.
 
 ## 6. Métricas
 
@@ -155,17 +166,35 @@ Las deterministas deciden. El juez nunca decide solo.
 | Cobertura de líneas nuevas y puntaje de mutación | % | Opcionales y solo descriptivos, con la cantidad de mutantes. La investigación muestra que la cobertura se relaciona débilmente con la detección de fallos y que el puntaje de mutación es mixto, y en diffs chicos hay pocos mutantes y las cifras son ruidosas | Automática, opcional |
 | Panel del juez | proporción de criterios cumplidos | Ver abajo | Con modelo, a ciegas |
 
-**El juez.** Rúbrica con criterios binarios concretos por tarea (por ejemplo "implementa el comportamiento pedido para el caso X", "maneja el caso borde Y que cubre la solución real", "no cambia comportamiento no pedido", "agrega un test que falla sin el cambio"), escrita a partir del prompt y de la solución real **antes de las corridas** y congelada. Cada pasada recibe el prompt, la solución real, la rúbrica y los resultados de los tres brazos con **nombres neutros, orden mezclado**. Dos pasadas por tarea, con asignación de etiquetas y orden distintos. La nota es la proporción de criterios cumplidos, promediando las dos pasadas; las discrepancias entre pasadas se informan.
+**El juez.** Rúbrica de cinco criterios binarios (la lista está en la sección 6.1), concretados para cada tarea con el prompt y la solución real **antes de las corridas** y congelados. El comportamiento pedido lo decide la aceptación oculta, no el juez. Cada pasada recibe el prompt, la solución real, la rúbrica y los resultados de los tres brazos con **nombres neutros, orden mezclado**. Dos pasadas por tarea, con asignación de etiquetas y orden distintos. La nota es la proporción de criterios cumplidos, promediando las dos pasadas; las discrepancias entre pasadas se informan.
 
-**Limitación declarada:** el juez es de la misma familia de modelos que los ejecutores, y puede compartir sesgos y preferir su propio estilo (MT-Bench). Mitigaciones: criterios binarios contra la solución real, ciegas, orden mezclado, dos pasadas, el tamaño del diff informado al lado (sesgo de verbosidad), y **una revisión humana por muestreo**: el autor califica a mano una submuestra al azar (propuesta: 6 de 20 tareas, con semilla registrada) con la misma rúbrica y a ciegas. Se informa el acuerdo por criterio; si el acuerdo es menor al 80 %, el panel se informa como no confiable y no se usa para ninguna conclusión `[propuesto, el autor confirma]`.
+**Limitación declarada:** el juez es de la misma familia de modelos que los ejecutores, y puede compartir sesgos y preferir su propio estilo (MT-Bench). Mitigaciones: criterios binarios contra la solución real, ciegas, orden mezclado, dos pasadas, el tamaño del diff informado al lado (sesgo de verbosidad), y **una revisión humana por muestreo** (sección 6.1): el panel del juez solo cuenta si el acuerdo con el autor llega al 80 % `[confirmado por el autor 2026-10-24]`.
+
+### 6.1 Revisión humana del juez
+
+El autor califica a mano, a ciegas, una submuestra al azar de los paquetes que ve el juez, con la misma rúbrica, y se mide el acuerdo. El procedimiento queda escrito ahora, antes de las corridas.
+
+**Muestra.** 8 de los 48 paquetes a ciegas (16 tareas por 3 brazos). El sorteo es reproducible: se listan los 48 paquetes por su id (`<tarea>/pack-<k>`, con las etiquetas ya mezcladas por `blind` y sin la clave de brazos), se pasa la lista a `select-validation.mjs` como un solo estrato y se piden 8 con la semilla del sorteo: `node tests/evals/select-validation.mjs --input <paquetes> --output <sorteo> --small 8 --medium 0 --seed 20261027`. Los 8 ids de `selected` son los que revisa el autor, que califica antes de ver las notas del juez y sin la clave.
+
+**Rúbrica (fija antes del congelado).** Cinco criterios binarios, sí o no, que el autor y el juez aplican a cada paquete comparando con la solución real:
+
+1. Respeta las convenciones del repositorio que se ven en los archivos vecinos (nombres, estructura, estilo, manejo de errores).
+2. No hay cambios no relacionados con la tarea (archivos o líneas ajenos al pedido).
+3. No duplica una utilidad que ya existe en el repositorio.
+4. Maneja los casos borde que enuncia el prompt.
+5. No quedan restos de depuración (impresiones, código comentado, archivos temporales).
+
+La rúbrica de cada tarea concreta esos cinco criterios con ejemplos tomados de la solución real (qué utilidad existente habría que reutilizar, qué casos borde enuncia el prompt) y se congela con el resto (sección 12).
+
+**Acuerdo.** Para cada paquete sorteado y cada criterio se compara el veredicto del autor con el del juez; si las dos pasadas del juez no coinciden entre sí, el criterio cuenta como desacuerdo. Son 40 comparaciones (8 paquetes por 5 criterios). **El panel del juez cuenta solo si el acuerdo es de al menos 80 %** (32 de 40 o más) `[confirmado por el autor 2026-10-24]`. Se informa el acuerdo total y por criterio, y las discrepancias. Si queda por debajo, el panel se informa como no confiable y no se usa para ninguna conclusión; las métricas deterministas siguen decidiendo igual.
 
 ## 7. Plan de análisis
 
-Las cuentas las hace `node tests/evals/analysis-cli.mjs` (lo construye otro agente; esta ficha lo cita por su nombre y sus banderas `--csv`, `--contrasts`, `--margin`, `--seed`, `--grades` y `--json`). Ejemplo: `node tests/evals/analysis-cli.mjs --csv <csv de la comparación> --contrasts "P:N,P:S" --margin 1.5 --seed <semilla> --grades <notas> --json`. S contra N se pide aparte (`"S:N"`) y se rotula exploratorio.
+Las cuentas las hace `node tests/evals/analysis-cli.mjs` (se está completando por separado; esta ficha lo cita por su nombre y sus banderas `--csv`, `--experiment`, `--contrasts`, `--primary`, `--margin`, `--seed`, `--task-set-file`, `--grades` y `--json`). Ejemplo: `node tests/evals/analysis-cli.mjs --csv <csv> --experiment <nombre> --contrasts "P:N,P:S,S:N" --primary "P:N,P:S" --margin 1.5 --seed 20261026 --task-set-file <selección> --grades <notas> --json`. `--primary` marca los dos contrastes primarios (los que entran en Holm y en la regla de decisión) y S contra N queda exploratorio. La semilla del bootstrap es 20261026.
 
 1. **Colapsar repeticiones por tarea:** si una tarea y brazo tiene más de una corrida válida (por ejemplo una repetición por fallo de infraestructura), se usa la media geométrica del costo de esa tarea y brazo. Lo esperado es una corrida válida por celda.
 2. **Costo.** Para cada contraste, razón de costos por tarea `c_P / c_control`, media del logaritmo, y de ahí la razón de medias geométricas (RMG). Intervalo por **bootstrap percentil sobre las tareas**: 10.000 remuestreos, semilla fija. Cota superior unilateral del 95 % (percentil 95) contra el margen 1,5 para la no inferioridad; intervalo del 90 % (percentiles 5 y 95) para la equivalencia descriptiva con margen 1,25 (el intervalo queda dentro de [0,8; 1,25]). Valor p de la **permutación de signos** sobre las diferencias de log, bilateral, **ajustado con Holm** sobre los dos contrastes primarios.
-3. **Cota t adicional `[propuesto, el autor confirma]`.** La simulación de la sección 9 muestra que la cota percentil sola declara no inferioridad con un error tipo I de 5 a 9 % cuando la verdad está justo en el margen (nominal 5 %). Se calcula también la cota t sobre el log: `media + t(0,95; n-1) · s / raíz(n)`. La no inferioridad se declara solo si **las dos** cotas están por debajo de 1,5 (regla doble). Si el CLI no informa la cota t en el momento de congelar, se calcula con esta fórmula.
+3. **Cota t adicional `[confirmado por el autor 2026-10-24]`.** La simulación de la sección 9 muestra que la cota percentil sola declara no inferioridad con un error tipo I de 5 a 9 % cuando la verdad está justo en el margen (nominal 5 %). Se calcula también la cota t sobre el log: `media + t(0,95; n-1) · s / raíz(n)`. La no inferioridad se declara solo si **las dos** cotas están por debajo de 1,5 (regla doble). Si el CLI no informa la cota t en el momento de congelar, se calcula con esta fórmula.
 4. **Éxito.** Por brazo, k/n tareas verdes con intervalo de Wilson del 95 %. Por contraste, **McNemar exacto** sobre los pares discordantes por tarea.
 5. **Panel del juez.** Notas apareadas por tarea, Wilcoxon de rangos con signo (exacto para n chico, ceros descartados), y conteos gana/empata/pierde.
 6. **Se muestran siempre** el número de tareas, los intervalos y la tasa de activación por brazo. Con **menos de 8 tareas el resultado se rotula exploratorio** y no se dan veredictos.
@@ -174,7 +203,7 @@ Las cuentas las hace `node tests/evals/analysis-cli.mjs` (lo construye otro agen
 
 ## 8. Reglas de decisión
 
-Se fijan antes de ver datos. Para cada contraste P contra X (X = N o S) y con n de 8 o más. Sea `m = max(1, parte entera de 0,10 · n)`: con n = 20, m = 2 tareas (10 puntos).
+Se fijan antes de ver datos. Para cada contraste P contra X (X = N o S) y con n de 8 o más. Sea `m = max(1, parte entera de 0,10 · n)`: con n = 16, m = 1 tarea (6,25 puntos). Si el lote termina con menos tareas, se recalcula con el n alcanzado.
 
 **Costo.**
 
@@ -188,7 +217,7 @@ Se fijan antes de ver datos. Para cada contraste P contra X (X = N o S) y con n 
 
 Combinaciones: no inferior y sin diferencia demostrada; no inferior y más caro demostrado ("más caro dentro del margen"); no inferior y más barato demostrado; **no concluyente** (no se cumple la no inferioridad y tampoco hay diferencia demostrada); **peor en costo** (más caro demostrado y no se cumple la no inferioridad).
 
-**Calidad.** Cada puerta se evalúa por contraste. `[propuesto, el autor confirma]` todos los márgenes, por estas razones: con n = 20 una tarea vale 5 puntos, una diferencia de una tarea está dentro del ruido y dos tareas (10 puntos) es lo mínimo que merece una alerta; el mismo margen proporcional para todas las puertas evita elegir márgenes distintos a la medida de cada resultado.
+**Calidad.** Cada puerta se evalúa por contraste. Todos los márgenes están `[confirmado por el autor 2026-10-24]`, por estas razones: con n = 16 una tarea vale 6,25 puntos, y m = 1 es el piso de la fórmula (una diferencia de una tarea está dentro del ruido; más de una merece una alerta); el mismo margen proporcional para todas las puertas evita elegir márgenes distintos a la medida de cada resultado.
 
 | Puerta | Pasa si |
 |---|---|
@@ -205,7 +234,7 @@ Combinaciones: no inferior y sin diferencia demostrada; no inferior y más caro 
 - **Pignolo mejor que X en costo:** más barato demostrado con las cuatro puertas en verde. "Mejor en éxito" solo si el McNemar muestra a P mejor.
 - **Sin diferencia demostrada:** en todo otro caso; se decide por lo más simple, como pide el protocolo, y se informa.
 
-**Límite de lo que puede decir la puerta Q1.** La simulación de la sección 9 muestra que el McNemar exacto casi no tiene potencia con tantas tareas: una caída de 20 puntos en el éxito (0,9 contra 0,7) se detecta con 19 % de probabilidad con 20 tareas. Q1 es una red de seguridad contra una caída grande, no una demostración de no inferioridad en éxito. Una respuesta de "sin pérdida de calidad observada" se escribe así y no como "calidad equivalente".
+**Límite de lo que puede decir la puerta Q1.** La simulación de la sección 9 muestra que el McNemar exacto casi no tiene potencia con tantas tareas: una caída de 20 puntos en el éxito (0,9 contra 0,7) se detecta con 11 % de probabilidad con 16 tareas (19 % con 20). Q1 es una red de seguridad contra una caída grande, no una demostración de no inferioridad en éxito. Una respuesta de "sin pérdida de calidad observada" se escribe así y no como "calidad equivalente".
 
 ## 9. Potencia
 
@@ -335,6 +364,7 @@ Lectura con r = 1 (una corrida por tarea y brazo, que es el diseño propuesto), 
 - **Error tipo I:** el bootstrap solo en el margen da 5 a 9 % (nominal 5 %) y la regla doble 4 a 7 %. La falsa alarma de la diferencia con el IC del 90 % es de 10 a 18 % (nominal 10 %), peor con 8 y 12 tareas: por eso la afirmación de diferencia exige además la permutación de signos con Holm.
 - **Equivalencia dentro de [0,8; 1,25]:** solo es alcanzable con sigma_int baja y 16 a 20 tareas o más (83 % con 0,15 y 16 tareas, 90 % con 20; con 20 tareas, 59 % con 0,25 y 10 % con 0,40). Es descriptiva, no una conclusión del diseño.
 - **Dos repeticiones por tarea (r = 2) ayudan poco:** a igual n, la potencia sube unos pocos puntos (por ejemplo, con sigma_int de 0,25 y n = 20, "NI si razón 1,2" pasa de 81 a 83 %), porque la interacción tarea por brazo domina al ruido entre corridas. Duplicar el costo de las corridas rinde menos que agregar tareas.
+- **Con N = 16 (el diseño elegido), r = 1:** descartar 1,5 veces sin efecto real tiene 100 %, 100 % y 87 % de potencia para sigma_int de 0,15, 0,25 y 0,40; si el costo real de P es un 20 % mayor, 92 %, 72 % y 47 % con el bootstrap solo (89 %, 66 % y 43 % con la regla doble); detectar 0,8 con el IC del 90 % da 92 %, 72 % y 47 %, y con el umbral de Holm 77 %, 53 % y 29 %. El error tipo I en el margen es de 7 %, 7 % y 6 % con el bootstrap solo y de 5 %, 5 % y 4 % con la regla doble. La equivalencia dentro de [0,8; 1,25] llega a 83 %, 42 % y 6 %. En éxito, el McNemar exacto detecta una caída de 0,9 a 0,7 con 11 % de probabilidad. Con interacción tarea por brazo moderada o alta (0,25 o más), N = 16 queda corto para distinguir un 20 % de diferencia.
 - **Éxito binario:** el McNemar exacto tiene muy poca potencia. Con 20 tareas detecta una caída de 0,9 a 0,7 con 19 % de probabilidad, y con 30 tareas con 36 %. Si los dos brazos están cerca del techo (0,9 contra 0,9) hay solo unos 3,6 pares discordantes esperados con 20 tareas. **Con este tamaño no se puede afirmar no inferioridad ni diferencia en el éxito,** salvo diferencias muy grandes; el éxito es un chequeo de seguridad y un dato descriptivo.
 - **Lo que el diseño no puede:** detectar efectos menores a ±15 a 20 % de costo, demostrar equivalencia con sigma_int de 0,25 o más, o probar que la calidad no cae.
 
@@ -343,10 +373,10 @@ Lectura con r = 1 (una corrida por tarea y brazo, que es el diseño propuesto), 
 | Amenaza | Mitigación o reconocimiento |
 |---|---|
 | El plugin no se activa | La activación se informa por corrida y por brazo; ITT es el primario; las variantes forzadas son análisis aparte y rotulado. Si la activación es baja, la comparación mide "instalar el plugin" y se dice |
-| Prompts que casi dictan la solución | Auditoría del prompt (4.4); reglas del prompt: interfaz fijada, nada de la solución interna |
+| Prompts que casi dictan la solución | Auditoría del prompt (4.4); reglas del prompt: interfaz fijada. **Limitación que no se mitiga y se declara (4.2):** como los tests ocultos aseveran textos exactos, HTML y firmas, casi todos los prompts filtran parte de la solución; el diseño mide ejecución de una especificación cerrada, no planificación de una abierta |
 | Validez de los tests ocultos | Rojo en el padre, verde en el commit, repetido 3 veces; auditoría por aserción; control con soluciones alternativas en una submuestra (OpenAI sobre SWE-bench Verified) |
 | Juez de la misma familia que los ejecutores | Declarado; criterios binarios; ciegas; dos pasadas; revisión humana de una submuestra; las métricas deterministas deciden |
-| Una sola app privada y un solo ecosistema | Reconocido: no generaliza a otros lenguajes, stacks ni modelos |
+| Una sola app privada y un solo ecosistema | Reconocido: no generaliza a otros lenguajes, stacks ni modelos. Las 16 tareas salen de una sola rama de una app, con un único modelo y esfuerzo |
 | Ajuste de los plugins sobre las tareas de prueba | Conjunto de desarrollo separado del de validación; congelado por hash; sin reajuste después |
 | Parada opcional | n fijo; ninguna tarea ni repetición se agrega después de ver resultados; la mirada intermedia solo para fallas del arnés, declarada |
 | Comparaciones múltiples | Holm sobre los dos contrastes primarios; las demás cifras se rotulan secundarias o exploratorias (Kitchenham et al.) |
@@ -363,30 +393,47 @@ Lectura con r = 1 (una corrida por tarea y brazo, que es el diseño propuesto), 
 
 ## 11. Presupuesto
 
-Modelo de costo con las medianas observadas por corrida (E1, medición anterior): tareas chicas de 0,30 a 0,60 USD (central 0,45) y medianas de 0,70 a 1,10 USD (central 0,90); las corridas de superpowers con invocación forzada costaron un 15 a 25 % más. Mezcla propuesta para 20 tareas: 8 chicas y 12 medianas, 60 corridas.
+Modelo de costo con las medianas observadas por corrida (E1, medición anterior): tareas chicas de 0,30 a 0,60 USD (central 0,45) y medianas de 0,70 a 1,10 USD (central 0,90); las corridas de superpowers con invocación forzada costaron un 15 a 25 % más. Mezcla de N = 16: 7 chicas y 9 medianas, 48 corridas (21 chicas y 27 medianas).
 
 | Concepto | Bajo | Central | Alto | Supuesto |
 |---|---|---|---|---|
-| 60 corridas de ejecución | 32,4 | 43,2 | 54,0 | 24 corridas chicas y 36 medianas con los costos de arriba |
-| Sobrecosto si superpowers se activa | 0,0 | 2,9 | 4,5 | 0, 20 y 25 % sobre las 20 corridas de S |
-| Repeticiones por fallos de infraestructura | 3,2 | 4,6 | 5,9 | 10 % del costo de ejecución (alrededor de 6 de 60 corridas) |
-| Prueba del arnés en el conjunto de desarrollo y control con soluciones alternativas | 3,0 | 4,0 | 5,0 | 3 corridas de prueba y 5 de control (4.4) |
-| Juez con modelo | 10,0 | 14,0 | 18,0 | 40 llamadas (20 tareas por 2 pasadas) de 0,25 a 0,45 USD. **Supuesto sin medir (E0):** se calibra con una llamada sobre el conjunto de desarrollo antes de congelar |
-| **Total estimado** | **48,6** | **68,7** | **87,4** | |
+| 48 corridas de ejecución | 25,2 | 33,8 | 42,3 | 21 corridas chicas y 27 medianas con los costos de arriba |
+| Sobrecosto si superpowers se activa | 0,0 | 2,3 | 2,8 | 0, 20 y 25 % sobre las 16 corridas de S |
+| Repeticiones por fallos de infraestructura | 2,5 | 3,4 | 4,2 | 10 % del costo de ejecución (alrededor de 5 de 48 corridas) |
+| Prueba del arnés en el conjunto de desarrollo y control con soluciones alternativas | 3,0 | 4,0 | 5,0 | 3 corridas de prueba y 5 de control (4.4). Las de prueba ya están dentro del gasto de desarrollo |
+| Juez con modelo | 8,0 | 11,2 | 14,4 | 32 llamadas (16 tareas por 2 pasadas) de 0,25 a 0,45 USD. **Supuesto sin medir (E0):** se calibra con una llamada sobre el conjunto de desarrollo antes de congelar |
+| **Total estimado de la validación** | **38,7** | **54,7** | **68,7** | |
 
-Con N = 12 (5 chicas, 7 medianas) el total central baja a unos 43 USD. Las cifras del juez, la variación del sobrecosto de superpowers y la proporción de repeticiones son los supuestos más flojos.
-
-**Tope de gasto total:** `[a fijar]`. Lo razonable es un tope que cubra al menos el escenario alto (alrededor de 90 USD para 20 tareas) o elegir un N menor. **Tope por corrida:** propuesto 3 USD, unas 3 veces el costo central de una mediana `[propuesto, el autor confirma]`. Qué se hace si se agota: sección 5. El gasto fuera del arnés (juez, controles) se registra en el mismo libro de gastos.
+**Tope de gasto total acumulado: 75 USD** `[confirmado por el autor 2026-10-24]`. El libro de gastos cuenta todos los experimentos y ya hay unos 29,2 USD gastados en el desarrollo y en mediciones anteriores, así que **quedan unos 45 USD**. Contra esa cifra, el escenario bajo (38,7) entra, el central (54,7) lo pasa en unos 10 USD (menos, porque parte de la línea de prueba del arnés ya está gastada) y el alto (68,7) en unos 24. Las cifras del juez, el sobrecosto de superpowers y la proporción de repeticiones son los supuestos más flojos. Con ese tope, **es posible que el lote termine antes de las 16 tareas**: la regla de la sección 5 lo cubre (el arnés no lanza una corrida que pueda pasar el tope, se publica con el n alcanzado, y con menos de 8 tareas el resultado es exploratorio). No se amplía el tope para "rescatar" un resultado. **Tope por corrida: 3 USD**, unas 3 veces el costo central de una mediana `[confirmado por el autor 2026-10-24]`. El gasto fuera del arnés (juez, controles) se registra en el mismo libro de gastos.
 
 ## 12. Procedimiento
 
-1. **Construir las tareas** (carpeta privada, fuera del repositorio): aplicar la regla de selección (4.2), preparar el commit padre y el prompt, los tests ocultos (4.3), la auditoría (4.4) y la rúbrica del juez. No gasta tokens salvo la auditoría y el control (sección 11).
-2. **Prueba del arnés** sobre el conjunto de desarrollo: una corrida por brazo para comprobar que los tres brazos corren, que la activación, el costo y los árboles se miden. Esas corridas no entran en las conclusiones.
-3. **Calendario:** se genera con la semilla (tareas y brazos barajados) y se guarda completo.
-4. **Congelado:** el arnés escribe un archivo con el hash del conjunto de tareas (prompts, commits padre, tests, rúbricas), las identidades de los plugins (commit de Pignolo, versión o commit de superpowers), la versión del CLI y el modelo resuelto, el hash del `CLAUDE.md` neutro y del contenido de la configuración, los topes, la semilla, el calendario, los hashes de los scripts de análisis y el commit de esta ficha. El comando es el del arnés de tres brazos `[a completar cuando el arnés lo defina]`. Se calcula el SHA-256 del archivo, se anota en los campos del autor y se crea una etiqueta de git (propuesta: `comparacion-3-brazos-preinscrita`; sin push). Las cuentas del arnés no cambian entre el congelado y el final.
-5. **Lote:** corre el calendario completo con el OK del autor para el gasto. Cada bloque de tarea corre sus tres brazos seguidos; los fallos de infraestructura se anotan y se repiten; nada se descarta en silencio.
-6. **Panel de calidad:** métricas deterministas sobre cada resultado; el juez en dos pasadas sobre el paquete a ciegas (nombres neutros, orden mezclado), y el autor califica a mano la submuestra.
-7. **Paquete a ciegas:** el arnés arma el paquete y la clave aparte; el juez no sabe de qué brazo es cada resultado.
-8. **Análisis:** `node tests/evals/analysis-cli.mjs ...` (sección 7) sobre el CSV de la comparación. Se guarda la salida `--json` junto con el CSV.
-9. **Informe:** se publican todos los resultados, también los nulos o negativos, con el n, los intervalos y la tasa de activación. El CSV es el dato crudo, una fila por corrida. En el repositorio no hay contenido privado: ni nombres, ni rutas, ni archivos, ni commits de la app. Las tareas se describen de forma genérica ("commits reales de una app privada") y por id y estrato.
-10. **Cambios a esta ficha después del congelado:** solo aclaraciones fechadas al final que no cambien reglas, umbrales ni el conjunto de tareas. Cualquier otro cambio invalida la preinscripción y se rotula como tal.
+Los comandos son los del arnés (`tests/evals/harness/README.md`); todos menos `batch`/`run` son locales y gratis. `batch` y `run` gastan tokens y no corren sin el OK explícito del autor para el gasto.
+
+1. **Tareas candidatas** (carpeta privada, fuera del repositorio): ya armadas y auditadas según 4.2 a 4.4. No gasta tokens.
+2. **Prueba del arnés** sobre el conjunto de desarrollo: ya hecha en la fase de desarrollo (apéndice). Esas corridas no entran en las conclusiones.
+3. **Commit de preinscripción:** el commit de esta ficha, con las decisiones del autor del 2026-10-24. Su hash es el que recibe el congelado.
+4. **Selección de las 16:** `node tests/evals/select-validation.mjs --input <candidatas> --output <selección> --small 7 --medium 9 --seed 20261024` (4.2). Si una tarea elegida resulta inválida antes del congelado, la reemplaza la primera de la reserva de su estrato y el motivo queda anotado. Las 16 se declaran en la configuración local del arnés con `set: "validation"`.
+5. **Rúbrica del juez** (6.1): se concreta para cada una de las 16 tareas y queda fija antes del congelado.
+6. **Congelado:** `node tests/evals/harness/run.mjs freeze --prereg <hash del commit de preinscripción>` escribe `freeze.json` en la carpeta privada con el hash de las tareas de validación (prompt, commit base, tests ocultos, comandos de aceptación y de la suite, archivos de alcance), la identidad de los plugins (el hash del árbol git de la carpeta del plugin), la versión del CLI, el modelo y el esfuerzo. `node tests/evals/harness/run.mjs freeze --check` verifica sin escribir; `run` se niega, antes de gastar, a lanzar una tarea de validación si algo cambió. **Lo que el congelado del arnés no hashea** (la rúbrica del juez, el calendario, los scripts de análisis y el `CLAUDE.md` neutral) se fija de otra manera: los scripts y el `CLAUDE.md` neutral están en el repositorio en el commit de preinscripción o en uno anterior, y el SHA-256 de la rúbrica y del calendario se anotan en una aclaración fechada al final de esta ficha (no cambia reglas). El SHA-256 de `freeze.json` y el commit de preinscripción se anotan en los campos del autor del mismo modo, y se crea una etiqueta de git (propuesta: `comparacion-3-brazos-preinscrita`; sin push). Las cuentas del arnés no cambian entre el congelado y el final.
+7. **Calendario:** `node tests/evals/harness/run.mjs schedule --tasks <las 16 ids> --arms N,S,P --seed 20261025` baraja las tareas y, dentro de cada una, los tres brazos, y escribe `schedule-20261025.json`. Misma semilla y mismos argumentos dan el mismo orden.
+8. **Lote:** `node tests/evals/harness/run.mjs batch --schedule schedule-20261025.json --experiment <nombre> --dry-run` muestra el plan, el gasto acumulado, el peor caso y el estado del congelado sin gastar. Con el OK del autor se repite sin `--dry-run`: corre, en serie y por entrada, `prepare`, `run`, `accept` (con el panel de calidad) y `row`; se detiene en el primer error del arnés y se puede relanzar con el mismo calendario (salta lo que ya tiene fila). Los fallos de infraestructura se repiten con `batch --schedule ... --experiment <nombre> --retry-infra`, hasta 2 veces por falla. Nada se descarta en silencio.
+9. **Reglas de lectura de las corridas inválidas** (iguales a las de la sección 5):
+   - **Fallo de infraestructura** (error de la API, límite de uso, caída del arnés, corte de red, falla nativa del proceso): es **inválido** y se repite con `--retry-infra`, hasta 2 veces.
+   - **Tope por corrida (`budget_cap`) o corte por tiempo del modelo:** es un **resultado**, no se repite. Cuenta como no verde y con costo censurado (igual al tope, marcado). El arnés las registra como inválidas con ese motivo; al analizar se reclasifican como resultado censurado y no se repiten ni se esconden.
+   - **Nunca se repite una corrida por un mal resultado.**
+10. **Panel de calidad:** métricas deterministas sobre cada resultado (corre dentro de `accept`); `blind` arma el paquete a ciegas con nombres neutros y la clave aparte, el juez califica en dos pasadas y `unblind` pasa las notas a `pignolo2-grades.json`; el autor califica la submuestra del sorteo de 6.1.
+11. **Análisis:** `node tests/evals/analysis-cli.mjs --csv tests/evals/pignolo2-runs.csv --experiment <nombre> --contrasts "P:N,P:S,S:N" --primary "P:N,P:S" --margin 1.5 --seed 20261026 --task-set-file <selección> --grades tests/evals/pignolo2-grades.json --json` (sección 7). S contra N queda exploratorio. Se guarda la salida `--json` junto con el CSV.
+12. **Informe:** se publican todos los resultados, también los nulos o negativos, con el n, los intervalos y la tasa de activación. El CSV es el dato crudo, una fila por corrida. En el repositorio no hay contenido privado: ni nombres, ni rutas, ni archivos, ni commits de la app. Las tareas se describen de forma genérica ("commits reales de una app privada") y por id y estrato.
+13. **Cambios a esta ficha después del congelado:** solo aclaraciones fechadas al final que no cambien reglas, umbrales ni el conjunto de tareas. Cualquier otro cambio invalida la preinscripción y se rotula como tal.
+
+## Apéndice: Fase de desarrollo (no entra en las conclusiones)
+
+Resultados de la fase de desarrollo, que sirvió para depurar el arnés. Se anotan por transparencia y **no cuentan en ninguna conclusión** de esta comparación.
+
+- **Corridas:** 9 válidas, 3 tareas de desarrollo por los 3 brazos con 1 repetición. La corrida mediana de superpowers se cortó con un código de salida nativo de Windows y se repitió (fallo de infraestructura).
+- **Razones de costo (IC 95 %):** P sobre N 1,045 (0,96 a 1,10); S sobre N 0,977 (0,78 a 1,13); P sobre S 1,070 (0,91 a 1,39).
+- **Dispersión:** la dispersión de los log-cocientes de costo apareados por tarea fue de 0,07 a 0,22 según el contraste. Con n = 3 no es una estimación confiable de la interacción tarea por brazo.
+- **Activación:** ningún plugin se activó solo en ninguna corrida de desarrollo (coincide con la medición anterior, sección 2.1).
+- **Hipótesis posterior a ver los datos (no es un resultado):** un test oculto de la tarea mediana de desarrollo, sobre etiquetas de fechas que cruzan de año, falló en 4 de 4 corridas sin Pignolo y sin un plan forzado, y pasó en 5 de 5 con Pignolo cargado. Se anota como hipótesis para examinar en la validación; con una sola tarea no sostiene ninguna afirmación.
+- **Panel de calidad:** `tsc` real (42 errores preexistentes) y ESLint corrieron en el panel de calidad de esas corridas.
