@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { runPaths } from './config.mjs';
-import { parseStream, findEscape, invalidReasons } from './metrics.mjs';
+import { parseStream, findEscape, invalidReasons, terminationFields } from './metrics.mjs';
 import { parseOptionsFor } from './execute.mjs';
 
 export function remetricRun(cfg, args) {
@@ -25,6 +25,9 @@ export function remetricRun(cfg, args) {
   const { resultText, ...parsed } = parseStream(text, parseOptionsFor(cfg, arm, prompt, synced));
   const escapedCwd = findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir });
   const merged = { ...old, ...parsed, escapedCwd };
+  // How it ended and the censored cost, from the fresh stream fields and the exit data of the run (the silence at the kill is kept).
+  if (merged.hangSilenceS === undefined) merged.hangSilenceS = cfg.hangSilenceS;
+  Object.assign(merged, terminationFields(merged, { perRunCapUsd: cfg.perRunCapUsd }));
   merged.invalidReasons = invalidReasons(merged);
   const changed = [...new Set([...Object.keys(old), ...Object.keys(merged)])]
     .filter((k) => JSON.stringify(old[k]) !== JSON.stringify(merged[k]));

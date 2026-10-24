@@ -1,6 +1,7 @@
 // Fake `claude` for the harness tests: spends nothing, prints plausible stream-json.
 // FAKE_CLAUDE_MODE is a comma list of modes:
-//   ok (default) | edit | hang | contaminated | nocost | noplugin | budget | fail | ask
+//   ok (default) | edit | hang | busy | apierror | contaminated | nocost | noplugin | budget | fail | ask
+//   hang: writes the init and goes silent. busy: keeps writing assistant messages until it is killed. apierror: ends with an API overload error result.
 //   slash | noagents | eol | eol-few | skill | hook | neutral | sync | sync-plugin | nm-modify | src-nm-modify | worktree | worktree-gone | branch-only | process-files | only-excluded | cfg-write | escape
 // FAKE_CLAUDE_LOG: file where the stub records argv, cwd, CLAUDE_CONFIG_DIR, env names and stdin.
 // FAKE_CLAUDE_TEXTS: JSON list of {text, sub} extra assistant messages after the first one ("sub": a subagent message).
@@ -55,6 +56,10 @@ out({
 
 if (has('hang')) {
   setInterval(() => {}, 1000);
+} else if (has('busy')) {
+  // An agent that is still working normally when the wall timeout comes: a message every few milliseconds.
+  let n = 0;
+  setInterval(() => out({ type: 'assistant', parent_tool_use_id: null, message: { content: [{ type: 'text', text: `step ${n++}` }] } }), 30);
 } else {
   const feature = 'exports.a = 1;\nexports.b = 2;\nexports.c = 3;\n';
   if (has('edit')) {
@@ -176,6 +181,7 @@ if (has('hang')) {
   const result = { type: 'result', subtype: 'success', is_error: false, duration_ms: 1234, num_turns: 4, result: 'Done.' };
   if (has('budget')) Object.assign(result, { subtype: 'error_max_budget_usd', is_error: true, result: undefined });
   if (has('fail')) Object.assign(result, { subtype: 'error_during_execution', is_error: true });
+  if (has('apierror')) Object.assign(result, { subtype: 'success', is_error: true, result: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}' });
   if (process.env.FAKE_CLAUDE_RESULT) result.result = process.env.FAKE_CLAUDE_RESULT.split(' // ').join('\n');
   if (has('ask')) result.result = `${'Long preamble. '.repeat(200)}Which option do you prefer, A or B?`;
   if (!has('nocost')) {
@@ -190,5 +196,5 @@ if (has('hang')) {
   }
   out(result);
   process.stderr.write('fake stderr\n');
-  if (has('fail')) process.exitCode = 1;
+  if (has('fail') || has('apierror')) process.exitCode = 1;
 }

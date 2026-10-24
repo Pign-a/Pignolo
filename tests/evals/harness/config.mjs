@@ -34,6 +34,9 @@ export const DEFAULT_BLIND_EXCLUDE = [
 export const SETS = ['dev', 'validation'];
 export const DEFAULT_QUALITY_TIMEOUT_MS = 300000;
 export const DEFAULT_MUTATION_TIMEOUT_MS = 1800000;
+// A wall timeout after more than this many seconds without output from claude is a hang (an infrastructure fault), not a model result.
+export const DEFAULT_HANG_SILENCE_S = 120;
+export const DEFAULT_ACTIVITY_POLL_MS = 500;
 
 // contrasts: the comparisons the analysis makes, [{ control, test, label }]. Written as { control, test, label } or [control, test, label].
 export function normalizeContrasts(list, armIds) {
@@ -120,6 +123,9 @@ export function loadConfig(file = DEFAULT_CONFIG) {
   }
   if (!(Number(cfg.perRunCapUsd) > 0)) throw new Error('perRunCapUsd debe ser un número mayor que 0');
   if (!(Number(cfg.totalCapUsd) > 0)) throw new Error('totalCapUsd debe ser un número mayor que 0');
+  for (const k of ['hangSilenceS', 'activityPollMs']) {
+    if (cfg[k] !== undefined && !(Number(cfg[k]) > 0)) throw new Error(`${k} debe ser un número mayor que 0`);
+  }
   if (cfg.effort !== undefined && !EFFORTS.includes(cfg.effort)) throw new Error(`effort debe ser uno de: ${EFFORTS.join(', ')}`);
   // The accept/full commands run through the shell: a "%" in the path would be expanded by cmd.
   if (String(cfg.workRoot).includes('%')) throw new Error('workRoot no puede contener "%" (cmd lo expande en los comandos de aceptación)');
@@ -149,6 +155,8 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     blindExcludePaths: DEFAULT_BLIND_EXCLUDE,
     qualityTimeoutMs: DEFAULT_QUALITY_TIMEOUT_MS,
     mutationTimeoutMs: DEFAULT_MUTATION_TIMEOUT_MS,
+    hangSilenceS: DEFAULT_HANG_SILENCE_S,
+    activityPollMs: DEFAULT_ACTIVITY_POLL_MS,
     tscCmd: null,
     eslintCmd: null,
     preregRepo: REPO_ROOT,

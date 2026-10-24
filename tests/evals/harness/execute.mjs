@@ -4,7 +4,7 @@ import path from 'node:path';
 import { runPaths, otherPlugins, isFixtureTask, taskConfig, assertArmAllowed, hasPlugin, taskSet } from './config.mjs';
 import { requireFreeze } from './freeze.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
-import { parseStream, findEscape, invalidReasons, assistantTexts, formatAssistantText } from './metrics.mjs';
+import { parseStream, findEscape, invalidReasons, terminationFields, assistantTexts, formatAssistantText } from './metrics.mjs';
 import { assertWithinTotalCap } from './ledger.mjs';
 import { manifest, manifestBrief, repairSnapshot, snapshotPaths, sourceNm, dropSnapshot } from './nm.mjs';
 import { measureTrees } from './trees.mjs';
@@ -167,6 +167,7 @@ export async function runTask(cfg, args, deps = {}) {
     env,
     stdinPath,
     timeoutMs: cfg.timeoutMs,
+    activityPollMs: cfg.activityPollMs,
     stdoutPath: streamPath,
     stderrPath: path.join(dir, 'stderr.txt'),
   });
@@ -222,7 +223,7 @@ export async function runTask(cfg, args, deps = {}) {
     set: taskSet(cfg, task), freezeHash: freeze ? freeze.freezeHash : null, preregCommit: freeze ? freeze.preregCommit : null,
     hasPlugin: hasPlugin(cfg, arm),
     startedAt, finishedAt: new Date().toISOString(),
-    wallS: r.wallS, timedOut: r.timedOut, exitCode: r.code, signal: r.signal,
+    wallS: r.wallS, timedOut: r.timedOut, silentTailS: r.silentTailS ?? null, hangSilenceS: cfg.hangSilenceS, exitCode: r.code, signal: r.signal,
     droppedEnvNames: dropped,
     leftover_processes: guard('procesos', () => (procBefore && procAfter ? newProcesses(procBefore, procAfter) : null)),
     config_dir_delta: guard('configDir', () => delta(cfgBefore, listNames(cfg.configDir))),
@@ -243,6 +244,8 @@ export async function runTask(cfg, args, deps = {}) {
     treesError,
     ...m,
   };
+  // How it ended (ok, budget cap, model timeout, infrastructure fault, hang) and the censored cost of a run cut by the cap or the time.
+  Object.assign(metrics, terminationFields(metrics, { perRunCapUsd: cfg.perRunCapUsd }));
   metrics.postRunError = post;
   metrics.invalidReasons = invalidReasons(metrics);
   try {
@@ -253,7 +256,7 @@ export async function runTask(cfg, args, deps = {}) {
     metrics.invalidReasons = invalidReasons(metrics);
     fs.writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify({
       task, arm, rep, experiment: cfg.experiment, finishedAt: metrics.finishedAt, costUsd: metrics.costUsd ?? null,
-      postRunError: metrics.postRunError, invalidReasons: metrics.invalidReasons,
+      termination: metrics.termination, censored: metrics.censored, postRunError: metrics.postRunError, invalidReasons: metrics.invalidReasons,
     }));
   }
   return metrics;

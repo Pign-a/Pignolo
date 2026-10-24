@@ -14,9 +14,9 @@ import { summarize, formatSummary, rowsFromCsv } from './summary.mjs';
 import { qualityRun } from './quality.mjs';
 import { freeze, verifyFreeze } from './freeze.mjs';
 import { buildSchedule, writeSchedule, describeSchedule } from './schedule.mjs';
-import { runBatch } from './batch.mjs';
+import { runBatch, checkMaxRetries, MAX_RETRIES_LIMIT } from './batch.mjs';
 
-const FLAGS = new Set(['force', 'allow-leaks', 'include-contaminated', 'json', 'check', 'dry-run']);
+const FLAGS = new Set(['force', 'allow-leaks', 'include-contaminated', 'json', 'check', 'dry-run', 'retry-infra']);
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -98,7 +98,12 @@ async function main() {
     for (const l of describeSchedule(sch)) console.log(l);
     if (sch.skipped.length) console.log(`combinaciones no admitidas por la tarea, omitidas: ${sch.skipped.join(', ')}`);
     console.log(`calendario escrito en ${file}`);
-  } else if (cmd === 'batch') { need(o, 'schedule'); await runBatch(cfg, { schedule: o.schedule, dryRun: Boolean(o['dry-run']) }); }
+  } else if (cmd === 'batch') {
+    need(o, 'schedule');
+    // --retry-infra reruns the infrastructure faults (at most --max-retries times each, 2 by default and at most).
+    const maxRetries = o['max-retries'] === undefined ? MAX_RETRIES_LIMIT : checkMaxRetries(Number(o['max-retries']));
+    await runBatch(cfg, { schedule: o.schedule, dryRun: Boolean(o['dry-run']), retryInfra: Boolean(o['retry-infra']), maxRetries });
+  }
   else if (cmd === 'remetric') { need(o, 'task', 'arm', 'rep'); print(remetricRun(cfg, run(o))); }
   else if (cmd === 'clean') { need(o, 'task', 'arm', 'rep'); print(cleanRun(cfg, run(o), { force: Boolean(o.force) })); }
   else if (cmd === 'row') { need(o, 'task', 'arm', 'rep'); print(appendRow(cfg, { ...run(o), note: o.note })); }

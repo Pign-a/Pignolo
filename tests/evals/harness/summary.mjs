@@ -16,7 +16,7 @@ const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache
 // The quality figures the summary prints per task and arm (median and range).
 export const QUALITY_KEYS = ['tsc_new_errors', 'eslint_new_errors', 'out_of_scope_files', 'diff_lines', 'tests_added'];
 const diffLinesOf = (r) => (r.diff_lines !== null && r.diff_lines !== undefined ? r.diff_lines : r.lines_added !== null && r.lines_added !== undefined ? r.lines_added + (r.lines_removed || 0) : null);
-const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid'];
+const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid', 'censored'];
 
 export function normalizeRows(rows) {
   return rows.map((r) => {
@@ -45,14 +45,22 @@ function stat(xs) {
 const overlap = (a, b) => a.min <= b.max && b.min <= a.max;
 const runId = (r) => `${r.task}/${r.arm}/${r.rep}`;
 
+// A run cut by the per-run budget cap or by the wall timeout while the agent was working. It is a result, not a fault: it stays
+// in the analysis as NOT green, with a censored cost (the reported cost, or the per-run cap).
+export const isCensored = (r) => r.censored === true || r.censored === 'true';
+
 // Green: the command exited 0, no suite failed to run, no test failed and at least one test passed.
 // Unknown suite information (no report, no summary line) does not block; the exit code still has to be 0.
+// A censored run is never green, whatever the hidden tests say (accept is still run, for the record).
 export function isGreen(r) {
-  return r.accept_exit === 0
+  return !isCensored(r)
+    && r.accept_exit === 0
     && (r.accept_suites_failed === null || r.accept_suites_failed === 0)
     && r.accept_fail === 0 && r.accept_pass !== null && r.accept_pass > 0;
 }
 const hasAccept = (r) => r.accept_pass !== null && r.accept_fail !== null;
+// A censored run counts in the acceptance tally (as a run that is not green) even when its hidden tests were not run.
+const countsInAccept = (r) => hasAccept(r) || isCensored(r);
 
 const CONTAMINATION_ONLY = new Set(['contaminated', 'own_plugin_not_loaded']);
 function reasonsOf(r) {
@@ -80,9 +88,9 @@ function reweigh(r, weights, modelFactor) {
 }
 
 function armStats(rows) {
-  const accRows = rows.filter(hasAccept);
-  const pass = accRows.reduce((s, r) => s + r.accept_pass, 0);
-  const fail = accRows.reduce((s, r) => s + r.accept_fail, 0);
+  const accRows = rows.filter(countsInAccept);
+  const pass = accRows.filter(hasAccept).reduce((s, r) => s + r.accept_pass, 0);
+  const fail = accRows.filter(hasAccept).reduce((s, r) => s + r.accept_fail, 0);
   const fullRows = rows.filter((r) => r.full_fail !== null);
   return {
     n: rows.length,
@@ -91,6 +99,8 @@ function armStats(rows) {
     wall: stat(rows.map((r) => r.wall_s)),
     agents: stat(rows.map((r) => r.agents)),
     timedOut: rows.filter((r) => r.timed_out).length,
+    // Cut by the per-run cap or by the wall time while working: valid, not green, censored cost.
+    censored: rows.filter(isCensored).length,
     // Automatic quality panel (accept runs it): medians and ranges; a figure the tools could not compute stays out.
     quality: Object.fromEntries(QUALITY_KEYS.map((k) => [k, stat(rows.map((r) => (k === 'diff_lines' ? diffLinesOf(r) : r[k])))])),
     // Did the run exercise the plugin under test? A run activated it when it called at least one of the plugin's own skills.
@@ -161,8 +171,11 @@ function decideMedium(a, b, grades, ids = ['A', 'B']) {
   if (over.length) return { verdict: 'no pasa', reasons: [...reasons, ...over] };
   const qa = qualityOf(grades, X);
   const qb = qualityOf(grades, Y);
-  if (qa.n < a.n || qb.n < b.n) {
-    reasons.push(`falta la nota de calidad a ciegas de corridas válidas (${X} ${qa.n} de ${a.n}, ${Y} ${qb.n} de ${b.n}): corré blind y unblind`);
+  // A run cut by the cap or the time may have no result to grade: it is not asked for a grade.
+  const needA = a.n - a.censored;
+  const needB = b.n - b.censored;
+  if (qa.n < needA || qb.n < needB) {
+    reasons.push(`falta la nota de calidad a ciegas de corridas válidas (${X} ${qa.n} de ${needA}, ${Y} ${qb.n} de ${needB}): corré blind y unblind`);
     return { verdict: 'pendiente', reasons };
   }
   const bad = [];
@@ -236,15 +249,19 @@ function fixtureEntry({ task, fixtureName, mine, bad, expected, activationOf }) 
   // Decision criterion (author's decision 2026-10-23): the fronts the main thread actually delegated (agents launched),
   // fronts_by_agents_ok. The "Frentes:" line (fronts_ok) is kept as an informational figure that no longer decides.
   const isBool = (v) => v === 'true' || v === 'false' || v === true || v === false;
-  const matched = mine.filter((r) => r.fronts_by_agents_ok === 'true' || r.fronts_by_agents_ok === true);
-  const noData = mine.filter((r) => !isBool(r.fronts_by_agents_ok));
+  // A run cut by the cap or the time did not finish its validation: it is a miss, never "no data".
+  const matched = mine.filter((r) => !isCensored(r) && (r.fronts_by_agents_ok === 'true' || r.fronts_by_agents_ok === true));
+  const noData = mine.filter((r) => !isCensored(r) && !isBool(r.fronts_by_agents_ok));
   const wrong = mine.filter((r) => !matched.includes(r) && !noData.includes(r));
   const reasons = [`fixture ${fixtureName}: ${matched.length}/${mine.length} corridas con los frentes esperados [${want.join(';')}] (medido por los agentes lanzados)`];
-  for (const r of wrong) reasons.push(`${runId(r)}: agentes → [${r.fronts_by_agents || ''}] esperaba [${want.join(';')}]`);
+  for (const r of wrong) {
+    reasons.push(isCensored(r) ? `${runId(r)}: terminada por tope o tiempo (${r.termination || 'censurada'}): cuenta como no acierto, con costo censurado`
+      : `${runId(r)}: agentes → [${r.fronts_by_agents || ''}] esperaba [${want.join(';')}]`);
+  }
   const total = stat(mine.map((r) => r.agents));
   const front = stat(mine.map((r) => r.agents_main));
   reasons.push(`agentes (total, con los de comandos nativos): ${total ? `mediana ${fmt(total.median, 0)} (rango ${fmt(total.min, 0)} a ${fmt(total.max, 0)})` : 'sin dato'}; lanzados por el hilo principal: ${front ? `mediana ${fmt(front.median, 0)} (rango ${fmt(front.min, 0)} a ${fmt(front.max, 0)})` : 'sin dato'}`);
-  const over = mine.filter((r) => noData.indexOf(r) < 0 && ((rule.total !== undefined && r.agents > rule.total) || (rule.front !== undefined && r.agents_main > rule.front)));
+  const over = mine.filter((r) => noData.indexOf(r) < 0 && !isCensored(r) && ((rule.total !== undefined && r.agents > rule.total) || (rule.front !== undefined && r.agents_main > rule.front)));
   for (const r of over) reasons.push(`${runId(r)}: ${rule.text} (obtuvo ${rule.total !== undefined ? r.agents : r.agents_main})`);
   // INFORMATIONAL figure (original criterion, no longer decides): the "Frentes:" line. Printed only if some run printed it.
   const printed = mine.filter((r) => r.fronts_message !== '' && r.fronts_message !== null && r.fronts_message !== undefined);
@@ -325,6 +342,10 @@ export function summarize(rowsIn, {
   }
   const timed = invalidRows.filter((r) => r.timed_out);
   if (timed.length) notes.push(`cortadas por tiempo (cuentan como inválidas y quedan fuera de las cifras): ${timed.map(runId).join(', ')}`);
+  const cutRuns = validRows.filter(isCensored);
+  if (cutRuns.length) {
+    notes.push(`terminadas por tope o tiempo (válidas: cuentan como no verdes, con costo censurado y siguen en el análisis): ${cutRuns.map((r) => `${runId(r)} (${r.termination || 'censurada'})`).join('; ')}`);
+  }
   const dirtyIncluded = includeContaminated ? current.filter((r) => r.contamination) : [];
   if (dirtyIncluded.length) notes.push(`incluidas pese a la contaminación: ${dirtyIncluded.map(runId).join(', ')}`);
   const multi = validRows.filter((r) => /(^|;)\s*multiple_trees\s*(;|$)/.test(r.note || ''));
@@ -416,7 +437,7 @@ export function costPerSolved(rows, setOf = () => 'dev') {
       let tasksWithAcceptance = 0;
       let tasksSolved = 0;
       for (const task of [...new Set(mine.map((r) => r.task))]) {
-        const acc = mine.filter((r) => r.task === task && hasAccept(r));
+        const acc = mine.filter((r) => r.task === task && countsInAccept(r));
         if (!acc.length) continue;
         tasksWithAcceptance += 1;
         if (acc.filter(isGreen).length * 2 > acc.length) tasksSolved += 1;
@@ -470,6 +491,7 @@ export function formatSummary(res) {
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);
       out.push(`   aceptación: ${acc}`);
+      if (s.censored) out.push(`   terminadas por tope o tiempo: ${s.censored} (válidas, no verdes, costo censurado)`);
       const qline = qualityLine(s.quality);
       if (qline) out.push(`   calidad automática (mediana y rango): ${qline}`);
       if (s.eol.m) out.push(`   fin de línea (nota, no entra en la regla): ${s.eol.converted} archivos convertidos en ${s.eol.runs}/${s.eol.m} corridas${s.eol.only ? `, ${s.eol.only} con solo cambio de fin de línea` : ''}`);

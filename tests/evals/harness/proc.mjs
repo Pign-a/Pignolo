@@ -37,9 +37,11 @@ export function newProcesses(before, after) {
   return out;
 }
 
-// Resolves with { code, signal, timedOut, wallS, error }. Never rejects.
+// Resolves with { code, signal, timedOut, silentTailS, wallS, error }. Never rejects.
 // stdinPath: file whose content becomes the child's stdin (null: no stdin).
-export function runProcess({ command, args = [], shell = false, cwd, env, timeoutMs, stdoutPath, stderrPath, stdinPath = null }) {
+// silentTailS: when the wall timeout killed the process, how long its stdout had been silent (no new bytes) up to the kill; null otherwise.
+// A stuck process is told from one that was still working by that silence. The output size is sampled every activityPollMs and at the kill.
+export function runProcess({ command, args = [], shell = false, cwd, env, timeoutMs, stdoutPath, stderrPath, stdinPath = null, activityPollMs = 500 }) {
   return new Promise((resolve) => {
     const t0 = performance.now();
     const outFd = fs.openSync(stdoutPath, 'w');
@@ -48,15 +50,26 @@ export function runProcess({ command, args = [], shell = false, cwd, env, timeou
     let done = false;
     let timedOut = false;
     let timer = null;
+    let poller = null;
+    let silentTailS = null;
+    let lastSize = 0;
+    let lastGrowth = performance.now();
+    const sample = () => {
+      try {
+        const size = fs.fstatSync(outFd).size;
+        if (size !== lastSize) { lastSize = size; lastGrowth = performance.now(); }
+      } catch { /* closed already */ }
+    };
     const finish = (extra) => {
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(poller);
       for (const fd of [outFd, errFd, inFd]) {
         if (fd === null) continue;
         try { fs.closeSync(fd); } catch { /* ignore */ }
       }
-      resolve({ code: null, signal: null, timedOut, wallS: Math.round(((performance.now() - t0) / 1000) * 100) / 100, error: null, ...extra });
+      resolve({ code: null, signal: null, timedOut, silentTailS, wallS: Math.round(((performance.now() - t0) / 1000) * 100) / 100, error: null, ...extra });
     };
     let child;
     try {
@@ -69,6 +82,12 @@ export function runProcess({ command, args = [], shell = false, cwd, env, timeou
     }
     child.on('error', (e) => finish({ error: e.message }));
     child.on('exit', (code, signal) => finish({ code, signal }));
-    timer = setTimeout(() => { timedOut = true; killTree(child.pid); }, timeoutMs);
+    poller = setInterval(sample, Math.max(10, Number(activityPollMs) || 500));
+    timer = setTimeout(() => {
+      sample();
+      silentTailS = Math.round(((performance.now() - lastGrowth) / 1000) * 100) / 100;
+      timedOut = true;
+      killTree(child.pid);
+    }, timeoutMs);
   });
 }

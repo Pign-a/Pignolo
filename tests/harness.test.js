@@ -252,7 +252,10 @@ test('run: el timeout mata el proceso y lo anota', async () => {
     const m = await withEnv({ FAKE_CLAUDE_MODE: 'hang' }, () => runTask(cfg, { task: 't1', arm: 'A', rep: 1 }));
     assert.ok(Date.now() - t0 < 10000, 'volvió');
     assert.strictEqual(m.timedOut, true);
-    assert.strictEqual(m.costUsd, null, 'sin mensaje result no se inventan cifras');
+    assert.strictEqual(m.costReportedUsd, null, 'sin mensaje result no se inventan cifras');
+    assert.strictEqual(m.tokens, null);
+    assert.strictEqual(m.costUsd, 5, 'el costo censurado de un corte por tiempo del modelo es el tope por corrida');
+    assert.deepStrictEqual([m.termination, m.censored], ['model_timeout', true]);
     assert.strictEqual(m.hasResult, false);
     assert.ok(m.wallS >= 0.5 && m.wallS < 8, `wallS=${m.wallS}`);
     assert.ok(fs.existsSync(path.join(runDir(env, 't1', 'A', 1), 'metrics.json')));
@@ -1277,20 +1280,20 @@ test('run: cualquier error después de gastar se anota (post_run_error) y metric
 
 // ---------------------------------------------------------------- corridas inválidas, pesos por modelo, texto final
 
-test('run: tope de presupuesto superado, error y corte por tiempo quedan marcados como inválidos', async () => {
-  const env = setup({ timeoutMs: 800 });
+test('run: el tope de presupuesto y el corte por tiempo del modelo son resultados; el error de ejecución y el cuelgue siguen inválidos', async () => {
+  const env = setup({ timeoutMs: 800, hangSilenceS: 0.3, activityPollMs: 40 });
   try {
     const { runTask } = await imp('execute.mjs');
     const cfgA = await prepared(env, 'A', 1);
     const budget = await withEnv({ FAKE_CLAUDE_MODE: 'budget,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 1 }));
     assert.strictEqual(budget.resultSubtype, 'error_max_budget_usd');
-    assert.deepStrictEqual(budget.invalidReasons.sort(), ['budget_cap', 'is_error']);
+    assert.deepStrictEqual(budget.invalidReasons, [], 'el tope por corrida es un resultado (censurado), no un fallo');
     await prepared(env, 'A', 2);
     const failed = await withEnv({ FAKE_CLAUDE_MODE: 'fail,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 2 }));
-    assert.deepStrictEqual(failed.invalidReasons.sort(), ['exit_nonzero', 'is_error', 'result_not_success']);
+    assert.deepStrictEqual(failed.invalidReasons.sort(), ['execution_error', 'is_error']);
     await prepared(env, 'A', 3);
     const hung = await withEnv({ FAKE_CLAUDE_MODE: 'hang' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 3 }));
-    assert.deepStrictEqual(hung.invalidReasons.sort(), ['no_changes', 'no_result', 'timed_out']);
+    assert.deepStrictEqual(hung.invalidReasons, ['hang'], 'sin actividad hasta el corte: cuelgue, fallo de infraestructura');
     await prepared(env, 'A', 4);
     const ok = await withEnv({ FAKE_CLAUDE_MODE: 'edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 4 }));
     assert.deepStrictEqual(ok.invalidReasons, []);
@@ -1535,7 +1538,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
     assert.strictEqual(COLUMNS.join(','),
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'agent_types', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via', 'result_subtype', 'is_error',
-        'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
+        'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'termination', 'censored', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
         'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
         'set', 'freeze_hash', 'prereg_commit', 'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
         'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note', 'note'].join(','));
@@ -1550,7 +1553,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       cost_usd: '1.5', weighted_tokens: '1200', input: '150', output: '30', cache_read: '1500', cache_write: '600',
       model_tokens: 'fake-model=100/20/1000/400|fake-sub=50/10/500/200',
       wall_s: '42.5', duration_ms: '40000', turns: '4', agents: '2', agents_main: '1', agent_types: '', prompt_prefix_id: '', skill_calls: '3', own_skill_calls: '2', own_hook_ran: 'true', activation_via: 'skill_tool', result_subtype: 'success', is_error: 'false', exit_code: '0',
-      timed_out: 'false', invalid: 'false', invalid_reason: '',
+      timed_out: 'false', invalid: 'false', invalid_reason: '', termination: '', censored: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
       contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', fronts_message: '', fronts_reason: '', fronts_by_agents: '', fronts_by_agents_ok: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
       set: 'dev', freeze_hash: '', prereg_commit: '', tsc_base_errors: '', tsc_result_errors: '', tsc_new_errors: '', eslint_new_errors: '', eslint_new_warnings: '',
@@ -2695,4 +2698,264 @@ test('repo: harness.local.json está en .gitignore y harness.example.json no tra
     const body = fs.readFileSync(path.join(HARNESS, f), 'utf8');
     assert.ok(!/[A-Za-z]:[\\/]Users|\/home\/\w+|pigna(?!ture)/i.test(body), `${f} trae una ruta o nombre personal`);
   }
+});
+
+// ---------------------------------------------------------------- terminaciones: resultados (censura) y fallos de infraestructura
+
+// Una corrida base sin problemas; cada caso de la tabla pisa lo suyo.
+const CLEAN = { hasResult: true, resultSubtype: 'success', isError: false, exitCode: 0, signal: null, timedOut: false, contaminationHits: [], badLines: 0, silentTailS: null };
+
+test('terminación: la tabla de clasificación (infraestructura inválida y repetible; tope y tiempo del modelo son resultados censurados)', async () => {
+  const { classifyTermination, invalidReasons } = await imp('metrics.mjs');
+  const table = [
+    // [nombre, corrida, terminación, censurada, motivos de invalidez]
+    ['finalización normal', {}, 'ok', false, []],
+    ['caída nativa de Windows (0xC0000409) sin resultado', { hasResult: false, resultSubtype: null, isError: null, exitCode: 0xC0000409 }, 'infra_fault', false, ['crash', 'no_result']],
+    ['cualquier código >= 0xC0000000', { hasResult: false, exitCode: 3221225477 }, 'infra_fault', false, ['crash', 'no_result']],
+    ['código de salida negativo', { hasResult: false, exitCode: -1073741819 }, 'infra_fault', false, ['crash', 'no_result']],
+    ['muerto por señal que no fue nuestro timeout', { hasResult: false, exitCode: null, signal: 'SIGKILL' }, 'infra_fault', false, ['crash', 'no_result']],
+    ['sin mensaje result y sin otra causa', { hasResult: false, resultSubtype: null, isError: null }, 'infra_fault', false, ['no_result']],
+    ['tope por corrida (subtipo con "budget")', { resultSubtype: 'error_max_budget_usd', isError: true, exitCode: 1 }, 'budget_cap', true, []],
+    ['tope aunque el subtipo cambie de nombre', { resultSubtype: 'error_budget_exceeded', isError: true, exitCode: 1 }, 'budget_cap', true, []],
+    ['timeout con el agente activo (cola corta)', { hasResult: false, resultSubtype: null, isError: null, timedOut: true, exitCode: 1, silentTailS: 12 }, 'model_timeout', true, []],
+    ['timeout sin dato de actividad: no hay prueba de cuelgue', { hasResult: false, resultSubtype: null, isError: null, timedOut: true, exitCode: 1, silentTailS: null }, 'model_timeout', true, []],
+    ['timeout justo en el límite de 120 s de silencio', { hasResult: false, timedOut: true, exitCode: 1, silentTailS: 120 }, 'model_timeout', true, []],
+    ['timeout con 5 minutos de silencio: cuelgue', { hasResult: false, resultSubtype: null, isError: null, timedOut: true, exitCode: 1, silentTailS: 300 }, 'hang', false, ['hang']],
+    ['el umbral de cuelgue es configurable', { hasResult: false, timedOut: true, exitCode: 1, silentTailS: 2, hangSilenceS: 1 }, 'hang', false, ['hang']],
+    ['error de API: sobrecarga', { resultSubtype: 'success', isError: true, exitCode: 1, finalText: 'API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}' }, 'infra_fault', false, ['is_error', 'api_error']],
+    ['error de API: límite de uso', { resultSubtype: 'error_during_execution', isError: true, exitCode: 1, finalText: 'Claude AI usage limit reached|1700000000' }, 'infra_fault', false, ['is_error', 'api_error']],
+    ['error de API: límite de tasa (429)', { resultSubtype: 'success', isError: true, exitCode: 1, finalText: 'API Error: 429 rate limit exceeded' }, 'infra_fault', false, ['is_error', 'api_error']],
+    ['error de autenticación', { resultSubtype: 'success', isError: true, exitCode: 1, finalText: 'Invalid API key · Please run /login (authentication_error)' }, 'infra_fault', false, ['is_error', 'api_error']],
+    ['error de red', { resultSubtype: 'success', isError: true, exitCode: 1, finalText: 'API Error: fetch failed (ECONNRESET)' }, 'infra_fault', false, ['is_error', 'api_error']],
+    ['error durante la ejecución del CLI', { resultSubtype: 'error_during_execution', isError: true, exitCode: 1, finalText: 'something broke' }, 'infra_fault', false, ['is_error', 'execution_error']],
+    ['no arrancó (el stream no tiene ni el init)', { hasResult: false, resultSubtype: null, isError: null, exitCode: 1, hasInit: false }, 'infra_fault', false, ['no_result', 'failed_to_start', 'exit_nonzero']],
+    ['stream ilegible sin resultado', { hasResult: false, resultSubtype: null, isError: null, badLines: 12 }, 'infra_fault', false, ['no_result', 'corrupt_stream']],
+    ['una línea suelta que no es JSON no es un stream ilegible', { hasResult: false, resultSubtype: null, isError: null, badLines: 1 }, 'infra_fault', false, ['no_result']],
+    ['éxito pero el proceso salió con error: se desconfía', { exitCode: 1 }, 'infra_fault', false, ['exit_nonzero']],
+    ['resultado de error que el arnés no sabe ubicar: inválido, pero no se repite solo', { resultSubtype: 'error_max_turns', isError: true, exitCode: 1, finalText: 'stopped' }, 'infra_fault', false, ['is_error', 'result_not_success']],
+    ['un resultado con éxito después del timeout cuenta como terminado', { timedOut: true, exitCode: 1, silentTailS: 300 }, 'ok', false, []],
+  ];
+  for (const [name, over, term, censored, reasons] of table) {
+    const m = { ...CLEAN, ...over };
+    const c = classifyTermination(m);
+    assert.strictEqual(c.termination, term, `${name}: terminación`);
+    assert.strictEqual(c.censored, censored, `${name}: censurada`);
+    assert.deepStrictEqual([...invalidReasons(m)].sort(), [...reasons].sort(), `${name}: motivos`);
+  }
+});
+
+test('terminación: solo los motivos de infraestructura se repiten solos; un resultado de error que no se sabe ubicar no', async () => {
+  const { isRetryableInfra } = await imp('metrics.mjs');
+  for (const r of ['crash', 'no_result', 'api_error', 'execution_error', 'corrupt_stream', 'failed_to_start', 'hang', 'exit_nonzero']) {
+    assert.strictEqual(isRetryableInfra([r]), true, r);
+  }
+  for (const r of ['contaminated', 'escaped_cwd', 'no_changes', 'nm_changed', 'result_not_success', 'is_error']) {
+    assert.strictEqual(isRetryableInfra([r]), false, r);
+  }
+  assert.strictEqual(isRetryableInfra(['is_error', 'result_not_success']), false);
+  assert.strictEqual(isRetryableInfra(['is_error', 'api_error']), true);
+  assert.strictEqual(isRetryableInfra([]), false);
+});
+
+test('terminación: una corrida censurada sigue siendo válida aunque no haya cambios ni resultado; la contaminación o un escape la invalidan igual', async () => {
+  const { invalidReasons } = await imp('metrics.mjs');
+  const cut = { ...CLEAN, hasResult: false, resultSubtype: null, isError: null, timedOut: true, exitCode: 1, silentTailS: 5, trees: { noChanges: true } };
+  assert.deepStrictEqual(invalidReasons(cut), [], 'sin cambios por tope o tiempo no es "no_changes"');
+  assert.deepStrictEqual(invalidReasons({ ...cut, contaminationHits: ['plugin:other'] }), ['contaminated']);
+  assert.deepStrictEqual(invalidReasons({ ...cut, escapedCwd: 'x' }), ['escaped_cwd']);
+  // Una corrida normal sin cambios sigue siendo no_changes.
+  assert.deepStrictEqual(invalidReasons({ ...CLEAN, trees: { noChanges: true } }), ['no_changes']);
+});
+
+test('terminación: el costo censurado es el informado, o el tope por corrida cuando falta o es cero', async () => {
+  const { terminationFields } = await imp('metrics.mjs');
+  const budget = { ...CLEAN, resultSubtype: 'error_max_budget_usd', isError: true, exitCode: 1 };
+  assert.strictEqual(terminationFields({ ...budget, costUsd: 5.2 }, { perRunCapUsd: 5 }).costUsd, 5.2);
+  assert.strictEqual(terminationFields({ ...budget, costUsd: null }, { perRunCapUsd: 5 }).costUsd, 5);
+  assert.strictEqual(terminationFields({ ...budget, costUsd: 0 }, { perRunCapUsd: 5 }).costUsd, 5);
+  const t = terminationFields({ ...budget, costUsd: null }, { perRunCapUsd: 5 });
+  assert.deepStrictEqual([t.termination, t.censored, t.costReportedUsd], ['budget_cap', true, null]);
+  const timeout = { ...CLEAN, hasResult: false, resultSubtype: null, isError: null, timedOut: true, exitCode: 1, silentTailS: 3, costUsd: null };
+  assert.strictEqual(terminationFields(timeout, { perRunCapUsd: 5 }).costUsd, 5);
+  // Lo que no es censurado no toca el costo.
+  assert.strictEqual(terminationFields({ ...CLEAN, costUsd: 0.5 }, { perRunCapUsd: 5 }).costUsd, 0.5);
+  assert.strictEqual(terminationFields({ ...CLEAN, costUsd: null }, { perRunCapUsd: 5 }).costUsd, null);
+});
+
+test('terminación: parseStream anota si hubo init y cuántas líneas no eran JSON', async () => {
+  const { parseStream } = await imp('metrics.mjs');
+  assert.strictEqual(parseStream('').hasInit, false);
+  const p = parseStream('{"type":"system","subtype":"init","plugins":[]}\nnot json\n');
+  assert.strictEqual(p.hasInit, true);
+  assert.strictEqual(p.badLines, 1);
+});
+
+test('run: tope de presupuesto superado es un resultado censurado, no un fallo: válido, costo del tope si falta, y la fila lo marca', async () => {
+  const env = setup();
+  try {
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    const cfgA = await prepared(env, 'A', 1);
+    const m = await withEnv({ FAKE_CLAUDE_MODE: 'budget,nocost,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(m.resultSubtype, 'error_max_budget_usd');
+    assert.deepStrictEqual([m.termination, m.censored], ['budget_cap', true]);
+    assert.deepStrictEqual(m.invalidReasons, []);
+    assert.strictEqual(m.costReportedUsd, null);
+    assert.strictEqual(m.costUsd, 5, 'sin costo informado, el tope por corrida');
+    const row = appendRow(cfgA, { task: 't1', arm: 'A', rep: 1 });
+    assert.deepStrictEqual([row.termination, row.censored, row.invalid, row.invalid_reason, row.cost_usd], ['budget_cap', 'true', false, '', 5]);
+    const [csv] = parseCsv(fs.readFileSync(cfgA.csvPath, 'utf8'));
+    assert.deepStrictEqual([csv.termination, csv.censored, csv.invalid], ['budget_cap', 'true', 'false']);
+    // Con costo informado se queda el informado.
+    await prepared(env, 'A', 2);
+    const m2 = await withEnv({ FAKE_CLAUDE_MODE: 'budget,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 2 }));
+    assert.deepStrictEqual([m2.termination, m2.costUsd, m2.costReportedUsd], ['budget_cap', 0.5, 0.5]);
+  } finally { cleanup(env); }
+});
+
+test('run: corte por tiempo con el agente activo es model_timeout (censurado); sin actividad es hang (inválido); el error de API es infraestructura', async () => {
+  const env = setup({ timeoutMs: 1500, hangSilenceS: 0.8, activityPollMs: 40 });
+  try {
+    const { runTask } = await imp('execute.mjs');
+    const { appendRow } = await imp('row.mjs');
+    const cfgA = await prepared(env, 'A', 1);
+    // El claude falso sigue escribiendo mensajes hasta que lo matan.
+    const busy = await withEnv({ FAKE_CLAUDE_MODE: 'busy' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 1 }));
+    assert.strictEqual(busy.timedOut, true);
+    assert.ok(busy.silentTailS !== null && busy.silentTailS < 0.8, `silentTailS=${busy.silentTailS}`);
+    assert.deepStrictEqual([busy.termination, busy.censored, busy.invalidReasons], ['model_timeout', true, []]);
+    assert.strictEqual(busy.costUsd, 5, 'sin resultado, el costo es el tope');
+    assert.strictEqual(appendRow(cfgA, { task: 't1', arm: 'A', rep: 1 }).invalid, false);
+    // El claude falso escribe el init y se calla.
+    await prepared(env, 'A', 2);
+    const hung = await withEnv({ FAKE_CLAUDE_MODE: 'hang' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 2 }));
+    assert.ok(hung.silentTailS >= 0.8, `silentTailS=${hung.silentTailS}`);
+    assert.deepStrictEqual([hung.termination, hung.censored, hung.invalidReasons], ['hang', false, ['hang']]);
+    const row = appendRow(cfgA, { task: 't1', arm: 'A', rep: 2 });
+    assert.deepStrictEqual([row.termination, row.censored, row.invalid, row.invalid_reason], ['hang', 'false', true, 'hang']);
+    // Un error de la API (is_error con el texto de la sobrecarga) es un fallo de infraestructura.
+    await prepared(env, 'A', 3);
+    const api = await withEnv({ FAKE_CLAUDE_MODE: 'apierror,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 3 }));
+    assert.deepStrictEqual([api.termination, api.censored], ['infra_fault', false]);
+    assert.deepStrictEqual([...api.invalidReasons].sort(), ['api_error', 'is_error']);
+  } finally { cleanup(env); }
+});
+
+test('remetric: recalcula la terminación y el costo censurado desde el stream', async () => {
+  const env = setup();
+  try {
+    const { runTask } = await imp('execute.mjs');
+    const { remetricRun } = await imp('remetric.mjs');
+    const cfgA = await prepared(env, 'A', 1);
+    await withEnv({ FAKE_CLAUDE_MODE: 'budget,nocost,edit' }, () => runTask(cfgA, { task: 't1', arm: 'A', rep: 1 }));
+    const file = path.join(runDir(env, 't1', 'A', 1), 'metrics.json');
+    // Una métrica vieja, de antes de la terminación: sin esos campos y con el costo en null.
+    const old = JSON.parse(fs.readFileSync(file, 'utf8'));
+    for (const k of ['termination', 'censored', 'costReportedUsd', 'silentTailS']) delete old[k];
+    old.costUsd = null;
+    old.invalidReasons = ['budget_cap', 'is_error'];
+    fs.writeFileSync(file, JSON.stringify(old));
+    const r = remetricRun(cfgA, { task: 't1', arm: 'A', rep: 1 });
+    assert.deepStrictEqual(r.invalidReasons, []);
+    const fixed = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepStrictEqual([fixed.termination, fixed.censored, fixed.costUsd], ['budget_cap', true, 5]);
+  } finally { cleanup(env); }
+});
+
+test('row: las columnas termination y censored van después de invalid_reason; un CSV anterior sin ellas se migra con las celdas vacías', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { COLUMNS, appendRow, parseCsv } = await imp('row.mjs');
+    const at = COLUMNS.indexOf('invalid_reason');
+    assert.deepStrictEqual(COLUMNS.slice(at, at + 3), ['invalid_reason', 'termination', 'censored']);
+    const cfg = loadConfig(env.cfgPath);
+    // El encabezado de la versión anterior (sin las dos columnas) con una fila inválida por tiempo.
+    const prev = COLUMNS.filter((c) => c !== 'termination' && c !== 'censored');
+    const cells = Object.fromEntries(prev.map((c) => [c, '']));
+    Object.assign(cells, { experiment: 'toy-exp', task: 't0', arm: 'A', rep: '1', timestamp: '2026-10-23T10:00:00.000Z', cost_usd: '1.25', timed_out: 'true', invalid: 'true', invalid_reason: 'timed_out;no_result' });
+    fs.writeFileSync(cfg.csvPath, `${prev.join(',')}\n${prev.map((c) => cells[c]).join(',')}\n`);
+    writeRun(env, 't1', 'A', 1, { acceptance: ACC, changes: CHG, metrics: { termination: 'model_timeout', censored: true, timedOut: true, hasResult: false } });
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.ok(fs.existsSync(`${cfg.csvPath}.bak`));
+    const rows = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8'));
+    assert.strictEqual(rows.length, 2);
+    assert.deepStrictEqual([rows[0].termination, rows[0].censored, rows[0].invalid_reason, rows[0].cost_usd], ['', '', 'timed_out;no_result', '1.25']);
+    assert.deepStrictEqual([rows[1].termination, rows[1].censored], ['model_timeout', 'true']);
+    // Una métrica vieja sin esos campos deja las celdas vacías en vez de inventar.
+    writeRun(env, 't1', 'B', 1, { acceptance: ACC, changes: CHG });
+    const row = appendRow(cfg, { task: 't1', arm: 'B', rep: 1 });
+    assert.deepStrictEqual([row.termination, row.censored], ['', '']);
+  } finally { cleanup(env); }
+});
+
+test('row: --note "rerun N" (reintento por infraestructura) cuenta como repetición; otro texto que empieza igual no', async () => {
+  const env = setup();
+  try {
+    const { loadConfig } = await imp('config.mjs');
+    const { appendRow, parseCsv } = await imp('row.mjs');
+    const cfg = loadConfig(env.cfgPath);
+    writeRun(env, 't1', 'A', 1, { acceptance: ACC, changes: CHG });
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1 });
+    assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'rerunning' }), /ya existe una fila/);
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'rerun 1' });
+    appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'rerun 2' });
+    assert.deepStrictEqual(parseCsv(fs.readFileSync(cfg.csvPath, 'utf8')).map((r) => r.note), ['', 'rerun 1', 'rerun 2']);
+  } finally { cleanup(env); }
+});
+
+test('summary: una corrida censurada (tope o tiempo) es válida pero no verde, entra con su costo y se muestra en su línea', async () => {
+  const { summarize, formatSummary, rowsFromCsv } = await imp('summary.mjs');
+  const censoredRow = (i) => (i === 1 ? { termination: 'budget_cap', censored: true, cost_usd: 5, result_subtype: 'error_max_budget_usd', is_error: true, weighted_tokens: null } : { termination: 'ok', censored: false });
+  const rows = [...arm('s', 'A', [100, 110, 120], { termination: 'ok', censored: false }), ...arm('s', 'B', [80, 85, 90], censoredRow)];
+  const r = summarize(rows, { kinds: { s: 'small' } });
+  const t = r.tasks[0];
+  assert.strictEqual(t.arms.B.n, 3, 'la censurada cuenta como corrida válida');
+  assert.strictEqual(t.arms.B.censored, 1);
+  assert.strictEqual(t.arms.B.accept.greenRuns, 2, 'los tests ocultos pasaron pero la corrida no es verde');
+  assert.strictEqual(t.arms.B.cost.max, 5, 'el costo censurado entra en las cifras');
+  assert.deepStrictEqual(t.invalid, []);
+  assert.doesNotMatch(t.decision.verdict, /pendiente: \d+ corridas inválidas/);
+  assert.match(t.decision.reasons.join('\n'), /resultado incorrecto: 1 de 3 corridas de B/);
+  assert.strictEqual(t.decision.verdict, 'no pasa');
+  const text = formatSummary(r);
+  assert.match(text, /terminadas por tope o tiempo: 1/);
+  assert.ok(r.notes.some((n) => /terminadas por tope o tiempo/.test(n) && /s\/B\/2/.test(n)), 'nota con la corrida');
+  // El costo por tarea resuelta cuenta lo gastado en la censurada y no la da por resuelta.
+  assert.strictEqual(r.costPerSolved.arms.B.runs, 3);
+  // Filas de un CSV (strings): censored 'true' se lee como verdadero; un CSV anterior sin la columna no rompe nada.
+  const csv = 'experiment,task,arm,rep,timestamp,cost_usd,wall_s,weighted_tokens,invalid,invalid_reason,termination,censored,accept_exit,accept_pass,accept_fail,accept_suites_failed\n'
+    + 'x,s,A,1,2026-10-23T00:00:01Z,1,60,100,false,,ok,false,0,3,0,0\n'
+    + 'x,s,B,1,2026-10-23T00:00:02Z,5,1800,,false,,model_timeout,true,1,0,3,0\n'
+    + 'x,s,B,2,2026-10-23T00:00:03Z,1,60,90,false,,,,0,3,0,0\n';
+  const rs = summarize(rowsFromCsv(csv), { kinds: { s: 'small' } });
+  assert.strictEqual(rs.tasks[0].arms.B.censored, 1);
+  assert.strictEqual(rs.tasks[0].arms.B.n, 2);
+  assert.strictEqual(rs.tasks[0].arms.B.accept.greenRuns, 1);
+  const oldRows = summarize(arm('s', 'B', [80, 85, 90]).concat(arm('s', 'A', [90, 95, 99])), { kinds: { s: 'small' } });
+  assert.strictEqual(oldRows.tasks[0].arms.B.censored, 0);
+  assert.doesNotMatch(formatSummary(oldRows), /terminadas por tope o tiempo/);
+});
+
+test('summary: un fallo de infraestructura sigue invalidando y dejando pendiente; el rerun lo reemplaza', async () => {
+  const { summarize } = await imp('summary.mjs');
+  const infra = (i) => (i === 0 ? { invalid: true, invalid_reason: 'is_error;api_error', termination: 'infra_fault', censored: false, is_error: true, weighted_tokens: 9999 } : {});
+  const rows = [...arm('s', 'A', [100, 110, 120]), ...arm('s', 'B', [80, 85, 90], infra)];
+  const r = summarize(rows, { kinds: { s: 'small' } });
+  assert.strictEqual(r.tasks[0].decision.verdict, 'pendiente: 1 corridas inválidas');
+  const fixed = summarize([...rows, mk('s', 'B', 1, 82, { note: 'rerun 1', timestamp: '2026-10-24T00:00:00Z', termination: 'ok', censored: false })], { kinds: { s: 'small' } });
+  assert.doesNotMatch(fixed.tasks[0].decision.verdict, /pendiente: \d+ corridas/);
+  assert.strictEqual(fixed.tasks[0].arms.B.n, 3);
+});
+
+test('summary de fixtures: una corrida censurada no acierta aunque haya lanzado los agentes esperados', async () => {
+  const { summarize } = await imp('summary.mjs');
+  const fx = (i, over = {}) => mk('d', 'P', i + 1, 100, { fronts_by_agents_ok: 'true', fronts_by_agents: 'security', agents: 1, agents_main: 1, ...over });
+  const rows = [fx(0), fx(1, { termination: 'model_timeout', censored: true, fronts_by_agents_ok: '' })];
+  const r = summarize(rows, { kinds: { d: 'fixture' }, fixtures: { d: 'app-db' }, frontsExpected: { 'app-db': ['security'] } });
+  const t = r.tasks[0];
+  assert.strictEqual(t.fixtureDetail.matched, 1);
+  assert.strictEqual(t.fixtureDetail.noData, 0, 'la censurada no queda "sin dato": es un no acierto');
+  assert.strictEqual(t.decision.verdict, 'no pasa');
+  assert.match(t.decision.reasons.join('\n'), /terminada por tope o tiempo/);
 });

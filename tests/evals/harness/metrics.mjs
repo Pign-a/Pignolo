@@ -1,5 +1,5 @@
 // Metrics from a claude stream-json log.
-import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR, DEFAULT_NEUTRAL_PLUGINS } from './config.mjs';
+import { DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR, DEFAULT_NEUTRAL_PLUGINS, DEFAULT_HANG_SILENCE_S } from './config.mjs';
 
 const r2 = (x) => Math.round(x * 100) / 100;
 const FINAL_TEXT_BYTES = 1024;
@@ -224,6 +224,7 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     // true: a hook message names the plugin; false: hooks ran, none names it and the plugin declares hooks; unknown: cannot tell.
     ownHookRan: noPlugin ? 'n/a' : ownHookNamed ? 'true' : (hookMessages > 0 && ownHooksDeclared ? 'false' : 'unknown'),
     init,
+    hasInit: init !== null,
     pluginsLoaded: loaded,
     badLines,
   };
@@ -252,17 +253,78 @@ export function formatAssistantText(list) {
 // Escape detection lives in escape.mjs.
 export { findEscape } from './escape.mjs';
 
-// Reasons why a run cannot be trusted. Empty list: the run is valid.
-export function invalidReasons(m) {
-  const r = [];
-  if (!m.hasResult) r.push('no_result');
-  if (m.timedOut) r.push('timed_out');
-  else if ((m.exitCode !== null && m.exitCode !== undefined && m.exitCode !== 0) || m.signal) r.push('exit_nonzero');
-  if (m.isError) r.push('is_error');
-  if (m.hasResult) {
-    if (/budget/i.test(String(m.resultSubtype))) r.push('budget_cap');
-    else if (m.resultSubtype !== 'success') r.push('result_not_success');
+// ---- How the run ended -------------------------------------------------------------------------------------------------
+// A run ends in one of these ways (field `termination`):
+//   ok            it finished normally (a successful result)
+//   budget_cap    the per-run budget cap (--max-budget-usd) cut it: a RESULT of the model, valid, censored
+//   model_timeout the wall timeout cut it while the agent was still working: a RESULT, valid, censored
+//   infra_fault   something outside the model failed (crash, API error, no result...): INVALID, rerun (up to 2 times)
+//   hang          the wall timeout cut it after a long silence: the process was stuck, an infrastructure fault
+// A censored run counts as NOT green with cost = the reported cost, or the per-run cap when there is none. It stays in the analysis.
+// More lines than this that are not JSON, with no result, make the stream unreadable (one stray line is not).
+const CORRUPT_BAD_LINES = 3;
+// Native crash codes on Windows (0xC0000000 and up, for example 0xC0000409) and negative codes.
+const isCrashCode = (c) => typeof c === 'number' && (c >= 0xC0000000 || c < 0);
+const exitFailed = (m) => (m.exitCode !== null && m.exitCode !== undefined && m.exitCode !== 0) || Boolean(m.signal);
+// Error text of the API or the account: overload, rate or usage limits, authentication, network. Assumed shapes: confirm with a real run.
+const API_ERROR = /overload|\b529\b|rate.?limit|\b429\b|too many requests|usage limit|limit reached|authenticat|unauthori[sz]ed|\b40[13]\b|invalid (x-)?api.?key|please run \/login|credit balance|billing|quota|econn\w*|etimedout|enotfound|eai_again|socket hang up|fetch failed|network|connection (error|refused|reset|timed out)|service unavailable|bad gateway|gateway time-?out|internal server error|\b50[0234]\b/i;
+// The reasons for which a run is an infrastructure fault that is rerun by itself. Others (an error result we cannot place,
+// contamination, an escape...) stay invalid and listed, but are never rerun automatically: a person decides.
+const RETRYABLE_INFRA = new Set(['crash', 'no_result', 'api_error', 'execution_error', 'corrupt_stream', 'failed_to_start', 'hang', 'exit_nonzero']);
+export const isRetryableInfra = (reasons) => (reasons || []).some((x) => RETRYABLE_INFRA.has(x));
+
+// Pure: from the measured fields of a run (hasResult, resultSubtype, isError, finalText, exitCode, signal, timedOut, silentTailS,
+// hangSilenceS, badLines, hasInit) to { termination, censored, reasons } where `reasons` are the invalid reasons that come from
+// how the run ended (empty for ok, budget_cap and model_timeout).
+export function classifyTermination(m) {
+  const hangS = m.hangSilenceS === null || m.hangSilenceS === undefined || !Number.isFinite(Number(m.hangSilenceS)) ? DEFAULT_HANG_SILENCE_S : Number(m.hangSilenceS);
+  const hasResult = Boolean(m.hasResult);
+  const subtype = String(m.resultSubtype ?? '');
+  const infra = (reasons) => ({ termination: 'infra_fault', censored: false, reasons });
+  // A successful result is a completion, even when the wall timeout or a late kill came after it. If the process still exits
+  // with an error, result and exit disagree and the run is not trusted.
+  if (hasResult && subtype === 'success' && !m.isError) {
+    if (!m.timedOut && exitFailed(m)) return infra([isCrashCode(m.exitCode) || m.signal ? 'crash' : 'exit_nonzero']);
+    return { termination: 'ok', censored: false, reasons: [] };
   }
+  if (hasResult && /budget/i.test(subtype)) return { termination: 'budget_cap', censored: true, reasons: [] };
+  if (m.timedOut && !hasResult) {
+    const silent = m.silentTailS === null || m.silentTailS === undefined ? NaN : Number(m.silentTailS);
+    if (Number.isFinite(silent) && silent > hangS) return { termination: 'hang', censored: false, reasons: ['hang'] };
+    return { termination: 'model_timeout', censored: true, reasons: [] };
+  }
+  if (hasResult) {
+    const reasons = [];
+    if (m.isError) reasons.push('is_error');
+    if (API_ERROR.test(`${subtype} ${m.finalText || ''}`)) reasons.push('api_error');
+    else if (subtype === 'error_during_execution') reasons.push('execution_error');
+    else if (subtype !== 'success') reasons.push('result_not_success');
+    return infra(reasons);
+  }
+  // No result message and no timeout of ours.
+  const reasons = [];
+  if (isCrashCode(m.exitCode) || m.signal) reasons.push('crash');
+  else if (exitFailed(m)) reasons.push('exit_nonzero');
+  reasons.push('no_result');
+  if (m.hasInit === false) reasons.push('failed_to_start');
+  if (Number(m.badLines) > CORRUPT_BAD_LINES) reasons.push('corrupt_stream');
+  return infra(reasons);
+}
+
+// The fields a run stores about how it ended. A censored run costs what it reported, or the per-run cap when that is missing or zero.
+export function terminationFields(m, { perRunCapUsd } = {}) {
+  const c = classifyTermination(m);
+  const reported = typeof m.costUsd === 'number' && Number.isFinite(m.costUsd) ? m.costUsd : null;
+  const cap = Number(perRunCapUsd);
+  const costUsd = c.censored && !(reported > 0) && cap > 0 ? cap : reported;
+  return { termination: c.termination, censored: c.censored, terminationReasons: c.reasons, costReportedUsd: reported, costUsd };
+}
+
+// Reasons why a run cannot be trusted. Empty list: the run is valid. Hitting the budget cap or the wall timeout while the
+// agent was working is NOT one: it is a result (see classifyTermination).
+export function invalidReasons(m) {
+  const t = classifyTermination(m);
+  const r = [...t.reasons];
   const hits = m.contaminationHits || [];
   if (hits.includes('own_plugin_not_loaded')) r.push('own_plugin_not_loaded');
   if (hits.some((h) => h !== 'own_plugin_not_loaded') || (m.neutralConfigArmNamed && m.neutralConfigArmNamed.length)) r.push('contaminated');
@@ -272,6 +334,6 @@ export function invalidReasons(m) {
   if (m.nm && m.nm.dropFailed) r.push('drop_failed');
   if (m.postRunError && m.postRunError.length) r.push('post_run_error');
   if (m.treesError) r.push('trees_unmeasurable');
-  else if (m.trees && m.trees.noChanges && !m.isFixture) r.push('no_changes'); // validating does not change the code
+  else if (m.trees && m.trees.noChanges && !m.isFixture && t.termination === 'ok') r.push('no_changes'); // validating does not change the code
   return r;
 }

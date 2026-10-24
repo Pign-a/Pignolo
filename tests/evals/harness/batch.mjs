@@ -3,6 +3,10 @@
 // it is recorded and the batch goes on. It prints one summary line per run. The spend ledger and its caps apply to every `run`
 // as always. A batch can be started again with the same schedule: it skips what already has its CSV row and finishes what was
 // left half way. --dry-run prints the plan and the checks without running anything or spending.
+// --retry-infra [--max-retries N]: after the main pass, each entry whose latest row is an INFRASTRUCTURE fault (a crash, an API error,
+// a hang... never a bad result, never a run cut by the cap or by the time while the agent worked: those are results) is run again
+// (clean, prepare, run, accept, row --note "rerun N"), at most N times (2 at most: the ficha sets it). A rerun keeps the same
+// task, arm and repetition; N is stored in the note column. The spend ledger applies to every rerun like to any run.
 import fs from 'node:fs';
 import path from 'node:path';
 import { runPaths, taskSet, hasPlugin, isFixtureTask } from './config.mjs';
@@ -11,8 +15,42 @@ import { prepare } from './prepare.mjs';
 import { runTask, checkPlugin, checkConfigDir } from './execute.mjs';
 import { acceptRun } from './accept.mjs';
 import { appendRow, parseCsv } from './row.mjs';
+import { cleanRun } from './clean.mjs';
+import { isRetryableInfra } from './metrics.mjs';
 import { spentUsd, assertWithinTotalCap, CAP_MARGIN } from './ledger.mjs';
 import { verifyFreeze } from './freeze.mjs';
+
+// The ficha allows up to 2 reruns per run for infrastructure faults.
+export const MAX_RETRIES_LIMIT = 2;
+const RERUN_N = /(^|;)\s*rerun\s+(\d+)\s*(;|$)/;
+
+// Rows of the CSV for one entry (same experiment, task, arm and repetition), in file order.
+function entryRows(cfg, e) {
+  if (!fs.existsSync(cfg.csvPath)) return [];
+  return parseCsv(fs.readFileSync(cfg.csvPath, 'utf8')).filter((r) => r.experiment === cfg.experiment && r.task === e.task
+    && r.arm === e.arm && Number(r.rep) === Number(e.rep));
+}
+
+// Where an entry stands for reruns: how many infrastructure reruns it already had (rows noted "rerun N") and whether its latest
+// row is an infrastructure fault that can be run again.
+export function retryState(cfg, e) {
+  const rows = entryRows(cfg, e);
+  let latest = null;
+  rows.forEach((r, i) => {
+    if (!latest || String(r.timestamp) > String(latest.r.timestamp) || (r.timestamp === latest.r.timestamp && i > latest.i)) latest = { r, i };
+  });
+  const attempts = rows.reduce((n, r) => Math.max(n, Number((String(r.note || '').match(RERUN_N) || [])[2] || 0)), 0);
+  if (!latest) return { rows: 0, attempts, infra: false, reasons: [] };
+  const reasons = String(latest.r.invalid_reason || '').split(';').map((x) => x.trim()).filter(Boolean);
+  const infra = latest.r.invalid === 'true' && ['infra_fault', 'hang'].includes(latest.r.termination) && isRetryableInfra(reasons);
+  return { rows: rows.length, attempts, infra, reasons };
+}
+
+// A row written for an entry that already has rows is a rerun of an infrastructure fault.
+const rerunNote = (cfg, e) => {
+  const st = retryState(cfg, e);
+  return st.rows > 0 ? `rerun ${st.attempts + 1}` : undefined;
+};
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 
@@ -29,6 +67,8 @@ export function entryState(cfg, e) {
       && r.arm === e.arm && Number(r.rep) === Number(e.rep) && r.timestamp === metrics.finishedAt);
   }
   if (recorded) return { status: 'registrada', steps: [] };
+  // It has rows but no run folder (cleaned after recording): done. Running it again would spend for a second row it cannot take.
+  if (!metrics && !streamed && !prepared && entryRows(cfg, e).length) return { status: 'registrada', steps: [] };
   if (streamed && !metrics) return { status: 'interrumpida', steps: [] };
   const steps = [];
   if (!prepared && !streamed) steps.push('prepare');
@@ -46,9 +86,14 @@ export function summaryLine(index, total, row) {
   let accept = 'sin dato';
   if (row.fronts_by_agents_ok) accept = row.fronts_by_agents_ok === 'true' ? 'pasa' : 'falla';
   else if (row.accept_exit !== null && row.accept_exit !== undefined) accept = green ? 'pasa' : 'falla';
+  // A run cut by the budget cap or by the time while the agent worked is a result: valid, not green, with a censored cost.
+  const censored = row.censored === true || row.censored === 'true';
+  if (censored) accept = 'no verde (censurada)';
+  const status = row.invalid ? `inválida: ${row.invalid_reason}`
+    : censored ? `válida (terminada por ${row.termination === 'budget_cap' ? 'tope' : 'tiempo'}: censurada, costo ${fmtNum(row.cost_usd, 4)} USD)` : 'válida';
   return `[${index}/${total}] ${row.task} ${row.arm} rep ${row.rep} | costo ${fmtNum(row.cost_usd, 4)} USD | pared ${fmtNum(row.wall_s, 1)} s`
     + ` | turnos ${fmtNum(row.turns, 0)} | agentes ${fmtNum(row.agents, 0)} | activación ${row.activation_via || 'sin dato'}`
-    + ` | aceptación ${accept} | ${row.invalid ? `inválida: ${row.invalid_reason}` : 'válida'}`;
+    + ` | aceptación ${accept} | ${status}`;
 }
 
 // Free checks shared by --dry-run and the real batch.
@@ -71,7 +116,15 @@ function preflight(cfg, schedule) {
   return { problems, validation, freeze };
 }
 
-export async function runBatch(cfg, { schedule: file, dryRun = false }, { log = (s) => console.log(s) } = {}) {
+export function checkMaxRetries(maxRetries) {
+  if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > MAX_RETRIES_LIMIT) {
+    throw new Error(`--max-retries tiene que ser un entero entre 0 y ${MAX_RETRIES_LIMIT} (la ficha fija ${MAX_RETRIES_LIMIT} como máximo por corrida)`);
+  }
+  return maxRetries;
+}
+
+export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra = false, maxRetries = MAX_RETRIES_LIMIT }, { log = (s) => console.log(s) } = {}) {
+  if (retryInfra) checkMaxRetries(maxRetries);
   const schedule = loadSchedule(cfg, file);
   const total = schedule.entries.length;
   const states = schedule.entries.map((e) => ({ e, ...entryState(cfg, e) }));
@@ -93,7 +146,19 @@ export async function runBatch(cfg, { schedule: file, dryRun = false }, { log = 
     log(`la próxima corrida pasa el chequeo del ledger: ${next}`);
     if (pre.validation.length) log(`tareas de validación ${pre.validation.join(', ')}: freeze ${pre.freeze.ok ? `verificado (${pre.freeze.freezeHash.slice(0, 12)})` : `NO se cumple: ${pre.freeze.problems.join('; ')}`}`);
     log(pre.problems.length ? `chequeos previos con problemas: ${pre.problems.join(' | ')}` : 'chequeos previos (plugins, configDir, freeze): bien');
-    return { dryRun: true, entries: states.map((s) => ({ ...s.e, status: s.status, steps: s.steps })), spent, toRun, worstCaseUsd: worst, problems: pre.problems };
+    const retryCandidates = [];
+    if (retryInfra && maxRetries > 0) {
+      for (const s of states) {
+        const st = retryState(cfg, s.e);
+        if (st.infra && st.attempts < maxRetries) retryCandidates.push({ task: s.e.task, arm: s.e.arm, rep: s.e.rep, attempt: st.attempts + 1, reasons: st.reasons });
+      }
+      log(`reintentos por infraestructura pendientes: ${retryCandidates.length} (como mucho ${maxRetries} por corrida)`);
+      for (const c of retryCandidates) log(`  ${c.task} ${c.arm} rep ${c.rep}: intento ${c.attempt} de ${maxRetries} (motivo: ${c.reasons.join(';')})`);
+      // Worst case if every run still to launch also faults and uses all its reruns, plus what is already pending.
+      const extra = toRun * maxRetries + retryCandidates.reduce((n, c) => n + (maxRetries - c.attempt + 1), 0);
+      log(`peor caso con reintentos: ${Math.round((toRun + extra) * perRun * 10000) / 10000} USD`);
+    }
+    return { dryRun: true, entries: states.map((s) => ({ ...s.e, status: s.status, steps: s.steps })), spent, toRun, worstCaseUsd: worst, problems: pre.problems, retryCandidates };
   }
 
   if (pre.problems.length) throw new Error(`chequeos previos del batch: ${pre.problems.join(' | ')}; no se lanza nada`);
@@ -116,7 +181,8 @@ export async function runBatch(cfg, { schedule: file, dryRun = false }, { log = 
       if (s.steps.includes('run')) { step = 'run'; await runTask(cfg, a); }
       if (s.steps.includes('accept')) { step = 'accept'; await acceptRun(cfg, a); }
       step = 'row';
-      const row = appendRow(cfg, { ...a, note: undefined });
+      // An entry that already has rows and is run again is a rerun of an infrastructure fault that was cut half way.
+      const row = appendRow(cfg, { ...a, note: rerunNote(cfg, e) });
       log(summaryLine(i, total, row));
       results.push({ ...e, row });
     } catch (err) {
@@ -125,5 +191,40 @@ export async function runBatch(cfg, { schedule: file, dryRun = false }, { log = 
       throw out;
     }
   }
-  return { dryRun: false, results };
+  const retries = [];
+  if (retryInfra && maxRetries > 0) {
+    let n = 0;
+    for (const e of schedule.entries) {
+      n += 1;
+      const id = `${e.task} ${e.arm} rep ${e.rep}`;
+      for (;;) {
+        const st = retryState(cfg, e);
+        if (!st.infra) break;
+        if (st.attempts >= maxRetries) {
+          log(`reintentos agotados: ${id} | ${st.attempts} de ${maxRetries} | sigue con fallo de infraestructura (${st.reasons.join(';')}): queda inválida y se informa`);
+          break;
+        }
+        const attempt = st.attempts + 1;
+        log(`reintento por infraestructura: ${id} | intento ${attempt} de ${maxRetries} | motivo: ${st.reasons.join(';')}`);
+        let step = 'inicio';
+        try {
+          const a = { task: e.task, arm: e.arm, rep: e.rep };
+          step = 'clean'; cleanRun(cfg, a);
+          step = 'prepare'; await prepare(cfg, a);
+          step = 'run'; await runTask(cfg, a);
+          step = 'accept'; await acceptRun(cfg, a);
+          step = 'row';
+          const row = appendRow(cfg, { ...a, note: `rerun ${attempt}` });
+          log(summaryLine(n, total, row));
+          retries.push({ ...e, attempt, row });
+        } catch (err) {
+          const out = new Error(`[${n}/${total}] ${id}: falló el paso ${step} del reintento ${attempt}: ${err.message}. El batch se detiene; al volver a correrlo con --retry-infra retoma`);
+          out.results = results;
+          out.retries = retries;
+          throw out;
+        }
+      }
+    }
+  }
+  return { dryRun: false, results, retries };
 }

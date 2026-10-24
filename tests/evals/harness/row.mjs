@@ -8,7 +8,7 @@ import { qualityColumns } from './quality.mjs';
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
   'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'agent_types', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via',
-  'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
+  'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'termination', 'censored',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
   'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
   'set', 'freeze_hash', 'prereg_commit',
@@ -85,7 +85,8 @@ export function migratedCsvText(text) {
 }
 
 const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
-const isRerun = (note) => /(^|;)\s*rerun\s*(;|$)/.test(note || '');
+// "rerun" (a corrected row) or "rerun N" (the N-th rerun of an infrastructure fault, written by batch --retry-infra).
+export const isRerun = (note) => /(^|;)\s*rerun(\s+\d+)?\s*(;|$)/.test(note || '');
 
 export function appendRow(cfg, args) {
   const { task, arm, rep, dir } = runPaths(cfg, args);
@@ -118,7 +119,9 @@ export function appendRow(cfg, args) {
   if (m.tokenSource === 'usage') notes.push('tokens-solo-hilo-principal');
   for (const f of (c && c.flags) || []) notes.push(f);
   for (const w of m.warnings || []) notes.push(w);
-  const reasons = [...new Set([...(m.invalidReasons || []), ...((a && a.invalidReasons) || []), ...((c && c.invalidReasons) || [])])];
+  // accept writes no_changes from the changes alone; a run cut by the cap or by the time did not finish its work, so that is not a fault.
+  const reasons = [...new Set([...(m.invalidReasons || []), ...((a && a.invalidReasons) || []), ...((c && c.invalidReasons) || [])])]
+    .filter((x) => !(m.censored && x === 'no_changes'));
   const row = {
     experiment: cfg.experiment, task, arm, rep, timestamp: m.finishedAt, model: m.model,
     model_resolved: m.init && m.init.model, claude_version: m.init && m.init.claude_code_version,
@@ -130,6 +133,8 @@ export function appendRow(cfg, args) {
     skill_calls: m.skillCalls, own_skill_calls: m.ownSkillCalls, own_hook_ran: m.ownHookRan, activation_via: m.activationVia || '',
     result_subtype: m.resultSubtype, is_error: m.isError, exit_code: m.exitCode,
     timed_out: m.timedOut, invalid: reasons.length > 0, invalid_reason: reasons.join(';'),
+    // How the run ended; empty for a run recorded before this was measured. A censored run (budget cap, model timeout) counts as not green.
+    termination: m.termination || '', censored: m.termination ? String(Boolean(m.censored)) : '',
     accept_exit: a && a.accept && a.accept.exitCode,
     accept_pass: a && a.accept && a.accept.pass, accept_fail: a && a.accept && a.accept.fail,
     accept_suites_failed: a && a.accept && a.accept.suitesFailed,

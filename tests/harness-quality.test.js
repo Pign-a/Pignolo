@@ -906,7 +906,7 @@ test('batch: ejecuta prepare, run, accept y row por entrada, imprime una línea 
     assert.strictEqual(rows.length, 3);
     assert.deepStrictEqual(rows.map((r) => r.arm).sort(), ['N', 'P', 'S']);
     assert.match(lines[0], /aceptación pasa \| válida/);
-    assert.match(lines[1], /inválida: .*exit_nonzero/, lines[1]);
+    assert.match(lines[1], /inválida: .*execution_error/, lines[1]);
     assert.strictEqual(rows.find((r) => r.arm === 'N').activation_via, 'n/a');
     // Cada fila trae el panel de calidad (el repo de juguete tiene tsconfig y eslint).
     assert.ok(rows.every((r) => r.tsc_new_errors !== undefined && r.diff_files !== ''));
@@ -979,5 +979,162 @@ test('CLI: batch --dry-run', () => {
     assert.match(r.stdout, /chequeos previos \(plugins, configDir, freeze\): bien/);
     assert.ok(!fs.existsSync(path.join(env.work, 't1-N-1')));
     assert.notStrictEqual(cli('batch', '--dry-run').status, 0, 'necesita --schedule');
+  } finally { cleanup(env); }
+});
+
+// ---------------------------------------------------------------- batch --retry-infra
+
+test('batch --retry-infra: repite los fallos de infraestructura (clean, prepare, run, accept, row con "rerun N"), una línea por reintento, y reemplaza a la original', async () => {
+  const env = setup();
+  try {
+    const cfg = await load(env);
+    const file = await scheduleFile(env, ['t1'], ['P'], 11);
+    const { runBatch } = await imp('batch.mjs');
+    const { parseCsv } = await imp('row.mjs');
+    const { summarize, rowsFromCsv } = await imp('summary.mjs');
+    const lines = [];
+    // La primera corrida falla con un error de la API; al imprimir su línea el claude falso pasa a andar bien, así que el reintento sale.
+    const res = await withEnv({ FAKE_CLAUDE_MODE: 'apierror,edit' }, () => runBatch(cfg, { schedule: file, retryInfra: true }, {
+      log: (l) => { lines.push(l); process.env.FAKE_CLAUDE_MODE = 'edit'; },
+    }));
+    assert.match(lines[0], /^\[1\/1\] t1 P rep 1 .*inválida: .*api_error/);
+    assert.match(lines[1], /reintento por infraestructura.*t1 P rep 1.*intento 1 de 2.*api_error/, lines[1]);
+    assert.match(lines[2], /^\[1\/1\] t1 P rep 1 .*aceptación pasa \| válida/, lines[2]);
+    assert.strictEqual(lines.length, 3);
+    assert.strictEqual(res.retries.length, 1);
+    const rows = parseCsv(read(cfg.csvPath));
+    assert.deepStrictEqual(rows.map((r) => [r.invalid, r.termination, r.note]), [['true', 'infra_fault', ''], ['false', 'ok', 'rerun 1']]);
+    assert.strictEqual(rows[1].task + rows[1].arm + rows[1].rep, 't1P1', 'misma tarea, brazo y repetición');
+    // La segunda fila reemplaza a la primera en el resumen y las dos gastaron plata.
+    const sum = summarize(rowsFromCsv(read(cfg.csvPath)), { kinds: { t1: 'small' }, experiment: 'toy-exp', pairs: [['N', 'P']] });
+    assert.strictEqual(sum.tasks[0].arms.P.n, 1);
+    const { spentUsd } = await imp('ledger.mjs');
+    assert.strictEqual(spentUsd(cfg), 1, 'dos corridas de 0,5 USD');
+    // Sin nada que repetir, otra pasada no hace nada ni gasta.
+    const lines2 = [];
+    const again = await runBatch(cfg, { schedule: file, retryInfra: true }, { log: (l) => lines2.push(l) });
+    assert.deepStrictEqual(again.retries, []);
+    assert.ok(lines2.every((l) => !/reintento/.test(l)));
+    assert.strictEqual(parseCsv(read(cfg.csvPath)).length, 2);
+  } finally { cleanup(env); }
+});
+
+test('batch --retry-infra: como mucho 2 reintentos por corrida (rerun 1, rerun 2); si sigue fallando se avisa; nunca repite un mal resultado', async () => {
+  const env = setup();
+  try {
+    const cfg = await load(env);
+    const file = await scheduleFile(env, ['t1', 't2'], ['P'], 12);
+    const sched = readJson(file);
+    const { runBatch } = await imp('batch.mjs');
+    const { parseCsv } = await imp('row.mjs');
+    const lines = [];
+    // La primera entrada del calendario falla siempre por la API; la segunda termina en tope por corrida (un resultado).
+    const first = sched.entries[0];
+    process.env.FAKE_CLAUDE_MODE = 'apierror,edit';
+    try {
+      await runBatch(cfg, { schedule: file, retryInfra: true }, {
+        log: (l) => {
+          lines.push(l);
+          if (lines.length === 1) process.env.FAKE_CLAUDE_MODE = 'budget,edit'; // pasa a la segunda entrada
+          if (/reintento por infraestructura/.test(l)) process.env.FAKE_CLAUDE_MODE = 'apierror,edit'; // los reintentos de la primera siguen fallando
+        },
+      });
+    } finally { delete process.env.FAKE_CLAUDE_MODE; }
+    const rows = parseCsv(read(cfg.csvPath));
+    const t1 = rows.filter((r) => r.task === first.task);
+    const t2 = rows.filter((r) => r.task === sched.entries[1].task);
+    assert.deepStrictEqual(t1.map((r) => r.note), ['', 'rerun 1', 'rerun 2'], 'una original y dos reintentos, no más');
+    assert.ok(t1.every((r) => r.termination === 'infra_fault' && r.invalid === 'true'));
+    assert.strictEqual(t2.length, 1, 'el tope por corrida es un resultado y no se repite');
+    assert.deepStrictEqual([t2[0].termination, t2[0].censored, t2[0].invalid], ['budget_cap', 'true', 'false']);
+    assert.ok(lines.some((l) => /reintentos agotados/.test(l) && new RegExp(first.task).test(l)), lines.join('\n'));
+    assert.strictEqual(lines.filter((l) => /reintento por infraestructura/.test(l)).length, 2);
+    // --max-retries 0 no repite; más de 2 no está permitido (lo fija la ficha).
+    const none = [];
+    await runBatch(cfg, { schedule: file, retryInfra: true, maxRetries: 0 }, { log: (l) => none.push(l) });
+    assert.ok(none.every((l) => !/reintento por infraestructura/.test(l)));
+    await assert.rejects(() => runBatch(cfg, { schedule: file, retryInfra: true, maxRetries: 3 }, { log: () => {} }), /max-retries.*2/);
+    assert.strictEqual(parseCsv(read(cfg.csvPath)).length, 4);
+  } finally { cleanup(env); }
+});
+
+test('batch --retry-infra: el tope total de gasto sigue mandando sobre los reintentos', async () => {
+  const env = setup();
+  try {
+    const cfg = await load(env);
+    const file = await scheduleFile(env, ['t1'], ['P'], 13);
+    const { runBatch } = await imp('batch.mjs');
+    const { parseCsv } = await imp('row.mjs');
+    // Cabe una sola corrida: 0 + 1,25 x 2 = 2,5 <= 2,9; con 0,5 gastados ya son 3 y no entra otra.
+    const tight = { ...cfg, perRunCapUsd: 2, totalCapUsd: 2.9 };
+    await assert.rejects(
+      () => withEnv({ FAKE_CLAUDE_MODE: 'apierror,edit' }, () => runBatch(tight, { schedule: file, retryInfra: true }, { log: () => {} })),
+      /tope total de gasto/,
+    );
+    assert.strictEqual(parseCsv(read(cfg.csvPath)).length, 1, 'el reintento no se lanzó');
+  } finally { cleanup(env); }
+});
+
+test('batch --dry-run --retry-infra: lista lo que se repetiría sin tocar nada', async () => {
+  const env = setup();
+  try {
+    const cfg = await load(env);
+    const file = await scheduleFile(env, ['t1'], ['P'], 14);
+    const { runBatch } = await imp('batch.mjs');
+    await withEnv({ FAKE_CLAUDE_MODE: 'apierror,edit' }, () => runBatch(cfg, { schedule: file }, { log: () => {} }));
+    const before = read(cfg.csvPath);
+    const lines = [];
+    const dry = await runBatch(cfg, { schedule: file, dryRun: true, retryInfra: true }, { log: (l) => lines.push(l) });
+    assert.match(lines.join('\n'), /reintentos por infraestructura pendientes: 1 \(como mucho 2 por corrida\)/);
+    assert.match(lines.join('\n'), /t1 P rep 1: intento 1 de 2 \(motivo: is_error;api_error\)/);
+    assert.match(lines.join('\n'), /peor caso con reintentos: \d/);
+    assert.deepStrictEqual(dry.retryCandidates.map((c) => [c.task, c.arm, c.rep, c.attempt]), [['t1', 'P', 1, 1]]);
+    assert.strictEqual(read(cfg.csvPath), before);
+  } finally { cleanup(env); }
+});
+
+test('CLI: batch acepta --retry-infra y --max-retries', () => {
+  const env = setup();
+  try {
+    const RUN = path.join(HARNESS, 'run.mjs');
+    const cli = (...args) => spawnSync(process.execPath, [RUN, ...args, '--config', env.cfgPath], { encoding: 'utf8' });
+    assert.strictEqual(cli('schedule', '--tasks', 't1', '--arms', 'N', '--seed', '15').status, 0);
+    const sch = path.join(env.work, 'schedule-15.json');
+    const ok = cli('batch', '--schedule', sch, '--dry-run', '--retry-infra', '--max-retries', '1');
+    assert.strictEqual(ok.status, 0, ok.stderr);
+    const bad = cli('batch', '--schedule', sch, '--dry-run', '--retry-infra', '--max-retries', '5');
+    assert.notStrictEqual(bad.status, 0);
+    assert.match(bad.stderr, /max-retries/);
+    assert.notStrictEqual(cli('batch', '--schedule', sch, '--dry-run', '--max-retries', 'x').status, 0);
+  } finally { cleanup(env); }
+});
+
+test('batch: una corrida cortada por el tope o por el tiempo del modelo es un resultado: su línea la marca censurada, accept corre igual y --retry-infra no la repite', async () => {
+  const env = setup({ timeoutMs: 1500, hangSilenceS: 5, activityPollMs: 50 });
+  try {
+    const cfg = await load(env);
+    const file = await scheduleFile(env, ['t1', 't2'], ['P'], 16);
+    const { runBatch } = await imp('batch.mjs');
+    const { parseCsv } = await imp('row.mjs');
+    const lines = [];
+    // La primera entrada del calendario se corta por tiempo con el agente activo; la segunda por el tope.
+    process.env.FAKE_CLAUDE_MODE = 'busy';
+    try {
+      await runBatch(cfg, { schedule: file, retryInfra: true }, {
+        log: (l) => { lines.push(l); process.env.FAKE_CLAUDE_MODE = 'budget,edit'; },
+      });
+    } finally { delete process.env.FAKE_CLAUDE_MODE; }
+    assert.match(lines[0], /aceptación no verde \(censurada\) \| válida \(terminada por tiempo: censurada, costo 5\.0000 USD\)/, lines[0]);
+    assert.match(lines[1], /aceptación no verde \(censurada\) \| válida \(terminada por tope: censurada, costo 0\.5000 USD\)/, lines[1]);
+    assert.ok(lines.every((l) => !/reintento/.test(l)), 'son resultados: no se repiten');
+    const rows = parseCsv(read(cfg.csvPath));
+    assert.strictEqual(rows.length, 2);
+    assert.deepStrictEqual(rows.map((r) => [r.termination, r.censored, r.invalid]).sort(), [['budget_cap', 'true', 'false'], ['model_timeout', 'true', 'false']]);
+    assert.ok(rows.every((r) => r.accept_exit !== ''), 'accept corrió igual, para el registro');
+    // En el resumen no son verdes, pero siguen adentro.
+    const { summarize, rowsFromCsv } = await imp('summary.mjs');
+    const sum = summarize(rowsFromCsv(read(cfg.csvPath)), { kinds: { t1: 'small', t2: 'small' }, experiment: 'toy-exp', pairs: [['N', 'P']] });
+    for (const t of sum.tasks) assert.strictEqual(t.arms.P.accept.greenRuns, 0);
+    assert.strictEqual(sum.tasks.reduce((n, t) => n + t.arms.P.censored, 0), 2);
   } finally { cleanup(env); }
 });
