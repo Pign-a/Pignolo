@@ -3,7 +3,7 @@
 // Ficha: tests/evals/RESULTS-comparacion-3-brazos.md (sección 4.2). Node >= 22, sin dependencias.
 //
 //   node tests/evals/select-validation.mjs --input tareas.json --output seleccion.json \
-//        [--small 5] [--medium 7] [--seed 20261024]
+//        [--small 7] [--medium 9] [--seed 20261024]
 //
 // Entrada: una lista de tareas, o un objeto { "<id>": { stratum } }, o { tasks: [...] }. Cada tarea
 // necesita `id` (en el objeto por id puede ser la clave) y `stratum` = "small" | "medium". Cualquier otro
@@ -76,7 +76,7 @@ export function inputHash(tasks) {
   return createHash('sha256').update(JSON.stringify(tasks)).digest('hex');
 }
 
-export function selectValidation(input, { small = 5, medium = 7, seed = 20261024 } = {}) {
+export function selectValidation(input, { small = 7, medium = 9, seed = 20261024 } = {}) {
   const tasks = normalizeTasks(input);
   const wanted = { small, medium };
   for (const s of STRATA) {
@@ -137,7 +137,7 @@ function parseArgs(argv) {
 
 function main() {
   const o = parseArgs(process.argv.slice(2));
-  if (!o.input || !o.output) throw new Error('uso: --input <json> --output <json> [--small 5] [--medium 7] [--seed 20261024]');
+  if (!o.input || !o.output) throw new Error('uso: --input <json> --output <json> [--small 7] [--medium 9] [--seed 20261024]');
   const opts = {};
   if (o.small !== undefined) opts.small = Number(o.small);
   if (o.medium !== undefined) opts.medium = Number(o.medium);

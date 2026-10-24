@@ -22,25 +22,25 @@ async function lib() {
 
 test('es determinista: misma entrada y semilla dan la misma salida, sin importar el orden de la entrada', async () => {
   const { selectValidation } = await lib();
-  const a = selectValidation(tasks, { small: 5, medium: 7, seed: 20261024 });
-  const b = selectValidation(tasks.slice().reverse(), { small: 5, medium: 7, seed: 20261024 });
+  const a = selectValidation(tasks, { small: 7, medium: 9, seed: 20261024 });
+  const b = selectValidation(tasks.slice().reverse(), { small: 7, medium: 9, seed: 20261024 });
   assert.deepStrictEqual(a, b);
 });
 
-test('cuentas: 5 chicas y 7 medianas, reserva de 8, sin solapamiento, elegidas ordenadas por id', async () => {
+test('cuentas: 7 chicas y 9 medianas, reserva de 4, sin solapamiento, elegidas ordenadas por id', async () => {
   const { selectValidation } = await lib();
   const r = selectValidation(tasks);
   assert.strictEqual(r.seed, 20261024);
-  assert.strictEqual(r.selected.length, 12);
-  assert.strictEqual(r.reserve.length, 8);
-  assert.strictEqual(r.selected.filter((id) => id.startsWith('s')).length, 5);
-  assert.strictEqual(r.selected.filter((id) => id.startsWith('m')).length, 7);
-  assert.strictEqual(r.reserve.filter((id) => id.startsWith('s')).length, 4);
-  assert.strictEqual(r.reserve.filter((id) => id.startsWith('m')).length, 4);
+  assert.strictEqual(r.selected.length, 16);
+  assert.strictEqual(r.reserve.length, 4);
+  assert.strictEqual(r.selected.filter((id) => id.startsWith('s')).length, 7);
+  assert.strictEqual(r.selected.filter((id) => id.startsWith('m')).length, 9);
+  assert.strictEqual(r.reserve.filter((id) => id.startsWith('s')).length, 2);
+  assert.strictEqual(r.reserve.filter((id) => id.startsWith('m')).length, 2);
   assert.strictEqual(new Set([...r.selected, ...r.reserve]).size, 20);
   assert.deepStrictEqual(r.selected, r.selected.slice().sort());
-  assert.deepStrictEqual(r.strata.small, { candidates: 9, selected: 5, reserve: 4 });
-  assert.deepStrictEqual(r.strata.medium, { candidates: 11, selected: 7, reserve: 4 });
+  assert.deepStrictEqual(r.strata.small, { candidates: 9, selected: 7, reserve: 2 });
+  assert.deepStrictEqual(r.strata.medium, { candidates: 11, selected: 9, reserve: 2 });
   assert.match(r.inputHash, /^[0-9a-f]{64}$/);
 });
 
@@ -48,14 +48,14 @@ test('el hash de la entrada no depende de campos extra ni del orden, y cambia si
   const { selectValidation } = await lib();
   const a = selectValidation(tasks);
   const swapped = tasks.map((t) => (t.id === 's01' ? { ...t, stratum: 'medium' } : t));
-  const b = selectValidation(swapped, { small: 5, medium: 7 });
+  const b = selectValidation(swapped, { small: 7, medium: 9 });
   assert.notStrictEqual(a.inputHash, b.inputHash);
 });
 
 test('se niega si un estrato tiene menos tareas que las pedidas', async () => {
   const { selectValidation } = await lib();
-  assert.throws(() => selectValidation(tasks, { small: 10, medium: 7 }), /small/);
-  assert.throws(() => selectValidation(tasks, { small: 5, medium: 12 }), /medium/);
+  assert.throws(() => selectValidation(tasks, { small: 10, medium: 9 }), /small/);
+  assert.throws(() => selectValidation(tasks, { small: 7, medium: 12 }), /medium/);
 });
 
 test('rechaza estratos inválidos e ids repetidos', async () => {
@@ -79,13 +79,13 @@ test('CLI: escribe el JSON, imprime solo ids y cuentas, y acepta un objeto por i
     const output = path.join(dir, 'out.json');
     const asObject = Object.fromEntries(tasks.map((t) => [t.id, { stratum: t.stratum, private: 'secreto-no-debe-salir' }]));
     fs.writeFileSync(input, JSON.stringify(asObject));
-    const r = spawnSync(process.execPath, [SCRIPT, '--input', input, '--output', output, '--small', '5', '--medium', '7', '--seed', '20261024'], { encoding: 'utf8' });
+    const r = spawnSync(process.execPath, [SCRIPT, '--input', input, '--output', output, '--small', '7', '--medium', '9', '--seed', '20261024'], { encoding: 'utf8' });
     assert.strictEqual(r.status, 0, r.stderr);
     const out = JSON.parse(fs.readFileSync(output, 'utf8'));
-    assert.strictEqual(out.selected.length, 12);
+    assert.strictEqual(out.selected.length, 16);
     assert.ok(!r.stdout.includes('secreto'));
     assert.ok(!fs.readFileSync(output, 'utf8').includes('secreto'));
-    assert.match(r.stdout, /Reserva en orden de reemplazo \(8\)/);
+    assert.match(r.stdout, /Reserva en orden de reemplazo \(4\)/);
     // misma salida que la función
     const again = spawnSync(process.execPath, [SCRIPT, '--input', input, '--output', path.join(dir, 'out2.json')], { encoding: 'utf8' });
     assert.strictEqual(again.status, 0, again.stderr);
