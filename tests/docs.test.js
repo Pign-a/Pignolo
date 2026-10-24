@@ -49,9 +49,9 @@ test('README y CHANGELOG piden desinstalar pignolo-ui y pignolo-panel desde /plu
   }
 });
 
-test('STATE.md: T10 hecha (3e25531) y la skill personal document-session compite con session', () => {
+test('STATE.md: 1.0.0 publicada y la skill personal document-session, que compite con session, archivada', () => {
   const t = read('docs/STATE.md');
-  assert.match(t, /T10[^\n]*3e25531/);
+  assert.match(t, /publicado[^\n]*v1\.0\.0/);
   assert.ok(!/- T10: kit de medición/.test(t), 'T10 sigue en la lista de pendientes');
   const line = t.split('\n').find((l) => l.includes('document-session'));
   assert.ok(line, 'falta la nota de document-session');
