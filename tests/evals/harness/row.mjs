@@ -3,13 +3,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { runPaths } from './config.mjs';
 import { summarizeNeutralConfig } from './neutralconfig.mjs';
+import { qualityColumns } from './quality.mjs';
 
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
   'input', 'output', 'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'agent_types', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via',
   'result_subtype', 'is_error', 'exit_code', 'timed_out', 'invalid', 'invalid_reason',
   'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail', 'full_baseline_fail',
-  'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note',
+  'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
+  'set', 'freeze_hash', 'prereg_commit',
+  'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
+  'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total',
+  'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note', 'note',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -89,6 +94,7 @@ export function appendRow(cfg, args) {
   const a = readJson(path.join(dir, 'acceptance.json'));
   const c = readJson(path.join(dir, 'changes.json'));
   const fr = readJson(path.join(dir, 'fronts.json'));
+  const qj = readJson(path.join(dir, 'quality.json'));
   const userNote = args.note || '';
   if (m.experiment && m.experiment !== cfg.experiment) {
     throw new Error(`la corrida se hizo con el experimento "${m.experiment}" y la fila saldría como "${cfg.experiment}"; pasá --experiment ${m.experiment}`);
@@ -138,6 +144,9 @@ export function appendRow(cfg, args) {
     fronts_by_agents_ok: fr && typeof fr.frontsByAgentsOk === 'boolean' ? String(fr.frontsByAgentsOk) : '',
     files_changed: c && c.filesChanged, lines_added: c && c.linesAdded, lines_removed: c && c.linesRemoved,
     eol_only_files: c && c.eolOnlyCount, eol_converted_files: c && c.eolConvertedCount,
+    set: m.set || 'dev', freeze_hash: m.freezeHash || '', prereg_commit: m.preregCommit || '',
+    diff_files: c && c.filesChanged, diff_lines: c && (c.linesAdded || 0) + (c.linesRemoved || 0),
+    ...qualityColumns(qj),
     note: notes.filter(Boolean).join(';'),
   };
   fs.mkdirSync(path.dirname(cfg.csvPath), { recursive: true });

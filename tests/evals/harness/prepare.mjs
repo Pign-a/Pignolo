@@ -25,7 +25,7 @@ export function gitRaw(cwd, args) {
   return r.stdout;
 }
 
-function exportArchive(sourceRepo, base, dest) {
+export function exportArchive(sourceRepo, base, dest) {
   return new Promise((resolve, reject) => {
     const g = spawn('git', ['-C', sourceRepo, 'archive', '--format=tar', base], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     const t = spawn('tar', ['-x', '-f', '-'], { cwd: dest, stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });

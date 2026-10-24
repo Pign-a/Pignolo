@@ -31,6 +31,24 @@ export const DEFAULT_BLIND_EXCLUDE = [
   'roadmap.md', 'security.md', 'design.md', 'CLAUDE.md', '.gitignore', '.worktrees/',
 ];
 
+export const SETS = ['dev', 'validation'];
+export const DEFAULT_QUALITY_TIMEOUT_MS = 300000;
+export const DEFAULT_MUTATION_TIMEOUT_MS = 1800000;
+
+// contrasts: the comparisons the analysis makes, [{ control, test, label }]. Written as { control, test, label } or [control, test, label].
+export function normalizeContrasts(list, armIds) {
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) throw new Error('contrasts debe ser una lista de { control, test, label } o [control, test, label]');
+  return list.map((c, i) => {
+    const o = Array.isArray(c) ? { control: c[0], test: c[1], label: c[2] } : c;
+    if (!o || typeof o !== 'object' || !armIds.includes(o.control) || !armIds.includes(o.test) || o.control === o.test) {
+      throw new Error(`contrasts[${i}]: control y test tienen que ser dos brazos distintos de la configuración (los de la configuración: ${armIds.join(', ')})`);
+    }
+    if (o.label !== undefined && typeof o.label !== 'string') throw new Error(`contrasts[${i}]: label tiene que ser un texto`);
+    return { control: o.control, test: o.test, label: o.label || `${o.control} contra ${o.test}` };
+  });
+}
+
 // Top-level entries of node_modules that tools write while working (caches); not a change of dependencies.
 export const DEFAULT_NM_IGNORE = ['.vite', '.vitest', '.cache', '.turbo', '.parcel-cache', '.eslintcache'];
 
@@ -69,8 +87,10 @@ export function loadConfig(file = DEFAULT_CONFIG) {
   }
   for (const a of Object.keys(cfg.arms)) {
     const arm = cfg.arms[a];
-    if (!ARM_ID.test(a)) throw new Error(`id de brazo inválido: ${a} (una mayúscula y hasta 3 mayúsculas o dígitos más, por ejemplo A, B, AF)`);
-    if (!arm || !arm.pluginName || !arm.pluginDir) throw new Error(`el brazo ${a} necesita pluginName y pluginDir`);
+    if (!ARM_ID.test(a)) throw new Error(`id de brazo inválido: ${a} (una mayúscula y hasta 3 mayúsculas o dígitos más, por ejemplo N, S, P, A, AF)`);
+    if (!arm || typeof arm !== 'object') throw new Error(`el brazo ${a} necesita pluginName y pluginDir (o ninguno de los dos: un brazo sin plugin)`);
+    // pluginName and pluginDir go together; an arm with neither (omitted or null) runs Claude Code with no plugin at all.
+    if (Boolean(arm.pluginName) !== Boolean(arm.pluginDir)) throw new Error(`el brazo ${a}: pluginName y pluginDir van juntos (los dos, o ninguno para un brazo sin plugin)`);
     if (arm.promptPrefix !== undefined && typeof arm.promptPrefix !== 'string') throw new Error(`el promptPrefix del brazo ${a} tiene que ser un texto`);
   }
   // Pairs [control, variant]: each summary rule is evaluated once per pair. By default A against B, or the first two arms.
@@ -87,7 +107,14 @@ export function loadConfig(file = DEFAULT_CONFIG) {
       throw new Error(`la tarea ${id}: arms tiene que listar brazos configurados (los de la configuración: ${armIds.join(', ')})`);
     }
   }
-  const pairs = cfg.pairs !== undefined ? cfg.pairs : [armIds.includes('A') && armIds.includes('B') ? ['A', 'B'] : armIds.slice(0, 2)];
+  // Tasks (any kind) may carry set: "dev" (default) or "validation". Validation tasks need a freeze before they can run.
+  for (const [id, t] of Object.entries(cfg.tasks || {})) {
+    if (t && t.set !== undefined && !SETS.includes(t.set)) throw new Error(`la tarea ${id}: set debe ser uno de ${SETS.join(', ')} (se recibió ${JSON.stringify(t.set)})`);
+  }
+  const contrasts = normalizeContrasts(cfg.contrasts, armIds);
+  const defaultPairs = contrasts.length ? contrasts.map((c) => [c.control, c.test])
+    : [armIds.includes('A') && armIds.includes('B') ? ['A', 'B'] : armIds.slice(0, 2)];
+  const pairs = cfg.pairs !== undefined ? cfg.pairs : defaultPairs;
   if (!Array.isArray(pairs) || !pairs.length || pairs.some((p) => !Array.isArray(p) || p.length !== 2 || p[0] === p[1] || !armIds.includes(p[0]) || !armIds.includes(p[1]))) {
     throw new Error(`pairs (pares) debe ser una lista de [control, variante] con brazos configurados (los de la configuración: ${armIds.join(', ')})`);
   }
@@ -120,6 +147,11 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     neutralPlugins: DEFAULT_NEUTRAL_PLUGINS,
     neutralConfigPaths: DEFAULT_NEUTRAL_CONFIG_PATHS,
     blindExcludePaths: DEFAULT_BLIND_EXCLUDE,
+    qualityTimeoutMs: DEFAULT_QUALITY_TIMEOUT_MS,
+    mutationTimeoutMs: DEFAULT_MUTATION_TIMEOUT_MS,
+    tscCmd: null,
+    eslintCmd: null,
+    preregRepo: REPO_ROOT,
     csvPath: DEFAULT_CSV,
     gradesPath: DEFAULT_GRADES,
     ...cfg,
@@ -128,7 +160,8 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     // The experiment named in the file; a --experiment flag changes cfg.experiment but not this.
     baseExperiment: cfg.experiment || DEFAULT_EXPERIMENT,
     pairs,
-    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, promptPrefix: a.promptPrefix || '' }])),
+    contrasts,
+    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, pluginName: a.pluginName || null, pluginDir: a.pluginDir || null, promptPrefix: a.promptPrefix || '' }])),
     graderSpendPath: cfg.graderSpendPath || path.join(cfg.privateRoot, 'grader-spend.csv'),
   };
 }
@@ -158,6 +191,25 @@ export function runPaths(cfg, args) {
   return { task, arm, rep, dir, repo: path.join(dir, 'repo'), taskDir: path.join(cfg.privateRoot, task) };
 }
 
+// An arm without pluginName/pluginDir runs Claude Code with no plugin at all (the control of a three-arm comparison).
+export const hasPlugin = (cfg, arm) => Boolean(cfg.arms[arm] && cfg.arms[arm].pluginName && cfg.arms[arm].pluginDir);
+
+// Every plugin of the other arms (distinct pluginName from this arm's): [{ name, dir }]. Anything of theirs that shows up in a run is contamination.
+export function otherPlugins(cfg, arm) {
+  const own = cfg.arms[arm] && cfg.arms[arm].pluginName;
+  const seen = new Set();
+  const out = [];
+  for (const a of Object.values(cfg.arms)) {
+    if (!a.pluginName || a.pluginName === own || seen.has(a.pluginName)) continue;
+    seen.add(a.pluginName);
+    out.push({ name: a.pluginName, dir: a.pluginDir });
+  }
+  return out;
+}
+
+// dev (default) or validation. Validation tasks are frozen before their first run (see freeze.mjs).
+export const taskSet = (cfg, task) => (cfg.tasks && cfg.tasks[task] && cfg.tasks[task].set) || 'dev';
+
 // The other plugin: the first arm whose pluginName differs from this arm's (AF and A share a plugin, so AF's other is B).
 export const taskConfig = (cfg, task) => (cfg.tasks && cfg.tasks[task]) || null;
 export const isFixtureTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'fixture');
@@ -170,4 +222,4 @@ export function assertArmAllowed(cfg, task, arm) {
   }
 }
 
-export const otherArm = (cfg, arm) => Object.keys(cfg.arms).find((a) => cfg.arms[a].pluginName !== cfg.arms[arm].pluginName);
+export const otherArm = (cfg, arm) => Object.keys(cfg.arms).find((a) => cfg.arms[a].pluginName && cfg.arms[a].pluginName !== cfg.arms[arm].pluginName);

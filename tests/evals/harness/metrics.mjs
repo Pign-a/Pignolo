@@ -63,7 +63,7 @@ export function isNeutralPlugin(name, patterns = DEFAULT_NEUTRAL_PLUGINS) {
 
 const names = (list) => (Array.isArray(list) ? list.map((x) => (typeof x === 'string' ? x : x && x.name)).filter(Boolean) : []);
 
-export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [], ownHooksDeclared = false, prompt = '' } = {}) {
+export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = null, otherPlugins = [], weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, neutralPlugins = DEFAULT_NEUTRAL_PLUGINS, neutralPluginNames = [], ownHooksDeclared = false, prompt = '' } = {}) {
   const initCommands = new Set();
   const agentTypes = [];
   // Activation of the plugin under test: Skill tool calls (all, and the arm's own), and whether its hook output shows up.
@@ -83,7 +83,12 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
   const loaded = [];
   let init = null;
   let anon = 0;
-  const otherDir = otherPluginDir ? otherPluginDir.replace(/\\/g, '/').toLowerCase() : null;
+  // Every plugin of the other arms (name and folder). The legacy single otherPlugin/otherPluginDir still works.
+  const others = [...(otherPlugin ? [{ name: otherPlugin, dir: otherPluginDir }] : []), ...(otherPlugins || [])]
+    .filter((o) => o && o.name)
+    .map((o) => ({ name: o.name, dir: o.dir ? String(o.dir).replace(/\\/g, '/').toLowerCase() : null }));
+  // An arm without a plugin has no "own" plugin: no activation, and any non-neutral plugin that loads is contamination.
+  const noPlugin = !ownPlugin;
 
   for (const line of String(text).split(/\r?\n/)) {
     if (!line.trim()) continue;
@@ -104,7 +109,7 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
         else hits.push(`plugin:${n}`);
       }
       for (const [kind, list] of [['skill', o.skills], ['agent', o.agents], ['command', o.slash_commands]]) {
-        for (const n of names(list)) if (belongsTo(n, otherPlugin)) hits.push(`${kind}:${n}`);
+        for (const n of names(list)) if (others.some((o) => belongsTo(n, o.name))) hits.push(`${kind}:${n}`);
       }
     } else if (o.type === 'system') {
       if (/^hook_/.test(String(o.subtype))) {
@@ -113,7 +118,7 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
       }
       // Hook and other system messages: contaminated when they point into the other plugin's folder.
       const s = JSON.stringify(o).replace(/\\\\/g, '/').replace(/\\/g, '/').toLowerCase();
-      if (otherDir && s.includes(otherDir)) hits.push(`${o.subtype || 'system'}:${otherPlugin}`);
+      for (const x of others) if (x.dir && s.includes(x.dir)) hits.push(`${o.subtype || 'system'}:${x.name}`);
     } else if (o.type === 'assistant' && o.message && Array.isArray(o.message.content)) {
       for (const b of o.message.content) {
         if (b && b.type === 'tool_use' && b.name === 'Skill') {
@@ -182,8 +187,8 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
   const ownSkillToolCalls = ownSkillCalls;
   ownSkillCalls += slashActivations.length;
   const activationVia = ownSkillToolCalls > 0 && slashActivations.length > 0 ? 'both' : ownSkillToolCalls > 0 ? 'skill_tool' : slashActivations.length > 0 ? 'slash_command' : 'none';
-  const ownPluginLoaded = loaded.some((n) => belongsTo(n, ownPlugin));
-  if (!ownPluginLoaded) hits.push('own_plugin_not_loaded');
+  const ownPluginLoaded = noPlugin ? null : loaded.some((n) => belongsTo(n, ownPlugin));
+  if (!noPlugin && !ownPluginLoaded) hits.push('own_plugin_not_loaded');
   const uniqueHits = [...new Set(hits)];
   return {
     hasResult: Boolean(result),
@@ -211,13 +216,13 @@ export function parseStream(text, { ownPlugin, otherPlugin, otherPluginDir = nul
     ownPluginLoaded,
     neutralPluginsLoaded: neutralLoaded,
     skillCalls,
-    ownSkillCalls,
+    ownSkillCalls: noPlugin ? null : ownSkillCalls,
     ownSkillNames: [...new Set(ownSkills)].sort(),
     slashActivations,
-    activationVia,
+    activationVia: noPlugin ? 'n/a' : activationVia,
     warnings,
     // true: a hook message names the plugin; false: hooks ran, none names it and the plugin declares hooks; unknown: cannot tell.
-    ownHookRan: ownHookNamed ? 'true' : (hookMessages > 0 && ownHooksDeclared ? 'false' : 'unknown'),
+    ownHookRan: noPlugin ? 'n/a' : ownHookNamed ? 'true' : (hookMessages > 0 && ownHooksDeclared ? 'false' : 'unknown'),
     init,
     pluginsLoaded: loaded,
     badLines,

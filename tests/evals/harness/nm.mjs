@@ -196,3 +196,16 @@ export function linkNodeModules(cfg, tree) {
   fs.symlinkSync(snap, target, 'junction');
   return true;
 }
+
+// The tree where code is accepted or measured needs the dependencies and the ignored folders the project needs:
+// node_modules linked to the snapshot, and the copyDirs of the run folder copied in when the tree is another one.
+export function prepareTree(cfg, mainRepo, tree) {
+  if (path.resolve(tree).toLowerCase() === path.resolve(mainRepo).toLowerCase()) return;
+  ensureSnapshot(cfg);
+  linkNodeModules(cfg, tree);
+  for (const rel of cfg.copyDirs || []) {
+    const from = path.join(mainRepo, rel);
+    const to = path.join(tree, rel);
+    if (fs.existsSync(from) && !fs.existsSync(to)) fs.cpSync(from, to, { recursive: true });
+  }
+}

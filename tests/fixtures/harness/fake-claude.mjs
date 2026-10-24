@@ -13,6 +13,11 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const argv = process.argv.slice(2);
+// `claude --version` (the freeze records it): FAKE_CLAUDE_VERSION overrides the text.
+if (argv.includes('--version')) {
+  process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION || '9.9.9-fake'} (Claude Code)\n`);
+  process.exit(0);
+}
 const modes = new Set((process.env.FAKE_CLAUDE_MODE || 'ok').split(',').map((s) => s.trim()).filter(Boolean));
 const has = (m) => modes.has(m);
 let stdin = '';

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Measurement harness for Pignolo 2 vs superpowers. See README.md.
-//   node run.mjs <prepare|run|accept|row|clean|remetric|blind|unblind|summary> [options] [--config <path>]
+//   node run.mjs <prepare|run|accept|quality|row|clean|remetric|freeze|schedule|batch|blind|unblind|summary> [options] [--config <path>]
 import fs from 'node:fs';
 import { loadConfig, DEFAULT_CONFIG, DEFAULT_CSV, DEFAULT_GRADES, DEFAULT_EXPERIMENT, DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
 import { prepare } from './prepare.mjs';
@@ -11,8 +11,12 @@ import { blind, unblind } from './blind.mjs';
 import { cleanRun } from './clean.mjs';
 import { remetricRun } from './remetric.mjs';
 import { summarize, formatSummary, rowsFromCsv } from './summary.mjs';
+import { qualityRun } from './quality.mjs';
+import { freeze, verifyFreeze } from './freeze.mjs';
+import { buildSchedule, writeSchedule, describeSchedule } from './schedule.mjs';
+import { runBatch } from './batch.mjs';
 
-const FLAGS = new Set(['force', 'allow-leaks', 'include-contaminated', 'json']);
+const FLAGS = new Set(['force', 'allow-leaks', 'include-contaminated', 'json', 'check', 'dry-run']);
 
 function parseArgs(argv) {
   const out = { _: [] };
@@ -39,8 +43,8 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   const cmd = o._[0];
   const cfgPath = o.config || DEFAULT_CONFIG;
-  if (!['prepare', 'run', 'accept', 'row', 'clean', 'remetric', 'blind', 'unblind', 'summary'].includes(cmd)) {
-    throw new Error('uso: run.mjs <prepare|run|accept|row|clean|remetric|blind|unblind|summary> [opciones] [--config <ruta>]');
+  if (!['prepare', 'run', 'accept', 'quality', 'row', 'clean', 'remetric', 'freeze', 'schedule', 'batch', 'blind', 'unblind', 'summary'].includes(cmd)) {
+    throw new Error('uso: run.mjs <prepare|run|accept|quality|row|clean|remetric|freeze|schedule|batch|blind|unblind|summary> [opciones] [--config <ruta>]');
   }
 
   if (cmd === 'summary') {
@@ -50,10 +54,12 @@ async function main() {
     const gradesPath = o.grades || (cfg && cfg.gradesPath) || DEFAULT_GRADES;
     const kinds = {};
     const fixtures = {};
+    const sets = {};
     if (cfg) {
       for (const [id, t] of Object.entries(cfg.tasks || {})) {
         if (t && t.kind) kinds[id] = t.kind;
         if (t && t.kind === 'fixture') fixtures[id] = t.fixture;
+        if (t && t.set) sets[id] = t.set;
       }
     }
     for (const id of list(o.medium)) kinds[id] = 'medium';
@@ -65,7 +71,7 @@ async function main() {
     const res = summarize(rows, {
       kinds, grades, includeContaminated: Boolean(o['include-contaminated']),
       experiment: o.experiment || (cfg && cfg.experiment) || DEFAULT_EXPERIMENT,
-      pairs: (cfg && cfg.pairs) || [['A', 'B']], fixtures,
+      pairs: (cfg && cfg.pairs) || [['A', 'B']], fixtures, sets, contrasts: (cfg && cfg.contrasts) || [],
       weights: (cfg && cfg.weights) || DEFAULT_WEIGHTS, modelFactor: (cfg && cfg.modelFactor) || DEFAULT_MODEL_FACTOR,
     });
     console.log(o.json ? JSON.stringify(res, null, 2) : formatSummary(res));
@@ -78,6 +84,21 @@ async function main() {
   if (cmd === 'prepare') { need(o, 'task', 'arm', 'rep'); print(await prepare(cfg, run(o))); }
   else if (cmd === 'run') { need(o, 'task', 'arm', 'rep'); print(await runTask(cfg, run(o))); }
   else if (cmd === 'accept') { need(o, 'task', 'arm', 'rep'); print(await acceptRun(cfg, run(o))); }
+  else if (cmd === 'quality') { need(o, 'task', 'arm', 'rep'); print(await qualityRun(cfg, run(o))); }
+  else if (cmd === 'freeze') {
+    if (o.check) {
+      const v = verifyFreeze(cfg);
+      print(v);
+      if (!v.ok) process.exitCode = 1;
+    } else { need(o, 'prereg'); print(freeze(cfg, { prereg: o.prereg, force: Boolean(o.force) })); }
+  } else if (cmd === 'schedule') {
+    need(o, 'tasks', 'arms', 'seed');
+    const sch = buildSchedule(cfg, { tasks: list(o.tasks), arms: list(o.arms), seed: o.seed, reps: o.reps === undefined ? 1 : o.reps });
+    const file = writeSchedule(cfg, sch, { force: Boolean(o.force) });
+    for (const l of describeSchedule(sch)) console.log(l);
+    if (sch.skipped.length) console.log(`combinaciones no admitidas por la tarea, omitidas: ${sch.skipped.join(', ')}`);
+    console.log(`calendario escrito en ${file}`);
+  } else if (cmd === 'batch') { need(o, 'schedule'); await runBatch(cfg, { schedule: o.schedule, dryRun: Boolean(o['dry-run']) }); }
   else if (cmd === 'remetric') { need(o, 'task', 'arm', 'rep'); print(remetricRun(cfg, run(o))); }
   else if (cmd === 'clean') { need(o, 'task', 'arm', 'rep'); print(cleanRun(cfg, run(o), { force: Boolean(o.force) })); }
   else if (cmd === 'row') { need(o, 'task', 'arm', 'rep'); print(appendRow(cfg, { ...run(o), note: o.note })); }

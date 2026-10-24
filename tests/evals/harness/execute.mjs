@@ -1,7 +1,8 @@
 // Runs `claude -p` for one task/arm/rep and turns the stream into metrics.json.
 import fs from 'node:fs';
 import path from 'node:path';
-import { runPaths, otherArm, isFixtureTask, taskConfig, assertArmAllowed } from './config.mjs';
+import { runPaths, otherPlugins, isFixtureTask, taskConfig, assertArmAllowed, hasPlugin, taskSet } from './config.mjs';
+import { requireFreeze } from './freeze.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
 import { parseStream, findEscape, invalidReasons, assistantTexts, formatAssistantText } from './metrics.mjs';
 import { assertWithinTotalCap } from './ledger.mjs';
@@ -20,7 +21,8 @@ export function buildArgv(cfg, arm) {
     '-p',
     '--model', String(cfg.model),
     '--effort', String(cfg.effort),
-    '--plugin-dir', cfg.arms[arm].pluginDir,
+    // An arm without a plugin passes no --plugin-dir at all.
+    ...(cfg.arms[arm].pluginDir ? ['--plugin-dir', cfg.arms[arm].pluginDir] : []),
     '--permission-mode', String(cfg.permissionMode),
     '--output-format', 'stream-json',
     '--verbose',
@@ -34,6 +36,7 @@ const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); }
 const nonEmptyDir = (d) => { try { return fs.readdirSync(d).length > 0; } catch { return false; } };
 // Free checks, before any token is spent.
 export function checkPlugin(cfg, arm) {
+  if (!hasPlugin(cfg, arm)) return; // the arm without a plugin has nothing to check
   const dir = cfg.arms[arm].pluginDir;
   const manifest = path.join(dir, '.claude-plugin', 'plugin.json');
   const j = readJson(manifest);
@@ -99,16 +102,15 @@ const delta = (before, after) => ({
 
 // Options of the stream parser for one arm: identity from pluginName, neutral plugins, the prompt as it was sent (prefix included).
 export function parseOptionsFor(cfg, arm, prompt, neutralPluginNames = []) {
-  const other = otherArm(cfg, arm);
   return {
-    ownPlugin: cfg.arms[arm].pluginName,
-    otherPlugin: other ? cfg.arms[other].pluginName : null,
-    otherPluginDir: other ? cfg.arms[other].pluginDir : null,
+    ownPlugin: cfg.arms[arm].pluginName || null,
+    // Every plugin of the other arms counts as contamination in this one.
+    otherPlugins: otherPlugins(cfg, arm),
     weights: cfg.weights,
     modelFactor: cfg.modelFactor,
     neutralPlugins: cfg.neutralPlugins,
     neutralPluginNames,
-    ownHooksDeclared: fs.existsSync(path.join(cfg.arms[arm].pluginDir, 'hooks', 'hooks.json')),
+    ownHooksDeclared: hasPlugin(cfg, arm) && fs.existsSync(path.join(cfg.arms[arm].pluginDir, 'hooks', 'hooks.json')),
     prompt,
   };
 }
@@ -134,9 +136,11 @@ export async function runTask(cfg, args, deps = {}) {
   // A variant invokes the method on purpose: its prefix goes in front of the task prompt (the text lives in the config).
   const promptPrefix = cfg.arms[arm].promptPrefix || '';
   prompt = promptPrefix + prompt;
-  if (!fs.existsSync(cfg.arms[arm].pluginDir)) throw new Error(`no existe el plugin del brazo ${arm}: ${cfg.arms[arm].pluginDir}`);
+  if (hasPlugin(cfg, arm) && !fs.existsSync(cfg.arms[arm].pluginDir)) throw new Error(`no existe el plugin del brazo ${arm}: ${cfg.arms[arm].pluginDir}`);
   checkPlugin(cfg, arm);
-  checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName) });
+  checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName).filter(Boolean) });
+  // A validation task only runs against the pre-registered freeze: free check, before any spend.
+  const freeze = taskSet(cfg, task) === 'validation' ? requireFreeze(cfg, task) : null;
   assertWithinTotalCap(cfg);
 
   // node_modules: the run is linked to one snapshot copy; the snapshot and the source must come out of the run as they went in.
@@ -215,13 +219,15 @@ export async function runTask(cfg, args, deps = {}) {
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {
     task, arm, rep, experiment: cfg.experiment, promptPrefix, isFixture, model: cfg.model, effort: cfg.effort,
+    set: taskSet(cfg, task), freezeHash: freeze ? freeze.freezeHash : null, preregCommit: freeze ? freeze.preregCommit : null,
+    hasPlugin: hasPlugin(cfg, arm),
     startedAt, finishedAt: new Date().toISOString(),
     wallS: r.wallS, timedOut: r.timedOut, exitCode: r.code, signal: r.signal,
     droppedEnvNames: dropped,
     leftover_processes: guard('procesos', () => (procBefore && procAfter ? newProcesses(procBefore, procAfter) : null)),
     config_dir_delta: guard('configDir', () => delta(cfgBefore, listNames(cfg.configDir))),
     escapedCwd,
-    neutralConfigArmNamed: guard('contenido sincronizado', () => armNamedContent(cfg.configDir, Object.values(cfg.arms).map((a) => a.pluginName), cfg.neutralConfigPaths), []),
+    neutralConfigArmNamed: guard('contenido sincronizado', () => armNamedContent(cfg.configDir, Object.values(cfg.arms).map((a) => a.pluginName).filter(Boolean), cfg.neutralConfigPaths), []),
     neutralConfigContent: {
       before: neutralConfigBefore, after: neutralConfigAfter,
       createdByRun: hasContent(neutralConfigAfter) && (neutralConfigAfter.skillsSynced.files > neutralConfigBefore.skillsSynced.files

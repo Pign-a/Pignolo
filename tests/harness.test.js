@@ -1536,7 +1536,9 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       ['experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens', 'input', 'output',
         'cache_read', 'cache_write', 'model_tokens', 'wall_s', 'duration_ms', 'turns', 'agents', 'agents_main', 'agent_types', 'prompt_prefix_id', 'skill_calls', 'own_skill_calls', 'own_hook_ran', 'activation_via', 'result_subtype', 'is_error',
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
-        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files', 'note'].join(','));
+        'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
+        'set', 'freeze_hash', 'prereg_commit', 'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
+        'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note', 'note'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1551,6 +1553,9 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       timed_out: 'false', invalid: 'false', invalid_reason: '',
       accept_exit: '1', accept_pass: '2', accept_fail: '1', accept_suites_failed: '0', full_pass: '3', full_fail: '0', full_baseline_fail: '0',
       contamination: 'false', neutral_plugins: '', neutral_config: '', fronts_ok: '', fronts_got: '', fronts_message: '', fronts_reason: '', fronts_by_agents: '', fronts_by_agents_ok: '', files_changed: '1', lines_added: '3', lines_removed: '0', eol_only_files: '', eol_converted_files: '',
+      set: 'dev', freeze_hash: '', prereg_commit: '', tsc_base_errors: '', tsc_result_errors: '', tsc_new_errors: '', eslint_new_errors: '', eslint_new_warnings: '',
+      out_of_scope_files: '', out_of_scope_lines: '', diff_files: '1', diff_lines: '3', new_test_files: '', tests_added: '', coverage_lines_covered: '', coverage_lines_total: '',
+      mutation_killed: '', mutation_survived: '', mutation_timeout: '', quality_note: '',
       note: 'prueba, con coma',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
@@ -2674,9 +2679,12 @@ test('repo: harness.local.json está en .gitignore y harness.example.json no tra
   // El ejemplo es una configuración válida: variantes AF/BF, pares y una tarea de fixture.
   const { loadConfig } = await imp('config.mjs');
   const loaded = loadConfig(path.join(HARNESS, 'harness.example.json'));
-  assert.deepStrictEqual(loaded.pairs, [['A', 'B'], ['AF', 'BF']]);
-  assert.strictEqual(loaded.arms.BF.promptPrefix, '/pignolo:work ');
-  assert.strictEqual(loaded.arms.AF.pluginName, 'superpowers');
+  // Tres brazos: N sin plugin, S (superpowers) y P (pignolo); los contrastes definen los pares.
+  assert.deepStrictEqual(Object.keys(loaded.arms), ['N', 'S', 'P']);
+  assert.strictEqual(loaded.arms.N.pluginName, null);
+  assert.strictEqual(loaded.arms.S.pluginName, 'superpowers');
+  assert.deepStrictEqual(loaded.contrasts.map((c) => [c.control, c.test]), [['N', 'S'], ['N', 'P'], ['S', 'P']]);
+  assert.deepStrictEqual(loaded.pairs, [['N', 'S'], ['N', 'P'], ['S', 'P']]);
   assert.strictEqual(loaded.tasks['detect-cli-script'].kind, 'fixture');
   assert.deepStrictEqual(ex.neutralConfigPaths, DEFAULT_NEUTRAL_CONFIG_PATHS);
   const text = JSON.stringify(ex);

@@ -10,7 +10,12 @@ import { modelFactorFor } from './metrics.mjs';
 
 const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'duration_ms', 'turns',
   'agents', 'agents_main', 'skill_calls', 'own_skill_calls', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass', 'full_fail',
-  'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files'];
+  'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
+  'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
+  'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout'];
+// The quality figures the summary prints per task and arm (median and range).
+export const QUALITY_KEYS = ['tsc_new_errors', 'eslint_new_errors', 'out_of_scope_files', 'diff_lines', 'tests_added'];
+const diffLinesOf = (r) => (r.diff_lines !== null && r.diff_lines !== undefined ? r.diff_lines : r.lines_added !== null && r.lines_added !== undefined ? r.lines_added + (r.lines_removed || 0) : null);
 const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid'];
 
 export function normalizeRows(rows) {
@@ -86,6 +91,8 @@ function armStats(rows) {
     wall: stat(rows.map((r) => r.wall_s)),
     agents: stat(rows.map((r) => r.agents)),
     timedOut: rows.filter((r) => r.timed_out).length,
+    // Automatic quality panel (accept runs it): medians and ranges; a figure the tools could not compute stays out.
+    quality: Object.fromEntries(QUALITY_KEYS.map((k) => [k, stat(rows.map((r) => (k === 'diff_lines' ? diffLinesOf(r) : r[k])))])),
     // Did the run exercise the plugin under test? A run activated it when it called at least one of the plugin's own skills.
     // Rows without the data (older CSV) are not counted either way. The plugin's own hook is shown apart.
     // Informative quality note, outside the decision rule: files whose line endings were converted (for example CRLF to LF).
@@ -280,7 +287,7 @@ function activationOf(arms) {
 
 export function summarize(rowsIn, {
   kinds = {}, grades = [], includeContaminated = false, experiment = null, weights = DEFAULT_WEIGHTS, modelFactor = DEFAULT_MODEL_FACTOR, pairs = [['A', 'B']],
-  fixtures = {}, frontsExpected = null,
+  fixtures = {}, frontsExpected = null, contrasts = [], sets = {},
 } = {}) {
   let expectedFronts = frontsExpected;
   if (!expectedFronts) {
@@ -332,6 +339,8 @@ export function summarize(rowsIn, {
   if (fallback) notes.push(`${fallback} filas sin tokens por modelo: se usó el ponderado guardado en el CSV en vez de recalcularlo`);
 
   const tasks = [];
+  // dev or validation: the CSV column wins, then the configuration, then dev.
+  const setOf = (task) => (current.find((r) => r.task === task && r.set) || {}).set || sets[task] || 'dev';
   const pairList = pairs && pairs.length ? pairs : [['A', 'B']];
   for (const task of [...new Set(current.map((r) => r.task))].sort()) {
     const kind = kinds[task] || null;
@@ -388,10 +397,40 @@ export function summarize(rowsIn, {
       // A comparison in which no run called a skill of its plugin measures the base model, not the method.
       const { activation, activationNotes } = activationOf(arms);
       const eol = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol]));
-      tasks.push({ task, kind, pair, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes, eol });
+      tasks.push({ task, kind, set: setOf(task), pair, arms, evidence, decision, invalid, systematicNoChanges, activation, activationNotes, eol });
     }
   }
-  return { tasks, notes };
+  for (const t of tasks) if (t.set === undefined) t.set = setOf(t.task);
+  return { tasks, notes, contrasts, costPerSolved: costPerSolved(validRows.filter((r) => kinds[r.task] !== 'fixture'), setOf) };
+}
+
+// Cost per solved task, per arm: all the money the arm spent on valid runs divided by the tasks it solved. A task counts as solved by
+// an arm when more than half of that arm's valid runs of it (with acceptance data) are green. The unit is the task, not the run.
+export function costPerSolved(rows, setOf = () => 'dev') {
+  const build = (subset) => {
+    const arms = {};
+    for (const arm of [...new Set(subset.map((r) => r.arm))].sort()) {
+      const mine = subset.filter((r) => r.arm === arm);
+      const costed = mine.filter((r) => r.cost_usd !== null && r.cost_usd !== undefined);
+      const costTotal = costed.reduce((s, r) => s + r.cost_usd, 0);
+      let tasksWithAcceptance = 0;
+      let tasksSolved = 0;
+      for (const task of [...new Set(mine.map((r) => r.task))]) {
+        const acc = mine.filter((r) => r.task === task && hasAccept(r));
+        if (!acc.length) continue;
+        tasksWithAcceptance += 1;
+        if (acc.filter(isGreen).length * 2 > acc.length) tasksSolved += 1;
+      }
+      arms[arm] = {
+        runs: mine.length, runsWithoutCost: mine.length - costed.length, costTotal: Math.round(costTotal * 10000) / 10000,
+        tasksWithAcceptance, tasksSolved, costPerSolved: tasksSolved > 0 ? Math.round((costTotal / tasksSolved) * 10000) / 10000 : null,
+      };
+    }
+    return arms;
+  };
+  const bySet = {};
+  for (const s of [...new Set(rows.map((r) => setOf(r.task)))].sort()) bySet[s] = build(rows.filter((r) => setOf(r.task) === s));
+  return { arms: build(rows), bySet };
 }
 
 function fmt(x, d = 2) {
@@ -401,10 +440,27 @@ function fmt(x, d = 2) {
 
 const range = (s, d = 2) => (s ? `mediana ${fmt(s.median, d)} (rango ${fmt(s.min, d)} a ${fmt(s.max, d)})` : 'sin dato');
 
+const qrange = (st) => (st ? `${fmt(st.median, 1)} (${fmt(st.min, 0)} a ${fmt(st.max, 0)})` : 'sin dato');
+function qualityLine(q) {
+  if (!q || !QUALITY_KEYS.some((k) => q[k])) return '';
+  return QUALITY_KEYS.map((k) => `${k} ${qrange(q[k])}`).join('; ');
+}
+
+function costPerSolvedLines(c) {
+  if (!c || !Object.keys(c.arms).length) return [];
+  const one = (a) => `${a.costPerSolved === null ? 'sin tareas resueltas' : `${fmt(a.costPerSolved, 4)} USD por tarea resuelta`} (${fmt(a.costTotal, 4)} USD / ${a.tasksSolved} de ${a.tasksWithAcceptance} tareas resueltas)`;
+  const out = ['costo por tarea resuelta (solo corridas válidas; resuelta = más de la mitad de sus corridas válidas verdes):'];
+  for (const [arm, a] of Object.entries(c.arms)) out.push(`   ${arm}: ${one(a)}${a.runsWithoutCost ? `; ${a.runsWithoutCost} corridas sin costo conocido` : ''}`);
+  if (Object.keys(c.bySet).length > 1) {
+    for (const [set, arms] of Object.entries(c.bySet)) for (const [arm, a] of Object.entries(arms)) out.push(`   [${set}] ${arm}: ${one(a)}`);
+  }
+  return out;
+}
+
 export function formatSummary(res) {
   const out = [];
   for (const t of res.tasks) {
-    out.push(`== ${t.task}${t.kind ? ` (${t.kind})` : ''}${t.pair ? ` [par ${t.pair[0]} contra ${t.pair[1]}]` : ''} ==`);
+    out.push(`== ${t.task}${t.kind ? ` (${t.kind})` : ''}${t.set === 'validation' ? ' [validación]' : ''}${t.pair ? ` [par ${t.pair[0]} contra ${t.pair[1]}]` : ''} ==`);
     out.push(`evidence: ${t.evidence}`);
     for (const [a, s] of Object.entries(t.arms)) {
       const acc = s.accept ? `${s.accept.pass}/${s.accept.pass + s.accept.fail} tests (${s.accept.greenRuns}/${s.accept.runs} corridas verdes)` : 'sin dato';
@@ -414,6 +470,8 @@ export function formatSummary(res) {
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);
       out.push(`   aceptación: ${acc}`);
+      const qline = qualityLine(s.quality);
+      if (qline) out.push(`   calidad automática (mediana y rango): ${qline}`);
       if (s.eol.m) out.push(`   fin de línea (nota, no entra en la regla): ${s.eol.converted} archivos convertidos en ${s.eol.runs}/${s.eol.m} corridas${s.eol.only ? `, ${s.eol.only} con solo cambio de fin de línea` : ''}`);
       out.push(`   activaron el plugin: ${s.activation.m ? `${s.activation.n}/${s.activation.m}` : 'sin dato'}${s.hook.m ? ` (hook propio visto: ${s.hook.n}/${s.hook.m})` : ''}`);
     }
@@ -422,6 +480,9 @@ export function formatSummary(res) {
     for (const n of t.activationNotes) out.push(`   - ${n}`);
     out.push('');
   }
+  if (res.contrasts && res.contrasts.length) out.push(`contrastes: ${res.contrasts.map((c) => `${c.label} (${c.control} contra ${c.test})`).join('; ')}`);
+  const cps = costPerSolvedLines(res.costPerSolved);
+  if (cps.length) out.push(...cps);
   for (const n of res.notes) out.push(`nota: ${n}`);
   return out.join('\n').trimEnd();
 }

@@ -8,7 +8,8 @@ import { runProcess } from './proc.mjs';
 import { buildChildEnv } from './env.mjs';
 import { git } from './prepare.mjs';
 import { measureTrees, treePatches, excludeSpecs } from './trees.mjs';
-import { linkNodeModules, ensureSnapshot } from './nm.mjs';
+import { prepareTree } from './nm.mjs';
+import { qualityRun } from './quality.mjs';
 
 const ANSI = /\u001b\[[0-9;]*m/g;
 
@@ -117,18 +118,6 @@ function summarizeChanges(cfg, repo, dir) {
   fs.writeFileSync(path.join(dir, 'changes.blind.patch'), patches.blind);
   fs.writeFileSync(path.join(dir, 'changes.json'), JSON.stringify(changes, null, 2));
   return changes;
-}
-
-// The acceptance tests run in the measured tree: it needs the dependencies and the ignored folders the project needs.
-function prepareTree(cfg, mainRepo, tree) {
-  if (path.resolve(tree).toLowerCase() === path.resolve(mainRepo).toLowerCase()) return;
-  ensureSnapshot(cfg);
-  linkNodeModules(cfg, tree);
-  for (const rel of cfg.copyDirs || []) {
-    const from = path.join(mainRepo, rel);
-    const to = path.join(tree, rel);
-    if (fs.existsSync(from) && !fs.existsSync(to)) fs.cpSync(from, to, { recursive: true });
-  }
 }
 
 // The assistant messages of a run as [{ message, text }]: assistant-text.txt, rebuilt from stream.jsonl when it is missing (runs
@@ -247,6 +236,16 @@ export async function acceptRun(cfg, args) {
     if (b && Number.isFinite(b.fail)) baselineFull = { fail: b.fail };
   } catch { /* no tasks.json */ }
   const out = { task, arm, rep, acceptedAt: new Date().toISOString(), accept, full, baselineFull, invalidReasons: changes.invalidReasons || [] };
+  // Saved first: a long quality run must never put the acceptance result at risk.
+  fs.writeFileSync(path.join(dir, 'acceptance.json'), JSON.stringify(out, null, 2));
+  // The automatic quality panel (free: no tokens). A missing tool is a note in quality.json, never a failure of accept.
+  try {
+    const q = await qualityRun(cfg, { task, arm, rep });
+    out.quality = { file: 'quality.json', notes: q.notes };
+  } catch (e) {
+    out.quality = { error: e.message };
+    console.error(`aviso: el panel de calidad de ${task}/${arm}/${rep} no se calculó: ${e.message}`);
+  }
   fs.writeFileSync(path.join(dir, 'acceptance.json'), JSON.stringify(out, null, 2));
   return out;
 }
