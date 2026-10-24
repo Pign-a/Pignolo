@@ -21,14 +21,16 @@
   "qualityTimeoutMs": 300000,
   "mutationTimeoutMs": 1800000,
   "arms": {
-    "N": { "pluginName": null, "pluginDir": null },
-    "S": { "pluginName": "superpowers", "pluginDir": "/absolute/path/to/the/superpowers/plugin" },
-    "P": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin" }
+    "N": { "pluginName": null, "pluginDir": null, "reviewPrompt": "Review the last commit as a code reviewer and list the problems you find." },
+    "S": { "pluginName": "superpowers", "pluginDir": "/absolute/path/to/the/superpowers/plugin", "reviewPrompt": "Use the code-review skill of superpowers to review the last commit." },
+    "P": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin", "reviewPrompt": "Validate the code of the last commit." },
+    "C": { "pluginName": null, "pluginDir": null, "reviewPrompt": "/code-review HEAD~1..HEAD" }
   },
   "contrasts": [
     { "control": "N", "test": "S", "label": "superpowers contra nada" },
     { "control": "N", "test": "P", "label": "pignolo contra nada" },
-    { "control": "S", "test": "P", "label": "pignolo contra superpowers" }
+    { "control": "S", "test": "P", "label": "pignolo contra superpowers" },
+    { "control": "C", "test": "P", "label": "pignolo contra /code-review" }
   ],
   "copyDirs": ["relative/path/of/a/gitignored/generated/folder"],
   "weights": { "input": 1, "output": 5, "cacheRead": 0.1, "cacheWrite": 1.25 },
@@ -38,8 +40,10 @@
     "task-id-1": { "kind": "medium", "set": "dev" },
     "task-id-2": { "kind": "small", "set": "dev" },
     "task-id-3": { "kind": "medium", "set": "validation" },
+    "rev-01": { "kind": "review", "item": "rev-01", "set": "validation" },
     "detect-cli-script": { "kind": "fixture", "fixture": "cli-script", "prompt": "Validate the code of the project.", "arms": ["P"] }
   },
+  "freezeExtraFiles": ["tests/evals/RESULTS-comparacion-3-brazos.md", "tests/evals/analysis.mjs", "tests/evals/analysis-cli.mjs", "tests/evals/select-validation.mjs"],
   "blindExcludePaths": [
     ".claude/", ".superpowers/", ".pignolo/", "docs/superpowers/", "docs/pignolo/", "docs/sessions/", "docs/research/",
     "roadmap.md", "security.md", "design.md", "CLAUDE.md", ".gitignore", ".worktrees/"
