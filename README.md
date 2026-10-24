@@ -1,3 +1,26 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
+    <img src="docs/assets/hero-light.svg" alt="Pignolo 2: 25 % menos de costo que superpowers, alrededor de 5 % más que no usar plugin, 47 de 48 corridas aceptadas y 19 de 20 defectos detectados" width="880">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/costo-dark.svg">
+    <img src="docs/assets/costo-light.svg" alt="Costo por tarea con sin plugin igual a 100: Pignolo 105,5 y superpowers 141,5" width="880">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/revision-dark.svg">
+    <img src="docs/assets/revision-light.svg" alt="Revisión de un commit: Pignolo, superpowers y sin plugin detectan 19 de 20 defectos sembrados; /code-review detecta 17; el costo por corrida va de 0,14 a 0,42 dólares" width="880">
+  </picture>
+</p>
+
+<sub>Datos y límites en [`RESULTS-estudio-a-trabajo.md`](tests/evals/RESULTS-estudio-a-trabajo.md) y [`RESULTS-estudio-b-revision.md`](tests/evals/RESULTS-estudio-b-revision.md); el diseño preinscrito está en [`RESULTS-comparacion-3-brazos.md`](tests/evals/RESULTS-comparacion-3-brazos.md). Los gráficos se regeneran con `node tests/evals/readme-charts.mjs`.</sub>
+
 # Pignolo
 
 Pignolo 2 (1.0.0) es un plugin de Claude Code que reemplaza a superpowers con una metodología más liviana: pocas reglas, cada una con su razón, y nada que bloquee. Una skill de cada cosa que se hace en un proyecto: empezar, trabajar, validar, cerrar la sesión, diseñar la interfaz y auditarla. Diseño: [`docs/specs/2026-10-23-pignolo-2-design.md`](docs/specs/2026-10-23-pignolo-2-design.md).
