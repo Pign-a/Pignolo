@@ -2,13 +2,17 @@
 // Command line of tests/evals/analysis.mjs. Reads the CSV of runs (and optionally the grades), prints the analysis. Spends nothing.
 //   node tests/evals/analysis-cli.mjs --csv <path> --contrasts "P:N,P:S,S:N" --primary "P:N,P:S" --margin 1.5 --seed 1
 //     [--experiment a,b] [--tasks-set validation --task-set-file <path>] [--grades <path>] [--json]
+//   node tests/evals/analysis-cli.mjs --study review --csv <path> --experiment <name> --contrasts "P:N,P:C,P:S,C:N,S:N" --primary "P:N,P:C,P:S"
+//     --seed 20261030 --item-set-file <path> [--json]      (study B: review of diffs with seeded defects)
 // A contrast is TEST:CONTROL and the ratio is test / control. Exit code 0 when the analysis ran, 2 on an input error.
 import fs from 'node:fs';
-import { analyze, formatText, parseContrasts, readRuns, restrictToTasks } from './analysis.mjs';
+import { analyze, analyzeReview, formatReviewText, formatText, parseContrasts, readRuns, restrictToTasks } from './analysis.mjs';
 
 const HELP = `uso: node tests/evals/analysis-cli.mjs --csv <ruta> --contrasts "P:N,P:S,S:N" --primary "P:N,P:S" [--margin 1.5] [--equiv 1.25]
        [--seed 1] [--resamples 10000] [--grades <ruta>] [--experiment <a[,b]>] [--tasks-set validation|dev --task-set-file <ruta>]
        [--no-activation-arms N] [--success-rule majority|all|any] [--method auto|percentile|bca] [--json] [--help]
+       node tests/evals/analysis-cli.mjs --study review --csv <ruta> --experiment <nombre> --contrasts "P:N,P:C,P:S,C:N,S:N" --primary "P:N,P:C,P:S"
+       --seed 20261030 --item-set-file <ruta> [--json]
 
 Un contraste es PRUEBA:CONTROL; las razones son prueba / control. La unidad de análisis es la tarea.
 
@@ -24,6 +28,13 @@ Un contraste es PRUEBA:CONTROL; las razones son prueba / control. La unidad de a
   --margin / --equiv      margen de no inferioridad (1.5) y de equivalencia descriptiva (1.25).
   --no-activation-arms    brazos sin concepto de activación (por defecto N): entran siempre en el análisis por protocolo.
                           Un brazo cuyas corridas no tienen ningún dato de activación (vacío o n/a) no se filtra, y se dice.
+  --study review          estudio B (revisión con defectos sembrados) en vez del estudio A. La tarea es el ítem (rev-NN). Recall por
+                          ítem = defectos encontrados / sembrados; prueba primaria: permutación de signos (exacta con 15 ítems o menos) sobre
+                          la diferencia media de recall por ítem, bilateral, con Holm solo sobre los primarios; Wilcoxon y prueba del signo como
+                          sensibilidad; recall agregado con Wilson, tabla por categoría y falsos positivos, descriptivos. Veredicto de la ficha 8.2,
+                          con la calificación "más hallazgos sin confirmar" si el brazo de prueba tiene más del doble de hallazgos sin coincidencia
+                          por ítem. Con menos de 8 ítems con defectos es exploratorio.
+  --item-set-file <ruta>  JSON { "validation": ["rev-01", ...] } con los ítems del estudio B (la clave se cambia con --tasks-set).
   --seed / --resamples    semilla y remuestreos del bootstrap y de la permutación de signos.
   --json                  salida en JSON en vez de texto.
 
@@ -34,7 +45,7 @@ Corridas censuradas (terminación budget_cap o model_timeout, o censored=true): 
 costo duplicado. Las corridas inválidas (fallos de infraestructura) se excluyen y se listan con su terminación.`;
 
 const VALUE_FLAGS = new Set(['csv', 'contrasts', 'primary', 'margin', 'equiv', 'seed', 'resamples', 'grades', 'experiment', 'tasks-set', 'task-set',
-  'task-set-file', 'no-activation-arms', 'success-rule', 'method']);
+  'task-set-file', 'item-set-file', 'study', 'no-activation-arms', 'success-rule', 'method']);
 
 function parseArgs(argv) {
   const out = {};
@@ -78,6 +89,10 @@ function main() {
   if (args.help) { console.log(HELP); return; }
   if (!args.csv) throw new Error(`falta --csv\n${HELP}`);
   if (!args.contrasts) throw new Error(`falta --contrasts\n${HELP}`);
+  const study = args.study || 'workflow';
+  if (!['workflow', 'review'].includes(study)) throw new Error(`--study debe ser review o workflow (se pidió "${study}")`);
+  if (study === 'review') args['task-set-file'] = args['item-set-file'] || args['task-set-file'];
+  if (study === 'review' && args['task-set-file'] && !args['tasks-set']) args['tasks-set'] = 'validation';
   if (Boolean(args['tasks-set']) !== Boolean(args['task-set-file'])) throw new Error('--tasks-set y --task-set-file van juntos');
   const contrasts = parseContrasts(args.contrasts);
   const primary = args.primary ? parseContrasts(args.primary) : null;
@@ -103,6 +118,11 @@ function main() {
     if (!kept.rows.length) throw new Error(`ninguna corrida válida es de una tarea del conjunto "${args['tasks-set']}"`);
     ({ rows, invalid } = kept);
     taskSet = { name: args['tasks-set'], listed: kept.listed, droppedRuns: kept.droppedRuns, missingTasks: kept.missingTasks };
+  }
+  if (study === 'review') {
+    const review = analyzeReview(rows, { contrasts, primary, seed: Number(args.seed ?? 1), resamples: num(args.resamples, 'resamples', 10000), invalid, taskSet });
+    console.log(args.json ? JSON.stringify(review, null, 2) : formatReviewText(review));
+    return;
   }
   let grades = null;
   if (args.grades) {

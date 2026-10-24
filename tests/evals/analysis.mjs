@@ -12,6 +12,11 @@
 //   these columns have no censored runs.
 // - Per-protocol analysis: an arm whose runs carry no activation data at all (empty or n/a) is not filtered; "none" is data.
 // - Holm adjusts only the primary contrasts (analyze option `primary`); the others are exploratory, without adjustment.
+// - Cost sensitivities, both descriptive: censored runs with their cost doubled, and the ratio without the censored runs
+//   (their task and arm cells are dropped, and the tasks that lose an arm).
+// - Study B (analyzeReview, formatReviewText): review of diffs with seeded defects. The unit is the item; primary test is the
+//   exact sign-flip permutation on the mean per-item recall difference with Holm over the primary contrasts only; verdict and
+//   qualification ("more than double the unmatched findings") as written in the ficha, section 8.2.
 // - restrictToTasks keeps one task set (validation or dev) so the formal analysis never mixes them.
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -212,7 +217,7 @@ export function parseCsv(text) {
 const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache_read', 'cache_write', 'wall_s', 'duration_ms', 'turns',
   'agents', 'skill_calls', 'own_skill_calls', 'exit_code', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed',
   'full_pass', 'full_fail', 'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'tsc_new_errors', 'eslint_new_errors',
-  'out_of_scope_files', 'diff_lines'];
+  'out_of_scope_files', 'diff_lines', 'defects_total', 'defects_found', 'findings_total', 'findings_unmatched'];
 const BOOLEAN = ['timed_out', 'contamination', 'is_error', 'invalid', 'censored'];
 // Terminations that make a run censored (stopped by the model's own budget or time, not by a fault of the infrastructure).
 const CENSORING_TERMINATIONS = new Set(['budget_cap', 'model_timeout']);
@@ -737,6 +742,7 @@ function analyzePopulation(rows, { test, control, label, opts, grades }) {
       ratio: ratio.ratio, ci90: ratio.ci90, ci95: ratio.ci95, upper95: ratio.upper95, upperT95: ratio.upperT95, p: ratio.p, pMethod: ratio.pMethod, ciMethod: ratio.ciMethod,
       binds: ni.binds, boundsPass: ni.boundsPass,
       censoredSensitivity: censoredSensitivity(cellRows, { test, control, tasks: allTasks, ratio, opts }),
+      withoutCensored: costWithoutCensored(cellRows, { test, control, tasks: allTasks, ratio, opts }),
       pAdjusted: null, nonInferior: ni.pass && n >= MIN_TASKS, nonInferiorityLine: ni.text, margin: opts.margin,
       equivalent: eq, equivalenceLine: `equivalencia (IC 90 % dentro de [${fx(1 / opts.equivMargin, 3)}; ${fx(opts.equivMargin, 3)}]): ${eq ? 'sí' : 'no'} (descriptivo)`,
       interpretation: interpretRatio(ratio, 'costo'),
@@ -761,6 +767,23 @@ function censoredSensitivity(rows, { test, control, tasks, ratio, opts }) {
   return {
     censoredRuns, ratio: g.ratio, upper95: g.upper95, upperT95: g.upperT95,
     line: `sensibilidad (descriptiva, cota burda): si el costo de cada una de las ${censoredRuns} corridas censuradas se duplicara, la razón sería ${fx(g.ratio)} (cota ${bootstrapName(g)} ${fx(g.upper95)}, cota t ${fx(g.upperT95)}) en vez de ${fx(ratio.ratio)}`,
+  };
+}
+
+// Descriptive sensitivity (ficha 7.8): the cost ratio without the censored runs. A task and arm cell with any censored run is dropped,
+// and with it the task, which loses an arm.
+function costWithoutCensored(rows, { test, control, tasks, ratio, opts }) {
+  const cells = new Set(rows.filter((r) => r.censored).map((r) => `${r.task}\u0000${r.arm}`));
+  const droppedTasks = [...new Set(rows.filter((r) => r.censored).map((r) => r.task))].filter((t) => tasks.includes(t)).sort();
+  if (!cells.size) {
+    return { censoredRuns: 0, n: ratio.n ?? null, droppedTasks, ratio: ratio.ratio, upper95: ratio.upper95, upperT95: ratio.upperT95, line: `sensibilidad sin las corridas censuradas (descriptiva): no hay corridas censuradas, coincide con el análisis (razón ${fx(ratio.ratio)})` };
+  }
+  const kept = rows.filter((r) => !cells.has(`${r.task}\u0000${r.arm}`));
+  const paired = pairedLogRatios(collapse(kept, 'cost_usd'), control, test, { tasks });
+  const g = geometricMeanRatio(paired.logRatios, { resamples: opts.resamples, seed: opts.seed, method: opts.method });
+  return {
+    censoredRuns: rows.filter((r) => r.censored).length, n: paired.tasks.length, droppedTasks, ratio: g.ratio, upper95: g.upper95, upperT95: g.upperT95,
+    line: `sensibilidad sin las corridas censuradas (descriptiva): n = ${paired.tasks.length} tareas (se quitan ${droppedTasks.join(', ') || 'ninguna'}); razón ${fx(g.ratio)} (cota ${bootstrapName(g)} ${fx(g.upper95)}, cota t ${fx(g.upperT95)}) en vez de ${fx(ratio.ratio)}`,
   };
 }
 
@@ -794,6 +817,17 @@ export function parseContrasts(text) {
   });
 }
 
+// The primary contrasts as "TEST:CONTROL" keys (null when none were given). Each must be among the requested ones.
+function resolvePrimary(list, primary) {
+  if (primary === null || primary === undefined) return null;
+  const parsed = typeof primary === 'string' ? parseContrasts(primary) : primary;
+  const keys = parsed.map((c) => `${c.test}:${c.control}`);
+  for (const k of keys) {
+    if (!list.some((c) => `${c.test}:${c.control}` === k)) throw new Error(`el contraste primario ${k} no está entre los contrastes pedidos (${list.map((c) => `${c.test}:${c.control}`).join(', ')})`);
+  }
+  return keys;
+}
+
 // rows: normalized valid rows. invalid: list from readRuns (reported as they are).
 // `primary`: the pre-registered primary contrasts ("P:N,P:S" or a list); Holm adjusts only those and the rest are exploratory
 // with no adjustment. Without it, every requested contrast is primary (null in the result tells so).
@@ -805,11 +839,7 @@ export function analyze(rows, {
   const valid = rows.filter((r) => !r.invalid);
   const opts = { margin, equivMargin, seed, resamples, method, noActivationArms, successRule };
   const list = (typeof contrasts === 'string' ? parseContrasts(contrasts) : contrasts) || [];
-  const primaryList = primary === null || primary === undefined ? null : (typeof primary === 'string' ? parseContrasts(primary) : primary);
-  const primaryKeys = primaryList && primaryList.map((c) => `${c.test}:${c.control}`);
-  for (const k of primaryKeys || []) {
-    if (!list.some((c) => `${c.test}:${c.control}` === k)) throw new Error(`el contraste primario ${k} no está entre los contrastes pedidos (${list.map((c) => `${c.test}:${c.control}`).join(', ')})`);
-  }
+  const primaryKeys = resolvePrimary(list, primary);
   const results = list.map(({ test, control }) => {
     const inContrast = valid.filter((r) => r.arm === test || r.arm === control);
     // An arm whose runs carry no activation data at all (older CSV, or the harness could not tell) is not filtered in the
@@ -877,6 +907,7 @@ function formatPopulation(p, c) {
   L.push(`    ${k.equivalenceLine}`);
   L.push(`    interpretación: ${k.interpretation}`);
   L.push(`    ${k.censoredSensitivity.line}`);
+  L.push(`    ${k.withoutCensored.line}`);
   const s = p.success;
   L.push(`  éxito de la aceptación (n = ${s.n} tareas, regla "${s.rule}"):`);
   L.push(`    discordantes: solo ${c.control} ${s.discordant.controlOnly}, solo ${c.test} ${s.discordant.testOnly}, ambos ${s.discordant.both}, ninguno ${s.discordant.neither}; McNemar exacto p = ${fx(s.mcnemarP)}`);
@@ -922,6 +953,192 @@ export function formatText(result) {
     L.push(...formatPopulation(c.itt, c));
     L.push(...formatPopulation(c.pp, c));
   }
+  L.push('', `Corridas inválidas excluidas: ${result.excludedRuns.length}`);
+  for (const e of result.excludedRuns) L.push(`  ${e.experiment ? `${e.experiment} ` : ''}${e.run}: ${e.reason}${e.termination ? ` (terminación: ${e.termination})` : ''}`);
+  return L.join('\n');
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Study B: review of diffs with seeded defects (ficha sections 6.2, 7.2 and 8.2). The unit of analysis is the ITEM.
+// ---------------------------------------------------------------------------------------------------------------------
+
+// "category=found/total|category2=found/total" -> { category: { found, total } }. Malformed parts are skipped.
+export function parseCategories(text) {
+  const out = {};
+  for (const part of String(text ?? '').split('|')) {
+    const m = /^\s*([^=|]+?)\s*=\s*(\d+)\s*\/\s*(\d+)\s*$/.exec(part);
+    if (m) out[m[1]] = { found: Number(m[2]), total: Number(m[3]) };
+  }
+  return out;
+}
+
+const spread = (xs) => (xs.length
+  ? { items: xs.length, mean: mean(xs), median: median(xs), min: Math.min(...xs), max: Math.max(...xs) }
+  : { items: 0, mean: null, median: null, min: null, max: null });
+
+// Verdict of the pre-registered rule (8.2). Only primary contrasts with at least MIN_TASKS items with defects get one.
+// Qualification: when the test arm wins on recall and has MORE THAN DOUBLE the unmatched findings per item of the control.
+function reviewVerdict({ test, control, role, n, meanDiff, p, pAdjusted, unmatched }) {
+  const diffText = `diferencia media de recall por ítem (${test} - ${control}) ${fx(meanDiff)}`;
+  if (role !== 'primario') return { kind: 'exploratorio', qualified: false, text: `exploratorio, sin regla de decisión: ${diffText}, p sin ajuste = ${fx(p)}` };
+  if (n < MIN_TASKS) return { kind: 'exploratorio', qualified: false, text: `exploratorio (n = ${n} ítems con defectos): sin veredicto, solo descriptivo; ${diffText}, p = ${fx(p)}` };
+  const adj = `p ajustado (Holm) = ${fx(pAdjusted)}`;
+  if (pAdjusted !== null && pAdjusted < 0.05 && meanDiff > 0) {
+    const qualified = Number.isFinite(unmatched.test) && Number.isFinite(unmatched.control) && unmatched.test > 2 * unmatched.control;
+    const base = `${test} encuentra más defectos que ${control} (${diffText}, ${adj})`;
+    return {
+      kind: 'mas', qualified,
+      text: qualified
+        ? `${base}: más defectos sembrados encontrados, con más hallazgos sin confirmar (hallazgos sin coincidencia por ítem: ${test} ${fx(unmatched.test, 2)} contra ${control} ${fx(unmatched.control, 2)}, más del doble); se informa además la muestra revisada a mano (6.2) para saber cuántos de esos hallazgos eran problemas reales`
+        : base,
+    };
+  }
+  if (pAdjusted !== null && pAdjusted < 0.05 && meanDiff < 0) return { kind: 'menos', qualified: false, text: `${test} encuentra menos defectos que ${control} (${diffText}, ${adj})` };
+  return {
+    kind: 'sin diferencia', qualified: false,
+    text: `sin diferencia demostrada entre ${test} y ${control} (${diffText}, ${adj}); no es equivalencia: con ${n} ítems la ausencia de diferencia demostrada no prueba que sean iguales`,
+  };
+}
+
+// rows: normalized valid rows of the review study (task = item id). Contrasts as in analyze(); Holm only over the primary ones.
+export function analyzeReview(rows, { contrasts, primary = null, seed = 1, resamples = 10000, invalid = [], taskSet = null } = {}) {
+  const valid = rows.filter((r) => !r.invalid);
+  const list = (typeof contrasts === 'string' ? parseContrasts(contrasts) : contrasts) || [];
+  const primaryKeys = resolvePrimary(list, primary);
+  const scored = valid.filter((r) => typeof r.defects_total === 'number');
+  const unscoredRuns = valid.filter((r) => typeof r.defects_total !== 'number').map(runId);
+  const totals = new Map();
+  for (const r of scored) totals.set(r.task, Math.max(totals.get(r.task) ?? 0, r.defects_total));
+  const items = [...totals.keys()].sort();
+  const defectItems = items.filter((i) => totals.get(i) > 0);
+  const cleanItems = items.filter((i) => totals.get(i) === 0);
+  const arms = [...new Set(list.flatMap((c) => [c.test, c.control]))];
+  const cellRuns = (item, arm) => scored.filter((r) => r.task === item && r.arm === arm);
+  // Recall of an item and arm: mean over its valid runs of defects_found / defects_total (normally one run).
+  const recallOf = (item, arm) => {
+    const rs = cellRuns(item, arm).filter((r) => r.defects_total > 0 && typeof r.defects_found === 'number');
+    return rs.length ? mean(rs.map((r) => r.defects_found / r.defects_total)) : null;
+  };
+  const unmatchedOf = (item, arm) => {
+    const rs = cellRuns(item, arm).filter((r) => typeof r.findings_unmatched === 'number');
+    return rs.length ? mean(rs.map((r) => r.findings_unmatched)) : null;
+  };
+
+  const results = list.map(({ test, control }) => {
+    const perItem = [];
+    const excludedItems = [];
+    for (const item of defectItems) {
+      const t = recallOf(item, test);
+      const c = recallOf(item, control);
+      const missing = [control, test].filter((a, i) => (i ? t : c) === null);
+      if (missing.length) { excludedItems.push({ item, reason: `falta el brazo ${missing.join(' y ')}` }); continue; }
+      perItem.push({ item, test: t, control: c, diff: t - c, unmatchedTest: unmatchedOf(item, test), unmatchedControl: unmatchedOf(item, control) });
+    }
+    const diffs = perItem.map((x) => x.diff);
+    const n = perItem.length;
+    const flip = n ? signFlipTest(diffs, { seed, resamples }) : { p: null, method: 'sin datos' };
+    const w = n ? wilcoxonSignedRank(diffs) : { n: 0, zeros: 0, p: null, method: 'sin datos' };
+    const wtl = winTieLoss(diffs);
+    const sign = wtl.wins + wtl.losses ? mcnemarExact(wtl.losses, wtl.wins) : null;
+    const meanOf = (key) => { const xs = perItem.map((x) => x[key]).filter((x) => typeof x === 'number'); return xs.length ? mean(xs) : null; };
+    const key = `${test}:${control}`;
+    return {
+      contrast: key, test, control, role: !primaryKeys || primaryKeys.includes(key) ? 'primario' : 'exploratorio',
+      n, label: labelFor(n), perItem, excludedItems,
+      recall: { test: n ? mean(perItem.map((x) => x.test)) : null, control: n ? mean(perItem.map((x) => x.control)) : null },
+      meanDiff: n ? mean(diffs) : null, p: flip.p, pMethod: flip.method, pAdjusted: null,
+      wilcoxon: w, signTest: { p: sign, n: wtl.wins + wtl.losses, method: 'exacto (ceros descartados)' }, ...wtl,
+      unmatched: { test: meanOf('unmatchedTest'), control: meanOf('unmatchedControl') }, verdict: null,
+    };
+  });
+  const prim = results.filter((r) => r.role === 'primario');
+  const adj = holm(prim.map((r) => r.p));
+  prim.forEach((r, i) => { r.pAdjusted = adj[i]; });
+  for (const r of results) r.verdict = reviewVerdict(r);
+
+  const armStats = {};
+  for (const arm of arms) {
+    const runs = scored.filter((r) => r.arm === arm);
+    const defectRuns = runs.filter((r) => r.defects_total > 0);
+    const k = defectRuns.reduce((a, r) => a + (r.defects_found || 0), 0);
+    const tot = defectRuns.reduce((a, r) => a + r.defects_total, 0);
+    const costRuns = runs.filter((r) => typeof r.cost_usd === 'number');
+    const cost = costRuns.reduce((a, r) => a + r.cost_usd, 0);
+    const perItemValues = (set) => set.map((i) => unmatchedOf(i, arm)).filter((x) => typeof x === 'number');
+    const act = runs.filter((r) => hasActivationData(r));
+    armStats[arm] = {
+      runs: runs.length,
+      censored: { runs: runs.length, censored: runs.filter((r) => r.censored).length },
+      pooled: { ...wilson(k, tot), note: 'solo descriptivo: los defectos de un mismo ítem están agrupados y no son independientes, el intervalo es optimista' },
+      clean: spread(perItemValues(cleanItems)),
+      defectUnmatched: spread(perItemValues(defectItems)),
+      findingsTotal: spread(defectItems.map((i) => { const rs = cellRuns(i, arm).filter((r) => typeof r.findings_total === 'number'); return rs.length ? mean(rs.map((r) => r.findings_total)) : null; }).filter((x) => typeof x === 'number')),
+      cost: { total: cost, runs: costRuns.length }, costPerDefect: k > 0 && costRuns.length ? cost / k : null,
+      costRange: range(costRuns.map((r) => r.cost_usd)),
+      wall_s: range(runs.map((r) => r.wall_s).filter((x) => typeof x === 'number')),
+      turns: range(runs.map((r) => r.turns).filter((x) => typeof x === 'number')),
+      agents: range(runs.map((r) => r.agents).filter((x) => typeof x === 'number')),
+      activation: act.length
+        ? { runs: runs.length, activated: runs.filter((r) => hasActivationData(r) && activated(r, [])).length, withData: act.length }
+        : { runs: runs.length, activated: null, withData: 0, note: 'sin dato de activación' },
+    };
+  }
+  const byCategory = {};
+  for (const arm of arms) {
+    for (const r of scored.filter((x) => x.arm === arm && x.defects_total > 0)) {
+      for (const [cat, v] of Object.entries(parseCategories(r.found_by_category))) {
+        const cell = ((byCategory[cat] ||= {})[arm] ||= { found: 0, total: 0 });
+        cell.found += v.found;
+        cell.total += v.total;
+      }
+    }
+  }
+  for (const cat of Object.keys(byCategory)) for (const arm of arms) byCategory[cat][arm] ||= { found: 0, total: 0 };
+  const incompleteItems = items.map((item) => ({ item, missingArms: arms.filter((a) => !cellRuns(item, a).length) })).filter((x) => x.missingArms.length);
+  return {
+    study: 'review', seed, primary: primaryKeys, taskSet, defectItems, cleanItems, incompleteItems, unscoredRuns,
+    arms: armStats, byCategory: Object.fromEntries(Object.entries(byCategory).sort(([a], [b]) => a.localeCompare(b))),
+    excludedRuns: invalid, contrasts: results,
+  };
+}
+
+export function formatReviewText(result) {
+  const L = [];
+  L.push(`Estudio de revisión con defectos sembrados (semilla ${result.seed}). Unidad de análisis: el ítem. Recall del ítem = defectos encontrados / sembrados; razones y diferencias = prueba - control.`);
+  L.push(`Con menos de ${MIN_TASKS} ítems con defectos el resultado es exploratorio y no hay veredicto. Los controles limpios se reportan aparte y no cambian el veredicto de recall.`);
+  L.push(result.primary
+    ? `Contrastes primarios (Holm): ${result.primary.join(', ')}; los demás son exploratorios y sin ajuste.`
+    : 'Holm sobre todos los contrastes pedidos (no se indicó --primary).');
+  const ts = result.taskSet;
+  if (ts) L.push(`Se analiza solo el conjunto de ítems "${ts.name}": ${ts.listed} listados; ${ts.droppedRuns} corridas de otros ítems descartadas${ts.missingTasks.length ? `; sin corridas: ${ts.missingTasks.join(', ')}` : ''}.`);
+  L.push(`Ítems con defectos (${result.defectItems.length}): ${result.defectItems.join(', ') || '(ninguno)'}; controles limpios (${result.cleanItems.length}): ${result.cleanItems.join(', ') || '(ninguno)'}`);
+  for (const e of result.incompleteItems) L.push(`Ítem ${e.item} sin todos los brazos: falta ${e.missingArms.join(', ')}`);
+  for (const r of result.unscoredRuns) L.push(`Corrida sin puntaje (defects_total vacío) fuera del análisis: ${r}`);
+  for (const c of result.contrasts) {
+    L.push('', `=== Contraste ${c.contrast} (prueba ${c.test}, control ${c.control}) — ${c.role === 'primario' ? 'primario' : 'exploratorio, sin ajuste'} ===`);
+    L.push(`  n = ${c.n} ítems con defectos (${c.label})`);
+    for (const e of c.excludedItems) L.push(`  ítem excluido ${e.item}: ${e.reason}`);
+    L.push(`  recall medio por ítem: ${c.test} ${fx(c.recall.test)}, ${c.control} ${fx(c.recall.control)}; diferencia media (${c.test} - ${c.control}) ${fx(c.meanDiff)}; gana/empata/pierde ${c.wins}/${c.ties}/${c.losses}`);
+    L.push(`  permutación de signos (${c.pMethod}, bilateral) p = ${fx(c.p)}; p ajustado (Holm) = ${c.pAdjusted === null && c.role === 'exploratorio' ? 'no aplica (contraste exploratorio)' : fx(c.pAdjusted)}`);
+    L.push(`  sensibilidades: Wilcoxon (${c.wilcoxon.method}, n efectivo ${c.wilcoxon.n}) p = ${fx(c.wilcoxon.p)}; prueba del signo (${c.signTest.method}) p = ${fx(c.signTest.p)}`);
+    L.push(`  hallazgos sin coincidencia por ítem con defectos: ${c.test} ${fx(c.unmatched.test, 2)}, ${c.control} ${fx(c.unmatched.control, 2)}`);
+    L.push(`  veredicto: ${c.verdict.text}`);
+  }
+  L.push('', 'Por brazo (descriptivo):');
+  for (const [arm, a] of Object.entries(result.arms)) {
+    const pl = a.pooled;
+    L.push(`  ${arm}: ${a.runs} corridas (censuradas ${a.censored.censored} de ${a.censored.runs})`);
+    L.push(`    recall agregado por defecto: ${pl.k}/${pl.n} = ${fx(pl.p)}, Wilson 95 % [${fx(pl.lower)}; ${fx(pl.upper)}] (${pl.note})`);
+    L.push(`    hallazgos sin coincidencia: controles limpios (falsos positivos del diff limpio, con la salvedad de que pueden ser problemas reales; n = ${a.clean.items}) mediana ${fx(a.clean.median, 1)} [${fx(a.clean.min, 0)}–${fx(a.clean.max, 0)}]; ítems con defectos (n = ${a.defectUnmatched.items}) media ${fx(a.defectUnmatched.mean, 2)}, mediana ${fx(a.defectUnmatched.median, 1)} [${fx(a.defectUnmatched.min, 0)}–${fx(a.defectUnmatched.max, 0)}]`);
+    L.push(`    costo por defecto encontrado: ${a.costPerDefect === null ? 's/d' : `${fx(a.costPerDefect, 3)} USD`} (costo total ${fx(a.cost.total, 2)} USD de ${a.cost.runs} corridas, incluye los controles limpios)`);
+    L.push(`    costo ${rg(a.costRange)} USD; tiempo ${rg(a.wall_s, 1)} s; turnos ${rg(a.turns, 1)}; agentes ${rg(a.agents, 1)} (mediana [rango] por corrida)`);
+    L.push(`    activación: ${a.activation.activated === null ? a.activation.note : `${a.activation.activated} de ${a.activation.runs} corridas`}`);
+  }
+  L.push('', 'Recall por categoría (descriptivo, defectos sumados sobre los ítems con defectos; pocos defectos por categoría):');
+  for (const [cat, perArm] of Object.entries(result.byCategory)) {
+    L.push(`  categoría ${cat}: ${Object.entries(perArm).map(([arm, v]) => `${arm} ${v.found}/${v.total}`).join(', ')}`);
+  }
+  if (!Object.keys(result.byCategory).length) L.push('  (sin datos de categoría)');
   L.push('', `Corridas inválidas excluidas: ${result.excludedRuns.length}`);
   for (const e of result.excludedRuns) L.push(`  ${e.experiment ? `${e.experiment} ` : ''}${e.run}: ${e.reason}${e.termination ? ` (terminación: ${e.termination})` : ''}`);
   return L.join('\n');

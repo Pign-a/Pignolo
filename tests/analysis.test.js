@@ -826,3 +826,238 @@ test('CLI: --primary limita Holm, un arm sin dato de activación sale con códig
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Estudio A: sensibilidad sin las censuradas. Estudio B: revisión con defectos sembrados
+// ---------------------------------------------------------------------------------------------------------------------
+
+test('estudio A: la razón de costo sin las corridas censuradas quita esas celdas y las tareas que pierden un brazo', async () => {
+  const m = await load();
+  const rows = [];
+  for (let i = 1; i <= 8; i += 1) {
+    rows.push(run(`t${i}`, 'N', 1, { cost_usd: 1 }));
+    rows.push(run(`t${i}`, 'P', 1, { cost_usd: 1 }));
+  }
+  Object.assign(rows[1], { cost_usd: 2, termination: 'budget_cap', censored: 'true' }); // t1, P
+  Object.assign(rows[2], { cost_usd: 3 }); // t2, N sube a 3 y queda
+  const res = m.analyze(m.readRuns(toCsv(rows)).rows, { contrasts: 'P:N', resamples: 300 });
+  const k = res.contrasts[0].itt.cost;
+  near(k.ratio, Math.exp((Math.log(2) + Math.log(1 / 3)) / 8), 1e-12);
+  assert.strictEqual(k.withoutCensored.n, 7);
+  assert.deepStrictEqual(k.withoutCensored.droppedTasks, ['t1']);
+  near(k.withoutCensored.ratio, Math.exp(Math.log(1 / 3) / 7), 1e-12);
+  assert.match(k.withoutCensored.line, /sin las corridas censuradas/);
+  assert.match(k.withoutCensored.line, /descriptiv/);
+  assert.match(k.withoutCensored.line, /t1/);
+  assert.match(m.formatText(res), /sin las corridas censuradas.*n = 7/);
+  const none = m.analyze(m.readRuns(toCsv(rows.map((r) => ({ ...r, censored: 'false', termination: 'ok' })))).rows, { contrasts: 'P:N', resamples: 300 });
+  assert.deepStrictEqual(none.contrasts[0].itt.cost.withoutCensored.droppedTasks, []);
+  near(none.contrasts[0].itt.cost.withoutCensored.ratio, none.contrasts[0].itt.cost.ratio, 1e-12);
+});
+
+// ---- Estudio B ----
+const RCOLS = ['experiment', 'task', 'arm', 'rep', 'timestamp', 'cost_usd', 'wall_s', 'turns', 'agents', 'defects_total', 'defects_found', 'found_by_category',
+  'findings_total', 'findings_unmatched', 'activation_via', 'invalid', 'invalid_reason', 'termination', 'censored'];
+const reviewRow = (item, arm, found, total, extra = {}) => ({
+  experiment: 'rv', task: item, arm, rep: 1, timestamp: `ts-${item}-${arm}`, cost_usd: 1, wall_s: 30, turns: 5, agents: 0, defects_total: total, defects_found: found,
+  found_by_category: '', findings_total: 3, findings_unmatched: 1, activation_via: arm === 'P' ? 'skill_tool' : '', invalid: 'false', termination: 'ok', censored: 'false', ...extra,
+});
+const rcsv = (rows) => toCsv(rows, RCOLS);
+const item = (i) => `rev-${String(i).padStart(2, '0')}`;
+// Ocho ítems con defectos (totales 2,2,2,2,3,3,2,2) y dos controles limpios. Cada defecto es de la categoría logic o sec.
+const TOTALS = [2, 2, 2, 2, 3, 3, 2, 2];
+const P_FOUND = [[1, 1], [1, 1], [1, 0], [1, 1], [2, 1], [1, 1], [1, 1], [1, 1]]; // (logic, sec)
+const N_FOUND = [[0, 0], [1, 0], [0, 1], [0, 0], [1, 0], [0, 1], [0, 0], [1, 0]];
+const C_FOUND = [[1, 0], [1, 1], [1, 0], [0, 1], [1, 1], [1, 1], [1, 0], [1, 1]];
+const catText = (total, f) => `logic=${f[0]}/${total - 1}|sec=${f[1]}/1`;
+function reviewRows({ unmatched = { P: 4, N: 1, C: 1 }, cleanUnmatched = { P: [2, 4], N: [0, 0], C: [1, 1] } } = {}) {
+  const rows = [];
+  const sets = { P: P_FOUND, N: N_FOUND, C: C_FOUND };
+  for (const arm of ['P', 'N', 'C']) {
+    TOTALS.forEach((tot, i) => {
+      const f = sets[arm][i];
+      rows.push(reviewRow(item(i + 1), arm, f[0] + f[1], tot, { found_by_category: catText(tot, f), findings_unmatched: unmatched[arm] }));
+    });
+    cleanUnmatched[arm].forEach((u, j) => rows.push(reviewRow(item(9 + j), arm, 0, 0, { findings_unmatched: u, findings_total: u })));
+  }
+  return rows;
+}
+
+test('estudio B: categorías de found_by_category', async () => {
+  const m = await load();
+  assert.deepStrictEqual(m.parseCategories('logic=1/2|sec=0/1'), { logic: { found: 1, total: 2 }, sec: { found: 0, total: 1 } });
+  assert.deepStrictEqual(m.parseCategories(''), {});
+  assert.deepStrictEqual(m.parseCategories('roto|x=2/3'), { x: { found: 2, total: 3 } });
+});
+
+test('estudio B: recall por ítem, permutación de signos exacta, Holm solo en los primarios y veredicto', async () => {
+  const m = await load();
+  const rows = m.readRuns(rcsv(reviewRows())).rows;
+  const res = m.analyzeReview(rows, { contrasts: 'P:N,P:C,C:N', primary: 'P:N,P:C', seed: 1 });
+  assert.strictEqual(res.study, 'review');
+  assert.deepStrictEqual(res.defectItems, [1, 2, 3, 4, 5, 6, 7, 8].map(item));
+  assert.deepStrictEqual(res.cleanItems, [item(9), item(10)]);
+  const [pn, pc, cn] = res.contrasts;
+  // P - N por ítem: 1, 0,5, 0, 1, 2/3, 1/3, 1, 0,5 -> media 5/8; 7 diferencias positivas y un cero: 4 de 256 patrones.
+  near(pn.meanDiff, 0.625, 1e-12);
+  near(pn.p, 4 / 256, 1e-12);
+  assert.strictEqual(pn.pMethod, 'exacto');
+  assert.deepStrictEqual([pn.wins, pn.ties, pn.losses], [7, 1, 0]);
+  // P - C: 0,5; 0; 0; 0,5; 1/3; 0; 0,5; 0 -> 4 diferencias positivas: 2 * 2^4 de 256.
+  near(pc.p, 32 / 256, 1e-12);
+  // Holm sobre los dos primarios: 2 * (4/256) y max(.., 1 * 32/256).
+  near(pn.pAdjusted, 2 * 4 / 256, 1e-12);
+  near(pc.pAdjusted, 32 / 256, 1e-12);
+  assert.strictEqual(cn.role, 'exploratorio');
+  assert.strictEqual(cn.pAdjusted, null);
+  assert.strictEqual(pn.n, 8);
+  assert.strictEqual(pn.label, 'confirmatorio');
+  assert.strictEqual(pn.wilcoxon.n, 7);
+  assert.strictEqual(pn.signTest.p, 2 / 128); // 7 ganadas, ceros descartados
+  assert.match(pn.verdict.text, /P encuentra más defectos que N/);
+  assert.match(pc.verdict.text, /sin diferencia demostrada.*no es equivalencia/);
+  assert.match(cn.verdict.text, /exploratorio/);
+  assert.doesNotMatch(cn.verdict.text, /encuentra más defectos/);
+});
+
+test('estudio B: regla de calificación, más del doble de hallazgos sin coincidencia por ítem', async () => {
+  const m = await load();
+  const verdictOf = (unmatched) => m.analyzeReview(m.readRuns(rcsv(reviewRows({ unmatched }))).rows, { contrasts: 'P:N', primary: 'P:N' }).contrasts[0];
+  const doubled = verdictOf({ P: 4, N: 1, C: 1 });
+  assert.strictEqual(doubled.verdict.qualified, true);
+  assert.match(doubled.verdict.text, /más defectos sembrados encontrados, con más hallazgos sin confirmar/);
+  assert.match(doubled.verdict.text, /muestra revisada a mano/);
+  near(doubled.unmatched.test, 4, 1e-12);
+  near(doubled.unmatched.control, 1, 1e-12);
+  const exactlyDouble = verdictOf({ P: 4, N: 2, C: 1 }); // el doble justo no es "más del doble"
+  assert.strictEqual(exactlyDouble.verdict.qualified, false);
+  assert.doesNotMatch(exactlyDouble.verdict.text, /con más hallazgos sin confirmar/);
+  assert.match(exactlyDouble.verdict.text, /P encuentra más defectos que N/);
+  assert.strictEqual(verdictOf({ P: 1, N: 0, C: 0 }).verdict.qualified, true); // control en cero y prueba con alguno
+  assert.strictEqual(verdictOf({ P: 0, N: 0, C: 0 }).verdict.qualified, false);
+  // Los controles limpios no cambian el veredicto: con muchísimos hallazgos ahí, el veredicto es el mismo.
+  const loudClean = m.analyzeReview(m.readRuns(rcsv(reviewRows({ unmatched: { P: 2, N: 2, C: 1 }, cleanUnmatched: { P: [50, 60], N: [0, 0], C: [0, 0] } }))).rows, { contrasts: 'P:N', primary: 'P:N' }).contrasts[0];
+  assert.strictEqual(loudClean.verdict.qualified, false);
+});
+
+test('estudio B: recall agregado con Wilson, tabla por categoría, falsos positivos y costo por defecto', async () => {
+  const m = await load();
+  const res = m.analyzeReview(m.readRuns(rcsv(reviewRows())).rows, { contrasts: 'P:N', primary: 'P:N' });
+  assert.deepStrictEqual([res.arms.P.pooled.k, res.arms.P.pooled.n], [16, 18]);
+  assert.deepStrictEqual([res.arms.N.pooled.k, res.arms.N.pooled.n], [5, 18]);
+  near(res.arms.P.pooled.lower, m.wilson(16, 18).lower, 1e-12);
+  assert.match(res.arms.P.pooled.note, /agrupados/);
+  assert.deepStrictEqual(res.byCategory.logic.P, { found: 9, total: 10 });
+  assert.deepStrictEqual(res.byCategory.sec.P, { found: 7, total: 8 });
+  assert.deepStrictEqual(res.byCategory.logic.N, { found: 3, total: 10 });
+  assert.deepStrictEqual(res.byCategory.sec.N, { found: 2, total: 8 });
+  // Controles limpios: hallazgos sin coincidencia por brazo.
+  assert.deepStrictEqual([res.arms.P.clean.median, res.arms.P.clean.min, res.arms.P.clean.max, res.arms.P.clean.items], [3, 2, 4, 2]);
+  assert.deepStrictEqual([res.arms.N.clean.median, res.arms.N.clean.max], [0, 0]);
+  // Ítems con defectos: hallazgos sin coincidencia por ítem.
+  near(res.arms.P.defectUnmatched.mean, 4, 1e-12);
+  // Costo por defecto: 10 corridas de 1 USD (con los controles) sobre 16 y 5 defectos encontrados.
+  near(res.arms.P.costPerDefect, 10 / 16, 1e-12);
+  near(res.arms.N.costPerDefect, 10 / 5, 1e-12);
+  const text = m.formatReviewText(res);
+  assert.match(text, /Wilson/);
+  assert.match(text, /categoría logic/);
+  assert.match(text, /controles limpios/);
+  assert.match(text, /costo por defecto encontrado/);
+  JSON.stringify(res);
+});
+
+test('estudio B: con menos de 8 ítems es exploratorio y sin veredicto; ítems sin un brazo e inválidas se listan', async () => {
+  const m = await load();
+  const rows = reviewRows().filter((r) => !(r.task === item(8) && r.arm === 'P'));
+  rows.push(reviewRow(item(3), 'P', 0, 2, { rep: 2, invalid: 'true', invalid_reason: 'infra', termination: 'infra_fault', timestamp: 'otro' }));
+  const read = m.readRuns(rcsv(rows));
+  const res = m.analyzeReview(read.rows, { contrasts: 'P:N,P:C', primary: 'P:N,P:C', invalid: read.invalid });
+  const pn = res.contrasts[0];
+  assert.strictEqual(pn.n, 7);
+  assert.strictEqual(pn.label, 'exploratorio');
+  assert.deepStrictEqual(pn.excludedItems.map((e) => e.item), [item(8)]);
+  assert.match(pn.verdict.text, /exploratorio \(n = 7/);
+  assert.doesNotMatch(pn.verdict.text, /encuentra más defectos/);
+  assert.deepStrictEqual(res.incompleteItems, [{ item: item(8), missingArms: ['P'] }]);
+  assert.deepStrictEqual(res.excludedRuns.map((e) => e.run), [`${item(3)}/P/2`]);
+  const text = m.formatReviewText(res);
+  assert.match(text, /n = 7 ítems con defectos \(exploratorio\)/);
+  assert.match(text, /Corridas inválidas excluidas: 1/);
+  assert.match(text, /rev-03\/P\/2: infra \(terminación: infra_fault\)/);
+  assert.match(text, /rev-08.*falta el brazo P/);
+});
+
+test('estudio B: el recall se promedia por ítem cuando hay repeticiones y las censuradas se cuentan', async () => {
+  const m = await load();
+  const rows = reviewRows();
+  rows.push(reviewRow(item(1), 'N', 2, 2, { rep: 2, timestamp: 'rep2', censored: 'true', termination: 'budget_cap' }));
+  const res = m.analyzeReview(m.readRuns(rcsv(rows)).rows, { contrasts: 'P:N', primary: 'P:N' });
+  const d = res.contrasts[0].perItem.find((x) => x.item === item(1));
+  near(d.control, 0.5, 1e-12); // media de 0/2 y 2/2
+  assert.deepStrictEqual(res.arms.N.censored, { runs: 11, censored: 1 });
+});
+
+test('estudio B: la misma semilla da la misma salida y el conjunto de ítems filtra', async () => {
+  const m = await load();
+  const rows = m.readRuns(rcsv([...reviewRows(), reviewRow('rev-99', 'P', 1, 2), reviewRow('rev-99', 'N', 0, 2)])).rows;
+  const kept = m.restrictToTasks({ rows, invalid: [] }, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(item));
+  const a = m.analyzeReview(kept.rows, { contrasts: 'P:N', primary: 'P:N', seed: 20261030 });
+  const b = m.analyzeReview(kept.rows, { contrasts: 'P:N', primary: 'P:N', seed: 20261030 });
+  assert.deepStrictEqual(a, b);
+  assert.ok(!a.defectItems.includes('rev-99'));
+});
+
+test('CLI --study review: CSV sintético, conjunto de ítems, JSON y errores', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pignolo-analysis-'));
+  try {
+    const rows = [...reviewRows(), reviewRow('rev-99', 'P', 1, 2), reviewRow('rev-99', 'N', 0, 2), reviewRow('rev-01', 'P', 0, 2, { rep: 2, invalid: 'true', invalid_reason: 'infra', termination: 'infra_fault' })];
+    const csv = path.join(dir, 'rv.csv');
+    fs.writeFileSync(csv, rcsv(rows));
+    const set = path.join(dir, 'items.json');
+    fs.writeFileSync(set, JSON.stringify({ validation: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(item) }));
+    const args = ['--study', 'review', '--csv', csv, '--experiment', 'rv', '--contrasts', 'P:N,P:C,P:S,C:N,S:N', '--primary', 'P:N,P:C,P:S', '--seed', '20261030', '--item-set-file', set];
+    // Sin el brazo S: los contrastes con S quedan sin ítems pero el análisis corre.
+    const r = cli(args);
+    assert.strictEqual(r.status, 0, r.stderr);
+    assert.match(r.stdout, /Estudio de revisión/);
+    assert.match(r.stdout, /Contraste P:N .*primario/);
+    assert.match(r.stdout, /Contraste C:N .*exploratorio/);
+    assert.match(r.stdout, /P encuentra más defectos que N/);
+    assert.match(r.stdout, /Corridas inválidas excluidas: 1/);
+    assert.doesNotMatch(r.stdout, /rev-99/);
+    const j = cli([...args, '--json']);
+    assert.strictEqual(j.status, 0, j.stderr);
+    const out = JSON.parse(j.stdout);
+    assert.strictEqual(out.study, 'review');
+    near(out.contrasts[0].p, 4 / 256, 1e-12);
+    assert.strictEqual(cli([...args, '--json']).stdout, j.stdout);
+    // Sin conjunto de ítems entra rev-99 también.
+    const all = cli(['--study', 'review', '--csv', csv, '--experiment', 'rv', '--contrasts', 'P:N', '--json']);
+    assert.strictEqual(JSON.parse(all.stdout).defectItems.length, 9);
+    const bad = cli(['--study', 'otro', '--csv', csv, '--contrasts', 'P:N']);
+    assert.notStrictEqual(bad.status, 0);
+    assert.match(bad.stderr, /--study/);
+    assert.match(cli(['--help']).stdout, /--study review/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('estudio B: el veredicto usa el p ajustado con Holm, no el p sin ajuste', async () => {
+  const m = await load();
+  // P encuentra los 2 defectos en 8 ítems; N y C solo en 2 de ellos: 6 diferencias de 1 y 2 ceros, p = 2 * 2^2 / 256 = 0,03125 en cada primario.
+  const rows = [];
+  for (let i = 1; i <= 8; i += 1) {
+    rows.push(reviewRow(item(i), 'P', 2, 2), reviewRow(item(i), 'N', i > 6 ? 2 : 0, 2), reviewRow(item(i), 'C', i > 6 ? 2 : 0, 2));
+  }
+  const res = m.analyzeReview(m.readRuns(rcsv(rows)).rows, { contrasts: 'P:N,P:C', primary: 'P:N,P:C' });
+  for (const c of res.contrasts) {
+    near(c.p, 8 / 256, 1e-12);
+    near(c.pAdjusted, 16 / 256, 1e-12);
+    assert.match(c.verdict.text, /sin diferencia demostrada/);
+  }
+  // Con un solo primario el mismo p ya alcanza.
+  const single = m.analyzeReview(m.readRuns(rcsv(rows)).rows, { contrasts: 'P:N,P:C', primary: 'P:N' });
+  assert.match(single.contrasts[0].verdict.text, /P encuentra más defectos que N/);
+});
