@@ -239,6 +239,20 @@ Ningún contraste primario (P:N, P:C, P:S) es significativo (p ajustado = 1,000)
 
 **Comparabilidad:** E3. Una app, un modelo, una repetición por celda; defectos sembrados por un LLM; puntaje determinista que puede ser indulgente. Detalle y salida del análisis: [`RESULTS-estudio-b-revision.md`](../tests/evals/RESULTS-estudio-b-revision.md); datos crudos: [`pignolo2-runs.csv`](../tests/evals/pignolo2-runs.csv).
 
+## 4d. Tareas de validación con `work` invocada a propósito: Pignolo, sin plugin y superpowers (2026-10-24)
+
+16 tareas de validación de una app privada, una corrida por brazo, 48 corridas, ~25,6 USD. Preinscrito en [`RESULTS-comparacion-3-brazos.md`](../tests/evals/RESULTS-comparacion-3-brazos.md). Cuatro corridas quedaron inválidas por el detector `escaped_cwd` del arnés (revisadas a mano: sin acceso al repo de origen, todas pasaron la aceptación); el primario las excluye por regla (n = 14, 14 y 13 tareas) y la sensibilidad las cuenta (n = 16).
+
+| Contraste | Razón de costo (primario) | IC 95 % | Razón (sensibilidad) | No inferioridad (margen 1,5) |
+|---|---|---|---|---|
+| Pignolo (`work`) / sin plugin | 1,055 | [0,985; 1,132] | 1,044 | demostrada |
+| Pignolo / superpowers | 0,752 | [0,672; 0,853] | 0,749 | demostrada; Pignolo cuesta menos |
+| superpowers / sin plugin (exploratorio) | 1,415 | [1,241; 1,611] | 1,393 | no demostrada |
+
+La aceptación (pruebas ocultas) pasa en 47 de 48 corridas; la única falla es superpowers en una tarea. El éxito está en el techo y no discrimina. En calidad determinista Pignolo deja más archivos fuera de alcance (razón de (x + 1) 1,42 a 1,49) y diffs más grandes (1,33 a 1,37) que el pedido sin plugin; frente a superpowers, menos. **Respalda** que Pignolo cuesta lo mismo que no usar plugin y cerca de un cuarto menos que superpowers sin perder aceptación; **no muestra** ganancia de calidad. Los jueces con modelo y la verificación por muestreo del autor no se corrieron.
+
+**Comparabilidad:** E3. Una app, un modelo, una repetición por celda; skill invocada a propósito, sin medir la activación espontánea; los pedidos revelan gran parte de la solución (mide ejecución de especificación cerrada). Detalle y salida del análisis: [`RESULTS-estudio-a-trabajo.md`](../tests/evals/RESULTS-estudio-a-trabajo.md); datos crudos: [`pignolo2-runs.csv`](../tests/evals/pignolo2-runs.csv).
+
 ## 5. Pendiente: pignolo contra Claude Code solo
 
 La comparación directa (los mismos pedidos, con y sin pignolo, midiendo defectos que llegan al final, costo y tiempo) es una decisión del autor del 2026-09-29: se corre al terminar el plugin y se publica acá, sea cual sea el resultado.
