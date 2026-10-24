@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
-import { runPaths, validateCopyDirs, isFixtureTask, isReviewTask, taskConfig, assertArmAllowed, FIXTURES_DIR } from './config.mjs';
+import { runPaths, validateCopyDirs, isFixtureTask, isReviewTask, isUiTask, taskConfig, assertArmAllowed, FIXTURES_DIR, UI_FIXTURE_DIR } from './config.mjs';
+import { readScenario } from './ui.mjs';
 import { ensureSnapshot, snapshotPaths } from './nm.mjs';
 import { removeTreeSafe, linksOutsideTree } from './fsutil.mjs';
 
@@ -98,6 +99,36 @@ async function prepareFixture(cfg, { task, arm, rep, dir, repo }) {
   return { task, arm, rep, runDir: dir, repo, warnings: [] };
 }
 
+// A ui task: a blank sandbox. Only the identity (design.md, copied from the fixture) and an empty design/ folder, committed as base.
+// Git does not track an empty folder, so design/ holds an empty .gitkeep. No source repo export, no node_modules, no CLAUDE.md.
+// The scenario is read here too, so a missing request fails before anything is created.
+async function prepareUi(cfg, { task, arm, rep, dir, repo }) {
+  if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; borrala con "run.mjs clean")`);
+  const scenario = readScenario(cfg, task);
+  const identity = path.join(UI_FIXTURE_DIR, 'design.md');
+  if (!fs.existsSync(identity)) throw new Error(`falta ${identity} (la identidad de las tareas ui)`);
+  fs.mkdirSync(repo, { recursive: true });
+  try {
+    git(repo, ['init', '-q', '-b', 'main']);
+    git(repo, ['config', 'user.name', 'eval']);
+    git(repo, ['config', 'user.email', 'eval@example.invalid']);
+    git(repo, ['config', 'core.autocrlf', 'false']);
+    git(repo, ['config', 'core.safecrlf', 'false']);
+    git(repo, ['config', 'commit.gpgsign', 'false']);
+    fs.copyFileSync(identity, path.join(repo, 'design.md'));
+    fs.mkdirSync(path.join(repo, 'design'));
+    fs.writeFileSync(path.join(repo, 'design', '.gitkeep'), '');
+    git(repo, ['add', '-A', '-f']);
+    git(repo, ['commit', '-q', '-m', 'base']);
+    git(repo, ['tag', 'base']);
+    fs.writeFileSync(path.join(dir, 'prepare.json'), JSON.stringify({ task, arm, rep, scenario: scenario.scenario, scenarioSha: scenario.sha, baseCommit: git(repo, ['rev-parse', 'HEAD']), createdAt: new Date().toISOString(), warnings: [] }, null, 2));
+  } catch (e) {
+    removeTreeSafe(dir);
+    throw e;
+  }
+  return { task, arm, rep, runDir: dir, repo, warnings: [] };
+}
+
 // Does the exported tree use CRLF? Looked at on the first file the patch touches (a plain git archive on Windows can export CRLF files).
 function treeUsesCrlf(repo, patchText) {
   const m = String(patchText).match(/^diff --git a\/(\S+) b\//m);
@@ -128,6 +159,7 @@ export async function prepare(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   assertArmAllowed(cfg, task, arm);
   if (isFixtureTask(cfg, task)) return prepareFixture(cfg, { task, arm, rep, dir, repo });
+  if (isUiTask(cfg, task)) return prepareUi(cfg, { task, arm, rep, dir, repo });
   const copyDirs = validateCopyDirs(cfg.copyDirs).map((rel) => path.normalize(rel));
   if (fs.existsSync(dir)) throw new Error(`la carpeta de la corrida ya existe: ${dir} (no se pisa; borrala con "run.mjs clean")`);
   let base;

@@ -1541,7 +1541,8 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
         'exit_code', 'timed_out', 'invalid', 'invalid_reason', 'termination', 'censored', 'accept_exit', 'accept_pass', 'accept_fail', 'accept_suites_failed', 'full_pass',
         'full_fail', 'full_baseline_fail', 'contamination', 'neutral_plugins', 'neutral_config', 'fronts_ok', 'fronts_got', 'fronts_message', 'fronts_reason', 'fronts_by_agents', 'fronts_by_agents_ok', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
         'set', 'freeze_hash', 'prereg_commit', 'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
-        'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note', 'defects_total', 'defects_found', 'found_by_category', 'findings_total', 'findings_unmatched', 'patch_mode', 'note'].join(','));
+        'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note', 'defects_total', 'defects_found', 'found_by_category', 'findings_total', 'findings_unmatched', 'patch_mode', 'note',
+        'ui_screens', 'ui_native_widgets', 'ui_interactive', 'ui_states_ok', 'ui_primary_buttons', 'ui_font_sizes', 'ui_check_findings', 'ui_not_verified'].join(','));
     appendRow(cfg, { task: 't1', arm: 'A', rep: 1, note: 'prueba, con coma' });
     const lines = fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/);
     assert.strictEqual(lines[0], COLUMNS.join(','));
@@ -1561,6 +1562,7 @@ test('row: agrega una fila con las columnas del contrato y rechaza duplicados', 
       mutation_killed: '', mutation_survived: '', mutation_timeout: '', quality_note: '',
       defects_total: '', defects_found: '', found_by_category: '', findings_total: '', findings_unmatched: '', patch_mode: '',
       note: 'prueba, con coma',
+      ui_screens: '', ui_native_widgets: '', ui_interactive: '', ui_states_ok: '', ui_primary_buttons: '', ui_font_sizes: '', ui_check_findings: '', ui_not_verified: '',
     });
     assert.throws(() => appendRow(cfg, { task: 't1', arm: 'A', rep: 1 }), /ya existe una fila.*rerun/);
     assert.strictEqual(fs.readFileSync(cfg.csvPath, 'utf8').trim().split(/\r?\n/).length, 2, 'no cambió');

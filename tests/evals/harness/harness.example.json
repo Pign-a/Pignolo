@@ -23,7 +23,7 @@
   "arms": {
     "N": { "pluginName": null, "pluginDir": null, "reviewPrompt": "Review the last commit as a code reviewer and list the problems you find." },
     "S": { "pluginName": "superpowers", "pluginDir": "/absolute/path/to/the/superpowers/plugin", "reviewPrompt": "Use the code-review skill of superpowers to review the last commit." },
-    "P": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin", "reviewPrompt": "Validate the code of the last commit." },
+    "P": { "pluginName": "pignolo", "pluginDir": "/absolute/path/to/the/pignolo/plugin", "reviewPrompt": "Validate the code of the last commit.", "uiPrefix": "/pignolo:ui " },
     "C": { "pluginName": null, "pluginDir": null, "reviewPrompt": "/code-review HEAD~1..HEAD" }
   },
   "contrasts": [
@@ -41,6 +41,7 @@
     "task-id-2": { "kind": "small", "set": "dev" },
     "task-id-3": { "kind": "medium", "set": "validation" },
     "rev-01": { "kind": "review", "item": "rev-01", "set": "validation" },
+    "ui-expense": { "kind": "ui", "scenario": "expense", "set": "dev" },
     "detect-cli-script": { "kind": "fixture", "fixture": "cli-script", "prompt": "Validate the code of the project.", "arms": ["P"] }
   },
   "freezeExtraFiles": ["tests/evals/RESULTS-comparacion-3-brazos.md", "tests/evals/analysis.mjs", "tests/evals/analysis-cli.mjs", "tests/evals/select-validation.mjs"],

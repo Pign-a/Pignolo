@@ -10,7 +10,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { runPaths, taskSet, hasPlugin, isFixtureTask, isReviewTask } from './config.mjs';
+import { runPaths, taskSet, hasPlugin, isFixtureTask, isReviewTask, isUiTask, taskConfig, UI_FIXTURE_DIR } from './config.mjs';
+import { uiPromptOf } from './ui.mjs';
 import { loadSchedule } from './schedule.mjs';
 import { prepare } from './prepare.mjs';
 import { runTask, checkPlugin, checkConfigDir } from './execute.mjs';
@@ -27,6 +28,15 @@ export function reviewPromptSha(cfg, e) {
   if (!isReviewTask(cfg, e.task)) return null;
   const a = cfg.arms[e.arm];
   return crypto.createHash('sha256').update((a.promptPrefix || '') + String(a.reviewPrompt || '').trimEnd()).digest('hex');
+}
+
+// What a ui entry sends: the scenario id, the sha256 (12 characters) of the exact prompt and the arm's uiPrefix. The request text is never printed.
+export function uiPromptInfo(cfg, e) {
+  if (!isUiTask(cfg, e.task)) return null;
+  try {
+    const u = uiPromptOf(cfg, e.task, e.arm);
+    return { scenario: u.scenario.scenario, promptSha: crypto.createHash('sha256').update(u.prompt).digest('hex'), prefix: u.prefix };
+  } catch (err) { return { scenario: taskConfig(cfg, e.task).scenario, error: err.message }; }
 }
 
 // The ficha allows up to 2 reruns per run for infrastructure faults.
@@ -70,7 +80,7 @@ export function entryState(cfg, e) {
   const streamed = fs.existsSync(path.join(dir, 'stream.jsonl'));
   const prepared = fs.existsSync(path.join(repo, '.git'));
   const review = isReviewTask(cfg, e.task);
-  const accepted = fs.existsSync(path.join(dir, review ? 'review_score.json' : isFixtureTask(cfg, e.task) ? 'fronts.json' : 'acceptance.json'));
+  const accepted = fs.existsSync(path.join(dir, review ? 'review_score.json' : isFixtureTask(cfg, e.task) ? 'fronts.json' : isUiTask(cfg, e.task) ? 'ui_measures.json' : 'acceptance.json'));
   let recorded = false;
   if (metrics && fs.existsSync(cfg.csvPath)) {
     recorded = parseCsv(fs.readFileSync(cfg.csvPath, 'utf8')).some((r) => r.experiment === cfg.experiment && r.task === e.task
@@ -98,7 +108,11 @@ export function summaryLine(index, total, row) {
   if (row.fronts_by_agents_ok) accept = row.fronts_by_agents_ok === 'true' ? 'pasa' : 'falla';
   else if (row.accept_exit !== null && row.accept_exit !== undefined) accept = green ? 'pasa' : 'falla';
   let label = 'aceptación';
-  if (row.defects_total !== undefined && row.defects_total !== '' && row.defects_total !== null) {
+  if (row.ui_screens !== undefined && row.ui_screens !== '' && row.ui_screens !== null) {
+    label = 'interfaz';
+    const v = (x) => (x === '' || x === null || x === undefined ? 'sin dato' : x);
+    accept = `pantallas ${row.ui_screens}, nativos ${v(row.ui_native_widgets)}, interactivos ${v(row.ui_interactive)}, hallazgos de ui-check ${v(row.ui_check_findings)}${row.ui_not_verified ? `, sin verificar: ${row.ui_not_verified}` : ''}`;
+  } else if (row.defects_total !== undefined && row.defects_total !== '' && row.defects_total !== null) {
     label = 'revisión';
     accept = `defectos ${row.defects_found}/${row.defects_total}, hallazgos ${row.findings_total} (${row.findings_unmatched} sin coincidencia)`;
   }
@@ -125,6 +139,12 @@ function preflight(cfg, schedule) {
   try { checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName).filter(Boolean) }); } catch (e) { problems.push(e.message); }
   for (const e of schedule.entries) {
     if (isReviewTask(cfg, e.task) && !cfg.arms[e.arm].reviewPrompt) problems.push(`el brazo ${e.arm} no tiene reviewPrompt (lo pide la tarea de revisión ${e.task})`);
+  }
+  for (const e of schedule.entries) {
+    if (!isUiTask(cfg, e.task)) continue;
+    const u = uiPromptInfo(cfg, e);
+    if (u && u.error) problems.push(`tarea de interfaz ${e.task}: ${u.error}`);
+    if (!fs.existsSync(path.join(UI_FIXTURE_DIR, 'design.md'))) problems.push(`falta la identidad ${path.join(UI_FIXTURE_DIR, 'design.md')} de las tareas de interfaz`);
   }
   const validation = [...new Set(schedule.entries.map((e) => e.task))].filter((t) => taskSet(cfg, t) === 'validation');
   let freeze = null;
@@ -153,7 +173,9 @@ export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra
     log(`calendario ${path.basename(file)}: ${total} corridas (semilla ${schedule.seed}), experimento ${cfg.experiment}`);
     for (const s of states) {
       const rp = reviewPromptSha(cfg, s.e);
-      log(`[${s.e.index || states.indexOf(s) + 1}/${total}] bloque ${s.e.block ?? '-'} ${s.e.task} ${s.e.arm} rep ${s.e.rep}: ${s.status}${s.steps.length ? ` -> ${s.steps.join(', ')}` : ''}${rp ? ` | revisión: pedido del brazo ${s.e.arm} sha256 ${rp.slice(0, 12)}` : ''}`);
+      const ui = uiPromptInfo(cfg, s.e);
+      const uiText = ui ? (ui.error ? ` | interfaz: escenario ${ui.scenario} (${ui.error})` : ` | interfaz: escenario ${ui.scenario}, pedido sha256 ${ui.promptSha.slice(0, 12)}, prefijo ${ui.prefix ? JSON.stringify(ui.prefix) : 'ninguno'}`) : '';
+      log(`[${s.e.index || states.indexOf(s) + 1}/${total}] bloque ${s.e.block ?? '-'} ${s.e.task} ${s.e.arm} rep ${s.e.rep}: ${s.status}${s.steps.length ? ` -> ${s.steps.join(', ')}` : ''}${rp ? ` | revisión: pedido del brazo ${s.e.arm} sha256 ${rp.slice(0, 12)}` : ''}${uiText}`);
     }
     const toRun = states.filter((s) => s.steps.includes('run')).length;
     const spent = spentUsd(cfg);
@@ -178,7 +200,7 @@ export async function runBatch(cfg, { schedule: file, dryRun = false, retryInfra
       const extra = toRun * maxRetries + retryCandidates.reduce((n, c) => n + (maxRetries - c.attempt + 1), 0);
       log(`peor caso con reintentos: ${Math.round((toRun + extra) * perRun * 10000) / 10000} USD`);
     }
-    return { dryRun: true, entries: states.map((s) => ({ ...s.e, status: s.status, steps: s.steps, reviewPromptSha: reviewPromptSha(cfg, s.e) })), spent, toRun, worstCaseUsd: worst, problems: pre.problems, retryCandidates };
+    return { dryRun: true, entries: states.map((s) => ({ ...s.e, status: s.status, steps: s.steps, reviewPromptSha: reviewPromptSha(cfg, s.e), ui: uiPromptInfo(cfg, s.e) })), spent, toRun, worstCaseUsd: worst, problems: pre.problems, retryCandidates };
   }
 
   if (pre.problems.length) throw new Error(`chequeos previos del batch: ${pre.problems.join(' | ')}; no se lanza nada`);

@@ -2,7 +2,8 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import { runPaths, otherPlugins, isFixtureTask, isReviewTask, taskConfig, assertArmAllowed, hasPlugin, taskSet } from './config.mjs';
+import { runPaths, otherPlugins, isFixtureTask, isReviewTask, isUiTask, taskConfig, assertArmAllowed, hasPlugin, taskSet } from './config.mjs';
+import { uiPromptOf } from './ui.mjs';
 import { requireFreeze } from './freeze.mjs';
 import { runProcess, listProcessNames, newProcesses } from './proc.mjs';
 import { parseStream, findEscape, invalidReasons, terminationFields, assistantTexts, formatAssistantText } from './metrics.mjs';
@@ -121,13 +122,19 @@ export async function runTask(cfg, args, deps = {}) {
   assertArmAllowed(cfg, task, arm);
   const isFixture = isFixtureTask(cfg, task);
   const isReview = isReviewTask(cfg, task);
+  const isUi = isUiTask(cfg, task);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}; corré prepare primero`);
   const streamPath = path.join(dir, 'stream.jsonl');
   if (fs.existsSync(streamPath)) {
     throw new Error(`esta corrida ya se ejecutó (${streamPath}); para repetirla corré "run.mjs clean", prepará de nuevo y anotá --note rerun`);
   }
   let prompt;
-  if (isFixture) {
+  let ui = null;
+  if (isUi) {
+    // A ui run is asked in the author's own words (the scenario file) with only the arm's uiPrefix in front; no extra instructions.
+    ui = uiPromptOf(cfg, task, arm);
+    prompt = ui.prompt;
+  } else if (isFixture) {
     prompt = taskConfig(cfg, task).prompt.trimEnd();
   } else if (isReview) {
     // A review run is asked in the natural words of each arm's tool: the arm's reviewPrompt, never a task prompt file.
@@ -140,8 +147,9 @@ export async function runTask(cfg, args, deps = {}) {
   }
   if (!prompt) throw new Error('prompt.md está vacío');
   // A variant invokes the method on purpose: its prefix goes in front of the task prompt (the text lives in the config).
-  const promptPrefix = cfg.arms[arm].promptPrefix || '';
-  prompt = promptPrefix + prompt;
+  // (the prefix of a ui run is its uiPrefix, already in the prompt)
+  const promptPrefix = isUi ? ui.prefix : (cfg.arms[arm].promptPrefix || '');
+  if (!isUi) prompt = promptPrefix + prompt;
   if (hasPlugin(cfg, arm) && !fs.existsSync(cfg.arms[arm].pluginDir)) throw new Error(`no existe el plugin del brazo ${arm}: ${cfg.arms[arm].pluginDir}`);
   checkPlugin(cfg, arm);
   checkConfigDir(cfg.configDir, { neutralPaths: cfg.neutralConfigPaths, armNames: Object.values(cfg.arms).map((a) => a.pluginName).filter(Boolean) });
@@ -152,7 +160,7 @@ export async function runTask(cfg, args, deps = {}) {
   // node_modules: the run is linked to one snapshot copy; the snapshot and the source must come out of the run as they went in.
   // A copy that was merely altered is dropped and copied again from the (unchanged) source: free, before any spend.
   let nmBefore = null;
-  if (!isFixture && fs.existsSync(sourceNm(cfg))) {
+  if (!isFixture && !isUi && fs.existsSync(sourceNm(cfg))) {
     repairSnapshot(cfg, { remove: deps.removeTree });
     nmBefore = { snapshot: manifest(snapshotPaths(cfg).nodeModules, cfg.nmIgnore), source: manifest(sourceNm(cfg), cfg.nmIgnore) };
   }
@@ -225,7 +233,8 @@ export async function runTask(cfg, args, deps = {}) {
   if (isFixture) guard('final.txt', () => fs.writeFileSync(path.join(dir, 'final.txt'), resultText ?? ''));
   const escapedCwd = guard('escapes', () => findEscape(text, { sourceRepo: cfg.sourceRepo, privateRoot: cfg.privateRoot, workRoot: cfg.workRoot, runDir: dir }));
   const metrics = {
-    task, arm, rep, experiment: cfg.experiment, promptPrefix, isFixture, isReview, reviewPromptSha: isReview ? crypto.createHash('sha256').update(prompt).digest('hex') : null, model: cfg.model, effort: cfg.effort,
+    task, arm, rep, experiment: cfg.experiment, promptPrefix, isFixture, isReview, isUi,
+    scenario: ui ? ui.scenario.scenario : null, scenarioSha: ui ? ui.scenario.sha : null, promptSha: isUi ? crypto.createHash('sha256').update(prompt).digest('hex') : null, reviewPromptSha: isReview ? crypto.createHash('sha256').update(prompt).digest('hex') : null, model: cfg.model, effort: cfg.effort,
     patchMode: isReview ? ((readJson(path.join(dir, 'prepare.json')) || {}).patchMode ?? null) : null,
     set: taskSet(cfg, task), freezeHash: freeze ? freeze.freezeHash : null, preregCommit: freeze ? freeze.preregCommit : null,
     hasPlugin: hasPlugin(cfg, arm),

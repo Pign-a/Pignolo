@@ -9,7 +9,7 @@
 // the source repo is never touched. Everything raw goes to <run>/quality.json; a missing tool is a clear note, never a failure.
 import fs from 'node:fs';
 import path from 'node:path';
-import { runPaths, isFixtureTask, assertArmAllowed } from './config.mjs';
+import { runPaths, isFixtureTask, isUiTask, assertArmAllowed } from './config.mjs';
 import { runProcess } from './proc.mjs';
 import { buildChildEnv } from './env.mjs';
 import { exportArchive } from './prepare.mjs';
@@ -244,6 +244,7 @@ export async function qualityRun(cfg, args) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   assertArmAllowed(cfg, task, arm);
   if (isFixtureTask(cfg, task)) throw new Error(`la tarea ${task} es un fixture: el panel de calidad no aplica`);
+  if (isUiTask(cfg, task)) throw new Error(`la tarea ${task} es de interfaz (ui): el panel de calidad no aplica; las medidas son las de uiscore`);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}`);
   const changesFile = path.join(dir, 'changes.json');
   if (!fs.existsSync(changesFile)) throw new Error(`falta ${changesFile}; corré accept primero`);

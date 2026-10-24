@@ -123,9 +123,82 @@ Otros archivos de la carpeta (`notes.md`, `clean.patch`...) son privados y no se
 
 **Supuestos que solo una corrida real confirma.** Que `/code-review` figure en `slash_commands` con ese nombre (la sonda lo muestra); que el texto de primer nivel (`assistant-text.txt`) sea donde el brazo escribe sus hallazgos (una revisión que solo deja su informe en un archivo o en el mensaje de un subagente no se vería); que las referencias vengan con el nombre del archivo y la línea en alguna de las formas de arriba.
 
+## Tareas de interfaz (kind `ui`)
+
+Una tarea `{ "kind": "ui", "scenario": "<id>", "set": "dev" | "validation" }` mide qué pantallas produce un brazo cuando el autor pide una interfaz con sus propias palabras (diseño: `docs/specs/2026-10-24-ui-flujo-design.md`, sección "Decisiones después del ataque"). Es genérica: el texto de cada pedido vive en la carpeta privada y nunca en este repositorio. Corre con el mismo `run`, `batch`, `schedule`, `freeze` y `summary` que las otras tareas.
+
+**El pedido.** `<privateRoot>/ui/<scenario>.md`: el pedido natural del autor, un párrafo. La primera línea puede ser `title: ...` (una etiqueta para el autor; **no** entra en el pedido). Se lee al preparar y al correr, y el congelado hashea el archivo. El prompt de la corrida es `<uiPrefix del brazo><texto del escenario>` y nada más: sin instrucciones sobre estructura. Cada brazo puede llevar `uiPrefix` (texto, por defecto vacío; por ejemplo `"/pignolo:ui "` para invocar la skill a la fuerza; el brazo sin plugin no lleva). Los brazos usan el mecanismo de siempre (`pluginDir` / `pluginName`: son árboles de plugin armados aparte). En una tarea `ui` el `promptPrefix` del brazo no se usa: manda `uiPrefix`. `metrics.json` guarda `isUi`, `scenario`, `scenarioSha` y `promptSha` (nunca el texto); la activación por comando de barra se cuenta como en cualquier brazo forzado.
+
+**`prepare`.** Un repositorio **en blanco**: `git init` con identidad local `eval`, y un commit `base` (etiqueta `base`, rama `main`) que contiene **solo** `design.md` (copiado de `tests/evals/fixtures/ui-identity/design.md`, la identidad minimalista y sin marca, en el formato de la plantilla de la skill `ui`) y una carpeta `design/` vacía (git no versiona carpetas vacías: lleva un `.gitkeep` vacío). No exporta el repositorio fuente, no enlaza `node_modules`, no escribe un `CLAUDE.md`. Si falta el archivo del escenario, falla antes de crear nada.
+
+**Qué busca el arnés.** Pantallas como HTML estático en `design/screens/<slug>/index.html` (cualquier slug). Si no hay ninguna, toma cualquier `*.html` bajo `design/` salvo `design/components/` y `design/index.html`, y deja anotada la regla que aplicó (`screensRule`: `screens-dir`, `html-fallback` o `none`). Se miran en el árbol medido (el de mayor cambio, ver "Árbol medido"). Como en cualquier tarea, una corrida que no deja ningún cambio es inválida (`no_changes`).
+
+### `uiscore` (lo corre `accept` solo)
+
+`run.mjs uiscore --task T --arm X --rep N` (y `accept`, que antes calcula el resumen de cambios). Es gratis y **no toca `metrics.json`**. Lo hace el arnés, nunca el agente, con el mismo instrumento en todos los brazos:
+
+1. **Capturas.** Cada pantalla con la biblioteca de navegador de ui-audit (`plugins/pignolo/ui-audit/lib/browser-session.mjs`; el navegador se busca como lo hace ui-audit: `PIGNOLO_UI_BROWSER`, y si no, Chrome o Edge instalados) a 1280x800 y a 390x844: `<corrida>/shots/<slug>-<ancho>.png`. Sin navegador, `ui_measures.json` dice `browser.status: "browser_missing"` (o `"browser_failed"` si no arrancó) con su motivo, se saltea todo lo que lo necesita y **no se inventa nada**.
+2. **ui-check existente.** `plugins/pignolo/ui-audit/lib/ui-check.mjs` (la biblioteca detrás de `scripts/ui-check.mjs`) sobre los archivos de las pantallas y el `design.md` **del commit base** (la identidad con la que arrancaron todos los brazos, no la copia que el agente haya editado), sobre una copia temporal de `design/` para no escribir en el árbol del agente. Se guarda completo en `<corrida>/ui_check.json` (`findings` = entradas en `fail`).
+3. **Medidas del navegador**, por pantalla, con JS inyectado (`uimeasure.mjs`), en `<corrida>/ui_measures.json`:
+
+| Medida | Cómo se calcula |
+|---|---|
+| `native_widgets` (`native_select`, `native_date_inputs`) | `select` más `input[type=date\|month\|time\|datetime-local\|week]` presentes en la página |
+| `interactive` | `a, button, input` (no hidden)`, select, textarea, [role=button], [tabindex]` (menos `tabindex="-1"`) visibles |
+| `hover_style`, `focus_style`, `states_ok` | cuántos controles cambian de estilo calculado con `:hover` y con `:focus-visible` forzados, y cuántos con **los dos** (`states_ok`). Ver abajo |
+| `buttons`, `filled_buttons`, `primary_buttons`, `primary_fill` | botones (`button`, `input[type=submit\|button]`, `[role=button]`, `a` con `btn` o `button` en la clase) visibles; los "rellenos" tienen fondo con alfa >= 0,5 y distinto del fondo de la página; el relleno más prominente es el de mayor contraste con el fondo de la página, y `primary_buttons` es cuántos botones lo comparten |
+| `font_sizes`, `font_weights`, `size_ratio` | tamaños y pesos distintos del texto visible, y razón entre el mayor y el menor tamaño |
+| `controls_above_fold` | controles visibles que tocan el primer viewport a 1280x800 |
+| `min_target_px_390`, `targets_below_44_390` | a 390 de ancho, el lado menor del control visible más chico (un enlace dentro de una oración está exento; una casilla o un radio miden su etiqueta si es mayor) y cuántos pasan de 44 px |
+| `off_token_colors`, `colors_used` | colores en uso (texto, fondo, bordes visibles, contorno, relleno y trazo de SVG) que no están en los tokens de color de `design.md` (tolerancia de 2 por canal); solo se informa la cantidad |
+| `content_states` | `empty`, `loading`, `error`: `found` / `not found` por heurística (expresiones en el texto o el marcado, sin scripts ni estilos) |
+| `has_heading`, `single_main_action` | hay un `h1`-`h3` visible; hay exactamente un botón principal |
+
+**Todo lo que no se puede calcular es `"not_verified"`, nunca cero**, con su motivo en `notVerified` de la pantalla (por ejemplo "no interactive elements", "the page has no visible text"). Una suma sobre las pantallas con una pantalla sin verificar tampoco se suma: la celda del CSV queda vacía.
+
+**Estados forzados por el protocolo (CDP).** `hover_style` y `focus_style` se miden de verdad: el arnés marca cada control (hasta 300), apaga `transition` y `animation` en la página para esa pasada, guarda el estilo calculado en reposo (color, fondo, bordes, sombra, contorno, opacidad, transformación, decoración y filtro), y por cada control usa `DOM.getDocument`, `DOM.querySelector` y `CSS.forcePseudoState` (`hover`, y `focus` más `focus-visible`) sobre la sesión de la pestaña de la biblioteca, y compara. Si el protocolo no es alcanzable, o falla, las tres medidas son `not_verified` con el motivo. Limitaciones: fuerza el estado en el propio elemento (una regla `.card:hover .btn` no se ve) y el contorno por defecto del navegador cuenta como un estilo de foco.
+
+### Columnas del CSV de una tarea `ui`
+
+Se agregan al final del CSV (los CSV viejos se migran por nombre): `ui_screens`, `ui_native_widgets`, `ui_interactive`, `ui_states_ok`, `ui_primary_buttons`, `ui_font_sizes`, `ui_check_findings`, `ui_not_verified`.
+
+- `ui_screens`: pantallas encontradas.
+- `ui_native_widgets`, `ui_interactive`, `ui_states_ok`: suma sobre las pantallas.
+- `ui_primary_buttons`, `ui_font_sizes`: el máximo de las pantallas (la peor).
+- `ui_check_findings`: entradas del ui-check en `fail`.
+- `ui_not_verified`: lo que no se pudo verificar, separado por `;` (`browser_missing`, `browser_failed`, `no_screens`, `ui_check`, y el nombre de cada medida `not_verified`); vacío si todo se midió.
+- Una celda vacía es "no calculado", **nunca un cero**.
+
+`summary` trata una tarea `ui` como descriptiva ("decide el voto ciego del autor"): lista por brazo los rangos de esas cifras y lo que quedó sin verificar.
+
+### `uipack`: el paquete a ciegas para el voto
+
+`run.mjs uipack --scenario S [--reps 1[,2]] [--arms N,P] [--force]` arma, para cada (brazo, repetición) del escenario con una corrida puntuada (con `ui_measures.json`), un paquete que lee la página de votación:
+
+- `<privateRoot>/ui-blind/<escenario>/<A|B|C...>/shots/screen-<k>-<ancho>.png` y `.../screens/screen-<k>/index.html` (la carpeta de la pantalla, con lo que tenga adentro). Las pantallas se renombran `screen-1`, `screen-2`... (el slug lo eligió el brazo y podría delatarlo). El orden de las etiquetas se baraja con la `seed` de la configuración (la misma semilla da el mismo orden).
+- `<privateRoot>/ui-blind/<escenario>/pack.json`, **solo** etiquetas y archivos:
+
+```json
+{ "version": 1, "scenario": "<id>", "options": [
+  { "label": "A", "screens": [
+    { "id": "screen-1", "html": "A/screens/screen-1/index.html",
+      "shots": [ { "width": 1280, "file": "A/shots/screen-1-1280.png" }, { "width": 390, "file": "A/shots/screen-1-390.png" } ] } ] } ] }
+```
+
+  Las rutas son relativas a la carpeta del paquete, con `/`.
+- La clave va **fuera** del paquete: `<privateRoot>/ui-blind-keys/<escenario>.json` (etiqueta a tarea, brazo y repetición; a qué slug corresponde cada `screen-k`; lo que se limpió; las referencias que salen de la carpeta de la pantalla; las corridas salteadas).
+- Del HTML, CSS y SVG se quita lo que nombra al brazo o al plugin: todos los comentarios HTML, el `<meta name="generator">`, los comentarios CSS que lo nombran, y cualquier otra mención (nombres de plugin de todos los brazos, `.pignolo`, y `blindLeakTerms` de la configuración) se reemplaza por `redacted`. Lo que encontró se informa (`leaks`, `leaksFound` en la salida y en la clave): nunca en silencio. Un nombre de archivo que lo nombra también se informa. Una referencia relativa que sale de la carpeta de la pantalla (`../x.css`) no se copia y se avisa (`externalRefs`): las capturas son siempre fieles.
+- Se saltean (y se dice) las corridas inválidas, sin `ui_measures.json` o sin pantallas. Se niega a pisar un paquete existente sin `--force`.
+
+### Congelado, calendarios y batch
+
+`freeze` (tareas `ui` de validación) hashea el archivo del escenario, la identidad (`tests/evals/fixtures/ui-identity/`), el `uiPrefix` de cada brazo (`uiPrefixSha`) y el código que mide y arma el paquete (`uiScoringSha`: `ui.mjs`, `uimeasure.mjs`, `uiscore.mjs`, `uipack.mjs` y `plugins/pignolo/ui-audit/{lib,catalog,norms}` más `scripts/ui-check.mjs` y `scripts/browser.mjs`); `freeze --check` informa las categorías `tareas`, `uiPrefix` y `uiScoring`. Un freeze hecho sin tareas `ui` conserva su hash. `schedule` y `batch` aceptan tareas `ui`: `batch --dry-run` muestra por entrada el escenario, el sha256 (12 caracteres) del pedido exacto y el prefijo (nunca el texto) y verifica que el escenario exista; la línea de cada corrida dice `interfaz pantallas n, nativos m, interactivos k, hallazgos de ui-check f, sin verificar: ...`.
+
+**Supuestos que solo una corrida real confirma.** Que un agente real deje las pantallas donde se las busca (si no, queda `html-fallback` o `none` y se ve); que `/pignolo:ui` como primer texto del pedido se ejecute como comando de plugin (ver `activation_via`); que el Chrome o Edge de la máquina acepte `CSS.forcePseudoState` con `focus-visible` (si no, esas tres medidas quedan `not_verified`, no en cero); que las heurísticas de botón principal y de estados de contenido (vacío, cargando, error) coincidan con lo que el autor llama así; y que no haya reglas que dependan de `pointer: coarse` o de una media query de `hover` (se emula un navegador de escritorio sin tacto).
+
 ## Qué gasta plata y qué no
 
-Solo `run` lanza `claude -p` y gasta tokens (y `batch`, que lo llama una vez por corrida; `batch --dry-run` no gasta; `probe` gasta centavos, ver arriba). Todo lo demás (`prepare`, `accept` con su panel de calidad, `quality`, `score`, `row`, `freeze`, `schedule`, `blind`, `unblind`, `summary`) es local y gratis. Las pruebas del arnés (`tests/harness.test.js` y `tests/harness-quality.test.js`) usan un `claude` falso (`tests/fixtures/harness/fake-claude.mjs`) y no gastan nada.
+Solo `run` lanza `claude -p` y gasta tokens (y `batch`, que lo llama una vez por corrida; `batch --dry-run` no gasta; `probe` gasta centavos, ver arriba). Todo lo demás (`prepare`, `accept` con su panel de calidad, `quality`, `score`, `uiscore`, `uipack`, `row`, `freeze`, `schedule`, `blind`, `unblind`, `summary`) es local y gratis. Las pruebas del arnés (`tests/harness.test.js` y `tests/harness-quality.test.js`) usan un `claude` falso (`tests/fixtures/harness/fake-claude.mjs`) y no gastan nada.
 
 `run` pasa `--max-budget-usd` (tope por corrida, `perRunCapUsd`) y un tiempo máximo (`timeoutMs`). Además hay un **tope total** (`totalCapUsd`): `run` no lanza nada si lo ya gastado más 1,25 veces `perRunCapUsd` (el margen cubre lo que una corrida puede pasarse del tope) supera `totalCapUsd`. Lo gastado es la suma de `cost_usd` de **todas** las filas del CSV (de cualquier experimento, la calibración incluida), más las corridas que ya gastaron y todavía no tienen fila (`metrics.json` sin fila), más las interrumpidas (`stream.jsonl` sin `metrics.json`), más el registro de gasto fuera de `run` (abajo). Una corrida sin costo conocido (cortada por tiempo, interrumpida, sin resultado) cuenta como `perRunCapUsd`, lo máximo que pudo costar.
 
@@ -141,6 +214,7 @@ El revisor a ciegas y cualquier otro gasto que no pase por `run` se anotan en `<
 | `privateRoot` | carpeta privada con las tareas (ver abajo), los paquetes a ciegas y sus claves |
 | `workRoot` | dónde se crean las carpetas de corrida `<tarea>-<brazo>-<rep>/` y la copia `_nm` |
 | `configDir` | `CLAUDE_CONFIG_DIR` dedicado a la medición (sin plugins instalados, sin `CLAUDE.md`, sin hooks) |
+| `arms.<id>.uiPrefix` | texto que va delante del pedido del autor en las tareas `ui` (por ejemplo `"/pignolo:ui "` para invocar la skill a la fuerza); vacío en el brazo sin plugin (ver "Tareas de interfaz") |
 | `arms.<id>.reviewPrompt` | el pedido de revisión que recibe el brazo en las tareas `review` (ver "Estudio B") |
 | `freezeExtraFiles` | archivos extra que hashea el congelado (la ficha, los scripts de análisis y de selección, los calendarios); rutas relativas a la raíz del repositorio o absolutas; si falta uno el congelado falla |
 | `arms.<id>` | `pluginName` y `pluginDir` de cada brazo (`--plugin-dir`); el `name` de `.claude-plugin/plugin.json` tiene que coincidir con `pluginName`. Sin los dos (o en `null`) es el brazo sin plugin |
@@ -154,7 +228,7 @@ El revisor a ciegas y cualquier otro gasto que no pase por `run` se anotan en `<
 | `copyDirs` | carpetas o archivos ignorados por git que la tarea necesita (por ejemplo el cliente generado de la base) y que se copian de la fuente; rutas relativas, sin `.`, `..` ni vacías |
 | `weights`, `modelFactor` | pesos de los tokens y factor por familia de modelo, ver "Calibración" |
 | `seed` | semilla del mezclado a ciegas (el mismo valor reproduce el mismo orden) |
-| `tasks` | `{ "<id>": { "kind": "medium" \| "small", "set": "dev" \| "validation" } }`: `kind` lo usa `summary` para aplicar la regla de cada tipo; `set` (por defecto `dev`) separa las tareas de desarrollo de las de validación, que exigen un freeze (ver "Desarrollo, validación y freeze") |
+| `tasks` | `{ "<id>": { "kind": "medium" \| "small", "set": "dev" \| "validation" } }`: `kind` lo usa `summary` para aplicar la regla de cada tipo (además de `medium` y `small`: `fixture`, `review` y `ui`, con `{ "kind": "ui", "scenario": "<id>" }`); `set` (por defecto `dev`) separa las tareas de desarrollo de las de validación, que exigen un freeze (ver "Desarrollo, validación y freeze") |
 | `hangSilenceS`, `activityPollMs` | segundos de silencio de `claude` antes de un corte por tiempo a partir de los cuales la corrida es un `hang` (fallo de infraestructura) y no un `model_timeout` (por defecto 120), y cada cuántos ms se mira el tamaño del stream (por defecto 500); ver "Cómo termina una corrida" |
 | `qualityTimeoutMs`, `mutationTimeoutMs` | tiempo máximo de cada herramienta del panel de calidad (tsc, eslint, coverage) y del comando de mutación; por defecto 300000 y 1800000 |
 | `tscCmd`, `eslintCmd` | reemplazan a `npx tsc --noEmit --pretty false` y `npx eslint --format json` (un texto, que corre por el shell, o una lista `[ejecutable, ...argumentos]`); sirven para las pruebas con herramientas falsas |
@@ -257,6 +331,8 @@ Intercalá los brazos (A, B, A, B...) como pide la ficha. Todos los comandos ace
 | `run` | revisa plugin, `configDir` y tope total (gratis), lee `prompt.md`, lanza `claude` con `cwd` en el repo de la corrida, guarda `stream.jsonl` y `stderr.txt`, mide el tiempo de pared, mata el árbol de procesos al pasar `timeoutMs` y escribe `metrics.json`. No se puede correr dos veces la misma carpeta. Registra los procesos que sobran (`leftover_processes`, sin matarlos), los nombres que aparecen o desaparecen en `configDir` (`config_dir_delta`), la versión de Claude Code y el modelo resuelto (`init`), y marca `escaped_cwd` si una herramienta nombra la fuente, la carpeta privada u otra corrida (el primer comando, 200 caracteres, queda en `metrics.json`). |
 | `accept` | calcula **primero** el resumen de cambios (`changes.json`, `changes.patch`, `changes.blind.patch`), **después** copia los tests de aceptación y corre `accept-cmd.txt` y `full-cmd.txt` en el árbol medido; escribe `acceptance.json` (código de salida, suites fallidas y piso de la suite completa) y al final corre el panel de calidad (`quality`). Repetirlo conserva el primer resumen. |
 | `score --task T --arm X --rep N` | puntúa una corrida de revisión (estudio B) sobre `assistant-text.txt` y escribe `review_score.json`; `accept` lo hace solo. Gratis (ver "Estudio B"). |
+| `uiscore --task T --arm X --rep N` | puntúa una corrida de interfaz: capturas, ui-check y medidas del navegador; escribe `shots/`, `ui_check.json` y `ui_measures.json`; `accept` lo hace solo. Gratis (ver "Tareas de interfaz"). |
+| `uipack --scenario S [--reps 1] [--arms ...] [--force]` | arma el paquete a ciegas del voto del autor en `<privateRoot>/ui-blind/S/` (con `pack.json`) y su clave fuera del paquete (ver "Tareas de interfaz"). Gratis. |
 | `probe --arm X` | UNA sesión mínima de `claude` (tope 0,30 USD) que lee el `init` del brazo y escribe `<workRoot>/probe-<brazo>.json`; gasta centavos, se corre antes del congelado (ver "Estudio B"). |
 | `quality --task T --arm X --rep N` | calcula el panel de calidad automático de una corrida ya aceptada (necesita `changes.json`) y lo escribe en `quality.json`. Gratis: no gasta tokens (ver "Panel de calidad automático"). |
 | `freeze --prereg <hash> [--force]` / `freeze --check` | escribe `<privateRoot>/freeze.json` con el hash de las tareas de validación y la identidad de los brazos / verifica sin escribir nada (ver "Desarrollo, validación y freeze"). |
@@ -271,9 +347,9 @@ Intercalá los brazos (A, B, A, B...) como pide la ficha. Todos los comandos ace
 
 ### Columnas del CSV
 
-`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, agent_types, prompt_prefix_id, skill_calls, own_skill_calls, own_hook_ran, activation_via, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, termination, censored, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, fronts_ok, fronts_got, fronts_message, fronts_reason, fronts_by_agents, fronts_by_agents_ok, files_changed, lines_added, lines_removed, eol_only_files, eol_converted_files, set, freeze_hash, prereg_commit, tsc_base_errors, tsc_result_errors, tsc_new_errors, eslint_new_errors, eslint_new_warnings, out_of_scope_files, out_of_scope_lines, diff_files, diff_lines, new_test_files, tests_added, coverage_lines_covered, coverage_lines_total, mutation_killed, mutation_survived, mutation_timeout, quality_note, defects_total, defects_found, found_by_category, findings_total, findings_unmatched, patch_mode, note`.
+`experiment, task, arm, rep, timestamp, model, model_resolved, claude_version, cost_usd, weighted_tokens, input, output, cache_read, cache_write, model_tokens, wall_s, duration_ms, turns, agents, agents_main, agent_types, prompt_prefix_id, skill_calls, own_skill_calls, own_hook_ran, activation_via, result_subtype, is_error, exit_code, timed_out, invalid, invalid_reason, termination, censored, accept_exit, accept_pass, accept_fail, accept_suites_failed, full_pass, full_fail, full_baseline_fail, contamination, neutral_plugins, neutral_config, fronts_ok, fronts_got, fronts_message, fronts_reason, fronts_by_agents, fronts_by_agents_ok, files_changed, lines_added, lines_removed, eol_only_files, eol_converted_files, set, freeze_hash, prereg_commit, tsc_base_errors, tsc_result_errors, tsc_new_errors, eslint_new_errors, eslint_new_warnings, out_of_scope_files, out_of_scope_lines, diff_files, diff_lines, new_test_files, tests_added, coverage_lines_covered, coverage_lines_total, mutation_killed, mutation_survived, mutation_timeout, quality_note, defects_total, defects_found, found_by_category, findings_total, findings_unmatched, patch_mode, note, ui_screens, ui_native_widgets, ui_interactive, ui_states_ok, ui_primary_buttons, ui_font_sizes, ui_check_findings, ui_not_verified`.
 
-Las columnas desde `set` hasta `quality_note`, `termination` y `censored`, y las del estudio B (`defects_total` a `patch_mode`), son de ampliaciones posteriores: un CSV viejo se migra solo al próximo `row` (con la copia `.bak`) y esas celdas quedan vacías. `termination` es `ok`, `budget_cap`, `model_timeout`, `infra_fault` o `hang`; `censored` es `true` (terminada por tope o tiempo, no verde, costo censurado) o `false`; las filas viejas las traen vacías y se leen como no censuradas.
+Las columnas desde `set` hasta `quality_note`, `termination` y `censored`, las del estudio B (`defects_total` a `patch_mode`) y las `ui_*` (después de `note`, ver "Tareas de interfaz"), son de ampliaciones posteriores: un CSV viejo se migra solo al próximo `row` (con la copia `.bak`) y esas celdas quedan vacías. `termination` es `ok`, `budget_cap`, `model_timeout`, `infra_fault` o `hang`; `censored` es `true` (terminada por tope o tiempo, no verde, costo censurado) o `false`; las filas viejas las traen vacías y se leen como no censuradas.
 
 `skill_calls` cuenta todas las llamadas a la herramienta `Skill`; `own_skill_calls` las de una skill del propio plugin del brazo (su nombre o `plugin:skill`; `superpowers-extra:x` o `pignolo:work` en el brazo de superpowers no); los nombres distintos quedan en `metrics.json` (`ownSkillNames`). `own_hook_ran` es `true` si algún mensaje de hook (`hook_started` / `hook_response`) nombra al plugin, `false` si hubo hooks, ninguno lo nombra y el plugin declara `hooks/hooks.json`, y `unknown` en cualquier otro caso (por ejemplo un plugin sin hooks).
 

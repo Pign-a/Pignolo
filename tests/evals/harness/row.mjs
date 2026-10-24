@@ -5,6 +5,7 @@ import { runPaths } from './config.mjs';
 import { summarizeNeutralConfig } from './neutralconfig.mjs';
 import { qualityColumns } from './quality.mjs';
 import { reviewScoreColumns } from './score.mjs';
+import { uiScoreColumns } from './uiscore.mjs';
 
 export const COLUMNS = [
   'experiment', 'task', 'arm', 'rep', 'timestamp', 'model', 'model_resolved', 'claude_version', 'cost_usd', 'weighted_tokens',
@@ -17,6 +18,8 @@ export const COLUMNS = [
   'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total',
   'mutation_killed', 'mutation_survived', 'mutation_timeout', 'quality_note',
   'defects_total', 'defects_found', 'found_by_category', 'findings_total', 'findings_unmatched', 'patch_mode', 'note',
+  // UI flow (kind "ui"): the harness's own measures of the screens, see uiscore.mjs. Appended last so older CSVs migrate by name.
+  'ui_screens', 'ui_native_widgets', 'ui_interactive', 'ui_states_ok', 'ui_primary_buttons', 'ui_font_sizes', 'ui_check_findings', 'ui_not_verified',
 ];
 
 // "model=input/output/cacheRead/cacheWrite" joined by "|": raw tokens per model, so summary can reweigh with the current config.
@@ -99,6 +102,7 @@ export function appendRow(cfg, args) {
   const fr = readJson(path.join(dir, 'fronts.json'));
   const qj = readJson(path.join(dir, 'quality.json'));
   const rs = readJson(path.join(dir, 'review_score.json'));
+  const um = readJson(path.join(dir, 'ui_measures.json'));
   const userNote = args.note || '';
   if (m.experiment && m.experiment !== cfg.experiment) {
     throw new Error(`la corrida se hizo con el experimento "${m.experiment}" y la fila saldría como "${cfg.experiment}"; pasá --experiment ${m.experiment}`);
@@ -158,6 +162,8 @@ export function appendRow(cfg, args) {
     // Seeded-defect review (study B): the deterministic score. The quality panel does not apply to a review (those cells stay empty).
     ...reviewScoreColumns(rs),
     patch_mode: m.patchMode || '',
+    // UI flow: empty cells are measures that could not be computed (never a zero).
+    ...uiScoreColumns(um),
     note: notes.filter(Boolean).join(';'),
   };
   fs.mkdirSync(path.dirname(cfg.csvPath), { recursive: true });

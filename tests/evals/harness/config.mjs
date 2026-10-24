@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 export const HARNESS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HARNESS_DIR, '..', '..', '..');
 export const FIXTURES_DIR = path.join(REPO_ROOT, 'tests', 'evals', 'fixtures');
+// The identity (design.md) every ui run starts from: the same file in every arm.
+export const UI_FIXTURE_DIR = path.join(FIXTURES_DIR, 'ui-identity');
 export const DEFAULT_CONFIG = path.join(HARNESS_DIR, 'harness.local.json');
 export const DEFAULT_CSV = path.join(REPO_ROOT, 'tests', 'evals', 'pignolo2-runs.csv');
 export const DEFAULT_GRADES = path.join(REPO_ROOT, 'tests', 'evals', 'pignolo2-grades.json');
@@ -96,6 +98,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     if (Boolean(arm.pluginName) !== Boolean(arm.pluginDir)) throw new Error(`el brazo ${a}: pluginName y pluginDir van juntos (los dos, o ninguno para un brazo sin plugin)`);
     if (arm.promptPrefix !== undefined && typeof arm.promptPrefix !== 'string') throw new Error(`el promptPrefix del brazo ${a} tiene que ser un texto`);
     if (arm.reviewPrompt !== undefined && typeof arm.reviewPrompt !== 'string') throw new Error(`el reviewPrompt del brazo ${a} tiene que ser un texto`);
+    if (arm.uiPrefix !== undefined && typeof arm.uiPrefix !== 'string') throw new Error(`el uiPrefix del brazo ${a} tiene que ser un texto`);
   }
   // Pairs [control, variant]: each summary rule is evaluated once per pair. By default A against B, or the first two arms.
   const armIds = Object.keys(cfg.arms);
@@ -116,6 +119,15 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     if (!t || t.kind !== 'review') continue;
     if (!ID.test(id)) throw new Error(`id de tarea inválido: ${id}`);
     if (typeof t.item !== 'string' || !ID.test(t.item)) throw new Error(`la tarea ${id}: falta item (la carpeta <privateRoot>/review/<item>) o no es válido (${JSON.stringify(t.item)})`);
+    if (t.arms !== undefined && (!Array.isArray(t.arms) || !t.arms.length || t.arms.some((a) => !armIds.includes(a)))) {
+      throw new Error(`la tarea ${id}: arms tiene que listar brazos configurados (los de la configuración: ${armIds.join(', ')})`);
+    }
+  }
+  // Tasks of kind "ui": the scenario text lives in <privateRoot>/ui/<scenario>.md; the prompt of each run is the arm's uiPrefix plus that text.
+  for (const [id, t] of Object.entries(cfg.tasks || {})) {
+    if (!t || t.kind !== 'ui') continue;
+    if (!ID.test(id)) throw new Error(`id de tarea inválido: ${id}`);
+    if (typeof t.scenario !== 'string' || !ID.test(t.scenario)) throw new Error(`la tarea ${id}: falta scenario (el archivo <privateRoot>/ui/<scenario>.md) o no es válido (${JSON.stringify(t.scenario)})`);
     if (t.arms !== undefined && (!Array.isArray(t.arms) || !t.arms.length || t.arms.some((a) => !armIds.includes(a)))) {
       throw new Error(`la tarea ${id}: arms tiene que listar brazos configurados (los de la configuración: ${armIds.join(', ')})`);
     }
@@ -183,7 +195,7 @@ export function loadConfig(file = DEFAULT_CONFIG) {
     baseExperiment: cfg.experiment || DEFAULT_EXPERIMENT,
     pairs,
     contrasts,
-    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, pluginName: a.pluginName || null, pluginDir: a.pluginDir || null, promptPrefix: a.promptPrefix || '', reviewPrompt: a.reviewPrompt || '' }])),
+    arms: Object.fromEntries(Object.entries(cfg.arms).map(([id, a]) => [id, { ...a, pluginName: a.pluginName || null, pluginDir: a.pluginDir || null, promptPrefix: a.promptPrefix || '', reviewPrompt: a.reviewPrompt || '', uiPrefix: a.uiPrefix || '' }])),
     graderSpendPath: cfg.graderSpendPath || path.join(cfg.privateRoot, 'grader-spend.csv'),
   };
 }
@@ -240,6 +252,9 @@ export const taskConfig = (cfg, task) => (cfg.tasks && cfg.tasks[task]) || null;
 // Seeded-defect review: { kind: "review", item: "rev-NN" }. The repo has two commits, the base and the one to review (HEAD~1..HEAD).
 export const isReviewTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'review');
 export const isFixtureTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'fixture');
+// UI flow: { kind: "ui", scenario: "<id>" }. A blank sandbox with only the identity (design.md); the agent builds screens under design/.
+export const isUiTask = (cfg, task) => Boolean(taskConfig(cfg, task) && taskConfig(cfg, task).kind === 'ui');
+export const uiScenarioFile = (cfg, task) => path.join(cfg.privateRoot, 'ui', `${taskConfig(cfg, task).scenario}.md`);
 
 // Only the arms listed in a task's "arms" may run it (fixture tasks always list them).
 export function assertArmAllowed(cfg, task, arm) {

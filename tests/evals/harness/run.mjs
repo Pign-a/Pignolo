@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Measurement harness for Pignolo 2 vs superpowers. See README.md.
-//   node run.mjs <prepare|run|accept|quality|score|probe|row|clean|remetric|freeze|schedule|batch|blind|unblind|summary> [options] [--config <path>]
+//   node run.mjs <prepare|run|accept|quality|score|uiscore|uipack|probe|row|clean|remetric|freeze|schedule|batch|blind|unblind|summary> [options] [--config <path>]
 import fs from 'node:fs';
 import { loadConfig, DEFAULT_CONFIG, DEFAULT_CSV, DEFAULT_GRADES, DEFAULT_EXPERIMENT, DEFAULT_WEIGHTS, DEFAULT_MODEL_FACTOR } from './config.mjs';
 import { prepare } from './prepare.mjs';
@@ -13,6 +13,8 @@ import { remetricRun } from './remetric.mjs';
 import { summarize, formatSummary, rowsFromCsv } from './summary.mjs';
 import { qualityRun } from './quality.mjs';
 import { scoreRun } from './score.mjs';
+import { uiScoreStep } from './accept.mjs';
+import { uiPack } from './uipack.mjs';
 import { probeArm } from './probe.mjs';
 import { freeze, verifyFreeze } from './freeze.mjs';
 import { buildSchedule, writeSchedule, describeSchedule } from './schedule.mjs';
@@ -45,8 +47,8 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   const cmd = o._[0];
   const cfgPath = o.config || DEFAULT_CONFIG;
-  if (!['prepare', 'run', 'accept', 'quality', 'score', 'probe', 'row', 'clean', 'remetric', 'freeze', 'schedule', 'batch', 'blind', 'unblind', 'summary'].includes(cmd)) {
-    throw new Error('uso: run.mjs <prepare|run|accept|quality|score|probe|row|clean|remetric|freeze|schedule|batch|blind|unblind|summary> [opciones] [--config <ruta>]');
+  if (!['prepare', 'run', 'accept', 'quality', 'score', 'uiscore', 'uipack', 'probe', 'row', 'clean', 'remetric', 'freeze', 'schedule', 'batch', 'blind', 'unblind', 'summary'].includes(cmd)) {
+    throw new Error('uso: run.mjs <prepare|run|accept|quality|score|uiscore|uipack|probe|row|clean|remetric|freeze|schedule|batch|blind|unblind|summary> [opciones] [--config <ruta>]');
   }
 
   if (cmd === 'summary') {
@@ -87,7 +89,16 @@ async function main() {
   else if (cmd === 'run') { need(o, 'task', 'arm', 'rep'); print(await runTask(cfg, run(o))); }
   else if (cmd === 'accept') { need(o, 'task', 'arm', 'rep'); print(await acceptRun(cfg, run(o))); }
   else if (cmd === 'score') { need(o, 'task', 'arm', 'rep'); print(scoreRun(cfg, run(o))); }
-  else if (cmd === 'probe') { need(o, 'arm'); print(await probeArm(cfg, { arm: o.arm })); }
+  else if (cmd === 'uiscore') {
+    need(o, 'task', 'arm', 'rep');
+    const u = await uiScoreStep(cfg, run(o));
+    // the full detail is in <run>/ui_measures.json; the screen prints what decides whether to look at it
+    print({ ...run(o), screensRule: u.screensRule, browser: u.browser, columns: u.columns, errors: u.errors });
+  }
+  else if (cmd === 'uipack') {
+    need(o, 'scenario');
+    print(uiPack(cfg, { scenario: o.scenario, reps: o.reps === undefined ? [1] : list(o.reps), arms: o.arms ? list(o.arms) : null, force: Boolean(o.force) }));
+  } else if (cmd === 'probe') { need(o, 'arm'); print(await probeArm(cfg, { arm: o.arm })); }
   else if (cmd === 'quality') { need(o, 'task', 'arm', 'rep'); print(await qualityRun(cfg, run(o))); }
   else if (cmd === 'freeze') {
     if (o.check) {

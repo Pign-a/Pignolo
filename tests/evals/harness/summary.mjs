@@ -13,6 +13,7 @@ const NUMERIC = ['rep', 'cost_usd', 'weighted_tokens', 'input', 'output', 'cache
   'full_baseline_fail', 'files_changed', 'lines_added', 'lines_removed', 'eol_only_files', 'eol_converted_files',
   'tsc_base_errors', 'tsc_result_errors', 'tsc_new_errors', 'eslint_new_errors', 'eslint_new_warnings', 'out_of_scope_files', 'out_of_scope_lines',
   'defects_total', 'defects_found', 'findings_total', 'findings_unmatched',
+  'ui_screens', 'ui_native_widgets', 'ui_interactive', 'ui_states_ok', 'ui_primary_buttons', 'ui_font_sizes', 'ui_check_findings',
   'diff_files', 'diff_lines', 'new_test_files', 'tests_added', 'coverage_lines_covered', 'coverage_lines_total', 'mutation_killed', 'mutation_survived', 'mutation_timeout'];
 // The quality figures the summary prints per task and arm (median and range).
 export const QUALITY_KEYS = ['tsc_new_errors', 'eslint_new_errors', 'out_of_scope_files', 'diff_lines', 'tests_added'];
@@ -123,6 +124,18 @@ function armStats(rows) {
       return {
         runs: known.length, defectsFound: known.reduce((t, r) => t + r.defects_found, 0), defectsTotal: known.reduce((t, r) => t + r.defects_total, 0),
         findingsTotal: stat(known.map((r) => r.findings_total)), findingsUnmatched: stat(known.map((r) => r.findings_unmatched)),
+      };
+    })(),
+    // UI flow: the harness's measures of the screens (descriptive; the author's blind vote decides). An empty figure stays out of the range.
+    ui: (() => {
+      const known = rows.filter((r) => r.ui_screens !== null && r.ui_screens !== undefined);
+      if (!known.length) return null;
+      const notVerified = [...new Set(known.flatMap((r) => String(r.ui_not_verified || '').split(';').filter(Boolean)))].sort();
+      return {
+        runs: known.length, notVerified,
+        screens: stat(known.map((r) => r.ui_screens)), nativeWidgets: stat(known.map((r) => r.ui_native_widgets)), interactive: stat(known.map((r) => r.ui_interactive)),
+        statesOk: stat(known.map((r) => r.ui_states_ok)), primaryButtons: stat(known.map((r) => r.ui_primary_buttons)), fontSizes: stat(known.map((r) => r.ui_font_sizes)),
+        checkFindings: stat(known.map((r) => r.ui_check_findings)),
       };
     })(),
     activation: { n: rows.filter((r) => r.own_skill_calls !== null && r.own_skill_calls > 0).length, m: rows.filter((r) => r.own_skill_calls !== null).length },
@@ -317,6 +330,25 @@ function reviewEntry({ task, mine, bad, activationOf }) {
   };
 }
 
+// A ui scenario: no pass/fail rule here (the decision is the author's blind vote and the changes he would ask for); it lists the measures.
+function uiEntry({ task, mine, bad, activationOf }) {
+  const arms = {};
+  for (const a of [...new Set(mine.map((r) => r.arm))].sort()) arms[a] = armStats(mine.filter((r) => r.arm === a));
+  const invalid = bad.map((r) => ({ run: runId(r), reasons: reasonsOf(r) }));
+  const reasons = invalid.map((i) => `inválida ${i.run}: ${i.reasons.join(', ')}`);
+  for (const [a, st] of Object.entries(arms)) {
+    if (!st.ui) continue;
+    const u = st.ui;
+    reasons.push(`${a}: pantallas ${range(u.screens, 1)}; widgets nativos ${range(u.nativeWidgets, 1)}; controles ${range(u.interactive, 1)}; con estado hover y foco ${range(u.statesOk, 1)}; botones principales ${range(u.primaryButtons, 1)}; tamaños de letra ${range(u.fontSizes, 1)}; hallazgos de ui-check ${range(u.checkFindings, 1)}${u.notVerified.length ? `; sin verificar: ${u.notVerified.join(', ')}` : ''}`);
+  }
+  const verdict = invalid.length ? `pendiente: ${invalid.length} corridas inválidas` : 'descriptivo (decide el voto ciego del autor)';
+  const n = Math.min(...Object.values(arms).map((x) => x.n), Infinity);
+  return {
+    task, kind: 'ui', pair: null, arms, evidence: n >= 3 ? 'E3' : n >= 2 ? 'E2' : 'sin evidencia', decision: { verdict, reasons }, invalid, systematicNoChanges: [],
+    ...activationOf(arms), eol: Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.eol])),
+  };
+}
+
 function activationOf(arms) {
   const activation = Object.fromEntries(Object.entries(arms).map(([a, st]) => [a, st.activation]));
   const known = Object.entries(activation).filter(([, v]) => v.m > 0);
@@ -394,6 +426,10 @@ export function summarize(rowsIn, {
     const kind = kinds[task] || null;
     if (kind === 'review') {
       tasks.push(reviewEntry({ task, mine: validRows.filter((r) => r.task === task), bad: invalidRows.filter((r) => r.task === task), activationOf }));
+      continue;
+    }
+    if (kind === 'ui') {
+      tasks.push(uiEntry({ task, mine: validRows.filter((r) => r.task === task), bad: invalidRows.filter((r) => r.task === task), activationOf }));
       continue;
     }
     if (kind === 'fixture') {
@@ -521,8 +557,9 @@ export function formatSummary(res) {
       out.push(`   costo USD: ${range(s.cost, 4)}`);
       out.push(`   tiempo de pared s: ${range(s.wall, 1)}`);
       out.push(`   agentes: ${range(s.agents, 1)}`);
-      if (!s.review) out.push(`   aceptación: ${acc}`);
+      if (!s.review && !s.ui) out.push(`   aceptación: ${acc}`);
       if (s.review) out.push(`   revisión: defectos encontrados ${s.review.defectsFound}/${s.review.defectsTotal} en ${s.review.runs} corridas; hallazgos ${range(s.review.findingsTotal, 1)}; sin coincidencia ${range(s.review.findingsUnmatched, 1)}`);
+      if (s.ui) out.push(`   interfaz: ${s.ui.runs} corridas medidas; widgets nativos ${range(s.ui.nativeWidgets, 1)}; botones principales ${range(s.ui.primaryButtons, 1)}; hallazgos de ui-check ${range(s.ui.checkFindings, 1)}${s.ui.notVerified.length ? `; sin verificar: ${s.ui.notVerified.join(', ')}` : ''}`);
       if (s.censored) out.push(`   terminadas por tope o tiempo: ${s.censored} (válidas, no verdes, costo censurado)`);
       const qline = qualityLine(s.quality);
       if (qline) out.push(`   calidad automática (mediana y rango): ${qline}`);

@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { assistantTexts, formatAssistantText } from './metrics.mjs';
-import { runPaths, HARNESS_DIR, isFixtureTask, isReviewTask, taskConfig, assertArmAllowed } from './config.mjs';
+import { runPaths, HARNESS_DIR, isFixtureTask, isReviewTask, isUiTask, taskConfig, assertArmAllowed } from './config.mjs';
 import { scoreRun } from './score.mjs';
+import { scoreUi } from './uiscore.mjs';
 import { runProcess } from './proc.mjs';
 import { buildChildEnv } from './env.mjs';
 import { git } from './prepare.mjs';
@@ -205,13 +206,23 @@ function acceptFixture(cfg, { task, arm, rep, dir }) {
   return out;
 }
 
-export async function acceptRun(cfg, args) {
+// A ui run has no hidden tests: accept is the change summary (so the CSV has its size) followed by the scoring of the screens.
+// deps (tests only): findBrowser, openBrowser, runCheck, libs, env. Never touches metrics.json.
+export async function uiScoreStep(cfg, args, deps = {}) {
+  const { dir, repo } = runPaths(cfg, args);
+  if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}`);
+  if (!fs.existsSync(path.join(dir, 'changes.json'))) summarizeChanges(cfg, repo, dir);
+  return scoreUi(cfg, args, deps);
+}
+
+export async function acceptRun(cfg, args, deps = {}) {
   const { task, arm, rep, dir, repo, taskDir } = runPaths(cfg, args);
   assertArmAllowed(cfg, task, arm);
   if (!fs.existsSync(path.join(repo, '.git'))) throw new Error(`no hay corrida preparada en ${repo}`);
   if (isFixtureTask(cfg, task)) return acceptFixture(cfg, { task, arm, rep, dir });
   // A seeded-defect review has no hidden tests and no acceptance command: accept is the deterministic score.
   if (isReviewTask(cfg, task)) return scoreRun(cfg, { task, arm, rep });
+  if (isUiTask(cfg, task)) return uiScoreStep(cfg, { task, arm, rep }, deps);
   const acceptCmd = readCmd(path.join(taskDir, 'accept-cmd.txt'));
   const fullCmd = readCmd(path.join(taskDir, 'full-cmd.txt'));
 
