@@ -71,10 +71,6 @@ Los tests de navegador de `ui-audit` necesitan `PIGNOLO_UI_BROWSER` apuntando a 
 
 Comparación preinscrita contra superpowers y contra no usar plugin (mismo modelo y esfuerzo, una app privada, una repetición por celda): `work` cuesta lo mismo que no usar plugin y un 25 % menos que superpowers, con la misma aceptación; `validate` detecta tantos defectos sembrados como los otros brazos. No se demostró una mejora de calidad (ambos estudios están en el techo), `work` hace diffs algo más grandes que sin plugin, y las demás skills no se midieron. Los datos y los límites están en `tests/evals/RESULTS-estudio-a-trabajo.md` y `RESULTS-estudio-b-revision.md`.
 
-## Qué se midió
-
-Comparación preinscrita contra superpowers y contra no usar plugin (mismo modelo y esfuerzo, una app privada, una repetición por celda): `work` cuesta lo mismo que no usar plugin y un 25 % menos que superpowers, con la misma aceptación; `validate` detecta tantos defectos sembrados como los otros brazos. No se demostró una mejora de calidad (ambos estudios están en el techo), `work` hace diffs algo más grandes que sin plugin, y las demás skills no se midieron. Los datos y los límites están en `tests/evals/RESULTS-estudio-a-trabajo.md` y `tests/evals/RESULTS-estudio-b-revision.md`.
-
 ## Versión anterior
 
 El plugin anterior (guardia de git, carriles, panel y la interfaz como plugin aparte) quedó en la etiqueta local `legacy` y en las ramas viejas del repo. No se instala desde este marketplace.
