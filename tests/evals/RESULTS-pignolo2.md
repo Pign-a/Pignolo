@@ -355,3 +355,11 @@ Se suman a la sección 10:
 32 corridas únicas, 16,00 USD en corridas (calibración 0,92; feature mediana 6,63; tareas chicas 5,41; detección 3,05), sobre un tope aprobado de 40. La calificación a ciegas corrió como sesión Opus aparte, con un costo que no está en el registro del arnés. La ronda 2 de la detección (`pignolo2-det2`, 9 corridas) sumó 2,83 USD y la ronda 3 (`pignolo2-det3`, 9 corridas) 3,05 USD (ver 11.3b). Las repeticiones 4 a 6 de small-2 (6 corridas) sumaron 1,81 USD. Acumulado en corridas únicas (una por experimento, tarea, brazo, repetición y marca de tiempo del CSV, calibración incluida): 23,69 USD de 40.
 
 Datos crudos: [`pignolo2-runs.csv`](pignolo2-runs.csv). Para reproducir las cifras: `node tests/evals/harness/run.mjs summary`.
+
+## Corrección de las etiquetas de evidencia (2026-10-23)
+
+_Sección posterior a todo lo anterior; no reemplaza ni borra ningún texto._
+
+Las etiquetas **E3** de las dos tareas chicas (secciones 11.2, 11.2b, 11.4 y la tabla correspondiente de `docs/benchmarks.md`) se apoyaban en 3 a 6 repeticiones de **una sola tarea** cada una. Por el argumento del agrupamiento (Miller, "Adding Error Bars to Evals", https://arxiv.org/abs/2411.00640), la muestra efectiva para una afirmación sobre el plugin es el **número de tareas**, y esta medición tuvo **3 tareas en total** (una mediana y dos chicas). Por eso esos resultados son **exploratorios** respecto del efecto del plugin. Las repeticiones miden el ruido entre corridas de una misma tarea, no la generalización de una tarea a otra: el hallazgo de small-2 (una diferencia de alrededor de un 20 % que desapareció al repetir) muestra justamente ese ruido, y no permite concluir nada sobre tareas distintas de esa.
+
+Las cifras no cambian; cambia cómo se leen. La comparación que sí tiene tareas como unidad de réplica, con conjunto de validación congelado y reglas de decisión escritas antes de las corridas, es la ficha de seguimiento [`RESULTS-comparacion-3-brazos.md`](RESULTS-comparacion-3-brazos.md).
