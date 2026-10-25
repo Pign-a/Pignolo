@@ -16,7 +16,7 @@ export function tally(votesList, keyList, control) {
   if (votesList.length !== keyList.length) throw new Error('--votes y --key deben tener la misma cantidad de archivos');
   const scenarios = [];
   votesList.forEach((votes, i) => {
-    const key = keyList[i];
+    const key = keyList[i] && keyList[i].labels ? keyList[i].labels : keyList[i];
     const byArm = {};
     for (const [label, v] of Object.entries(votes.items)) {
       const k = key[label];
