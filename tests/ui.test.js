@@ -364,10 +364,10 @@ test('patterns.md: orden de búsqueda, investigar con el contexto de la pieza, m
   assert.strictEqual(t.split('\n').filter((l) => l.includes('references/patterns/')).length, 1);
 });
 
-test('critique.md: cinco ítems sí/no, cada uno con el síntoma que previene; solo se corrigen los "no"', () => {
+test('critique.md: siete ítems sí/no, cada uno con el síntoma que previene; solo se corrigen los "no"', () => {
   const t = read(DIR, 'references', 'critique.md');
   const items = t.split('\n').filter((l) => /^\d\. \*\*/.test(l));
-  assert.strictEqual(items.length, 5);
+  assert.strictEqual(items.length, 7);
   for (const l of items) assert.match(l, /Prevents/, `sin síntoma: ${l.slice(0, 30)}`);
   const joined = items.join('\n');
   assert.match(joined, /matches the brief if there is one/);
@@ -377,5 +377,7 @@ test('critique.md: cinco ítems sí/no, cada uno con el síntoma que previene; s
   assert.match(joined, /Whitespace separates regions and proximity groups related items/);
   assert.match(t, /screenshot/);
   assert.match(t, /fix only the ones that fail/);
-  assert.match(t, /no second pass/);
+  assert.match(joined, /Whitespace separates regions and proximity groups related items/);
+  assert.match(joined, /what it measures and whether more or less is good/);
+  assert.match(joined, /390 px wide/);
 });

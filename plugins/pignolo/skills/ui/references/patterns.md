@@ -2,6 +2,10 @@
 
 A pattern sheet is a short, sourced card for one interface pattern (card with actions, data table, form, dropdown...): anatomy, content limits, actions, measures, states and mistakes to avoid. General knowledge produces generic pieces; a sheet gives the concrete limits and states of that element. Load one sheet at a time, right before building that piece.
 
+## Motion
+
+A piece that moves or reacts (controls, overlays, lists, drag, numbers, bars) also takes its motion tier from `patterns/motion-and-microinteractions.md`, whose tokens live under `motion.springs` in `design.md`.
+
 ## Where to find it
 
 - The project's `design/patterns/`, first: it holds the sheets already researched or adapted for this project.
