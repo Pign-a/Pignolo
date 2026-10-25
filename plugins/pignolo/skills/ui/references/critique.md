@@ -1,6 +1,6 @@
 # Critique
 
-After generating a screen or a piece, review it once against these seven yes/no items and fix only the ones that fail. A fixed list is what catches the usual first-version problems; touching only the failures matters because reworking what already passes tends to make it worse.
+After generating a screen or a piece, review it once against these eight yes/no items and fix only the ones that fail. A fixed list is what catches the usual first-version problems; touching only the failures matters because reworking what already passes tends to make it worse.
 
 Look at a screenshot when a browser tool exists (open the page and capture it). If there is none, read the code and say so in the reply.
 
@@ -11,5 +11,11 @@ Look at a screenshot when a browser tool exists (open the page and capture it). 
 5. **Space.** Whitespace separates regions and proximity groups related items, at the density the identity sets. Prevents a crowded or scattered layout.
 6. **Meaning.** Each headline figure says what it measures and whether more or less is good, in words or a mark and not by color alone; the second most important function is visible without scrolling. Prevents a big number nobody can interpret and a key feature buried below a table.
 7. **Narrow screens.** At 390 px wide the reading order holds and targets are at least 44 px. Prevents a layout that only works on a desktop.
+8. **Defaults.** None of the habits below appears unless the identity asks for it. Prevents the defaulted look the author rejects.
+   - No em dashes in interface copy or documents: use a period, a comma or a colon.
+   - No pills by default: fully rounded shapes are for status tags, removable chips and toggle tracks; buttons, inputs and cards take the identity radius.
+   - No decorative eyebrows, "01 / 02 / 03" markers, middle-dot meta strings or italic accent words.
+   - No nested cards, no icon in a colored tile above every heading, no gradient text, no emoji as icons.
+   - No color-only meaning, and no filler copy ("Welcome back", "Get started", "Manage your X").
 
 Report one line, `Critique: N yes, M no`, and for each "no" one line with the element and the fix. Then fix those and nothing else: no second pass, no "improving" what passed. Contrast, hover and focus states and native widgets are measured, not judged: they belong to `/pignolo:ui-audit`, when the author asks for it.
