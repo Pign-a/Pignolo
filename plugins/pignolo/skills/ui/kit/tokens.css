@@ -1,0 +1,209 @@
+/*
+ * Pignolo UI kit tokens: Apple-like minimalist, azure accent.
+ * Every kit component reads these variables and nothing else (no hardcoded colors).
+ * If the app already has tokens, map them here instead of copying this palette:
+ * design.md always wins. Names follow design.md so the mapping is 1:1.
+ *
+ * Tailwind v4: use the variables with the parentheses form, e.g. bg-(--color-surface).
+ *
+ * design.md token                          CSS variable
+ * ---------------------------------------  ----------------------------------------
+ * colors.primary / on-primary              --color-primary / --color-on-primary
+ * colors.primary-hover / -pressed          --color-primary-hover / --color-primary-pressed
+ * colors.primary-container / on-...        --color-primary-container / --color-on-primary-container
+ * colors.background / surface              --color-background / --color-surface
+ * colors.surface-container                 --color-surface-container
+ * colors.on-surface / -variant / -muted    --color-on-surface / --color-on-surface-variant / --color-on-surface-muted
+ * colors.outline                           --color-outline
+ * borders.subtle / borders.strong          --color-border-subtle / --color-border-strong (= outline)
+ * colors.focus-ring, focus.widthPx/offset  --color-focus-ring, --focus-width, --focus-offset
+ * colors.error / on-error                  --color-error / --color-on-error
+ * (extension) success, warning             --color-success*, --color-warning* (same shape as error)
+ * rounded.sm / md / lg / full              --radius-sm / --radius-md / --radius-lg / --radius-full
+ * (kit) controls use rounded.lg            --radius-control
+ * spacing.1 .. 16                          --space-1 .. --space-16
+ * pignolo.elevation.level1 .. level4       --elevation-1 .. --elevation-4
+ * pignolo.states.*Opacity                  --state-hover, --state-focus, --state-pressed, --state-dragged,
+ *                                          --state-disabled-content, --state-disabled-container
+ * pignolo.motion.durationMs.*              --duration-fast / base / slow / slower
+ * pignolo.motion.easing.*                  --ease-standard / --ease-decelerate / --ease-accelerate
+ * pignolo.motion.springs                   not CSS: see motion.ts (configureTiers)
+ * typography.*.fontFamily                --font-sans (family only; sizes stay in the app)
+ * pignolo.targets.minPx / recommendedPx    --target-min / --target-recommended
+ *
+ * Dark mode: prefers-color-scheme, overridden by [data-theme="light"|"dark"] on the root element.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+
+  /* Surfaces and text (light). Cool greys, no cream. */
+  --color-background: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-container: #f3f5f8;
+  --color-on-surface: #14171c;
+  --color-on-surface-variant: #4a515c;
+  --color-on-surface-muted: #66707d;
+  --color-outline: #8a93a0;
+  --color-border-subtle: #e4e8ee;
+  --color-border-strong: var(--color-outline);
+
+  /* Accent: azure. */
+  --color-primary: #0b63ce;
+  --color-on-primary: #ffffff;
+  --color-primary-hover: #0a56b3;
+  --color-primary-pressed: #084a98;
+  --color-primary-container: #e5f0fc;
+  --color-on-primary-container: #07407f;
+  --color-focus-ring: #0b63ce;
+
+  /* Status. Each has a mark so color is never the only signal. */
+  --color-success: #17794a;
+  --color-on-success: #ffffff;
+  --color-success-container: #e3f4ea;
+  --color-on-success-container: #0f5233;
+  --color-warning: #8a5a00;
+  --color-on-warning: #ffffff;
+  --color-warning-container: #fdf1d6;
+  --color-on-warning-container: #5e3d00;
+  --color-error: #c4291c;
+  --color-on-error: #ffffff;
+  --color-error-container: #fde8e6;
+  --color-on-error-container: #8a1c13;
+  --mark-success: "\2713";
+  --mark-warning: "!";
+  --mark-error: "\00D7";
+
+  /* Shape. Controls are 12px. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px; /* status tags and removable chips only */
+  --radius-control: var(--radius-lg);
+
+  /* Spacing, base 4px. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Soft elevation. */
+  --elevation-1: 0 0 1px rgb(20 23 28 / 0.08), 0 1px 2px rgb(20 23 28 / 0.06);
+  --elevation-2: 0 0 1px rgb(20 23 28 / 0.08), 0 2px 6px rgb(20 23 28 / 0.08);
+  --elevation-3: 0 0 1px rgb(20 23 28 / 0.08), 0 8px 24px rgb(20 23 28 / 0.12);
+  --elevation-4: 0 0 2px rgb(20 23 28 / 0.1), 0 24px 64px rgb(20 23 28 / 0.18);
+
+  /* State layers. */
+  --state-hover: 0.08;
+  --state-focus: 0.12;
+  --state-pressed: 0.12;
+  --state-dragged: 0.16;
+  --state-disabled-content: 0.38;
+  --state-disabled-container: 0.12;
+
+  /* Focus. */
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* Touch targets. */
+  --target-min: 24px;
+  --target-recommended: 44px;
+
+  /* Durations for non-spring transitions (color, opacity). */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 450ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);
+}
+
+/* Dark values, declared once as a block and applied twice (system and forced). */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-background: #0b0d10;
+    --color-surface: #14171c;
+    --color-surface-container: #1d2128;
+    --color-on-surface: #eef1f5;
+    --color-on-surface-variant: #b6bdc8;
+    --color-on-surface-muted: #8d97a5;
+    --color-outline: #6c7686;
+    --color-border-subtle: #272c35;
+    --color-primary: #5aa9ff;
+    --color-on-primary: #06172e;
+    --color-primary-hover: #7bbbff;
+    --color-primary-pressed: #9acaff;
+    --color-primary-container: #12263f;
+    --color-on-primary-container: #bcdcff;
+    --color-focus-ring: #7bbbff;
+    --color-success: #4fc88a;
+    --color-on-success: #06251a;
+    --color-success-container: #12291f;
+    --color-on-success-container: #b4ecd0;
+    --color-warning: #f0b84a;
+    --color-on-warning: #2b1d00;
+    --color-warning-container: #30240c;
+    --color-on-warning-container: #fbe3aa;
+    --color-error: #ff7b6e;
+    --color-on-error: #2e0804;
+    --color-error-container: #34140f;
+    --color-on-error-container: #ffc9c2;
+    --elevation-1: 0 0 1px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
+    --elevation-2: 0 0 1px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.45);
+    --elevation-3: 0 0 1px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.55);
+    --elevation-4: 0 0 2px rgb(0 0 0 / 0.5), 0 24px 64px rgb(0 0 0 / 0.65);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #0b0d10;
+  --color-surface: #14171c;
+  --color-surface-container: #1d2128;
+  --color-on-surface: #eef1f5;
+  --color-on-surface-variant: #b6bdc8;
+  --color-on-surface-muted: #8d97a5;
+  --color-outline: #6c7686;
+  --color-border-subtle: #272c35;
+  --color-primary: #5aa9ff;
+  --color-on-primary: #06172e;
+  --color-primary-hover: #7bbbff;
+  --color-primary-pressed: #9acaff;
+  --color-primary-container: #12263f;
+  --color-on-primary-container: #bcdcff;
+  --color-focus-ring: #7bbbff;
+  --color-success: #4fc88a;
+  --color-on-success: #06251a;
+  --color-success-container: #12291f;
+  --color-on-success-container: #b4ecd0;
+  --color-warning: #f0b84a;
+  --color-on-warning: #2b1d00;
+  --color-warning-container: #30240c;
+  --color-on-warning-container: #fbe3aa;
+  --color-error: #ff7b6e;
+  --color-on-error: #2e0804;
+  --color-error-container: #34140f;
+  --color-on-error-container: #ffc9c2;
+  --elevation-1: 0 0 1px rgb(0 0 0 / 0.5), 0 1px 2px rgb(0 0 0 / 0.4);
+  --elevation-2: 0 0 1px rgb(0 0 0 / 0.5), 0 2px 6px rgb(0 0 0 / 0.45);
+  --elevation-3: 0 0 1px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.55);
+  --elevation-4: 0 0 2px rgb(0 0 0 / 0.5), 0 24px 64px rgb(0 0 0 / 0.65);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* Focus ring from tokens. Add the class to any interactive kit element. */
+.kit-focus:focus-visible {
+  outline: var(--focus-width) solid var(--color-focus-ring);
+  outline-offset: var(--focus-offset);
+}
