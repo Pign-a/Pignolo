@@ -16,7 +16,7 @@ If the author has no opinion, propose and move on; do not turn it into a questio
 - **Palette**: one accent for the main action and for state, neutrals, and the state colors (success, warning, error). Light and dark if the product needs both. Check contrast of text at 4.5:1.
 - **Shape**: rounded or square, and the radius scale. Borders, shadows or flat.
 - **Typography**: a font stack that exists on the machine (no remote fonts in the HTML options), the type scale, weights.
-- **Animation rules**: sober (state changes only), playful (some motion on interaction) or almost none. Durations, easing, and what never moves. Always respect `prefers-reduced-motion`.
+- **Animation rules**: sober (state changes only), playful (some motion on interaction) or almost none. Durations, easing or springs (direct, momentum and data tiers: see the motion pattern sheet), and what never moves. Always respect `prefers-reduced-motion`.
 - **Navigation**: classic top bar, floating, side, collapsible or not; how it behaves on a phone.
 - **Icons, if any**: style (outline or filled), stroke, color, size, animation, and their states.
 - **Base elements with ALL their states**, deduced from `roadmap.md`: only what the planned features need.

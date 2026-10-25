@@ -1,6 +1,8 @@
 # Pattern sheets
 A pattern sheet is a short, sourced card (150 to 250 words) for one interface pattern: anatomy, content limits, actions, measures, states and mistakes to avoid. Load one sheet at a time, right before building that pattern.
 
+Motion and microinteractions have their own sheet (`motion-and-microinteractions.md`): read it when building anything that moves.
+
 Lookup order:
 1. The project's `design/patterns/`.
 2. This folder.

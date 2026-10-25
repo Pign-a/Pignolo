@@ -9,7 +9,7 @@
 //   U1  Brief
 //   U2  Brief + Pattern sheet (con la carpeta references/patterns/ tal como viene)
 //   U3  Brief + Pattern sheet + Critique (el flujo publicado)
-//   U2S como U2, pero exige las 14 fichas semilla en la carpeta
+//   U2S como U2, pero exige las 15 fichas semilla en la carpeta
 //   U2R como U2, SIN las fichas semilla (los patrones se investigan solo bajo demanda)
 // Brazos de activación (fase 0), todos sobre la base 1.0.0 (sin la sección ni la línea de work):
 //   A0  base 1.0.0 (con un --src 1.0.0 es el árbol sin tocar)
@@ -21,7 +21,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
-export const SEED_COUNT = 14;
+export const SEED_COUNT = 15;
 
 // La línea que `work` lleva en el plugin publicado. El test comprueba que sea idéntica a la de work/SKILL.md.
 export const WORK_LINE = 'When the request creates or redesigns a screen, panel, navigation or interface component, follow the screen-building section of `/pignolo:ui` for that part, because interfaces built without it come out overloaded and flat.';

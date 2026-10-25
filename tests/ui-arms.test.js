@@ -69,8 +69,8 @@ const DISABLED = {
   U1: ['patterns', 'critique'], U2: ['critique'], U2S: ['critique'], U2R: ['critique'], U3: [],
 };
 
-test('la fuente trae las 14 fichas semilla (si no, U2S no tendría qué conservar)', () => {
-  assert.strictEqual(SEEDS().filter((f) => !/README\.md$/i.test(f)).length, 14);
+test('la fuente trae las 15 fichas semilla (si no, U2S no tendría qué conservar)', () => {
+  assert.strictEqual(SEEDS().filter((f) => !/README\.md$/i.test(f)).length, 15);
 });
 
 test('cada brazo deja exactamente los archivos esperados', () => {
@@ -162,14 +162,14 @@ test('U1 y U2: la sección sigue coherente con los pasos que quedan', () => {
   assert.ok(!/critique|rubric/i.test(u2));
 });
 
-test('U2S exige las 14 semillas; U2R no deja ninguna y patterns.md no las nombra', () => {
+test('U2S exige las 15 semillas; U2R no deja ninguna y patterns.md no las nombra', () => {
   const s = build('U2S');
-  assert.strictEqual(walk(path.join(s.out, REF, 'patterns')).filter((f) => f !== 'README.md').length, 14);
+  assert.strictEqual(walk(path.join(s.out, REF, 'patterns')).filter((f) => f !== 'README.md').length, 15);
   const bad = path.join(tmpRoot, 'src-sin-semillas');
   fs.cpSync(SRC, bad, { recursive: true });
   const one = walk(path.join(bad, REF, 'patterns')).find((f) => f !== 'README.md');
   fs.rmSync(path.join(bad, REF, 'patterns', one));
-  assert.throws(() => build('U2S', bad), /14 fichas semilla/);
+  assert.throws(() => build('U2S', bad), /15 fichas semilla/);
   const r = build('U2R');
   assert.ok(!fs.existsSync(path.join(r.out, REF, 'patterns')));
   assert.ok(!lf(path.join(r.out, PATTERNS)).includes('references/patterns/'));

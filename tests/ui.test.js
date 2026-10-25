@@ -359,7 +359,7 @@ test('patterns.md: orden de búsqueda, investigar con el contexto de la pieza, m
   assert.match(t, /WITH the context of the piece/);
   assert.match(t, /`model` and `effort` passed explicitly/);
   assert.match(t, /tokens always win over a sheet's measures/);
-  assert.match(t, /`supuesto`/);
+  assert.match(t, /`convention`/);
   // la línea de las fichas del plugin es una sola: quitarla basta para el brazo sin semillas
   assert.strictEqual(t.split('\n').filter((l) => l.includes('references/patterns/')).length, 1);
 });

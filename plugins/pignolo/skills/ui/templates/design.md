@@ -160,6 +160,10 @@ pignolo:
       standard: "cubic-bezier(0.2, 0, 0, 1)"
       decelerate: "cubic-bezier(0, 0, 0, 1)"
       accelerate: "cubic-bezier(0.3, 0, 1, 1)"
+    springs:
+      direct: { visualDurationS: 0.22, bounce: 0.15, exitMs: 100 }
+      momentum: { visualDurationS: 0.35, bounce: 0.2, exitMs: 130 }
+      data: { visualDurationS: 0.45, bounce: 0, staggerMs: 90 }
     reducedMotion: fade-or-none
   borders:
     subtle: "{colors.surface-container}"
