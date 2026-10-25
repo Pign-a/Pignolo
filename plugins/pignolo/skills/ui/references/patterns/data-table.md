@@ -14,7 +14,7 @@ States:
 - Selected: tint plus checked box.
 - Focus-visible: ring on sort header, checkbox, row actions.
 - Sorted: arrow icon plus aria-sort.
-- Loading: skeleton rows of equal height (Carbon, Primer).
+- Loading: skeleton rows of equal height, shown after 1 s (Carbon, Primer, NN/g).
 - Empty: replace the whole table, headers too, with message and one action (Carbon empty states).
 - Error: message above rows plus retry (convention).
 Avoid:

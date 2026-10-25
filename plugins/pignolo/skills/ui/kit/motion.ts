@@ -12,8 +12,14 @@
  * animations and keeps opacity. `useMotionTier` also swaps the spring for a
  * quick opacity cross-fade and zeroes distances, so intent is explicit.
  *
- * Rules: transform and opacity only, exit faster than enter, never scale an
- * entry from below 0.92, interruptible (springs keep velocity when retargeted).
+ * Rules: transform and opacity only (the exceptions are listed in CHECKLIST.md), exit
+ * faster than enter, never scale an entry from below 0.92, interruptible (springs keep
+ * velocity when retargeted). Bounce only for things with inertia (momentum 0.2, sheets,
+ * toasts, drag, accordion); controls (direct) and data use bounce 0. No hover lift:
+ * hover changes color and shadow only.
+ *
+ * `visualDuration` is Motion's perceived duration; Apple's spring `duration` is the period,
+ * so Apple duration = visualDuration x 1.2 (see references/stacks.md).
  *
  * CSS fallback (comment only): a spring can be approximated with a `linear()`
  * easing plus `@starting-style`, but CSS cannot carry velocity when
@@ -21,7 +27,7 @@
  */
 import { useMemo } from "react";
 import { useReducedMotion } from "motion/react";
-import type { MotionProps, Transition } from "motion/react";
+import type { Transition } from "motion/react";
 
 export type TierName = "direct" | "momentum" | "data";
 
@@ -37,7 +43,8 @@ export interface Tier {
 }
 
 const defaults: Readonly<Record<TierName, Tier>> = {
-  direct: { visualDuration: 0.22, bounce: 0.15, exit: 0.1, stagger: 0 },
+  // Controls have no inertia, so no bounce (author decision). Bounce is for things that carry momentum.
+  direct: { visualDuration: 0.22, bounce: 0, exit: 0.1, stagger: 0 },
   momentum: { visualDuration: 0.35, bounce: 0.2, exit: 0.13, stagger: 0 },
   // Exit 0.2 is the lab value for data; the sheet gives none.
   data: { visualDuration: 0.45, bounce: 0, exit: 0.2, stagger: 0.09 },
@@ -64,8 +71,6 @@ export function tier(name: TierName): Readonly<Tier> {
 /** Fixed numbers used by individual components. Seconds unless the name says px/scale. */
 export const presets = {
   press: { scale: 0.97, duration: 0.07 },
-  /** Hover lift in px, negative is up. Controls 2, cards 3. */
-  hover: { control: -2, card: -3 },
   tooltip: { enter: 0.12, exit: 0.08, delay: 0 },
   /** Sidebar collapse: preferred 0.16 s, bounce 0. */
   sidebar: { visualDuration: 0.16, bounce: 0 },
@@ -163,17 +168,30 @@ export function useMotionTier(name: TierName): MotionTier {
   }, [name, reduced]);
 }
 
-type PressProps = Pick<MotionProps, "whileTap" | "whileHover" | "transition">;
+/**
+ * Press feedback is CSS, not whileTap. Motion makes every whileTap element
+ * keyboard-accessible and, on Enter, fires a synthetic pointerdown; Radix triggers
+ * (DropdownMenu, Popover, Select) open on pointerdown and would open then close at once.
+ * Add this class to any pressable element: scale 0.97 within 70 ms on :active (mouse,
+ * touch and Space), a slightly longer ease back, none for prefers-reduced-motion.
+ * It uses the CSS `scale` property, so it composes with any `transform` Motion writes.
+ * For a target that needs a different depth set your own `active:scale-[...]` (checkbox 0.92,
+ * card 0.985) next to the same transition classes.
+ */
+export const pressClass =
+  "transition-[scale] duration-200 ease-(--ease-decelerate) active:scale-[0.97] active:duration-75 active:ease-out motion-reduce:active:scale-100";
 
 /**
- * Press and hover feedback for a touchable element. Press goes to 0.97 in 70 ms,
- * release and hover use the direct spring. Spread on an `m.*` element.
+ * Minimum 44 px target for touch. Add to any control smaller than that: it only applies
+ * when the primary pointer is coarse (`pointer: coarse`), so desktop sizes do not change.
+ * For a small visual with a larger invisible hit area use `coarseHit` instead.
  */
-export function pressProps(reduced: boolean, lift: number = presets.hover.control): PressProps {
-  if (reduced) return {};
-  return {
-    whileTap: { scale: presets.press.scale, transition: { duration: presets.press.duration, ease: "easeOut" } },
-    whileHover: { y: lift, transition: springFor("direct") },
-    transition: springFor("direct"),
-  };
-}
+export const coarseTarget = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
+/**
+ * Invisible hit area for a small visual (20 px checkbox): a pseudo-element 2 px larger on
+ * each side (24 px, WCAG 2.2 target size minimum), 12 px on touch (44 px). The element
+ * must be `relative` or `absolute`.
+ */
+export const coarseHit =
+  "before:absolute before:-inset-0.5 before:content-[''] pointer-coarse:before:-inset-3";

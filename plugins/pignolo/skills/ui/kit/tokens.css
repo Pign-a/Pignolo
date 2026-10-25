@@ -29,7 +29,7 @@
  * pignolo.motion.easing.*                  --ease-standard / --ease-decelerate / --ease-accelerate
  * pignolo.motion.springs                   not CSS: see motion.ts (configureTiers)
  * typography.*.fontFamily                --font-sans (family only; sizes stay in the app)
- * pignolo.targets.minPx / recommendedPx    --target-min / --target-recommended
+ * pignolo.targets.minPx / recommendedPx    --target-min / --target-recommended (touch: coarseTarget in motion.ts)
  *
  * Dark mode: prefers-color-scheme, overridden by [data-theme="light"|"dark"] on the root element.
  */

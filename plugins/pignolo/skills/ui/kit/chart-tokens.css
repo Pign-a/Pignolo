@@ -1,0 +1,73 @@
+/*
+ * Pignolo UI kit: chart tokens. Categorical series colors for Bars and any chart
+ * built on the kit. Load it after tokens.css. If the app already has chart colors,
+ * map --chart-1 .. --chart-6 to them instead of copying these.
+ *
+ * Source: the dataviz skill's documented categorical palette (blue, orange, aqua,
+ * yellow, magenta, green), slots 1 to 6, in this fixed order. Never cycle it, never
+ * reorder it: the order is what keeps neighbours apart for color-blind readers.
+ *
+ * Validated with the dataviz skill's scripts/validate_palette.js against the kit
+ * surfaces (light #ffffff = --color-surface, dark #14171c = --color-surface):
+ *   node validate_palette.js "#2a78d6,#eb6834,#1baf7a,#eda100,#e87ba4,#008300" --mode light --surface "#ffffff"
+ *   node validate_palette.js "#3987e5,#d95926,#199e70,#c98500,#d55181,#008300" --mode dark  --surface "#14171c"
+ *   adjacent pairs (bars, lines, stacks), all 6 slots:
+ *     light: PASS lightness, chroma, CVD (worst adjacent 9.1, target 8), normal vision (worst 19.6, floor 15);
+ *            WARN contrast vs surface (aqua 2.82, yellow 2.17, magenta 2.69, all below 3:1)
+ *     dark:  PASS all five checks (worst CVD 8.4, worst normal vision 19.3, every slot >= 3:1)
+ *   all pairs (scatter, small multiples), first 3 slots only:
+ *     light: PASS (worst CVD 9.2, normal vision 24.0); WARN contrast (aqua 2.82)
+ *     dark:  PASS (worst CVD 9.4, normal vision 20.9)
+ * Rules that follow from the results:
+ *   - Use 3 series at most in all-pairs forms; slots 4 to 6 only where just neighbours touch.
+ *   - The light WARN is a relief obligation, not a pass: every chart that uses these must
+ *     name its series in a legend, show direct labels or offer the table view, and carry a
+ *     secondary mark (Bars hatches series 2 and 3). Color is never the only identity.
+ *   - Marks only. Text uses the text tokens, never a series color.
+ *   - Status colors (success, warning, error) are not series colors. Do not mix them in one chart.
+ *
+ * Forced colors (Windows High Contrast): the slots switch to system colors, which the
+ * user's theme guarantees have contrast against Canvas. Chart marks must set
+ * forced-color-adjust: none to keep them (Bars does).
+ */
+
+:root {
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --chart-1: #3987e5;
+    --chart-2: #d95926;
+    --chart-3: #199e70;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+  }
+}
+
+:root[data-theme="dark"] {
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+}
+
+@media (forced-colors: active) {
+  /* Tripled so it outranks the theme blocks above whatever the theme. */
+  :root:root:root {
+    --chart-1: Highlight;
+    --chart-2: LinkText;
+    --chart-3: ButtonText;
+    --chart-4: VisitedText;
+    --chart-5: GrayText;
+    --chart-6: CanvasText;
+  }
+}

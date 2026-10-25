@@ -137,6 +137,8 @@ export const PIGNOLO_SCHEMA = M({
   motion: M({
     durationMs: M(Object.fromEntries(['fast', 'base', 'slow', 'slower'].map((k) => [k, V(num(0))]))),
     easing: M(Object.fromEntries(['standard', 'decelerate', 'accelerate'].map((k) => [k, V(bezier)]))),
+    // Optional spring tiers read by the ui skill (direct, momentum, data); the audit only checks their shape.
+    springs: M(Object.fromEntries(['direct', 'momentum', 'data'].map((k) => [k, M({ visualDurationS: V(num(0)), bounce: V(num(0, 1)), exitMs: V(num(0)), staggerMs: V(num(0)) })]))),
     reducedMotion: V(oneOf('fade-or-none', 'none')),
   }),
   borders: M({ subtle: V(colorRef), strong: V(colorRef), widthPx: V(num(0)) }),

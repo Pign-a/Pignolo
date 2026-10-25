@@ -58,6 +58,8 @@ export const ARMS = {
   U1: { on: ['brief'], section: true, workLine: 'keep' },
   U2: { on: ['brief', 'patterns'], section: true, workLine: 'keep' },
   U3: { on: ['brief', 'patterns', 'critique'], section: true, workLine: 'keep' },
+  // U3K: the shipped flow plus the component kit and the stack guide (every other arm leaves them out so the steps are measured alone)
+  U3K: { on: ['brief', 'patterns', 'critique'], section: true, workLine: 'keep', kit: true },
   U2S: { on: ['brief', 'patterns'], section: true, workLine: 'keep', seeds: 'require' },
   U2R: { on: ['brief', 'patterns'], section: true, workLine: 'keep', seeds: 'remove' },
   A0: { on: [], section: false, workLine: 'remove' },
@@ -183,6 +185,22 @@ function extendDescription(skillPath, added) {
   added.push('skills/ui/SKILL.md: description + frases de construcción');
 }
 
+// The kit (React components) and the stack guide are a separate variable from the three steps: arms without kit:true drop them
+// together with the sentences that point at them.
+function removeKitPointers(outAbs, uiSkill, removed) {
+  safeRemove(outAbs, path.join(outAbs, 'skills', 'ui', 'kit'), removed, 'dirs');
+  safeRemove(outAbs, path.join(outAbs, 'skills', 'ui', 'references', 'stacks.md'), removed, 'files');
+  const strip = (file, re, what) => {
+    if (!fs.existsSync(file)) return;
+    const { text, eol } = readText(file);
+    if (!re.test(text)) return;
+    writeText(file, text.replace(re, ''), eol);
+    removed.lines.push({ file: path.relative(outAbs, file).split(path.sep).join('/'), text: what });
+  };
+  strip(uiSkill, / In a React project with Radix, build interface pieces from `kit\/`[^\n]*?pasting React\./, 'pointer to kit and stacks');
+  strip(path.join(outAbs, 'skills', 'ui', 'references', 'patterns', 'motion-and-microinteractions.md'), / Other stacks: `references\/stacks\.md`\./, 'pointer to stacks');
+}
+
 function scanForLeftovers(out, patterns) {
   const hits = [];
   for (const rel of walk(out)) {
@@ -227,6 +245,8 @@ export function buildArm({ arm, src, out, force = false }) {
       for (const d of STEPS[k].dirs) safeRemove(outAbs, path.join(outAbs, d), removed, 'dirs');
     }
   }
+
+  if (!spec.kit) removeKitPointers(outAbs, ui, removed);
 
   const patternsDir = path.join(outAbs, 'skills', 'ui', 'references', 'patterns');
   if (spec.seeds === 'require') {

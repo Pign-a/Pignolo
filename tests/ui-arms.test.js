@@ -43,10 +43,12 @@ const BRIEF = `${REF}brief.md`;
 const PATTERNS = `${REF}patterns.md`;
 const CRITIQUE = `${REF}critique.md`;
 
+const isKit = (f) => f.startsWith('skills/ui/kit/') || f === 'skills/ui/references/stacks.md';
+
 function expectedFiles(arm) {
   const all = walk(SRC);
   const stepFiles = new Set([BRIEF, PATTERNS, CRITIQUE, ...SEEDS()]);
-  const base = all.filter((f) => !stepFiles.has(f));
+  const base = all.filter((f) => !stepFiles.has(f) && !isKit(f));
   const plus = {
     U0: [], A0: [], A1: [], A2: [], A3: [],
     U1: [BRIEF],
@@ -54,6 +56,7 @@ function expectedFiles(arm) {
     U2S: [BRIEF, PATTERNS, ...SEEDS()],
     U2R: [BRIEF, PATTERNS],
     U3: [BRIEF, PATTERNS, CRITIQUE, ...SEEDS()],
+    U3K: [BRIEF, PATTERNS, CRITIQUE, ...SEEDS(), ...all.filter(isKit)],
   }[arm];
   return [...base, ...plus].sort();
 }
@@ -66,7 +69,7 @@ const TOKENS = {
 const DISABLED = {
   U0: ['brief', 'patterns', 'critique'], A0: ['brief', 'patterns', 'critique'], A1: ['brief', 'patterns', 'critique'],
   A2: ['brief', 'patterns', 'critique'], A3: ['brief', 'patterns', 'critique'],
-  U1: ['patterns', 'critique'], U2: ['critique'], U2S: ['critique'], U2R: ['critique'], U3: [],
+  U1: ['patterns', 'critique'], U2: ['critique'], U2S: ['critique'], U2R: ['critique'], U3: [], U3K: [],
 };
 
 test('la fuente trae las 15 fichas semilla (si no, U2S no tendría qué conservar)', () => {
@@ -109,7 +112,7 @@ test('los brazos que quitan la sección no dejan rastro de "Building screens" ni
 test('U0 equivale a la skill ui 1.0.0: mismo SKILL.md, mismas referencias y plantillas que el original', () => {
   const r = build('U0');
   assert.strictEqual(sha(lf(path.join(r.out, UI, 'SKILL.md'))), UI_SKILL_1_0_0);
-  const original = walk(path.join(SRC, UI)).filter((f) => !/^references\/(brief|patterns|critique)\.md$/.test(f) && !f.startsWith('references/patterns/'));
+  const original = walk(path.join(SRC, UI)).filter((f) => !/^references\/(brief|patterns|critique)\.md$/.test(f) && !f.startsWith('references/patterns/') && !f.startsWith('kit/') && f !== 'references/stacks.md');
   assert.deepStrictEqual(walk(path.join(r.out, UI)), original);
   for (const f of original.filter((x) => x !== 'SKILL.md')) {
     assert.ok(fs.readFileSync(path.join(r.out, UI, f)).equals(fs.readFileSync(path.join(SRC, UI, f))), `${f} cambió`);
@@ -120,10 +123,18 @@ test('U0 equivale a la skill ui 1.0.0: mismo SKILL.md, mismas referencias y plan
   assert.ok(!work.includes('\n\n\n'), 'quedó un renglón en blanco de más');
 });
 
-test('U3 es el flujo publicado: el árbol es idéntico al de la fuente', () => {
-  const r = build('U3');
+test('U3K es el flujo publicado con el kit: el árbol es idéntico al de la fuente', () => {
+  const r = build('U3K');
   assert.strictEqual(r.treeSha256, mod.treeSha256(SRC));
   assert.deepStrictEqual(r.removed, { files: [], dirs: [], lines: [], sections: [] });
+});
+
+test('U3 es el flujo sin el kit ni la guía de stacks: solo quita eso y sus punteros', () => {
+  const r = build('U3');
+  assert.deepStrictEqual(r.removed.dirs, ['skills/ui/kit']);
+  assert.deepStrictEqual(r.removed.files, ['skills/ui/references/stacks.md']);
+  assert.strictEqual(r.removed.lines.length, 2);
+  assert.strictEqual(r.removed.sections.length, 0);
 });
 
 test('el plugin armado como U3 pasa tests/plugin-layout.test.js', () => {

@@ -7,13 +7,11 @@ Content limits:
 - Trailing: one status, value or action, not a cluster.
 - Leading visual only if it aids scanning or shows type/status (Primer).
 - 7 to 10 rows before pagination or search (convention).
-Actions: the whole row is the primary target (Carbon: selectable rows are clickable anywhere). Secondary actions trail, may show on hover but stay individually keyboard-focusable (Primer) and always visible on touch. Destructive actions go last in the row menu, never beside the open target.
+Actions: the whole row is the primary target (Carbon: selectable rows are clickable anywhere). Secondary actions trail, may show on hover but stay individually keyboard-focusable (Primer) and always visible on touch. Destructive actions go last in the row menu, never beside the open target. A Delete shortcut removes at once, so offer undo (toast).
 Measures: one line 40px, 48px airy, two lines 64px (Carbon table row sizes applied by analogy; no list source, Material pages failed to load). Touch target 44px (WCAG 2.5.5), 24px floor (WCAG 2.5.8); horizontal padding 16px (Carbon table spacing); leading visual 24 to 40px, 16px gap; text 14px, secondary 12 to 13px muted (conventions); 1px divider only with descriptions or multi-line text (Primer).
 States:
-- Rest.
 - Hover: faint background across the row.
 - Focus-visible: 2px ring inside the row.
-- Active: slightly darker.
 - Selected: tint plus check or radio.
 - Disabled: muted, no hover.
 - Loading: skeleton row, same height.

@@ -66,7 +66,7 @@ function walk(dir) {
 }
 
 test('fixtures: exactamente las tres carpetas esperadas y sin .git', () => {
-  const dirs = fs.readdirSync(FIXTURES, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+  const dirs = fs.readdirSync(FIXTURES, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'ui-identity').map((e) => e.name).sort(); // ui-identity is the blank-project identity of the ui harness task, not a detection fixture
   assert.deepStrictEqual(dirs, ['app-db', 'cli-script', 'landing-form']);
   assert.deepStrictEqual(Object.keys(expected).sort(), dirs);
   for (const f of walk(FIXTURES)) assert.ok(!f.split(path.sep).includes('.git'), f);

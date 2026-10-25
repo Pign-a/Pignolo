@@ -37,7 +37,7 @@ A first version comes out overloaded when nothing decided what the screen is for
 - **Pattern sheet**: before building a piece, read its sheet from the project's `design/patterns/` first, or research that one pattern with the piece's context and save the sheet there (`references/patterns.md`); `design.md` tokens always win over a sheet's measures.
 - **Critique**: after generating, review once against the fixed rubric, ideally on a screenshot, and fix only the items that fail, never what passes (`references/critique.md`).
 
-A small tweak skips these steps; a new piece or screen runs them, because that is where an unexamined first version costs most to fix.
+A small tweak skips these steps; a new piece or screen runs them, because that is where an unexamined first version costs most to fix. In a React project with Radix, build interface pieces from `kit/` (its README says how to adopt one). In any other stack (Astro, Flutter, native, Vue), read `references/stacks.md` and build with the stack's own primitives, never by pasting React.
 
 ## 6. The navigator
 
