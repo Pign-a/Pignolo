@@ -1,0 +1,11 @@
+{
+  "name": "prompt-polish",
+  "displayName": "Prompt Polish",
+  "version": "0.2.0",
+  "description": "Mod opcional para la app de escritorio: botones sobre el cuadro de texto que reescriben tu prompt en bruto (Mejorar, Plan, Bug) con un modelo barato.",
+  "author": { "name": "Ignacio Agustín Miste" },
+  "repository": "https://github.com/Pign-a/Pignolo",
+  "license": "MIT",
+  "keywords": ["mod", "prompt", "desktop"],
+  "types": "./types/index.d.ts"
+}

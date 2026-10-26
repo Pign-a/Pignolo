@@ -1,5 +1,13 @@
 # Changelog
 
+## prompt-polish 0.2.0 — 2026-10-26
+
+Mod opcional y aparte del plugin `pignolo` (`plugins/prompt-polish/`, mismo marketplace). `pignolo` queda en 1.1.0.
+
+- **Tres botones sobre el cuadro de texto** (app de escritorio): Mejorar (ordena, recorta repeticiones y muletillas, corrige), Plan (lo deja como pedido de plan que espera tu OK) y Bug (síntoma, dónde, esperado, verificación). Reescribe el cuadro directo, con Haiku 5.5 y esfuerzo bajo, sin agregar contenido.
+- **Repo y rama** a la derecha de la banda. No usa la línea de estado: la app le pone el rótulo del plugin y solo admite texto plano.
+- **Instalar:** `claude plugin install prompt-polish@pignolo`. No medido contra otros enfoques; se probó a mano y con 3 tests (`claude plugin test plugins/prompt-polish`).
+
 ## 1.1.0 — 2026-10-26
 
 Un recordatorio al iniciar la sesión para que el agente use las skills, y el kit de componentes de interfaz. El flujo de pantallas que se había probado queda sin publicar.

@@ -32,11 +32,15 @@ test('plugin.json: name, version y licencia', () => {
   assert.strictEqual(p.license, 'MIT');
 });
 
-test('marketplace.json lista un solo plugin: pignolo', () => {
+// Decisión del autor (2026-10-26): el mod opcional prompt-polish viaja en el mismo marketplace, como plugin aparte.
+test('marketplace.json lista pignolo y el mod opcional prompt-polish', () => {
   const m = readJson(path.join(ROOT, '.claude-plugin', 'marketplace.json'));
-  assert.strictEqual(m.plugins.length, 1);
-  assert.strictEqual(m.plugins[0].name, 'pignolo');
+  assert.deepStrictEqual(m.plugins.map((p) => p.name), ['pignolo', 'prompt-polish']);
   assert.strictEqual(m.plugins[0].source, './plugins/pignolo');
+  assert.strictEqual(m.plugins[1].source, './plugins/prompt-polish');
+  const mod = readJson(path.join(ROOT, 'plugins', 'prompt-polish', '.claude-plugin', 'plugin.json'));
+  assert.strictEqual(mod.name, 'prompt-polish');
+  assert.ok(exists(path.join(ROOT, 'plugins', 'prompt-polish', 'hooks', 'register.tsx')));
 });
 
 // Decisión del autor (2026-10-25): un único hook de SessionStart que solo inyecta contexto (un recordatorio de qué skill usar).

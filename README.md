@@ -41,6 +41,14 @@ Desde la terminal:
 
 O dentro de Claude Code: `/plugin marketplace add Pign-a/Pignolo` y `/plugin install pignolo@pignolo`. Para tomar cambios nuevos: `/plugin marketplace update pignolo`.
 
+### Mod opcional: prompt-polish
+
+Solo para la app de escritorio de Claude Code. Agrega tres botones sobre el cuadro de texto (Mejorar, Plan y Bug) que reescriben el prompt que dictaste o tipeaste: lo ordenan, recortan repeticiones y muletillas y corrigen la escritura, con un modelo barato (Haiku). No agrega nada que no hayas dicho. Es independiente de `pignolo`: se instala o no por separado.
+
+    claude plugin install prompt-polish@pignolo
+
+Si todavía no agregaste el marketplace, corré antes el `marketplace add` de arriba.
+
 Si tenías instalados los plugins anteriores `pignolo-ui` o `pignolo-panel`, desinstalalos desde `/plugin` antes de usar este: sus skills `define`, `new`, `improve` y `audit` compiten con `ui` y `ui-audit` por los mismos pedidos.
 
 ## Las seis skills

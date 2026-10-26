@@ -9,6 +9,11 @@
       "name": "pignolo",
       "source": "./plugins/pignolo",
       "description": "Metodología liviana de desarrollo con agentes: empezar, trabajar, validar, cerrar sesión e interfaces web"
+    },
+    {
+      "name": "prompt-polish",
+      "source": "./plugins/prompt-polish",
+      "description": "Mod opcional para la app de escritorio: botones sobre el cuadro de texto que reescriben tu prompt en bruto"
     }
   ]
 }
