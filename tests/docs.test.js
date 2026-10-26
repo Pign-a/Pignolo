@@ -14,9 +14,9 @@ test('el primer encabezado de versión del CHANGELOG es la versión de plugin.js
   assert.strictEqual(m[1], version);
 });
 
-test('CLAUDE.md nombra la 1.0.0 y no conserva el método viejo', () => {
+test('CLAUDE.md nombra la 1.1.0 y no conserva el método viejo', () => {
   const t = read('CLAUDE.md');
-  assert.ok(t.includes('1.0.0'));
+  assert.ok(t.includes('1.1.0'));
   assert.ok(!t.includes('Ciclo ejecutar → revisar → arreglar'));
 });
 

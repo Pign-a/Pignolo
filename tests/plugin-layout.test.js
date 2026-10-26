@@ -28,7 +28,7 @@ function frontmatter(file) {
 test('plugin.json: name, version y licencia', () => {
   const p = readJson(path.join(PLUGIN, '.claude-plugin', 'plugin.json'));
   assert.strictEqual(p.name, 'pignolo');
-  assert.strictEqual(p.version, '1.0.0');
+  assert.strictEqual(p.version, '1.1.0');
   assert.strictEqual(p.license, 'MIT');
 });
 

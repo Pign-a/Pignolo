@@ -23,7 +23,7 @@
 
 # Pignolo
 
-Pignolo 2 (1.0.0) es un plugin de Claude Code que reemplaza a superpowers con una metodología más liviana: pocas reglas, cada una con su razón, y nada que bloquee. Una skill de cada cosa que se hace en un proyecto: empezar, trabajar, validar, cerrar la sesión, diseñar la interfaz y auditarla. Diseño: [`docs/specs/2026-10-23-pignolo-2-design.md`](docs/specs/2026-10-23-pignolo-2-design.md).
+Pignolo 2 (1.1.0) es un plugin de Claude Code que reemplaza a superpowers con una metodología más liviana: pocas reglas, cada una con su razón, y nada que bloquee. Una skill de cada cosa que se hace en un proyecto: empezar, trabajar, validar, cerrar la sesión, diseñar la interfaz y auditarla. Diseño: [`docs/specs/2026-10-23-pignolo-2-design.md`](docs/specs/2026-10-23-pignolo-2-design.md).
 
 **Usá Pignolo 2 o superpowers, no los dos activos a la vez:** sus skills "obligatorias" compiten por activarse.
 

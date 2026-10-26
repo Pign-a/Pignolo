@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 — 2026-10-26
+
+Un recordatorio al iniciar la sesión para que el agente use las skills, y el kit de componentes de interfaz. El flujo de pantallas que se había probado queda sin publicar.
+
+- **Recordatorio de sesión.** Un único hook de `SessionStart` (`plugins/pignolo/hooks/`) imprime una nota corta que manda invocar la skill que corresponde antes de responder o actuar: `work` para todo cambio de varios pasos (el plan del autor pasa a ser sus hitos), `ui` para pantallas, `start`, `validate` y `session` en sus casos. Solo agrega contexto: no bloquea ni escribe nada. Probado en una sesión real; su efecto en un entorno con cientos de skills no está medido.
+- **Skills encadenadas.** `work` entra por todo cambio de varios pasos, ofrece ejecutar la tarjeta o la especificación aprobada y, con "hacelo" o "dale", toma el paso siguiente sin preguntar qué skill; `start` ofrece `work` para el primer ítem del roadmap; `validate` nombra `session`. `work` también reparte en paralelo las piezas independientes (la tarjeta marca cuáles).
+- **Kit de interfaz** (`skills/ui/kit/`): 24 componentes React (Motion, Radix, Tailwind v4) con tres niveles de movimiento, selectores propios de fecha, mes y rango, desplegable sin bloqueo de scroll, hoja inferior, avisos con deshacer, reordenar con teclado y cifras que ruedan; 15 fichas de patrón con fuentes y una guía para trasladarlo a Astro, Flutter, SwiftUI, Compose, React Native, Vue y Svelte (`references/stacks.md`). Se pasan sus 52 comprobaciones en Chrome real (`npm run kit:check`, `tests/kit-sandbox/`) y el autor lo probó a mano. **No se midió que mejore las pantallas que arma un agente**: en la ronda 2 el agente no lo usó (repositorio sin React) y el flujo de fichas no superó a no usar plugin (`tests/evals/RESULTS-ui-flujo-ronda2.md`).
+- **Sin publicar.** El flujo de ficha de pantalla, ficha de patrón y crítica (`docs/ui-flujo-pausado/`) y su arnés de medición siguen en el repositorio, pausados.
+- **Actualizar:** `/plugin update`. Si tenés otro plugin que también inyecta una nota al iniciar (superpowers), se usa uno u otro.
+
 ## 1.0.0 — 2026-10-24
 
 Pignolo 2: reescrito en limpio como un solo plugin, `pignolo`, que reemplaza a superpowers con menos reglas y sin nada que bloquee. Diseño: `docs/specs/2026-10-23-pignolo-2-design.md`.
