@@ -1,7 +1,7 @@
 {
   "name": "pignolo",
   "displayName": "Pignolo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Metodología liviana de desarrollo con agentes: empezar, trabajar, validar, cerrar sesión e interfaces web",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",

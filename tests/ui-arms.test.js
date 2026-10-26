@@ -1,6 +1,8 @@
 'use strict';
 // Pruebas del armador de brazos (tests/evals/ui-arms.mjs). Trabajan sobre una copia temporal del plugin del repo.
-const test = require('node:test');
+const nodeTest = require('node:test');
+const { flowOnly } = require('./flow-pausado');
+const test = flowOnly(nodeTest);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -33,8 +35,8 @@ let mod;
 let n = 0;
 const build = (arm, src = SRC) => mod.buildArm({ arm, src, out: path.join(tmpRoot, `out-${arm}-${n++}`) });
 
-test.before(async () => { mod = await import(pathToFileURL(SCRIPT).href); });
-test.after(() => fs.rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+nodeTest.before(async () => { mod = await import(pathToFileURL(SCRIPT).href); });
+nodeTest.after(() => fs.rmSync(tmpRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
 
 const UI = 'skills/ui/';
 const REF = `${UI}references/`;

@@ -29,15 +29,9 @@ The identity itself is a big decision, so it goes through three options (section
 
 Three options, in separate HTML files, only for big pieces: the identity, full screens, and large parts such as navigation, a modal, a sidebar or a data table. A button or a title never gets options: decide it directly and move on, because comparing three buttons costs more than any of them is worth. Generate each option with the `ui-option` agent, one per axis, launched together; the brief, the axes and the sample-data rules are in `references/options.md`.
 
-## 5. Building screens
+## 5. Pieces for a screen
 
-A first version comes out overloaded when nothing decided what the screen is for before drawing it, and nothing checked it afterwards against fixed criteria. For a new screen or piece:
-
-- **Brief**: before drawing a new screen, fix its user, job, one primary action, up to 3 key data, what is left out and its regions in reading order, as text (`references/brief.md`).
-- **Pattern sheet**: before building a piece, read its sheet from the project's `design/patterns/` first, or research that one pattern with the piece's context and save the sheet there (`references/patterns.md`); `design.md` tokens always win over a sheet's measures.
-- **Critique**: after generating, review once against the fixed rubric, ideally on a screenshot, and fix only the items that fail, never what passes (`references/critique.md`).
-
-A small tweak skips these steps; a new piece or screen runs them, because that is where an unexamined first version costs most to fix. In a React project with Radix, build interface pieces from `kit/` (its README says how to adopt one). In any other stack (Astro, Flutter, native, Vue), read `references/stacks.md` and build with the stack's own primitives, never by pasting React.
+In a React project with Radix, build interface pieces from `kit/` (its README says how to adopt one); each piece has its pattern card in `references/patterns/`, and `design.md` tokens always win over a card's measures. In any other stack (Astro, Flutter, native, Vue), read `references/stacks.md` and build with the stack's own primitives, never by pasting React.
 
 ## 6. The navigator
 

@@ -1,5 +1,7 @@
 'use strict';
 const test = require('node:test');
+const { flowOnly } = require('./flow-pausado');
+const flowTest = flowOnly(test);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -89,7 +91,7 @@ test('work pasa model y effort explícitos a cada subagente que lanza', () => {
 });
 
 // ---- paso de work a ui ----
-test('work lleva UNA línea que manda a la sección de armado de pantallas de /pignolo:ui, al final de "Missing documents"', () => {
+flowTest('work lleva UNA línea que manda a la sección de armado de pantallas de /pignolo:ui, al final de "Missing documents"', () => {
   const t = read('SKILL.md');
   const lines = t.split('\n').filter((l) => /screen-building section of `\/pignolo:ui`/.test(l));
   assert.strictEqual(lines.length, 1);

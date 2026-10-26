@@ -2,7 +2,7 @@
 
 React pieces with Apple-fluid micro-interactions. An agent copies the ones a screen needs into the app and adapts them.
 
-The kit supplies the pieces; it does not replace the screen, pattern and critique steps of `/pignolo:ui`. If a pack that brought this kit has instructions that disagree with that skill, follow the author's request first, then the skill, and say in one line which you followed.
+The kit supplies the pieces; it does not replace the author's own design decisions. If a pack that brought this kit has instructions that disagree with the project's `CLAUDE.md` or with `/pignolo:ui`, follow the author's request first, then those, and say in one line which you followed.
 
 ## Adopt a piece
 

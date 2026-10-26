@@ -39,7 +39,7 @@ Check `git status`. If there is uncommitted work and the change is large, warn t
 
 `security.md`, `design.md` (or `DESIGN.md`, the same file on Windows) and the roadmap are useful when present, and `work` reads them: they tell you what the project protects and how it should look. When they are absent, do not stop and do not demand them. Work from the evidence in the repo, and offer `/pignolo:start` once, at the end, only if it would have changed a decision.
 
-When the request creates or redesigns a screen, panel, navigation or interface component, follow the screen-building section of `/pignolo:ui` for that part, because interfaces built without it come out overloaded and flat.
+When the request creates or redesigns a screen, panel, navigation or interface component, use `/pignolo:ui` for that part, because identity, catalog and options are decided there once.
 
 ## At a milestone
 

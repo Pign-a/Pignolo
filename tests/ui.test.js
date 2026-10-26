@@ -1,5 +1,7 @@
 'use strict';
 const test = require('node:test');
+const { flowOnly } = require('./flow-pausado');
+const flowTest = flowOnly(test);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -279,14 +281,14 @@ const pluginFiles = (dir, acc = []) => {
   return acc;
 };
 
-test('"Building screens" va después de Options y antes del navegador; las secciones viejas conservan su sentido', () => {
+flowTest('"Building screens" va después de Options y antes del navegador; las secciones viejas conservan su sentido', () => {
   const heads = [...skill().matchAll(/^## (\d+)\. (.+)$/gm)].map((m) => `${m[1]}. ${m[2]}`);
   assert.deepStrictEqual(heads, ['1. Start from what exists', '2. Identity phase (first, when the project has an interface)',
     '3. Catalog', '4. Options', '5. Building screens', '6. The navigator', '7. Close']);
   assert.match(skill(), /three options \(section 4\)/, 'la referencia a Options sigue apuntando a la sección 4');
 });
 
-test('Building screens: tres pasos, cada uno en UNA línea con su referencia; sin tabla ni numeración de pasos', () => {
+flowTest('Building screens: tres pasos, cada uno en UNA línea con su referencia; sin tabla ni numeración de pasos', () => {
   const sec = section('Building screens');
   assert.ok(sec, 'falta la sección');
   const bullets = sec.split('\n').filter((l) => l.startsWith('- '));
@@ -304,7 +306,7 @@ test('Building screens: tres pasos, cada uno en UNA línea con su referencia; si
   assert.ok(!/brief|pattern sheet|critique|rubric/i.test(intro), 'la intro nombra un paso');
 });
 
-test('Building screens: el brief decide el trabajo, la ficha investiga con contexto, la crítica corrige solo lo que falla', () => {
+flowTest('Building screens: el brief decide el trabajo, la ficha investiga con contexto, la crítica corrige solo lo que falla', () => {
   const [brief, pattern, critique] = STEP_REFS.map((r) => section('Building screens').split('\n').find((l) => l.includes(`references/${r}.md`)));
   for (const w of ['user', 'job', 'primary action', '3 key data', 'left out', 'reading order', 'text']) assert.match(brief, new RegExp(w, 'i'), `brief: falta ${w}`);
   assert.match(pattern, /design\/patterns\//);
@@ -316,7 +318,7 @@ test('Building screens: el brief decide el trabajo, la ficha investiga con conte
   assert.match(critique, /never what passes/i);
 });
 
-test('Building screens: la proporcionalidad son dos frases llanas (retoque salta, pieza o pantalla nueva corre)', () => {
+flowTest('Building screens: la proporcionalidad son dos frases llanas (retoque salta, pieza o pantalla nueva corre)', () => {
   const para = section('Building screens').split(/\n\s*\n/).find((p) => /small tweak/i.test(p));
   assert.ok(para, 'falta la regla de proporcionalidad');
   assert.match(para, /small tweak skips/i);
@@ -324,7 +326,7 @@ test('Building screens: la proporcionalidad son dos frases llanas (retoque salta
   assert.ok(!para.includes('|'));
 });
 
-test('references del flujo: cada ruta de paso solo se nombra en SKILL.md y no se nombran entre sí', () => {
+flowTest('references del flujo: cada ruta de paso solo se nombra en SKILL.md y no se nombran entre sí', () => {
   const refs = path.join(DIR, 'references');
   const text = Object.fromEntries(STEP_REFS.map((r) => [r, read(refs, `${r}.md`)]));
   for (const r of STEP_REFS) {
@@ -341,7 +343,7 @@ test('references del flujo: cada ruta de paso solo se nombra en SKILL.md y no se
   assert.match(text.critique, /brief if there is one/);
 });
 
-test('brief.md: usuario, trabajo, una acción primaria, hasta 3 datos, lo que se deja afuera y regiones en texto', () => {
+flowTest('brief.md: usuario, trabajo, una acción primaria, hasta 3 datos, lo que se deja afuera y regiones en texto', () => {
   const t = read(DIR, 'references', 'brief.md');
   for (const w of ['User', 'Job', 'Primary action', 'Key data', 'Left out on purpose', 'Regions']) assert.match(t, new RegExp(`\\*\\*${w}\\*\\*`), `falta ${w}`);
   assert.match(t, /two screens/);
@@ -351,7 +353,7 @@ test('brief.md: usuario, trabajo, una acción primaria, hasta 3 datos, lo que se
   assert.match(t, /starting guidance, not a gate/, 'los límites numéricos son guía y no bloquean');
 });
 
-test('patterns.md: orden de búsqueda, investigar con el contexto de la pieza, model y effort explícitos, design.md gana', () => {
+flowTest('patterns.md: orden de búsqueda, investigar con el contexto de la pieza, model y effort explícitos, design.md gana', () => {
   const t = read(DIR, 'references', 'patterns.md');
   const iProject = t.indexOf('`design/patterns/`');
   const iPlugin = t.indexOf('`references/patterns/`');
@@ -364,7 +366,7 @@ test('patterns.md: orden de búsqueda, investigar con el contexto de la pieza, m
   assert.strictEqual(t.split('\n').filter((l) => l.includes('references/patterns/')).length, 1);
 });
 
-test('critique.md: ocho ítems sí/no, cada uno con el síntoma que previene; solo se corrigen los "no"', () => {
+flowTest('critique.md: ocho ítems sí/no, cada uno con el síntoma que previene; solo se corrigen los "no"', () => {
   const t = read(DIR, 'references', 'critique.md');
   const items = t.split('\n').filter((l) => /^\d\. \*\*/.test(l));
   assert.strictEqual(items.length, 8);
