@@ -4,6 +4,7 @@
   "scripts": {
     "test": "node --test \"tests/**/*.test.js\" \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\"",
     "test:quiet": "node --test --test-reporter=dot \"tests/**/*.test.js\" \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\"",
-    "test:ui": "node --test \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\""
+    "test:ui": "node --test \"plugins/pignolo/ui-audit/tests/**/*.test.mjs\"",
+    "kit:check": "node tests/kit-sandbox/scripts/run-all.mjs"
   }
 }
