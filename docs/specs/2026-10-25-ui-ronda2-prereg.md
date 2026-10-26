@@ -17,7 +17,7 @@ Cuando el autor pide una pantalla con sus propias palabras, ¿qué brazo deja la
 
 **Limitación del montaje.** El repositorio de prueba está en blanco y el pedido exige HTML estático sin build, igual en todos los brazos. La skill manda usar el kit en un proyecto React con Radix y, en cualquier otro caso, leer `references/stacks.md` y construir con lo que haya. Entonces U3K no instala el kit: lo tiene a mano como referencia de comportamiento y de movimiento. Lo que esta ronda mide es el flujo completo con esos materiales disponibles; si el kit se usa se mide aparte (abajo). Medir el kit instalado en su entorno (un proyecto React) necesita otro montaje y queda como pendiente.
 
-Los brazos se arman con `tests/evals/ui-arms.mjs` desde el commit de esta ficha. La identidad de la app de prueba es la de `tests/evals/fixtures/ui-identity/design.md`; el texto de cada pedido vive en la carpeta privada y no entra al repositorio.
+Los brazos llevan el plugin sin la carpeta `hooks/` (el recordatorio de sesión no entra: el flujo de pantallas se fuerza con `/pignolo:ui` y el recordatorio se mide aparte, P2-50). Se arman con `tests/evals/ui-arms.mjs` desde el commit de esta ficha. La identidad de la app de prueba es la de `tests/evals/fixtures/ui-identity/design.md`; el texto de cada pedido vive en la carpeta privada y no entra al repositorio.
 
 ## Pantallas y repeticiones
 
