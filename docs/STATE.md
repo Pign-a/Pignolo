@@ -26,7 +26,8 @@ Rama `ui-flujo` (2026-10-25), mejora del flujo de interfaz de `ui`:
 
 ## Qué falta
 
-- **Medir el flujo completo** con una segunda ronda de pantallas (Compromisos, Ahorro y Simulador de nuevo) con el brazo `U3K`; las dos primeras no se usaron para ajustar nada. Se mide al cierre de etapas grandes, no en cada paso.
+- **Ronda 2 de pantallas hecha (2026-10-26, `tests/evals/RESULTS-ui-flujo-ronda2.md`): el flujo no superó a no usar plugin** (sin plugin primero en las 2 de validación; U3K tercero y cuarto) y el kit no se usó (repo en blanco, HTML estático). Antes de publicar el flujo de pantallas hay que decidir: iterarlo con un conjunto de desarrollo nuevo (P2-52) y medir el kit en un proyecto React (P2-51), o publicar el kit como material validado a mano sin efecto medido.
+- **Recordatorio de sesión** (hook `SessionStart`, skills encadenadas, `work` hasta 920 palabras), commit `9863418`: probado en una sesión real de `claude -p`, efecto no medido en un entorno con cientos de skills (P2-50).
 - **Publicar** la rama `ui-flujo`: unirla a `main`, subir la versión de `plugin.json`, la entrada del CHANGELOG y el push. Es público y necesita la confirmación del autor.
 - P2-48: mover las pruebas y las páginas del kit al repositorio (`tests/kit-sandbox/`), para poder repetir lo verificado.
 - P2-49: `DateValue.month` va de 0 a 11 y el valor del formulario de 1 a 12; evaluar pasar la API a 1 a 12.
@@ -37,7 +38,7 @@ Rama `ui-flujo` (2026-10-25), mejora del flujo de interfaz de `ui`:
 
 ## Necesita al autor
 
-- Elegir entre la ronda 2 de pantallas antes de publicar, o publicar ya.
+- Decidir qué publicar tras la ronda 2: el kit y el recordatorio de sesión por un lado, y el flujo de pantallas (que no mostró ventaja) por otro. Y si se arma la ronda 3 con proyecto React.
 - Probar el paquete de traspaso en su app real con su propio agente y pasar lo que encuentre.
 - Limpiar `C:\Users\pigna\pignolo-eval`: guarda datos privados de calificación y decenas de carpetas y archivos de trabajo (copias del proyecto de prueba, parches, registros). Borrar solo con su confirmación.
 - Decidir qué hacer con `D:\pignolo\local\pignolo-*`, y borrar o archivar los scripts históricos que apuntan a código borrado (gaps P2-8).
