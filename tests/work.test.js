@@ -56,12 +56,12 @@ test('card.md lista los cuatro campos como ítems de lista', () => {
   }
 });
 
-test('SKILL.md menciona references/card.md y no pasa de 750 palabras', () => {
+test('SKILL.md menciona references/card.md y no pasa de 920 palabras', () => {
   const t = read('SKILL.md');
   assert.ok(t.includes('references/card.md'));
   // se cuenta el cuerpo (sin el frontmatter), igual que tests/plugin-layout.test.js
   const body = t.replace(/^---\n[\s\S]*?\n---\n?/, '');
-  assert.ok(body.split(/\s+/).filter(Boolean).length <= 750);
+  assert.ok(body.split(/\s+/).filter(Boolean).length <= 920); // ver WORD_CAP en tests/plugin-layout.test.js
 });
 
 // ---- revisión final F10 y F11 ----

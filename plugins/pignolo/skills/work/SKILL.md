@@ -1,19 +1,19 @@
 ---
 name: work
-description: "Use when the user asks to build, change or fix something in a project, in Spanish or English: 'arreglá este bug', 'agregá esta feature', 'hagamos este cambio', 'implementá esto', 'fix this bug', 'add this feature', 'implement this'. Sizes the effort to the risk and to what cannot be undone, not to the number of lines."
+description: "Use BEFORE any change of more than one step, and whenever the user asks to build, change or fix something, in Spanish or English: 'arreglá este bug', 'agregá esta feature', 'hagamos este cambio', 'implementá esto', 'ejecutá el plan', 'hacelo', 'seguí', 'fix this bug', 'add this feature', 'implement this', 'run the plan'. Also when the user brings their own list of steps: those become the milestones. Sizes the effort to the risk and to what cannot be undone, not to the number of lines."
 ---
 
 # work: ceremony proportional to risk
 
-Every step of process costs the author time and tokens, and each one has to buy something. So the amount of ceremony follows two things: how much can go wrong, and how hard it is to undo. Line count is a poor proxy for either. Decide the level first, say it in one line to the author (in Spanish), and start. Nothing here blocks: if the author disagrees with the level, move to theirs.
+Every step of process costs the author time and tokens, and each one has to buy something. So the amount of ceremony follows two things: how much can go wrong, and how hard it is to undo. Line count is a poor proxy for either. Decide the level first, say it in one line to the author (in Spanish), and start. Nothing here blocks: if the author disagrees with the level, move to theirs. This is the entry point for any change of several steps, and the author's own plan becomes its milestones.
 
 ## Three levels
 
 **Small** (a bug, a script, a one-sentence change). Do it directly, with no spec and no plan, because the overhead would outweigh the change. Run one real check that exercises the change (the test, the command, the page), not just a syntax check, since "it should work" is the claim that fails most often. Show the evidence in the reply.
 
-**Feature.** Write a short card first (format in `references/card.md`): it makes the scope visible in a minute and gives the review something to compare against. Write the test first only when a relevant executable test exists, because a red test you cannot run proves nothing. Use one executor, since a second one adds coordination cost and rarely speed. Do one review at the end, against the card, not after every step.
+**Feature.** Write a short card first (format in `references/card.md`): it makes the scope visible in a minute and gives the review something to compare against. Write the test first only when a relevant executable test exists, because a red test you cannot run proves nothing. Use one executor for pieces that depend on each other, since a second one adds coordination cost; pieces the card marks as parallel go to separate executors. Do one review at the end, against the card, not after every step.
 
-**Large or high risk.** Write a short spec and have the author review it before building: a wrong assumption here is the expensive kind. Cut the work into small milestones and re-plan each one with what the previous one taught you, because the plan is the part most likely to be wrong. Each milestone gets an independent review, since problems compound if they are found late.
+**Large or high risk.** Write a short spec and have the author review it before building: a wrong assumption here is the expensive kind. Cut the work into small milestones and re-plan each one with what the previous one taught you, because the plan is the part most likely to be wrong. Inside a milestone, split the work into independent pieces where you can, so they run in parallel. Each milestone gets an independent review, since problems compound if they are found late.
 
 ## The fixed floor
 
@@ -21,14 +21,15 @@ If the change touches migrations, authentication, secrets or data deletion, it i
 
 ## Stay in the main thread
 
-Small things and delegation decisions are resolved in the main thread. Launch a subagent only when you can name the reason:
+Small things and delegation decisions are resolved in the main thread. Delegating is your call, but look for the chance every time you plan: cut the work so parts that do not need each other's results can run side by side, and do it whenever it finishes sooner. Launch a subagent when you can name the reason:
 
 - a long exploration (more than about 3 reads or 10 thousand tokens), to keep that noise out of the main context;
-- parallel writers on different files, because they cannot collide;
+- parallel writers on different files, because they cannot collide (launch them in one message so they run together);
+- parallel read-only work (reviews, searches, separate areas), always safe to spread;
 - context relief, when the main thread is getting full;
 - an independent verifier in high-risk work, because the author of a change is the worst person to check it.
 
-Without one of these, a subagent only adds cost and loses detail in the hand-off. Every subagent you launch gets `model` and `effort` passed explicitly for its role, because inheriting the session model spends the most expensive one on mechanical work.
+Pieces that depend on each other, share files or are too small to explain stay with one executor. Without a reason from this list, a subagent only adds cost and loses detail in the hand-off. Every subagent you launch gets `model` and `effort` passed explicitly for its role, because inheriting the session model spends the most expensive one on mechanical work.
 
 ## Before a large change
 
@@ -43,6 +44,10 @@ When the request creates or redesigns a screen, panel, navigation or interface c
 ## At a milestone
 
 When a roadmap milestone closes, offer `/pignolo:validate` once, because a milestone is the moment when a review finds problems that are still cheap to fix. Never offer it per task.
+
+## Handoffs
+
+When the author says go ("hacelo", "dale", "seguí"), take the next step you named without asking which skill: card or approved spec, build; closed milestone, `/pignolo:validate`; end of the day, `/pignolo:session`.
 
 ## Closing
 

@@ -1,0 +1,9 @@
+Pignolo is installed. Its skills decide how work gets done here. Invoke the matching skill with the Skill tool BEFORE you answer or act, including before a clarifying question. This is not optional, and a skill that turns out not to fit costs one line to drop.
+
+- A new idea for a project, or "adopt this repo": /pignolo:start.
+- Any change of more than one step (a feature, a bug that needs digging, a refactor, a plan the author wrote): /pignolo:work. The author's own steps do not replace it: they become its milestones. work sizes the effort and says so in one line; a small fix stays small.
+- Any new or redesigned screen, panel, navigation or interface component, or adopting a component kit: /pignolo:ui as well, for that part.
+- "validá", or a closed milestone: /pignolo:validate. Auditing a screen: /pignolo:ui-audit.
+- "documentemos", closing the day, updating the project state: /pignolo:session.
+
+A project's CLAUDE.md that names a Pignolo skill carries the same weight as this note. Each skill ends by naming the next step: when the author says go ("hacelo", "dale", "seguí"), take that step through its skill, do not ask which one. If the author wants it another way, follow the author. Nothing here blocks.

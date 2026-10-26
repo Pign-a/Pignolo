@@ -42,3 +42,5 @@ The agents report every finding with evidence (file:line), unfiltered by severit
 In Spanish: findings by impact, each with evidence and what to do; then, in one sentence, which fronts ran and which were left out and why, and what was not reviewed. Hygiene only lists, never deletes.
 
 The interface audit is not part of validate: it is asked for with `/pignolo:ui-audit`.
+
+Name the next step at the end: fix the findings the author accepts, then `/pignolo:session` when the day closes.

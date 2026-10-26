@@ -56,4 +56,4 @@ In a brand-new repo, suggest native `deny` permission rules for what cannot be u
 
 ## Finish
 
-Summarize what was written and where, mention anything left as an assumption, and name the next step. Do not start building until the user says so.
+Summarize what was written and where, mention anything left as an assumption, and name the next step: offer `/pignolo:work` for the first item of `roadmap.md`. Do not start building until the user says so; on "dale" or "hacelo", invoke `/pignolo:work` with that item.

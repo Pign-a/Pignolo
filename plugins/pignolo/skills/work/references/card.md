@@ -5,6 +5,7 @@ A card is the whole plan for a feature, short enough to read in a minute. It exi
 - **Archivos:** the files to create or change, one per line, each with a few words on what changes. Naming them forces you to find the real touch points and shows the author the blast radius.
 - **Interfaces:** the signatures, data shapes, routes or commands other code depends on, written literally. If these are wrong, everything built on top is wrong, so they are worth stating before building.
 - **Casos de prueba:** the concrete cases, with the literal input and the expected output. Include at least one edge case and one failure case. If no executable test fits, write the manual check instead, with the exact command or page to look at.
+- **Paralelo:** when the card has two or more pieces that touch different files and do not need each other's results, mark them (for example "A y B en paralelo, C después"). Write "ninguno" when everything depends on the previous piece.
 - **Criterio de hecho:** the observable statement that makes the feature finished, such as a command that exits 0 or a screen that shows a given thing. The executor and the reviewer both use it to stop, so it must be checkable, not a feeling.
 
 If the work touches the fixed floor (migrations, authentication, secrets, data deletion), add a line saying what could be lost or exposed and how it is undone.

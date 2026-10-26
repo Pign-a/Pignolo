@@ -34,8 +34,8 @@ Por qué ahora: los modelos actuales razonan bien solos. La guía oficial de Opu
 
 1. **Explicar el porqué, no ordenar.** Las skills dicen para qué sirve cada paso. Los modelos actuales generalizan a partir del motivo.
 2. **Ceremonia proporcional al riesgo y a lo irreversible**, no a las líneas de código.
-3. **Nada bloquea.** El plugin avisa, propone y deja constancia. Sin hooks.
-4. **Solo markdown, con una excepción.** Sin scripts propios del plugin, salvo las mediciones de `ui-audit` (§5.4), que se conservan porque dan evidencia medida. Cada skill apunta a unas 600 palabras; si no entra, son dos skills.
+3. **Nada bloquea.** El plugin avisa, propone y deja constancia. Sin hooks, salvo uno solo (decisión del autor, 2026-10-25): un `SessionStart` que solo inyecta un recordatorio de qué skill usar (`plugins/pignolo/hooks/`), porque con las skills solas un agente con un plan ajeno no las invocaba. No bloquea ni escribe nada.
+4. **Solo markdown, con una excepción.** Sin scripts propios del plugin, salvo las mediciones de `ui-audit` (§5.4) y el generador del recordatorio de sesión (`hooks/build-context.mjs`, que no corre al usar el plugin), que se conservan porque dan evidencia medida. Cada skill apunta a unas 600 palabras; si no entra, son dos skills.
 5. **Cada documento tiene un lector.** `security.md` lo lee `validate`; `design.md` lo leen las pantallas; `CLAUDE.md` se carga solo en cada sesión.
 6. **Lo chico en el hilo principal.** Un subagente se lanza solo con una razón nombrable: exploración larga (más de unas 3 lecturas o 10 mil tokens), escritores en paralelo sobre archivos distintos, alivio de contexto, o un verificador independiente en riesgo alto.
 

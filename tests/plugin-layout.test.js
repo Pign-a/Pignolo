@@ -39,10 +39,30 @@ test('marketplace.json lista un solo plugin: pignolo', () => {
   assert.strictEqual(m.plugins[0].source, './plugins/pignolo');
 });
 
-test('no hay hooks ni hooks.json', () => {
-  assert.ok(!exists(path.join(PLUGIN, 'hooks')));
+// Decisión del autor (2026-10-25): un único hook de SessionStart que solo inyecta contexto (un recordatorio de qué skill usar).
+// No bloquea, no escribe nada y no corre otra cosa que `cat` sobre un JSON ya armado.
+test('el único hook es un SessionStart que imprime session-context.json', () => {
   assert.ok(!exists(path.join(PLUGIN, 'hooks.json')));
   assert.ok(!exists(path.join(PLUGIN, '.claude-plugin', 'hooks.json')));
+  const h = readJson(path.join(PLUGIN, 'hooks', 'hooks.json'));
+  assert.deepStrictEqual(Object.keys(h.hooks), ['SessionStart']);
+  const entries = h.hooks.SessionStart;
+  assert.strictEqual(entries.length, 1);
+  assert.strictEqual(entries[0].hooks.length, 1);
+  const cmd = entries[0].hooks[0];
+  assert.strictEqual(cmd.type, 'command');
+  assert.strictEqual(cmd.command, 'cat "${CLAUDE_PLUGIN_ROOT}/hooks/session-context.json"');
+  assert.ok(!/exit\s+2|\bdeny\b|\bblock\b/i.test(JSON.stringify(h)), 'el hook no bloquea');
+});
+
+test('session-context.json sale de session-context.md y nombra cada skill', () => {
+  const md = fs.readFileSync(path.join(PLUGIN, 'hooks', 'session-context.md'), 'utf8').replace(/\r\n/g, '\n').trimEnd();
+  const j = readJson(path.join(PLUGIN, 'hooks', 'session-context.json'));
+  assert.strictEqual(j.hookSpecificOutput.hookEventName, 'SessionStart');
+  assert.strictEqual(j.hookSpecificOutput.additionalContext, `<IMPORTANT>\n${md}\n</IMPORTANT>`, 'corré node plugins/pignolo/hooks/build-context.mjs');
+  for (const s of ['start', 'work', 'ui', 'ui-audit', 'validate', 'session']) assert.ok(md.includes('/pignolo:' + s), s);
+  assert.ok(!md.includes('—'), 'sin em dashes');
+  assert.ok(md.length < 1800, 'el recordatorio se queda corto: cuesta tokens en cada sesión');
 });
 
 test('no existe plugins/pignolo-panel', () => {
@@ -61,9 +81,10 @@ test('las carpetas de skills son exactamente las seis', () => {
 });
 
 // ui lleva además la sección de armado de pantallas (tres pasos): su tope sube a 850; el resto sigue en 750.
-const WORD_CAP = { ui: 850 };
+// work pasó de 698 a unas 910 palabras al sumar ser la entrada de todo cambio de varios pasos, los pasos de la pantalla siguiente (Handoffs) y el paralelismo (decisiones del autor, 2026-10-25).
+const WORD_CAP = { ui: 850, work: 920 };
 
-test('cada SKILL.md: name igual a la carpeta, description 1..1536, cuerpo dentro del tope de palabras (750; ui 850)', () => {
+test('cada SKILL.md: name igual a la carpeta, description 1..1536, cuerpo dentro del tope de palabras (750; ui 850; work 920)', () => {
   for (const name of SKILLS) {
     const { data, body } = frontmatter(path.join(PLUGIN, 'skills', name, 'SKILL.md'));
     assert.strictEqual(data.name, name);

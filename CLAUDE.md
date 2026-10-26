@@ -1,6 +1,6 @@
 # CLAUDE.md — pignolo
 
-Pignolo 2 (1.0.0): un solo plugin de Claude Code, `pignolo`, que reemplaza a superpowers con pocas reglas y nada que bloquee. Seis skills (`start`, `work`, `validate`, `session`, `ui`, `ui-audit`) y ocho agentes. Repo público `Pign-a/Pignolo`, licencia MIT. El plugin anterior vive en la etiqueta local `legacy`.
+Pignolo 2 (1.0.0): un solo plugin de Claude Code, `pignolo`, que reemplaza a superpowers con pocas reglas y nada que bloquee. Seis skills (`start`, `work`, `validate`, `session`, `ui`, `ui-audit`) y ocho agentes, más un único hook de `SessionStart` que solo recuerda qué skill usar (`plugins/pignolo/hooks/`, no bloquea). Repo público `Pign-a/Pignolo`, licencia MIT. El plugin anterior vive en la etiqueta local `legacy`.
 
 **Al retomar, leer primero `docs/STATE.md`**: estado, decisiones pendientes y qué sigue.
 
