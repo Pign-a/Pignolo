@@ -15,7 +15,7 @@
  * Rules: transform and opacity only (the exceptions are listed in CHECKLIST.md), exit
  * faster than enter, never scale an entry from below 0.92, interruptible (springs keep
  * velocity when retargeted). Bounce only for things with inertia (momentum 0.2, sheets,
- * toasts, drag, accordion); controls (direct) and data use bounce 0. No hover lift:
+ * toasts, drag); controls (direct), the accordion and data use bounce 0. No hover lift:
  * hover changes color and shadow only.
  *
  * `visualDuration` is Motion's perceived duration; Apple's spring `duration` is the period,

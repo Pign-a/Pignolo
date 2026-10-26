@@ -28,6 +28,10 @@
  *   icon plus words, action and close buttons (rest, hover, focus-visible, press 0.97 in 75 ms,
  *   44 px on touch), a loading toast resolves in place with `update` (its spinner pulses under
  *   reduced motion).
+ * Layout: icon, text block, action and close button share one vertical center (`items-center`), also when
+ *   there is a description. The card is as tall as its tallest part (the 32 px buttons, 44 px on touch), so a
+ *   one line title sits in the middle with equal space above and below; the interaction test measures the
+ *   centers of every part for every variant within 1 px.
  * Keyboard: Tab reaches action and close buttons (the region is the last thing in the DOM
  *   of the provider); Esc on a focused toast dismisses it; the hotkeys above.
  * Motion: opacity and transform only. Reduced motion: fade only, no rise, no reflow travel.
@@ -334,7 +338,7 @@ function StatusIcon({ variant }: { variant: ToastVariant }) {
   return (
     <m.span
       aria-hidden="true"
-      className={cn("mt-px flex shrink-0", variant === "loading" ? "text-(--color-primary)" : variantColor[variant])}
+      className={cn("flex shrink-0", variant === "loading" ? "text-(--color-primary)" : variantColor[variant])}
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1, transition: { duration: 0.14, ease: "easeOut" } }}
     >
@@ -394,7 +398,7 @@ function ToastCard({
           onDismiss();
         }
       }}
-      className="flex items-start gap-3 rounded-(--radius-lg) border border-(--color-border-subtle) bg-(--color-surface) py-3 pr-2 pl-4 shadow-(--elevation-3)"
+      className="flex items-center gap-3 rounded-(--radius-lg) border border-(--color-border-subtle) bg-(--color-surface) py-3 pr-2 pl-4 shadow-(--elevation-3)"
     >
       <StatusIcon key={variant} variant={variant} />
       <div className="min-w-0 flex-1 py-px">

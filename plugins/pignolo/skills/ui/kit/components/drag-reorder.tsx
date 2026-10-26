@@ -19,7 +19,8 @@
  * 0.2 s ahead to pick the slot, and the row settles there with that velocity kept.
  * A drag can be grabbed again while it is still settling.
  *
- * States: rest, hover (row tint, handle and button tint), focus-visible (handle, buttons),
+ * States: rest, hover (row tint and Move button tint; the handle stays quiet: only the grab cursor,
+ * no background or color change on hover or while held), focus-visible (handle, buttons),
  * dragging (row lifts to 1.03 with a soft shadow and sits above the others), disabled
  * (`disabled` prop: handle and buttons inert, no tint; Move up on the first row and
  * Move down on the last are disabled too). Reduced motion: the row still follows the pointer
@@ -176,6 +177,7 @@ function DragRow<T extends DragItem>({
     const d = drag.current;
     if (!d) return;
     drag.current = null;
+    document.body.style.cursor = "";
     d.release();
     const first = d.samples[0];
     const last = d.samples[d.samples.length - 1];
@@ -233,6 +235,7 @@ function DragRow<T extends DragItem>({
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onEnd);
     window.addEventListener("pointercancel", onEnd);
+    document.body.style.cursor = "grabbing";
     drag.current = {
       startY: e.clientY,
       base: y.get(),
@@ -245,7 +248,13 @@ function DragRow<T extends DragItem>({
     onDragStart(item.id);
   };
 
-  useEffect(() => () => drag.current?.release(), []);
+  useEffect(
+    () => () => {
+      if (drag.current) document.body.style.cursor = "";
+      drag.current?.release();
+    },
+    [],
+  );
 
   const key = (e: KeyboardEvent<HTMLButtonElement>) => {
     const map: Record<string, "up" | "down" | "first" | "last"> = {
@@ -295,7 +304,7 @@ function DragRow<T extends DragItem>({
             "kit-focus relative flex size-9 pointer-coarse:size-11 shrink-0 touch-none items-center justify-center rounded-(--radius-md) text-(--color-on-surface-muted) select-none",
             disabled
               ? "opacity-(--state-disabled-content)"
-              : "cursor-grab hover:bg-(--color-border-subtle) hover:text-(--color-on-surface) active:cursor-grabbing active:bg-(--color-border-subtle)",
+              : "cursor-grab active:cursor-grabbing",
           )}
         >
           <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18" fill="currentColor">

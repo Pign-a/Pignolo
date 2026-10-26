@@ -21,6 +21,13 @@
  * Reading order for screen readers: the label names the group; the figure (announced
  * with the label as its context, "Ingresos del mes: $ 1.284.560") and the trend follow.
  * `instant` lands a new value without rolling, for figures that refresh by themselves.
+ * Arrival (`reveal`, default "auto"): when the load ends, the skeleton fades out as the figure
+ * fades in and its digits roll up from zero, but only the FIRST time this card goes from waiting
+ * (loading, error, empty) to a figure. A refresh of a figure that was already on screen does not
+ * animate (nothing is being waited for), nor does a card that mounts with its figure. Pass "roll"
+ * or "fade" to force it for a figure the user is waiting on after an action (generate a report),
+ * "none" to never animate. Reduced motion keeps only the fade. The label stays put (it is not
+ * part of the swap), so it never dips while the rest cross-fades.
  *
  * Copy (all from props): label, trend.label, helper, emptyText, emptyMark,
  * loadingLabel, error.message, error.retryLabel. The figure comes from `format`.
@@ -33,7 +40,7 @@ import { useId, type HTMLAttributes, type MouseEvent, type ReactNode, type Ref }
 import { cn } from "../lib/cn";
 import { coarseTarget, pressClass } from "../motion";
 import { RollingNumber } from "./rolling-number";
-import { Skeleton, SkeletonRegion } from "./skeleton";
+import { Skeleton, SkeletonRegion, SkeletonSwap, useReveal, type RevealMode } from "./skeleton";
 
 export type TrendDirection = "up" | "down" | "flat";
 
@@ -69,7 +76,13 @@ export interface StatCardProps {
   emptyText?: string;
   /** Makes the whole card a button (drill-down). */
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+  /** Roll the figure in from zero when the card mounts with it. Arrivals after a load are decided by `reveal`. */
   animateOnMount?: boolean;
+  /**
+   * How the figure arrives after a load. "auto" (default): fade and roll the first time only, never on a
+   * refresh. "roll" and "fade" force it, "none" never animates. See the header.
+   */
+  reveal?: RevealMode;
   /** Land new values without rolling (automatic refreshes). */
   instant?: boolean;
   /** Milliseconds the loading skeleton waits before showing. Default 1000; 0 shows it at once. Used with loadingLabel. */
@@ -120,7 +133,7 @@ function TrendMark({ trend }: { trend: StatCardTrend }) {
 }
 
 const shell =
-  "block w-full rounded-(--radius-lg) border border-(--color-border-subtle) bg-(--color-surface) p-(--space-6) text-left";
+  "relative block w-full rounded-(--radius-lg) border border-(--color-border-subtle) bg-(--color-surface) p-(--space-6) text-left";
 
 export function StatCard({
   label,
@@ -135,6 +148,7 @@ export function StatCard({
   emptyText,
   onClick,
   animateOnMount = false,
+  reveal = "auto",
   instant,
   skeletonDelayMs,
   className,
@@ -143,6 +157,8 @@ export function StatCard({
 }: StatCardProps & Passthrough) {
   const labelId = useId();
   const clickable = Boolean(onClick) && !loading && !error;
+  const kind = loading ? "loading" : error ? "error" : value === null ? "empty" : "value";
+  const arrival = useReveal(kind === "value", reveal);
 
   const labelEl = (
     <p id={labelId} className="text-sm text-(--color-on-surface-variant)">
@@ -150,20 +166,18 @@ export function StatCard({
     </p>
   );
 
-  let body: ReactNode;
+  let inner: ReactNode;
   if (loading) {
     const skeleton = (
       <>
-        {labelEl}
         <Skeleton className="mt-(--space-2) h-10 w-40" />
         <Skeleton radius="sm" className="mt-(--space-3) h-3.5 w-32" delay={0.1} />
       </>
     );
-    body = loadingLabel ? <SkeletonRegion label={loadingLabel} delayMs={skeletonDelayMs}>{skeleton}</SkeletonRegion> : skeleton;
+    inner = loadingLabel ? <SkeletonRegion label={loadingLabel} delayMs={skeletonDelayMs}>{skeleton}</SkeletonRegion> : skeleton;
   } else if (error) {
-    body = (
+    inner = (
       <>
-        {labelEl}
         <p className="mt-(--space-2) flex items-start gap-(--space-2) text-sm text-(--color-on-surface)">
           <span
             aria-hidden="true"
@@ -183,9 +197,8 @@ export function StatCard({
       </>
     );
   } else if (value === null) {
-    body = (
+    inner = (
       <>
-        {labelEl}
         <p data-stat="empty" className="mt-(--space-2) text-4xl leading-tight font-semibold text-(--color-on-surface-muted)">
           {emptyMark}
         </p>
@@ -193,11 +206,10 @@ export function StatCard({
       </>
     );
   } else {
-    body = (
+    inner = (
       <>
-        {labelEl}
         <p data-stat="value" className="mt-(--space-2) text-4xl leading-tight font-semibold tracking-tight text-(--color-on-surface)">
-          <RollingNumber value={value} format={format} animateOnMount={animateOnMount} instant={instant} label={label} />
+          <RollingNumber value={value} format={format} animateOnMount={animateOnMount || arrival === "roll"} instant={instant} label={label} />
         </p>
         {trend ? (
           <div className="mt-(--space-3)">
@@ -212,6 +224,14 @@ export function StatCard({
       </>
     );
   }
+  const body = (
+    <>
+      {labelEl}
+      <SkeletonSwap swapKey={kind} animated={arrival !== "none"}>
+        {inner}
+      </SkeletonSwap>
+    </>
+  );
 
   if (clickable) {
     return (

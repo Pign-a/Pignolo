@@ -2,16 +2,24 @@
  * Accordion: stacked sections that open and close, to hide secondary content.
  * Use when: 3 to 8 short sections the reader opens one at a time (FAQ, settings groups).
  * Do not hide content people need to compare or that is the point of the page.
- * Tier: momentum (0.35 s, bounce 0.2, exit 0.13 s). Open uses the spring, close the faster exit tween.
+ * Tier: a calm spring of its own (visualDuration 0.3 s, bounce 0), because the content has no inertia and
+ *   a bounce moved every header below it. Opening uses it; a close that is part of a swap in single mode
+ *   uses the very same spring, so the section that closes and the one that opens move in step (same time,
+ *   same curve): the headers move once, in one direction, with no overshoot. A lone close (nothing replaces
+ *   it) uses the faster momentum exit tween (0.13 s), as exits are faster than enters.
  * Primitive: @radix-ui/react-accordion (single or multiple, aria-expanded, region, arrow keys).
  *   Content is force mounted so the height can animate; closed content is `inert`
  *   (not focusable, not read) once collapsed.
  * Motion: `grid-template-rows` goes 0fr to 1fr (one of the documented layout exceptions: it
- *   avoids measuring content), the inner text fades in over 0.18 s starting 40 ms later, the
- *   chevron rotates 180 degrees in 0.2 s. Reduced motion: no height travel (rows snap), the text
- *   fades in 0.12 s and the chevron turns instantly.
- * States: rest, hover (tint), focus-visible ring (inside the row), press (scale 0.985 in 75 ms,
- *   not 0.97, because the row is wide), open, disabled. Spamming toggles retargets the spring.
+ *   avoids measuring content), the inner text only fades (no slide) over 0.18 s starting 40 ms later,
+ *   the chevron rotates 180 degrees in 0.2 s. Why not keep the clicked header still: the section that
+ *   closes above it has to take its height away, so the header rises by exactly that height; the calm
+ *   shared spring makes that one smooth move (a section opened above the open one keeps its header
+ *   completely still). Reduced motion: no height travel (rows snap), the text fades in 0.12 s and the
+ *   chevron turns instantly.
+ * States: rest, hover (tint over the whole row), focus-visible ring (inside the row), press (a darker
+ *   tint over the same whole row; no scale, because scaling a wide row left uncovered strips at its
+ *   edges), open, disabled. Spamming toggles retargets the spring.
  * Keyboard: Tab to a header, Enter or Space toggles, ArrowUp/ArrowDown move between headers,
  *   Home/End jump to first/last (Radix).
  * Copy props: items[].title and items[].content.
@@ -23,6 +31,9 @@ import * as RadixAccordion from "@radix-ui/react-accordion";
 import * as m from "motion/react-m";
 import { cn } from "../lib/cn";
 import { useMotionTier } from "../motion";
+
+/** Shared by the opening and the swap-closing panel: same time, same curve, no bounce. */
+const CALM = { type: "spring", visualDuration: 0.3, bounce: 0 } as const;
 
 export interface AccordionItem {
   value: string;
@@ -87,14 +98,16 @@ export function Accordion(props: AccordionProps) {
 
   const rows = items.map((item) => {
     const isOpen = open.includes(item.value);
+    // Single mode with another section open: this one is closing because that one opened.
+    const swapping = !isOpen && props.type !== "multiple" && open.some(Boolean);
     return (
       <RadixAccordion.Item key={item.value} value={item.value} disabled={item.disabled} className="border-b border-(--color-border-subtle) last:border-b-0">
         <RadixAccordion.Header className="m-0 flex">
           <RadixAccordion.Trigger
             className={cn(
               "kit-focus flex min-h-12 flex-1 items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-(--color-on-surface) outline-offset-[-2px]",
-              "transition-[scale,background-color] duration-75 ease-out hover:bg-(--color-surface-container) active:scale-[0.985] motion-reduce:active:scale-100",
-              "disabled:cursor-not-allowed disabled:opacity-(--state-disabled-content) disabled:hover:bg-transparent disabled:active:scale-100",
+              "transition-[background-color] duration-75 ease-out hover:bg-(--color-surface-container) active:bg-(--color-border-subtle)",
+              "disabled:cursor-not-allowed disabled:opacity-(--state-disabled-content) disabled:hover:bg-transparent disabled:active:bg-transparent",
             )}
           >
             <span>{item.title}</span>
@@ -107,7 +120,7 @@ export function Accordion(props: AccordionProps) {
             inert={!isOpen}
             initial={false}
             animate={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
-            transition={t.reduced ? { duration: 0 } : isOpen ? t.spring : t.exit}
+            transition={t.reduced ? { duration: 0 } : isOpen || swapping ? CALM : t.exit}
           >
             <m.div
               className="min-h-0 overflow-hidden"

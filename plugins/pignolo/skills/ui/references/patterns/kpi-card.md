@@ -13,6 +13,8 @@ States:
 - Hover/active (clickable only): tint and soft shadow, never a lift.
 - Focus-visible: 2px ring on the card.
 - Loading: skeleton at final size, shown only after 1 s.
+- Arrival (reveal, default auto): the first time the figure replaces a wait (skeleton, error, empty) the skeleton fades out as the figure fades in and its digits roll up from zero; a refresh of a figure already on screen lands with no animation (nothing is being waited for), and so does a card that mounts with its figure. Force roll or fade for a figure the user waits on after an action; none to never animate. Reduced motion: fade only. The label stays put.
+- Digits: a figure that gains or loses characters (99 to 100, 1.000 to 999, 9,99 to 10,00) grows or shrinks the slot while it fades; separators and the currency prefix keep their identity.
 - Empty: a dash plus one line ("No sales yet"), not a zero.
 - Error: "Couldn't load" plus retry; no stale number.
 - Stale: "Updated 2 h ago".

@@ -1,6 +1,6 @@
 # Toast and inline feedback
 Use when: the system must say what just happened or what needs attention. Pick the channel by where the news belongs.
-Anatomy: status icon → title or one sentence → optional single action → close button.
+Anatomy: status icon → title or one sentence → optional single action → close button, all on one vertical center (the card is as tall as its tallest part).
 Content limits:
 - Toast max 2 lines; Carbon can auto-dismiss after 5s; longer text means a "View more" link (Carbon). 1 action (Carbon).
 - Errors and warnings never auto-dismiss (Atlassian). A toast whose action is the only way back (Undo) lasts 10s or more, or stays (WCAG 2.2.1).

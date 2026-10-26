@@ -10,9 +10,13 @@
  * Tier: D (direct: visualDuration 0.22, bounce 0). The label moves (translate, scale 0.75) and the box
  * grows (height 52 to 60 px, a documented exception in CHECKLIST.md) on the same direct spring, so
  * they travel together. The slot is reserved at the grown height (60 px), so the growth never moves the
- * helper text or the fields below. On focus a 2 px ring (--focus-width, --color-focus-ring) blooms in
- * from scale 0.97 with the enter transition and leaves in 100 ms. The message row is always one
- * line tall, so showing an error never shifts the layout.
+ * helper text or the fields below. On focus a 2 px ring (--focus-width, --color-focus-ring) fades in
+ * with the enter transition and leaves in 100 ms. The ring is a child of the box that grows, pinned to
+ * its four edges (inset -1 px), and it never scales or translates on its own: it is re-laid out with
+ * the box on every frame, so ring and field stay the same size while the height springs (an earlier
+ * version bloomed from scale 0.97 and the ring looked smaller than the growing field; the interaction
+ * test samples both boxes on every frame and requires under 1 px of difference). The message row is
+ * always one line tall, so showing an error never shifts the layout.
  * Radix: none (native input; the label is a real <label htmlFor>).
  * States: rest, hover (border darkens), focus (label up, animated ring), filled, error (red border,
  * mark and message, aria-invalid + aria-describedby), disabled, read-only, helper text.
@@ -22,7 +26,7 @@
  * Keyboard: native. The ring shows on any focus, since text inputs always need one.
  * Touch: the box is at least 52 px tall, above the 44 px recommended target.
  * Forced colors: the border becomes CanvasText and the ring Highlight.
- * Reduced motion: the label and the height snap, the ring only fades.
+ * Reduced motion: the label and the height snap, the ring only fades (as it always does).
  * Copy: `label`, `placeholder`, `helperText`, `error` are props; the error mark is an SVG.
  *
  * Inspiration (what was actually read; items not reached are marked):
@@ -198,7 +202,7 @@ export function TextField({
             )}
             style={{ borderWidth: "var(--focus-width)" }}
             initial={false}
-            animate={{ opacity: focused ? 1 : 0, scale: focused || t.reduced ? 1 : 0.97 }}
+            animate={{ opacity: focused ? 1 : 0 }}
             transition={focused ? t.enter : t.exit}
           />
         </m.div>

@@ -12,6 +12,9 @@
  * ResponsiveDialog: the same props; a centered Modal on a wide screen with a fine pointer, the kit
  *   BottomSheet below 640 px or when the primary pointer is coarse. In the sheet the footer buttons
  *   stack full width with the primary first and the error shows above them.
+ * Layout: the body scrolls when it is taller than the viewport and clips what sticks out of its box, so it
+ *   has 8 px of bottom padding (and 24 px at the sides): the focus ring of the last control (4 px outside
+ *   the control) is never cut. Checked in the interaction test with a bounding box assertion.
  * States: panel open/closed, buttons rest/hover/focus-visible/press (0.97 in 75 ms)/loading/
  *   disabled, close button hover/focus-visible, error message above the footer. The loading
  *   spinner spins, and pulses under reduced motion.
@@ -182,7 +185,8 @@ export function Modal({
                       <Dialog.Description className="text-sm leading-relaxed text-(--color-on-surface-variant)">{description}</Dialog.Description>
                     )}
                   </div>
-                  {children && <div className="min-h-0 overflow-y-auto px-6 pt-4">{children}</div>}
+                  {/* The body scrolls, so it clips anything outside its box. The bottom padding (8 px) keeps the 4 px focus ring of the last control inside it. */}
+                  {children && <div className="kit-scroll min-h-0 overflow-y-auto px-6 pt-4 pb-2">{children}</div>}
                   {error && (
                     <p role="alert" className="mx-6 mt-4 flex items-start gap-2 text-sm text-(--color-error)">
                       <span aria-hidden="true" className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-(--radius-sm) bg-(--color-error) text-xs font-bold leading-none text-(--color-on-error)">
@@ -191,7 +195,7 @@ export function Modal({
                       {error}
                     </p>
                   )}
-                  {footer && <div className="flex flex-wrap justify-end gap-3 px-6 pt-6 pb-6">{footer}</div>}
+                  {footer && <div className={cn("flex flex-wrap justify-end gap-3 px-6 pb-6", children ? "pt-4" : "pt-6")}>{footer}</div>}
                   {!footer && <div className="pb-6" />}
                   <Dialog.Close asChild>
                     <button

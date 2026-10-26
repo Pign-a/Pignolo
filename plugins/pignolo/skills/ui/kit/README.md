@@ -21,6 +21,7 @@ Every piece must pass `CHECKLIST.md`.
 - `visualDuration` is Motion's perceived duration. A SwiftUI or Flutter spring `duration` is the period, so Apple duration = visualDuration x 1.2 (see `references/stacks.md` for the conversion table).
 - `pressClass`: press feedback is a CSS class (scale 0.97 within 70 ms on `:active`, none under reduced motion), not `whileTap`. Motion makes every `whileTap` element keyboard-activatable and fires a synthetic pointerdown on Enter, and Radix triggers (DropdownMenu, Popover, Select) open on pointerdown, so Enter would open and close them at once. The CSS class is safe as an `asChild` trigger.
 - No hover lift anywhere: hover changes color and shadow only.
+- `.kit-scroll` (in `tokens.css`): thin scrollbar for any element that scrolls. `scrollbar-width: thin` and `scrollbar-color` from the outline token (light and dark follow the tokens), `::-webkit-scrollbar` fallback only where those properties are not supported, `auto` under forced colors. Add the class next to `overflow-y-auto`; the modal and bottom sheet bodies already have it.
 - `coarseTarget` grows a control to 44 px on `pointer: coarse`; `coarseHit` adds an invisible 24 px (44 px on touch) hit area around a small visual such as the checkbox box.
 - Also exported: `springFor`, `enterFor`, `exitFor`, `entryScale`, `rubberBand`, `project`, `presets`.
 
@@ -43,12 +44,13 @@ Tier: D direct, M momentum, T data.
 | button.tsx | D | none | |
 | card.tsx | D | none | button |
 | text-field.tsx | D | none | |
-| switch.tsx | D | react-switch | lib/controllable |
+| switch.tsx (drag the thumb like iOS) | D | react-switch | lib/controllable |
 | checkbox.tsx | D | react-checkbox | lib/controllable |
 | segmented-tabs.tsx | D | react-tabs (radio group when no panels) | lib/controllable |
-| dropdown.tsx | D | react-select | |
-| calendar.tsx | D | react-popover | lib/date-input, bottom-sheet |
+| dropdown.tsx | D | react-popover (select-only combobox, never locks page scroll) | |
+| calendar.tsx | D | react-popover | lib/date-input, bottom-sheet, text-field |
 | date-picker.tsx | D | none | calendar, lib/date-input |
+| date-range-picker.tsx | D | none | calendar, lib/date-input |
 | month-picker.tsx | D | none | calendar, lib/date-input |
 | modal.tsx (also exports ConfirmModal and ResponsiveDialog) | D | react-dialog | bottom-sheet (for ResponsiveDialog) |
 | toast.tsx | M | none (custom) | |
@@ -60,6 +62,6 @@ Tier: D direct, M momentum, T data.
 | list.tsx | D | none | |
 | sidebar.tsx | D (0.16 s) | none | |
 | tooltip.tsx | D (no delay) | react-tooltip | |
-| accordion.tsx | M | react-accordion | |
+| accordion.tsx | D (own spring 0.3 s, bounce 0) | react-accordion | |
 | bottom-sheet.tsx | M | react-dialog | |
 | drag-reorder.tsx | M | none | |

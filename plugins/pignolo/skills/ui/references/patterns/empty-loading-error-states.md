@@ -11,6 +11,7 @@ Measures: text block 464px wide, 304px in narrow containers (Atlassian); left-al
 States:
 - Empty: replaces the region, headers and footers too (Carbon).
 - Loading: skeleton for tables, cards, lists on page loads; spinner for one module or an action in progress (Carbon, NN/g). Spinners honor reduced motion. Never a skeleton for toasts, overflow menus, dropdown items or the modal itself (Carbon).
+- Arrival of the content: animate only when it makes sense: a figure or module the user waited on for the first time fades in as the skeleton fades out (0.2 s, a number may also roll in); a refresh of something already visible, a first mount that already has its content, and list rows get no animation. Reduced motion: fade only (convention; kit rule `useReveal`).
 - Error: specific cause, fix, retry; keep user data.
 - Partial: loaded part plus inline notice.
 - Action: hover and focus-visible like any button.

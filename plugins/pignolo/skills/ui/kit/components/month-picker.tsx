@@ -10,6 +10,11 @@
  * Control: `<  [Octubre 2026 v]  >`. The chevrons step the value without opening anything and
  *   aria-disable at min and max (focus is kept). The popover holds the typed field, the header
  *   `<  [2026]  >` (year button, chevrons step a year), the month grid and an "este mes" button.
+ *   The typed field is the kit TextField (floating label). The panel keeps one height between the
+ *   month and year views (the same body height as the DatePicker day grid) and the button sits right
+ *   under the grid. The popover is non-modal: the wheel keeps scrolling the page and the popover
+ *   follows its button. In the sheet (touch, or `presentation="sheet"`) the panel fills a sheet up
+ *   to 520 px wide with larger cells.
  * Typing: always available inside the popover. es-AR accepts 3/26, 03/2026, mar 2026, marzo 2026,
  *   2026-03, 032026; two digit years are 20xx (`twoDigitYearBase`); anything unclear shows an
  *   error and is never guessed. The format is helper text, not a placeholder.

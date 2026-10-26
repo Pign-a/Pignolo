@@ -10,7 +10,10 @@ A component is done when all hold:
 - Exit faster than enter; interruptible by spamming.
 - Only transform and opacity animate; no `transition: all`. The allowed exceptions are the table below.
 - Hover changes color and shadow only: no lift, no translate. Press is CSS (`pressClass`), not `whileTap`.
-- Bounce only for things with inertia (momentum tier: sheets, toasts, drag, accordion). Controls (direct tier) and data use bounce 0.
+- Bounce only for things with inertia (momentum tier: sheets, toasts, drag). Controls (direct tier), the accordion and data use bounce 0.
+- Anything that scrolls (a modal body, a sheet body, a list in a popover) carries `kit-scroll` (tokens.css): thin scrollbar from `--color-outline`, never the browser default. It uses `scrollbar-width` and `scrollbar-color`, with `::-webkit-scrollbar` rules only where those are unsupported, and gives the scrollbar back to the system under forced colors.
+- A box that scrolls or clips (`overflow` other than visible) leaves room for the focus ring of its last control (4 px outside it: padding of at least 8 px on the sides that clip). A bounding box assertion in the interaction test covers it.
+- Parts of a row (icon, text, action, close) share one vertical center (`items-center`); measure it in the interaction test.
 - Touch targets: 44 px on `pointer: coarse` (`coarseTarget`, or `coarseHit` for a small visual); 24 px minimum on desktop (WCAG 2.2 target size).
 - Forced colors (Windows high contrast): anything drawn with a background, `box-shadow` or opacity layer stays visible. Use `forced-colors:` classes with system colors (CanvasText borders, Highlight and HighlightText for the selected state, GrayText for disabled) and `forced-color-adjust: none` where the component paints its own state.
 - Non-text contrast: an off or empty control keeps a 3:1 outline against the page, light and dark (WCAG 1.4.11).

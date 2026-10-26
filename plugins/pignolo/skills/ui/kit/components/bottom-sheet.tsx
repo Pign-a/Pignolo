@@ -15,6 +15,11 @@
  *   the button, Esc or the backdrop uses the faster exit tween. Opening mid exit retargets.
  *   Transform and opacity only. Reduced motion: no travel, cross-fade; dragging still follows
  *   the pointer and releases without a spring.
+ * Pull up: the sheet body reaches 120 px below the viewport edge (`-bottom-30` plus `pb-30`, the same size
+ *   as the rubber band, as iOS sheets do), so pulling it up past the rest position never shows the page
+ *   under it or cuts the sheet off; the visible height, the dismiss threshold and the closed position all
+ *   discount that extra. The body scrolls with the kit's `kit-scroll` thin scrollbar (tokens.css), not the
+ *   browser default.
  * Round 1 lab bug: focus() scrolled the overflow container. Here the sheet root is
  *   `overflow: clip` (it cannot be scrolled by focus) and every focus call passes preventScroll.
  * States: closed, open, dragging (grab cursor), settling; close button and footer buttons rest,
@@ -59,6 +64,8 @@ const SHEET_EXIT = 0.16;
 const CLEARANCE = 24;
 /** How far the rubber band can stretch, in px. */
 const BAND = 120;
+/** The sheet body reaches this far below the viewport edge (as iOS sheets do), so pulling up never opens a gap. Keep equal to -bottom-30 / pb-30 below (7.5 rem = 120 px). */
+const EXTRA = BAND;
 
 /** Momentum spring that starts with the given velocity (px/s). */
 const spring = (velocity: number) => {
@@ -109,7 +116,8 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
   // Drive the sheet whenever the node exists or `open` changes.
   useLayoutEffect(() => {
     if (!node) return;
-    const closed = node.offsetHeight + CLEARANCE;
+    // The body is EXTRA px taller than what shows, because it reaches below the viewport edge.
+    const closed = node.offsetHeight - EXTRA + CLEARANCE;
     size.current = closed;
     if (open) {
       exitVelocity.current = null;
@@ -237,7 +245,7 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
             ref={setNode}
             style={{ y, opacity: fade }}
             className={cn(
-              "fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] w-full max-w-[560px] flex-col overflow-clip rounded-t-(--radius-xl) border border-b-0 border-(--color-border-subtle) bg-(--color-surface) shadow-(--elevation-4) outline-none",
+              "fixed inset-x-0 -bottom-30 z-50 mx-auto flex max-h-[calc(85dvh+7.5rem)] w-full max-w-[560px] flex-col overflow-clip rounded-t-(--radius-xl) border border-b-0 border-(--color-border-subtle) bg-(--color-surface) pb-30 shadow-(--elevation-4) outline-none",
               className,
             )}
           >
@@ -265,7 +273,7 @@ export function BottomSheet({ open, onOpenChange, title, description, children, 
                 </Dialog.Close>
               </div>
             </div>
-            {children && <div data-sheet-content="" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-2 pb-2">{children}</div>}
+            {children && <div data-sheet-content="" className="kit-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 pt-2 pb-2">{children}</div>}
             {footer && <div data-sheet-content="" className="flex flex-col gap-2 px-6 pt-4 pb-6">{footer}</div>}
             {!footer && <div className="pb-4" />}
           </m.div>

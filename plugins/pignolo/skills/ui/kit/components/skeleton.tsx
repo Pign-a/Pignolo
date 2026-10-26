@@ -21,13 +21,25 @@
  * Keyboard: not focusable. Screen readers: blocks are aria-hidden; the region is a
  * status with the `label` text (available during the delay too), and aria-busy.
  *
+ * Arrival (when the load ends): content that replaces a skeleton is not always welcome with a
+ * flourish. `useReveal` and `SkeletonSwap` decide and draw it. `reveal`: "auto" (default) animates
+ * only the FIRST time a single figure or module goes from waiting (skeleton, error, empty) to
+ * content: the skeleton fades out as the content fades in, 0.2 s, and a number also rolls in from
+ * zero ("roll"). It does NOT animate a refresh of something already shown (it was visible before,
+ * the user is not waiting, a flourish would be noise), nor a first mount that already has its
+ * content, nor list rows (they never use it). "roll" and "fade" force the animation for a
+ * figure the user is waiting on after an action; "none" never animates. Under reduced motion the
+ * only animation left is the fade. The rule lives in `useReveal`: arrival = content shown right
+ * after a state without content; auto = arrival and nothing was shown before.
+ *
  * Copy: `SkeletonRegion` takes `label` (for example "Cargando ingresos").
- * Animates transform only (the sweep is a translateX).
+ * Animates transform only (the sweep is a translateX); the arrival fade animates opacity.
  */
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import * as m from "motion/react-m";
+import { AnimatePresence } from "motion/react";
 import { cn } from "../lib/cn";
 import { useMotionTier } from "../motion";
 
@@ -129,5 +141,54 @@ export function SkeletonRegion({ label, children, delayMs = DEFAULT_DELAY_MS, cl
       <span className="visible sr-only">{label}</span>
       {children}
     </div>
+  );
+}
+
+export type RevealMode = "auto" | "roll" | "fade" | "none";
+
+/**
+ * How content that has just replaced a waiting state (skeleton, error, empty) should arrive.
+ * Returns "none" on every render except the one right after the content appears. See the header.
+ */
+export function useReveal(hasContent: boolean, reveal: RevealMode = "auto"): "roll" | "fade" | "none" {
+  const before = useRef<boolean | null>(null);
+  const shown = useRef(false);
+  const arrived = hasContent && before.current === false;
+  const wasShown = shown.current;
+  useEffect(() => {
+    before.current = hasContent;
+    if (hasContent) shown.current = true;
+  });
+  if (!arrived) return "none";
+  if (reveal === "auto") return wasShown ? "none" : "roll";
+  return reveal;
+}
+
+const swapVariants = {
+  in: (animated: boolean) => ({ opacity: animated ? 0 : 1 }),
+  rest: (animated: boolean) => ({ opacity: 1, transition: animated ? { duration: 0.2, ease: "easeOut" as const } : { duration: 0 } }),
+  out: (animated: boolean) => ({ opacity: 0, transition: animated ? { duration: 0.1, ease: "easeIn" as const } : { duration: 0 } }),
+};
+
+export interface SkeletonSwapProps {
+  /** Changes when the content kind changes (loading, error, empty, value). */
+  swapKey: string;
+  /** Cross-fade this change (the skeleton fades out while the content fades in). */
+  animated: boolean;
+  children: ReactNode;
+}
+
+/**
+ * Swaps one block for another. Animated: the old block leaves 0.1 s (out of the flow, so nothing
+ * jumps) while the new one fades in 0.2 s. Not animated: the swap is instant. The parent must be
+ * positioned (relative).
+ */
+export function SkeletonSwap({ swapKey, animated, children }: SkeletonSwapProps) {
+  return (
+    <AnimatePresence initial={false} mode="popLayout" custom={animated}>
+      <m.span key={swapKey} custom={animated} variants={swapVariants} initial="in" animate="rest" exit="out" className="block">
+        {children}
+      </m.span>
+    </AnimatePresence>
   );
 }
