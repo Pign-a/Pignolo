@@ -1,8 +1,8 @@
 {
   "name": "prompt-polish",
   "displayName": "Prompt Polish",
-  "version": "0.2.0",
-  "description": "Mod opcional para la app de escritorio: botones sobre el cuadro de texto que reescriben tu prompt en bruto (Mejorar, Plan, Bug) con un modelo barato.",
+  "version": "0.3.0",
+  "description": "Mod opcional para la app de escritorio: sobre el cuadro de texto, un botón Mejorar y menús de estilo (Plan, Bug) y de sesión (Compactar, Documentar) que reescriben tu prompt o compactan la conversación.",
   "author": { "name": "Ignacio Agustín Miste" },
   "repository": "https://github.com/Pign-a/Pignolo",
   "license": "MIT",

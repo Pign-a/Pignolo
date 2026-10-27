@@ -7,6 +7,8 @@ declare module 'claude-code' {
       note: string
       repo: string
       branch: string
+      hasSession: boolean
+      menuTick: number
     }
   }
 }

@@ -1,5 +1,14 @@
 # Changelog
 
+## prompt-polish 0.3.0 — 2026-10-26
+
+Cambia la banda del mod: de tres botones a un botón y dos menús. `pignolo` queda en 1.1.0.
+
+- **Menús con el selector de la app.** Mejorar sigue como botón principal; **Estilo** agrupa Plan y Bug (y deja lugar a más estilos sin ensanchar la banda); **Sesión** agrupa Compactar y Documentar. Elegir una opción ya es una confirmación de dos pasos.
+- **Compactar** usa la compactación nativa con instrucciones propias: conserva objetivo y estado, decisiones y su porqué, rutas de archivos tocados, comandos y errores textuales, lo pendiente, tus restricciones y la ruta de cualquier registro de sesión; descarta volcados de salida y callejones sin salida. Si hay un borrador en el cuadro, lo toma como "lo que viene". Muestra el tamaño antes y después. **No se midió** que conserve más datos que la compactación por defecto, ni se verificó que el borrador sobreviva a la compactación.
+- **Documentar** lanza `/pignolo:session`, y solo aparece si el plugin `pignolo` está instalado.
+- **Actualizar:** `/plugin marketplace update pignolo` y `/plugin update prompt-polish@pignolo`. La banda se revisó a mano en la app; Compactar y Documentar no se probaron de punta a punta en la app. Se pasan `claude plugin validate` y 5 tests (`claude plugin test plugins/prompt-polish`).
+
 ## prompt-polish 0.2.0 — 2026-10-26
 
 Mod opcional y aparte del plugin `pignolo` (`plugins/prompt-polish/`, mismo marketplace). `pignolo` queda en 1.1.0.

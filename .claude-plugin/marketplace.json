@@ -13,7 +13,7 @@
     {
       "name": "prompt-polish",
       "source": "./plugins/prompt-polish",
-      "description": "Mod opcional para la app de escritorio: botones sobre el cuadro de texto que reescriben tu prompt en bruto"
+      "description": "Mod opcional para la app de escritorio: botón y menús sobre el cuadro de texto que reescriben tu prompt en bruto y compactan o documentan la sesión"
     }
   ]
 }

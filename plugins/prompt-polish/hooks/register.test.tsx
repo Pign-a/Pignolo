@@ -43,7 +43,36 @@ test('con el cuadro vacío avisa y no llama al modelo', async ($, on) => {
   await ui.unmount()
 })
 
-test('cada botón de estilo manda su propia instrucción al modelo', async ($, on) => {
+test('Compactar manda las instrucciones con el borrador y muestra el resultado', async ($, on) => {
+  const sent: string[] = []
+  on('prompt.read', () => ({ value: { text: 'seguir con el login', cursor: 0 } }))
+  on('session.compact', (_, e) => {
+    sent.push(String(e.instructions))
+    return { messages: [{ role: 'user', text: 'resumen', toolUses: [] }], tokensBefore: 84000, tokensAfter: 12000 }
+  })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.select({ key: 'session', value: 'compact' })
+
+  expect(sent).toHaveLength(1)
+  expect(sent[0]).toContain('exact paths')
+  expect(sent[0]).toContain('seguir con el login')
+  expect((await ui.find({ type: 'Text', text: /Compactado/ }))?.text).toContain('84k a 12k')
+  await ui.unmount()
+})
+
+test('si la compactación se rechaza avisa en la banda', async ($, on) => {
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }))
+  on('session.compact', () => ({ skip: 'hay un turno en curso' }))
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.select({ key: 'session', value: 'compact' })
+
+  expect((await ui.find({ type: 'Text', text: /No se compactó/ }))?.text).toContain('hay un turno en curso')
+  await ui.unmount()
+})
+
+test('los estilos son un menú y cada uno manda su propia instrucción al modelo', async ($, on) => {
   const systems: string[] = []
   on('prompt.read', () => ({ value: { text: 'se rompe el login', cursor: 0 } }))
   on('model.complete', (_, e) => {
@@ -54,8 +83,8 @@ test('cada botón de estilo manda su propia instrucción al modelo', async ($, o
 
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   await ui.press({ key: 'polish' })
-  await ui.press({ key: 'plan' })
-  await ui.press({ key: 'bug' })
+  await ui.select({ key: 'style', value: 'plan' })
+  await ui.select({ key: 'style', value: 'bug' })
 
   expect(systems).toHaveLength(3)
   expect(systems[0]).not.toContain('Style:')

@@ -43,7 +43,7 @@ O dentro de Claude Code: `/plugin marketplace add Pign-a/Pignolo` y `/plugin ins
 
 ### Mod opcional: prompt-polish
 
-Solo para la app de escritorio de Claude Code. Agrega tres botones sobre el cuadro de texto (Mejorar, Plan y Bug) que reescriben el prompt que dictaste o tipeaste: lo ordenan, recortan repeticiones y muletillas y corrigen la escritura, con un modelo barato (Haiku). No agrega nada que no hayas dicho. Es independiente de `pignolo`: se instala o no por separado.
+Solo para la app de escritorio de Claude Code. Agrega una banda sobre el cuadro de texto: el botón **Mejorar** y el menú **Estilo** (Plan, Bug) reescriben el prompt que dictaste o tipeaste (lo ordenan, recortan repeticiones y muletillas y corrigen la escritura) con un modelo barato (Haiku), sin agregar nada que no hayas dicho. El menú **Sesión** compacta la conversación con instrucciones para no perder lo importante (Compactar) y, si tenés `pignolo`, documenta la sesión (Documentar). Es independiente de `pignolo`: se instala o no por separado.
 
     claude plugin install prompt-polish@pignolo
 
