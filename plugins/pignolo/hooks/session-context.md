@@ -3,6 +3,7 @@ Pignolo is installed. Its skills decide how work gets done here. Invoke the matc
 - A new idea for a project, or "adopt this repo": /pignolo:start.
 - Any change of more than one step (a feature, a bug that needs digging, a refactor, a plan the author wrote): /pignolo:work. The author's own steps do not replace it: they become its milestones. work sizes the effort and says so in one line; a small fix stays small.
 - Any new or redesigned screen, panel, navigation or interface component, or adopting a component kit: /pignolo:ui as well, for that part.
+- Any decision about the architecture or behavior of agent or LLM infrastructure (which model, which prompt or rubric, where something is validated, what data travels to a model, authentication, network, tracing, retention), taken, proposed or changed: /pignolo:check-decision. It proposes, the author decides.
 - "validá", or a closed milestone: /pignolo:validate. Auditing a screen: /pignolo:ui-audit.
 - "documentemos", closing the day, updating the project state: /pignolo:session.
 

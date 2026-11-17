@@ -14,15 +14,15 @@ test('el primer encabezado de versión del CHANGELOG es la versión de plugin.js
   assert.strictEqual(m[1], version);
 });
 
-test('CLAUDE.md nombra la 1.1.0 y no conserva el método viejo', () => {
+test('CLAUDE.md nombra la 1.2.0 y no conserva el método viejo', () => {
   const t = read('CLAUDE.md');
-  assert.ok(t.includes('1.1.0'));
+  assert.ok(t.includes('1.2.0'));
   assert.ok(!t.includes('Ciclo ejecutar → revisar → arreglar'));
 });
 
-test('el README pide las seis skills por su comando', () => {
+test('el README pide las siete skills por su comando', () => {
   const t = read('README.md');
-  for (const c of ['start', 'work', 'validate', 'session', 'ui', 'ui-audit']) {
+  for (const c of ['start', 'work', 'validate', 'session', 'ui', 'ui-audit', 'check-decision']) {
     assert.match(t, new RegExp(`/pignolo:${c}(?![-\\w])`), `falta /pignolo:${c}`);
   }
 });

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 — 2026-11-17
+
+Una skill nueva, `check-decision`, y una pasada extra opcional en `ui`.
+
+- **`check-decision`.** Cuando se toma, se propone o se cambia una decisión de arquitectura o de comportamiento de infraestructura de agentes (modelo, prompt, rúbrica, dónde se valida algo, qué datos viajan a un modelo, autenticación, red, trazas, retención), la contrasta con buenas prácticas documentadas (documentación del proveedor y, donde no hay guía, OWASP para LLM, NIST AI RMF y MITRE ATLAS), lanza un red team que ejecuta pruebas, reabre ella misma las afirmaciones centrales y deja un registro de hallazgos (`docs/research/hallazgos-decisiones.md`). Propone, no decide ni cambia nada, y avisa el costo antes de lanzar los agentes. El recordatorio de sesión la nombra para que el agente la llame solo según el contexto. Sale de una skill personal del autor para un proyecto con Foundry: se quitaron los nombres, rutas y reglas de ese proyecto, y lo que cada proyecto necesita (carpetas que no se abren, dónde vive el registro) lo lee de su `CLAUDE.md` y `security.md`. **No se midió** ni se corrió de punta a punta en un proyecto ajeno.
+- **Pasada extra en `ui`.** Al terminar una pieza o pantalla, `ui` pregunta una vez por sesión si querés revisarla además con `modern-web-guidance` de Chrome (guías de APIs nativas del navegador). La pregunta avisa que ejecuta `npx modern-web-guidance@latest` (código de terceros que se actualiza solo) y que envía datos de uso anónimos salvo `DISABLE_TELEMETRY=1`. Con un sí devuelve sugerencias con archivo y guía y no cambia nada; con un no, no vuelve a preguntar. No reemplaza ni `validate` ni `ui-audit`, y `design.md` y el kit siguen mandando. Se escribió leyendo el README del proyecto: **no se corrió ni se midió** que mejore las pantallas, y `legacy-scan` no se verificó.
+
 ## prompt-polish 0.3.0 — 2026-10-26
 
 Cambia la banda del mod: de tres botones a un botón y dos menús. `pignolo` queda en 1.1.0.

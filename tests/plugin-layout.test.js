@@ -7,7 +7,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 // PIGNOLO_LAYOUT_PLUGIN apunta a otro árbol del plugin (tests/ui-arms.test.js corre este archivo contra el brazo U3).
 const PLUGIN = process.env.PIGNOLO_LAYOUT_PLUGIN || path.join(ROOT, 'plugins', 'pignolo');
-const SKILLS = ['session', 'start', 'ui', 'ui-audit', 'validate', 'work'];
+const SKILLS = ['check-decision', 'session', 'start', 'ui', 'ui-audit', 'validate', 'work'];
 
 const exists = (p) => fs.existsSync(p);
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
@@ -28,7 +28,7 @@ function frontmatter(file) {
 test('plugin.json: name, version y licencia', () => {
   const p = readJson(path.join(PLUGIN, '.claude-plugin', 'plugin.json'));
   assert.strictEqual(p.name, 'pignolo');
-  assert.strictEqual(p.version, '1.1.0');
+  assert.strictEqual(p.version, '1.2.0');
   assert.strictEqual(p.license, 'MIT');
 });
 
@@ -77,7 +77,7 @@ test('no existe plugins/pignolo-ui', () => {
   assert.ok(!exists(path.join(ROOT, 'plugins', 'pignolo-ui')));
 });
 
-test('las carpetas de skills son exactamente las seis', () => {
+test('las carpetas de skills son exactamente las siete', () => {
   const dirs = fs.readdirSync(path.join(PLUGIN, 'skills'), { withFileTypes: true })
     .filter((d) => d.isDirectory()).map((d) => d.name).sort();
   assert.deepStrictEqual(dirs, SKILLS);

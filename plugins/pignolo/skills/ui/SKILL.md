@@ -45,6 +45,10 @@ design/
 
 The status of each piece (`decidido` or `pendiente`) lives in the data embedded in `index.html`. Create it from `templates/index.html` and regenerate it from the template whenever a piece is added or decided: replace only the `<script id="data" type="application/json">` block, keep the rest. When you write that JSON by hand, write every `<` as `\u003c` and check that the block parses before you finish: a name containing `</script>` would otherwise close the element early and spill the data onto the page, and a stray comma would make the index read as empty when it is only corrupt. Set a piece to `decidido` when the author chooses an option, and record the choice in `design.md`.
 
-## 7. Close
+## 7. Optional extra check
+
+After a built piece or screen, ask the author once per session, in Spanish, whether they want an extra pass with Chrome's `modern-web-guidance`. It replaces nothing and never runs without a yes. What to say, run and report: `references/modern-web-guidance.md`.
+
+## 8. Close
 
 Tell the author in Spanish which pieces are decided, which are pending, and the path of `design/index.html`. Do not publish, upload or open anything remote. Do not commit unless asked.

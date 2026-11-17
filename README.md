@@ -51,7 +51,7 @@ Si todavía no agregaste el marketplace, corré antes el `marketplace add` de ar
 
 Si tenías instalados los plugins anteriores `pignolo-ui` o `pignolo-panel`, desinstalalos desde `/plugin` antes de usar este: sus skills `define`, `new`, `improve` y `audit` compiten con `ui` y `ui-audit` por los mismos pedidos.
 
-## Las seis skills
+## Las siete skills
 
 | Comando | Qué hace |
 |---|---|
@@ -60,6 +60,7 @@ Si tenías instalados los plugins anteriores `pignolo-ui` o `pignolo-panel`, des
 | `/pignolo:validate` | Revisa lo hecho desde el último commit validado, con agentes en paralelo solo para los frentes que la evidencia pide (seguridad, base de datos, código, tests, higiene, documentación) y avisa el costo antes de lanzarlos. |
 | `/pignolo:session` | Cierra la sesión: un registro por día en `docs/sessions/` con lo hecho, lo decidido y lo abierto, y el contexto de `CLAUDE.md` al día. |
 | `/pignolo:ui` | Define la identidad visual y diseña cada pantalla con opciones en HTML local navegable, en `design/`; vos elegís. |
+| `/pignolo:check-decision` | Al tomar o cambiar una decisión de arquitectura o de comportamiento de infraestructura de agentes (modelo, prompt, dónde se valida algo, qué datos viajan, red, autenticación), la contrasta con buenas prácticas documentadas, corre un red team, reabre lo central y deja un registro de hallazgos. Propone, no decide. Se llama sola según el contexto. |
 | `/pignolo:ui-audit` | Audita una pantalla con mediciones en el navegador, un catálogo de reglas y un auditor independiente; cada hallazgo cita su evidencia. Solo si se pide. |
 
 ## Qué genera en tu proyecto
