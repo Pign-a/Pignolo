@@ -7,7 +7,7 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 // PIGNOLO_LAYOUT_PLUGIN apunta a otro árbol del plugin (tests/ui-arms.test.js corre este archivo contra el brazo U3).
 const PLUGIN = process.env.PIGNOLO_LAYOUT_PLUGIN || path.join(ROOT, 'plugins', 'pignolo');
-const SKILLS = ['check-decision', 'session', 'start', 'ui', 'ui-audit', 'validate', 'work'];
+const SKILLS = ['check-agent-design', 'session', 'start', 'ui', 'ui-audit', 'validate', 'work'];
 
 const exists = (p) => fs.existsSync(p);
 const readJson = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));

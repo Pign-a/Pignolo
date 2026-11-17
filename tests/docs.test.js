@@ -22,7 +22,7 @@ test('CLAUDE.md nombra la 1.2.0 y no conserva el método viejo', () => {
 
 test('el README pide las siete skills por su comando', () => {
   const t = read('README.md');
-  for (const c of ['start', 'work', 'validate', 'session', 'ui', 'ui-audit', 'check-decision']) {
+  for (const c of ['start', 'work', 'validate', 'session', 'ui', 'ui-audit', 'check-agent-design']) {
     assert.match(t, new RegExp(`/pignolo:${c}(?![-\\w])`), `falta /pignolo:${c}`);
   }
 });
